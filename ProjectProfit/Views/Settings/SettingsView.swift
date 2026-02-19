@@ -1,0 +1,206 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @Environment(DataStore.self) private var dataStore
+    @State private var showCategorySheet = false
+    @State private var showDeleteAlert = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Stats
+                statsSection
+
+                // Management
+                managementSection
+
+                // Data
+                dataSection
+
+                // App Info
+                appInfoSection
+            }
+            .padding(20)
+            .padding(.bottom, 40)
+        }
+        .navigationTitle("設定")
+        .alert("データを削除", isPresented: $showDeleteAlert) {
+            Button("キャンセル", role: .cancel) {}
+            Button("削除", role: .destructive) {
+                dataStore.deleteAllData()
+            }
+        } message: {
+            Text("すべてのデータを削除しますか？この操作は取り消せません。")
+        }
+        .sheet(isPresented: $showCategorySheet) {
+            CategoryManageView()
+        }
+    }
+
+    // MARK: - Stats
+
+    private var statsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("データ統計")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            HStack(spacing: 0) {
+                statItem(icon: "folder.fill", value: dataStore.projects.count, label: "プロジェクト")
+                Divider().frame(height: 40)
+                statItem(icon: "list.bullet.rectangle", value: dataStore.transactions.count, label: "取引")
+                Divider().frame(height: 40)
+                statItem(icon: "repeat", value: dataStore.recurringTransactions.count, label: "定期取引")
+            }
+            .padding(20)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func statItem(icon: String, value: Int, label: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(AppColors.primary)
+            Text("\(value)")
+                .font(.title2.bold())
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Management
+
+    private var managementSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("管理")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(spacing: 0) {
+                NavigationLink {
+                    RecurringView()
+                } label: {
+                    menuRow(
+                        icon: "repeat",
+                        iconColor: AppColors.success,
+                        title: "定期取引",
+                        subtitle: "毎月・毎年の自動登録を管理"
+                    )
+                }
+
+                Divider().padding(.leading, 70)
+
+                Button {
+                    showCategorySheet = true
+                } label: {
+                    menuRow(
+                        icon: "chart.pie.fill",
+                        iconColor: AppColors.primary,
+                        title: "カテゴリ管理",
+                        subtitle: "収益・経費カテゴリの追加・編集"
+                    )
+                }
+            }
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func menuRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(iconColor)
+                .frame(width: 40, height: 40)
+                .background(iconColor.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Data
+
+    private var dataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("データ")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            Button {
+                showDeleteAlert = true
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "trash")
+                        .font(.title3)
+                        .foregroundStyle(AppColors.error)
+                        .frame(width: 40, height: 40)
+                        .background(AppColors.error.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("すべてのデータを削除")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(AppColors.error)
+                        Text("プロジェクト、取引、設定を初期化")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(16)
+            }
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    // MARK: - App Info
+
+    private var appInfoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("アプリ情報")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(spacing: 8) {
+                Text("Project Profit")
+                    .font(.title3.bold())
+                Text("バージョン \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text("個人事業主向けプロジェクト別経費トラッカー")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(20)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+}
