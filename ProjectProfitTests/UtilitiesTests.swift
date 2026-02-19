@@ -767,12 +767,30 @@ final class UtilitiesTests: XCTestCase {
 
         let lines = csv.components(separatedBy: "\n")
         let row = lines[1]
-        // Commas in memo should be replaced with Japanese comma "、"
-        XCTAssertTrue(row.contains("item1、item2、item3"), "Commas in memo should be replaced with '、'")
-        XCTAssertFalse(
-            row.contains("item1,item2"),
-            "Original commas should not remain in memo field"
+        // Fields are double-quoted, so commas within are valid CSV
+        XCTAssertTrue(row.contains("item1,item2,item3"), "Commas in memo are preserved inside quoted fields")
+    }
+
+    func testGenerateCSVDoubleQuoteEscaping() {
+        let date = makeDate(year: 2026, month: 1, day: 5)
+        let transaction = PPTransaction(
+            type: .expense,
+            amount: 1000,
+            date: date,
+            categoryId: "cat-other-expense",
+            memo: "said \"hello\" today"
         )
+
+        let csv = generateCSV(
+            transactions: [transaction],
+            getCategory: { _ in nil },
+            getProject: { _ in nil }
+        )
+
+        let lines = csv.components(separatedBy: "\n")
+        let row = lines[1]
+        // Double quotes inside fields should be escaped as ""
+        XCTAssertTrue(row.contains("said \"\"hello\"\" today"), "Double quotes in memo should be escaped as double-double-quotes")
     }
 
     func testGenerateCSVMultipleTransactions() {

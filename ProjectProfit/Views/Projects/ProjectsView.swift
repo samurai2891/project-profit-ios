@@ -27,34 +27,32 @@ struct ProjectsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                if !resolvedViewModel.hasProjects {
-                    emptyStateView
-                } else {
-                    projectListContent
-                }
+        ZStack(alignment: .bottomTrailing) {
+            if !resolvedViewModel.hasProjects {
+                emptyStateView
+            } else {
+                projectListContent
+            }
 
-                fabButton
+            fabButton
+        }
+        .navigationTitle("プロジェクト")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                headerView
             }
-            .navigationTitle("プロジェクト")
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    headerView
-                }
-            }
-            .sheet(isPresented: $showAddSheet) {
-                ProjectFormView(project: nil)
-            }
-            .alert("プロジェクトを削除", isPresented: $showDeleteConfirmation) {
-                deleteAlertActions
-            } message: {
-                Text("「\(projectToDelete?.name ?? "")」を削除しますか？この操作は取り消せません。")
-            }
-            .onAppear {
-                if viewModel == nil {
-                    viewModel = ProjectsViewModel(dataStore: dataStore)
-                }
+        }
+        .sheet(isPresented: $showAddSheet) {
+            ProjectFormView(project: nil)
+        }
+        .alert("プロジェクトを削除", isPresented: $showDeleteConfirmation) {
+            deleteAlertActions
+        } message: {
+            Text("「\(projectToDelete?.name ?? "")」を削除しますか？この操作は取り消せません。")
+        }
+        .onAppear {
+            if viewModel == nil {
+                viewModel = ProjectsViewModel(dataStore: dataStore)
             }
         }
     }
@@ -114,6 +112,9 @@ private extension ProjectsView {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("フィルター: \(status.rawValue)")
+        .accessibilityHint("タップして\(status.rawValue)のプロジェクトを表示")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     var projectListContent: some View {
@@ -183,6 +184,8 @@ private extension ProjectsView {
                     .foregroundStyle(.white)
                     .clipShape(Capsule())
             }
+            .accessibilityLabel("プロジェクトを追加")
+            .accessibilityHint("タップして新しいプロジェクトを作成")
             .padding(.top, 8)
 
             Spacer()
@@ -203,6 +206,8 @@ private extension ProjectsView {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.4), radius: 8, x: 0, y: 4)
         }
+        .accessibilityLabel("新規追加")
+        .accessibilityHint("タップして新しいプロジェクトを作成")
         .padding(.trailing, 20)
         .padding(.bottom, 20)
     }
@@ -265,6 +270,17 @@ private struct ProjectCardView: View {
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(project.name) \(statusLabel(project.status)) 収入 \(formatCurrency(projectIncome)) 支出 \(formatCurrency(projectExpense)) 利益 \(formatCurrency(projectProfit)) 利益率 \(Int(profitMargin))%")
+        .accessibilityHint("タップしてプロジェクト詳細を表示")
+    }
+
+    private func statusLabel(_ status: ProjectStatus) -> String {
+        switch status {
+        case .active: return "進行中"
+        case .completed: return "完了"
+        case .paused: return "保留"
+        }
     }
 }
 
@@ -282,6 +298,7 @@ private extension ProjectCardView {
 
             StatusBadge(status: project.status)
         }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -304,6 +321,8 @@ private extension ProjectCardView {
                 color: projectProfit >= 0 ? AppColors.success : AppColors.error
             )
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("収入 \(formatCurrency(projectIncome)) 支出 \(formatCurrency(projectExpense)) 利益 \(formatCurrency(projectProfit))")
     }
 
     func financialItem(label: String, amount: Int, color: Color) -> some View {
@@ -351,6 +370,9 @@ private extension ProjectCardView {
             }
             .frame(height: 6)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("利益率")
+        .accessibilityValue("\(Int(profitMargin))%")
     }
 
     var deleteRow: some View {
@@ -364,6 +386,8 @@ private extension ProjectCardView {
                     .foregroundStyle(AppColors.error)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("削除")
+            .accessibilityHint("タップして削除確認画面を表示")
         }
     }
 }
@@ -398,6 +422,7 @@ struct StatusBadge: View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())
+            .accessibilityLabel("ステータス: \(label)")
     }
 }
 

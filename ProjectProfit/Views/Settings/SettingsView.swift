@@ -1,9 +1,13 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(DataStore.self) private var dataStore
     @State private var showCategorySheet = false
     @State private var showDeleteAlert = false
+    @State private var showFileImporter = false
+    @State private var showImportResultAlert = false
+    @State private var importResult: CSVImportResult?
 
     var body: some View {
         ScrollView {
@@ -35,6 +39,43 @@ struct SettingsView: View {
         .sheet(isPresented: $showCategorySheet) {
             CategoryManageView()
         }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [UTType.commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                guard url.startAccessingSecurityScopedResource() else {
+                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルへのアクセスが拒否されました。"])
+                    showImportResultAlert = true
+                    return
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+                do {
+                    let csvString = try String(contentsOf: url, encoding: .utf8)
+                    importResult = dataStore.importTransactions(from: csvString)
+                } catch {
+                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"])
+                }
+                showImportResultAlert = true
+            case .failure(let error):
+                importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイル選択エラー: \(error.localizedDescription)"])
+                showImportResultAlert = true
+            }
+        }
+        .alert("インポート結果", isPresented: $showImportResultAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let result = importResult {
+                if result.errorCount == 0 {
+                    Text("\(result.successCount)件の取引をインポートしました。")
+                } else {
+                    Text("成功: \(result.successCount)件\nエラー: \(result.errorCount)件\n\(result.errors.prefix(3).joined(separator: "\n"))")
+                }
+            }
+        }
     }
 
     // MARK: - Stats
@@ -56,6 +97,8 @@ struct SettingsView: View {
             .padding(20)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("データ統計 プロジェクト\(dataStore.projects.count)件 取引\(dataStore.transactions.count)件 定期取引\(dataStore.recurringTransactions.count)件")
         }
     }
 
@@ -138,6 +181,9 @@ struct SettingsView: View {
         }
         .padding(16)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(subtitle)")
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Data
@@ -149,29 +195,48 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            Button {
-                showDeleteAlert = true
-            } label: {
-                HStack(spacing: 14) {
-                    Image(systemName: "trash")
-                        .font(.title3)
-                        .foregroundStyle(AppColors.error)
-                        .frame(width: 40, height: 40)
-                        .background(AppColors.error.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("すべてのデータを削除")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(AppColors.error)
-                        Text("プロジェクト、取引、設定を初期化")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
+            VStack(spacing: 0) {
+                Button {
+                    showFileImporter = true
+                } label: {
+                    menuRow(
+                        icon: "square.and.arrow.down",
+                        iconColor: AppColors.primary,
+                        title: "CSVインポート",
+                        subtitle: "CSVファイルから取引データを読み込み"
+                    )
                 }
-                .padding(16)
+                .accessibilityLabel("CSVインポート")
+                .accessibilityHint("タップしてCSVファイルから取引データを読み込み")
+
+                Divider().padding(.leading, 70)
+
+                Button {
+                    showDeleteAlert = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "trash")
+                            .font(.title3)
+                            .foregroundStyle(AppColors.error)
+                            .frame(width: 40, height: 40)
+                            .background(AppColors.error.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("すべてのデータを削除")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(AppColors.error)
+                            Text("プロジェクト、取引、設定を初期化")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(16)
+                }
+                .accessibilityLabel("すべてのデータを削除")
+                .accessibilityHint("タップして削除確認画面を表示 この操作は取り消せません")
             }
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -201,6 +266,8 @@ struct SettingsView: View {
             .padding(20)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Project Profit バージョン \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") 個人事業主向けプロジェクト別経費トラッカー")
         }
     }
 }

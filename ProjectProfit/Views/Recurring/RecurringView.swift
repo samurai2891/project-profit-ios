@@ -38,6 +38,8 @@ struct RecurringView: View {
                         Image(systemName: "chevron.left")
                             .foregroundStyle(.primary)
                     }
+                    .accessibilityLabel("戻る")
+                    .accessibilityHint("タップして前の画面に戻る")
                 }
                 ToolbarItem(placement: .principal) {
                     Text("定期取引")
@@ -48,6 +50,8 @@ struct RecurringView: View {
                         Image(systemName: "plus")
                             .foregroundStyle(AppColors.primary)
                     }
+                    .accessibilityLabel("新規追加")
+                    .accessibilityHint("タップして新しい定期取引を作成")
                 }
             }
             .sheet(isPresented: $showFormSheet, onDismiss: { editingRecurring = nil }) {
@@ -151,6 +155,8 @@ struct RecurringView: View {
         .padding(.vertical, 16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("登録数\(vm.totalCount)件 有効\(vm.activeCount)件 月額合計\(formatCurrency(vm.monthlyTotal))")
     }
 
     private func summaryItem(label: String, value: String) -> some View {
@@ -250,6 +256,9 @@ struct RecurringView: View {
         }
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(recurring.type == .expense ? "経費" : "収益") \(recurring.name) \(formatCurrency(recurring.amount)) \(vm.frequencyLabel(recurring))\(recurring.isActive ? "" : " 停止中")")
+        .accessibilityHint("タップして編集")
         .onTapGesture {
             editingRecurring = recurring
             showFormSheet = true
@@ -308,7 +317,24 @@ struct RecurringView: View {
             .background(
                 (isWarning && !isSkipped ? AppColors.warning.opacity(0.08) : Color.clear)
             )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(nextRegistrationAccessibilityLabel(isSkipped: isSkipped, info: info))
         }
+    }
+
+    private func nextRegistrationAccessibilityLabel(isSkipped: Bool, info: NextRegistrationInfo) -> String {
+        if isSkipped {
+            return "次回登録はスキップされます"
+        }
+        let daysLabel: String
+        if info.daysUntil == 0 {
+            daysLabel = "今日"
+        } else if info.daysUntil == 1 {
+            daysLabel = "明日"
+        } else {
+            daysLabel = "\(info.daysUntil)日後"
+        }
+        return "次回登録 \(formatDateShort(info.date)) \(daysLabel)"
     }
 
     // MARK: - Action Buttons Row
@@ -376,6 +402,20 @@ struct RecurringView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityHint(actionButtonHint(for: label))
+    }
+
+    private func actionButtonHint(for label: String) -> String {
+        switch label {
+        case "スキップ": return "タップして次回登録をスキップ"
+        case "通知": return "タップして通知設定を変更"
+        case "履歴": return "タップして登録履歴を表示"
+        case "停止": return "タップして定期取引を一時停止"
+        case "再開": return "タップして定期取引を再開"
+        case "削除": return "タップして削除確認画面を表示"
+        default: return ""
+        }
     }
 }
 

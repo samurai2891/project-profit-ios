@@ -21,11 +21,15 @@ struct ProjectFormView: View {
             Form {
                 Section("プロジェクト名") {
                     TextField("例: ウェブサイト制作", text: $name)
+                        .accessibilityLabel("プロジェクト名")
+                        .accessibilityValue(name.isEmpty ? "未入力" : name)
                 }
 
                 Section("説明") {
                     TextField("プロジェクトの概要を入力...", text: $description, axis: .vertical)
                         .lineLimit(3...6)
+                        .accessibilityLabel("プロジェクトの説明")
+                        .accessibilityValue(description.isEmpty ? "未入力" : description)
                 }
 
                 if isEditMode {
@@ -36,6 +40,9 @@ struct ProjectFormView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .accessibilityLabel("ステータス")
+                        .accessibilityValue(status.label)
+                        .accessibilityHint("タップしてステータスを変更")
                     }
                 }
             }
@@ -44,10 +51,15 @@ struct ProjectFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
+                        .accessibilityLabel("キャンセル")
+                        .accessibilityHint("タップして入力を取り消し")
                 }
                 ToolbarItem(placement: .confirmationAction) {
+                    let isEmpty = name.trimmingCharacters(in: .whitespaces).isEmpty
                     Button("保存") { save() }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(isEmpty)
+                        .accessibilityLabel("保存")
+                        .accessibilityHint(isEmpty ? "プロジェクト名を入力してください" : "タップしてプロジェクトを保存")
                 }
             }
             .onAppear {

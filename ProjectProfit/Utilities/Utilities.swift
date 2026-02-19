@@ -283,8 +283,10 @@ func generateCSV(
                 return "\(project.name)(\(a.ratio)%)"
             }
             .joined(separator: "; ")
-        let memo = t.memo.replacingOccurrences(of: ",", with: "、")
-        return "\"\(dateStr)\",\"\(typeStr)\",\"\(t.amount)\",\"\(category)\",\"\(projectNames)\",\"\(memo)\""
+        let escapedCategory = category.replacingOccurrences(of: "\"", with: "\"\"")
+        let escapedProjectNames = projectNames.replacingOccurrences(of: "\"", with: "\"\"")
+        let escapedMemo = t.memo.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(dateStr)\",\"\(typeStr)\",\"\(t.amount)\",\"\(escapedCategory)\",\"\(escapedProjectNames)\",\"\(escapedMemo)\""
     }
 
     return bom + ([headers] + rows).joined(separator: "\n")

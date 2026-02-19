@@ -1,3 +1,4 @@
+import os
 import UserNotifications
 import SwiftUI
 
@@ -41,7 +42,7 @@ final class NotificationService {
             isAuthorized = granted
             return granted
         } catch {
-            print("[NotificationService] Authorization request failed: \(error)")
+            AppLogger.notification.error("Authorization request failed: \(error.localizedDescription)")
             isAuthorized = false
             return false
         }
@@ -165,7 +166,7 @@ final class NotificationService {
         do {
             try await center.add(request)
         } catch {
-            print("[NotificationService] Failed to schedule notification '\(identifier)': \(error)")
+            AppLogger.notification.error("Failed to schedule notification '\(identifier)': \(error.localizedDescription)")
         }
     }
 }

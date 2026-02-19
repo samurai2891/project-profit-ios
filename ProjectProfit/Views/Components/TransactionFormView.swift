@@ -53,10 +53,14 @@ struct TransactionFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") { dismiss() }
+                        .accessibilityLabel("キャンセル")
+                        .accessibilityHint("タップして入力を取り消し")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
                         .disabled(!isValid || isSubmitting)
+                        .accessibilityLabel("保存")
+                        .accessibilityHint(isValid ? "タップして取引を保存" : "すべての必須項目を入力してください")
                 }
             }
             .onAppear { setupInitialValues() }
@@ -77,7 +81,8 @@ struct TransactionFormView: View {
     }
 
     private func typeButton(for txType: TransactionType, label: String, icon: String, activeColor: Color) -> some View {
-        Button {
+        let isSelected = type == txType
+        return Button {
             type = txType
         } label: {
             HStack {
@@ -87,15 +92,18 @@ struct TransactionFormView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(type == txType ? activeColor : AppColors.surface)
-            .foregroundStyle(type == txType ? .white : .primary)
+            .background(isSelected ? activeColor : AppColors.surface)
+            .foregroundStyle(isSelected ? .white : .primary)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(type == txType ? activeColor : AppColors.border, lineWidth: 1)
+                    .stroke(isSelected ? activeColor : AppColors.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("種類: \(label)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint("タップして\(label)を選択")
     }
 
     // MARK: - Amount
@@ -110,6 +118,8 @@ struct TransactionFormView: View {
                 TextField("0", text: $amountText)
                     .keyboardType(.numberPad)
                     .font(.system(size: 28, weight: .semibold))
+                    .accessibilityLabel("金額")
+                    .accessibilityValue(amountText.isEmpty ? "未入力" : "\(amountText)円")
             }
             .padding(16)
             .background(AppColors.surface)
@@ -122,10 +132,12 @@ struct TransactionFormView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("日付")
                 .font(.subheadline.weight(.medium))
-            DatePicker("", selection: $date, displayedComponents: .date)
+            DatePicker("日付", selection: $date, displayedComponents: .date)
                 .datePickerStyle(.compact)
                 .labelsHidden()
                 .environment(\.locale, Locale(identifier: "ja_JP"))
+                .accessibilityLabel("日付")
+                .accessibilityValue(formatDate(date))
         }
     }
 
@@ -137,6 +149,7 @@ struct TransactionFormView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(categories, id: \.id) { cat in
+                        let isSelected = categoryId == cat.id
                         Button {
                             categoryId = cat.id
                         } label: {
@@ -144,15 +157,18 @@ struct TransactionFormView: View {
                                 .font(.subheadline.weight(.medium))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
-                                .background(categoryId == cat.id ? AppColors.primary : AppColors.surface)
-                                .foregroundStyle(categoryId == cat.id ? .white : .primary)
+                                .background(isSelected ? AppColors.primary : AppColors.surface)
+                                .foregroundStyle(isSelected ? .white : .primary)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .stroke(categoryId == cat.id ? AppColors.primary : AppColors.border, lineWidth: 1)
+                                        .stroke(isSelected ? AppColors.primary : AppColors.border, lineWidth: 1)
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("カテゴリ: \(cat.name)")
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .accessibilityHint("タップして\(cat.name)を選択")
                     }
                 }
             }
@@ -169,9 +185,12 @@ struct TransactionFormView: View {
                 Text("合計: \(totalRatio)%")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(totalRatio == 100 ? AppColors.success : AppColors.error)
+                    .accessibilityLabel("配分合計 \(totalRatio)%")
+                    .accessibilityValue(totalRatio == 100 ? "正常" : "合計が100%になるよう調整してください")
             }
 
             ForEach(Array(allocations.enumerated()), id: \.element.id) { index, alloc in
+                let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                 HStack {
                     Menu {
                         ForEach(dataStore.projects, id: \.id) { project in
@@ -180,7 +199,7 @@ struct TransactionFormView: View {
                             }
                         }
                     } label: {
-                        Text(dataStore.getProject(id: alloc.projectId)?.name ?? "選択")
+                        Text(projectName)
                             .font(.subheadline)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -188,6 +207,8 @@ struct TransactionFormView: View {
                             .foregroundStyle(AppColors.primary)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
+                    .accessibilityLabel("プロジェクト: \(projectName)")
+                    .accessibilityHint("タップしてプロジェクトを選択")
 
                     Spacer()
 
@@ -203,10 +224,13 @@ struct TransactionFormView: View {
                         .background(Color(.systemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.border))
+                        .accessibilityLabel("\(projectName)の配分率")
+                        .accessibilityValue("\(alloc.ratio)%")
 
                         Text("%")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
 
                     if allocations.count > 1 {
@@ -216,6 +240,8 @@ struct TransactionFormView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppColors.error)
                         }
+                        .accessibilityLabel("\(projectName)を配分から削除")
+                        .accessibilityHint("タップしてこのプロジェクトの配分を削除")
                     }
                 }
                 .padding(12)
@@ -243,6 +269,8 @@ struct TransactionFormView: View {
                             .stroke(AppColors.border, style: StrokeStyle(lineWidth: 1, dash: [6]))
                     )
                 }
+                .accessibilityLabel("プロジェクトを追加")
+                .accessibilityHint("タップして按分するプロジェクトを追加")
             }
         }
     }
@@ -257,6 +285,8 @@ struct TransactionFormView: View {
                 .padding(14)
                 .background(AppColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("メモ")
+                .accessibilityValue(memo.isEmpty ? "未入力" : memo)
         }
     }
 

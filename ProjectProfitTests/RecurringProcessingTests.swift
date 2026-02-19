@@ -8,7 +8,7 @@ import SwiftData
 final class RecurringProcessingTests: XCTestCase {
     var container: ModelContainer!
     var context: ModelContext!
-    var dataStore: DataStore!
+    var dataStore: ProjectProfit.DataStore!
 
     private let calendar = Calendar.current
 
@@ -20,7 +20,7 @@ final class RecurringProcessingTests: XCTestCase {
             configurations: config
         )
         context = ModelContext(container)
-        dataStore = DataStore(modelContext: context)
+        dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
     }
 

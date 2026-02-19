@@ -110,6 +110,8 @@ struct TransactionsView: View {
                     .font(.title3)
                     .foregroundStyle(AppColors.primary)
             }
+            .accessibilityLabel("CSV出力")
+            .accessibilityHint("タップして取引データをCSVで共有")
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
@@ -152,6 +154,8 @@ struct TransactionsView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(AppColors.border, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("収益 \(formatCurrency(viewModel.incomeTotal)) 経費 \(formatCurrency(viewModel.expenseTotal)) 差引 \(formatCurrency(viewModel.netTotal))")
     }
 
     private func summaryItem(label: String, amount: Int, color: Color) -> some View {
@@ -175,83 +179,79 @@ struct TransactionsView: View {
 
     // MARK: - Filter & Sort Bar
 
-    private var filterSortBar: some View {
+    private func filterSortBar(viewModel: TransactionsViewModel) -> some View {
         HStack(spacing: 8) {
-            filterButton
+            filterButton(viewModel: viewModel)
             Spacer()
-            sortFieldMenu
-            sortOrderToggle
+            sortFieldMenu(viewModel: viewModel)
+            sortOrderToggle(viewModel: viewModel)
         }
     }
 
-    private var hasActiveFilter: Bool {
-        filter.startDate != nil
-            || filter.endDate != nil
-            || filter.projectId != nil
-            || filter.categoryId != nil
-            || filter.type != nil
-    }
-
-    private var filterButton: some View {
-        Button {
+    private func filterButton(viewModel: TransactionsViewModel) -> some View {
+        let isActive = viewModel.hasActiveFilter
+        return Button {
             showFilterSheet = true
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "line.3.horizontal.decrease.circle")
                     .font(.subheadline)
-                Text(hasActiveFilter ? "フィルター (適用中)" : "フィルター")
+                Text(isActive ? "フィルター (適用中)" : "フィルター")
                     .font(.subheadline)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(hasActiveFilter ? AppColors.primary.opacity(0.12) : Color.clear)
-            .foregroundStyle(hasActiveFilter ? AppColors.primary : AppColors.muted)
+            .background(isActive ? AppColors.primary.opacity(0.12) : Color.clear)
+            .foregroundStyle(isActive ? AppColors.primary : AppColors.muted)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(hasActiveFilter ? AppColors.primary : AppColors.border, lineWidth: 1)
+                    .stroke(isActive ? AppColors.primary : AppColors.border, lineWidth: 1)
             )
         }
+        .accessibilityLabel(isActive ? "フィルター適用中" : "フィルター")
+        .accessibilityHint("タップしてフィルター条件を設定")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
-    private var sortFieldLabel: String {
+    private func sortFieldLabel(for sort: TransactionSort) -> String {
         switch sort.field {
         case .date: return "日付"
         case .amount: return "金額"
         }
     }
 
-    private var sortOrderLabel: String {
+    private func sortOrderLabel(for sort: TransactionSort) -> String {
         switch sort.order {
         case .desc: return "降順"
         case .asc: return "昇順"
         }
     }
 
-    private var sortFieldMenu: some View {
+    private func sortFieldMenu(viewModel: TransactionsViewModel) -> some View {
         Menu {
             Button {
-                sort = TransactionSort(field: .date, order: sort.order)
+                viewModel.sort = TransactionSort(field: .date, order: viewModel.sort.order)
             } label: {
                 HStack {
                     Text("日付")
-                    if sort.field == .date {
+                    if viewModel.sort.field == .date {
                         Image(systemName: "checkmark")
                     }
                 }
             }
             Button {
-                sort = TransactionSort(field: .amount, order: sort.order)
+                viewModel.sort = TransactionSort(field: .amount, order: viewModel.sort.order)
             } label: {
                 HStack {
                     Text("金額")
-                    if sort.field == .amount {
+                    if viewModel.sort.field == .amount {
                         Image(systemName: "checkmark")
                     }
                 }
             }
         } label: {
-            Text(sortFieldLabel)
+            Text(sortFieldLabel(for: viewModel.sort))
                 .font(.subheadline)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -259,14 +259,16 @@ struct TransactionsView: View {
                 .background(AppColors.primary.opacity(0.08))
                 .clipShape(Capsule())
         }
+        .accessibilityLabel("並び替え: \(sortFieldLabel(for: viewModel.sort))")
+        .accessibilityHint("タップして並び替えの基準を変更")
     }
 
-    private var sortOrderToggle: some View {
+    private func sortOrderToggle(viewModel: TransactionsViewModel) -> some View {
         Button {
-            let newOrder: TransactionSort.SortOrder = sort.order == .desc ? .asc : .desc
-            sort = TransactionSort(field: sort.field, order: newOrder)
+            let newOrder: TransactionSort.SortOrder = viewModel.sort.order == .desc ? .asc : .desc
+            viewModel.sort = TransactionSort(field: viewModel.sort.field, order: newOrder)
         } label: {
-            Text(sortOrderLabel)
+            Text(sortOrderLabel(for: viewModel.sort))
                 .font(.subheadline)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -274,13 +276,15 @@ struct TransactionsView: View {
                 .background(AppColors.primary.opacity(0.08))
                 .clipShape(Capsule())
         }
+        .accessibilityLabel("並び順: \(sortOrderLabel(for: viewModel.sort))")
+        .accessibilityHint("タップして昇順と降順を切り替え")
     }
 
     // MARK: - Transaction List
 
-    private var transactionList: some View {
+    private func transactionList(viewModel: TransactionsViewModel) -> some View {
         LazyVStack(spacing: 8) {
-            ForEach(filteredTransactions) { transaction in
+            ForEach(viewModel.filteredTransactions) { transaction in
                 TransactionCardView(
                     transaction: transaction,
                     onEdit: { editingTransaction = transaction },
@@ -316,6 +320,8 @@ struct TransactionsView: View {
                     .background(AppColors.primary)
                     .clipShape(Capsule())
             }
+            .accessibilityLabel("最初の取引を追加")
+            .accessibilityHint("タップして新しい取引を作成")
 
             Spacer().frame(height: 40)
         }
@@ -337,6 +343,8 @@ struct TransactionsView: View {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
         }
+        .accessibilityLabel("新規追加")
+        .accessibilityHint("タップして新しい取引を作成")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }
@@ -370,6 +378,13 @@ private struct TransactionCardView: View {
         return "\(prefix)\(formatCurrency(transaction.amount))"
     }
 
+    private var accessibilityDescription: String {
+        let typeLabel = isIncome ? "収益" : "経費"
+        let projectInfo = projectNames.isEmpty ? "" : " \(projectNames.joined(separator: ", "))"
+        let memoInfo = transaction.memo.isEmpty ? "" : " \(transaction.memo)"
+        return "\(typeLabel) \(categoryName) \(formattedAmount) \(formatDate(transaction.date))\(projectInfo)\(memoInfo)"
+    }
+
     var body: some View {
         Button(action: onEdit) {
             HStack(alignment: .top, spacing: 12) {
@@ -387,6 +402,9 @@ private struct TransactionCardView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityHint("タップして取引を編集")
     }
 
     // MARK: - Card Subviews
@@ -401,6 +419,7 @@ private struct TransactionCardView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
             )
+            .accessibilityHidden(true)
     }
 
     private var transactionDetails: some View {
@@ -425,6 +444,7 @@ private struct TransactionCardView: View {
                 projectTags
             }
         }
+        .accessibilityHidden(true)
     }
 
     private var projectTags: some View {
@@ -460,12 +480,15 @@ private struct TransactionCardView: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                .accessibilityHidden(true)
 
             Button(action: onDelete) {
                 Image(systemName: "trash")
                     .font(.caption)
                     .foregroundStyle(AppColors.error.opacity(0.7))
             }
+            .accessibilityLabel("削除")
+            .accessibilityHint("タップして削除確認画面を表示")
         }
     }
 }

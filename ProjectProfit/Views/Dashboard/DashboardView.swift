@@ -14,76 +14,49 @@ enum ViewMode: String, CaseIterable {
 
 struct DashboardView: View {
     @Environment(DataStore.self) private var dataStore
-    @State private var viewMode: ViewMode = .monthly
+    @State private var viewModel: DashboardViewModel?
 
-    private var currentYear: Int { Calendar.current.component(.year, from: Date()) }
-    private var currentMonth: Int { Calendar.current.component(.month, from: Date()) }
-
-    private var dateRange: (start: Date, end: Date) {
-        let calendar = Calendar.current
-        if viewMode == .monthly {
-            let start = calendar.date(from: DateComponents(year: currentYear, month: currentMonth, day: 1)) ?? Date()
-            let end = endOfMonth(start)
-            return (start, end)
-        } else {
-            return (startOfYear(currentYear), endOfYear(currentYear))
+    var body: some View {
+        Group {
+            if let viewModel {
+                dashboardContent(viewModel: viewModel)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            if viewModel == nil {
+                viewModel = DashboardViewModel(dataStore: dataStore)
+            }
         }
     }
 
-    private var summary: OverallSummary {
-        dataStore.getOverallSummary(startDate: dateRange.start, endDate: dateRange.end)
-    }
-
-    private var topProjects: [ProjectSummary] {
-        dataStore.getAllProjectSummaries()
-            .sorted { $0.profit > $1.profit }
-            .prefix(3)
-            .map { $0 }
-    }
-
-    private var expenseCategories: [CategorySummary] {
-        Array(dataStore.getCategorySummaries(type: .expense, startDate: dateRange.start, endDate: dateRange.end).prefix(5))
-    }
-
-    private var monthlySummaries: [MonthlySummary] {
-        dataStore.getMonthlySummaries(year: currentYear)
-    }
-
-    private var periodLabel: String {
-        viewMode == .monthly
-            ? "\(currentYear)年\(currentMonth)月の収支状況"
-            : "\(currentYear)年の収支状況"
-    }
-
-    var body: some View {
-        ScrollView {
+    private func dashboardContent(viewModel: DashboardViewModel) -> some View {
+        @Bindable var vm = viewModel
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                headerSection
-                viewModeToggle
-                summaryCards
-                if viewMode == .yearly { monthlyChart }
-                topProjectsSection
-                expenseCategoriesSection
+                headerSection(viewModel: viewModel)
+                viewModeToggle(viewModel: viewModel)
+                summaryCards(viewModel: viewModel)
+                if viewModel.viewMode == .yearly { monthlyChart(viewModel: viewModel) }
+                topProjectsSection(viewModel: viewModel)
+                expenseCategoriesSection(viewModel: viewModel)
             }
             .padding(.bottom, 40)
         }
         .navigationTitle("ダッシュボード")
         .refreshable {
-            dataStore.loadData()
+            viewModel.refresh()
         }
         .navigationDestination(for: UUID.self) { projectId in
-            if let project = dataStore.getProject(id: projectId) {
-                ProjectDetailView(project: project)
-            } else {
-                ContentUnavailableView("プロジェクトが見つかりません", systemImage: "folder.badge.questionmark")
-            }
+            ProjectDetailView(projectId: projectId)
         }
     }
 
     // MARK: - Header
-    private var headerSection: some View {
+    private func headerSection(viewModel: DashboardViewModel) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(periodLabel)
+            Text(viewModel.periodLabel)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -91,8 +64,9 @@ struct DashboardView: View {
     }
 
     // MARK: - Toggle
-    private var viewModeToggle: some View {
-        Picker("表示", selection: $viewMode) {
+    private func viewModeToggle(viewModel: DashboardViewModel) -> some View {
+        @Bindable var vm = viewModel
+        return Picker("表示", selection: $vm.viewMode) {
             ForEach(ViewMode.allCases, id: \.self) { mode in
                 Text(mode.label).tag(mode)
             }
@@ -104,8 +78,9 @@ struct DashboardView: View {
     }
 
     // MARK: - Summary Cards
-    private var summaryCards: some View {
-        VStack(spacing: 12) {
+    private func summaryCards(viewModel: DashboardViewModel) -> some View {
+        let summary = viewModel.summary
+        return VStack(spacing: 12) {
             // Net Profit Card
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -161,8 +136,9 @@ struct DashboardView: View {
     }
 
     // MARK: - Monthly Chart
-    private var monthlyChart: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func monthlyChart(viewModel: DashboardViewModel) -> some View {
+        let monthlySummaries = viewModel.monthlySummaries
+        return VStack(alignment: .leading, spacing: 12) {
             Text("月別推移")
                 .font(.headline)
                 .padding(.horizontal, 20)
@@ -221,8 +197,9 @@ struct DashboardView: View {
     }
 
     // MARK: - Top Projects
-    private var topProjectsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func topProjectsSection(viewModel: DashboardViewModel) -> some View {
+        let topProjects = viewModel.topProjects
+        return VStack(alignment: .leading, spacing: 12) {
             Text("利益トップ3")
                 .font(.headline)
                 .padding(.horizontal, 20)
@@ -270,8 +247,9 @@ struct DashboardView: View {
     }
 
     // MARK: - Expense Categories
-    private var expenseCategoriesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func expenseCategoriesSection(viewModel: DashboardViewModel) -> some View {
+        let expenseCategories = viewModel.expenseCategories
+        return VStack(alignment: .leading, spacing: 12) {
             Text("経費カテゴリ")
                 .font(.headline)
                 .padding(.horizontal, 20)

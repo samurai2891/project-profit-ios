@@ -4,47 +4,26 @@ import SwiftUI
 // MARK: - ProjectDetailView
 
 struct ProjectDetailView: View {
-    let project: PPProject
+    let projectId: UUID
 
     @Environment(DataStore.self) private var dataStore
+    @State private var viewModel: ProjectDetailViewModel?
     @State private var showEditSheet = false
     @State private var showAddTransactionSheet = false
     @State private var transactionToDelete: PPTransaction?
     @State private var showDeleteConfirmation = false
 
-    private var currentProject: PPProject {
-        dataStore.projects.first(where: { $0.id == project.id }) ?? project
-    }
-
-    private var summary: ProjectSummary? {
-        dataStore.getProjectSummary(projectId: currentProject.id)
-    }
-
-    private var projectIncome: Int {
-        summary?.totalIncome ?? 0
-    }
-
-    private var projectExpense: Int {
-        summary?.totalExpense ?? 0
-    }
-
-    private var projectProfit: Int {
-        summary?.profit ?? 0
-    }
-
-    private var recentTransactions: [PPTransaction] {
-        dataStore.transactions
-            .filter { t in t.allocations.contains(where: { $0.projectId == currentProject.id }) }
-            .sorted { $0.date > $1.date }
-            .prefix(10)
-            .map { $0 }
+    private var resolvedViewModel: ProjectDetailViewModel {
+        viewModel ?? ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                headerCard
-                descriptionSection
+                if let project = resolvedViewModel.currentProject {
+                    headerCard(project: project)
+                    descriptionSection(project: project)
+                }
                 profitCard
                 incomeExpenseCards
                 recentTransactionsSection
@@ -53,7 +32,7 @@ struct ProjectDetailView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(currentProject.name)
+        .navigationTitle(resolvedViewModel.currentProject?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -61,15 +40,22 @@ struct ProjectDetailView: View {
             }
         }
         .sheet(isPresented: $showEditSheet) {
-            ProjectFormView(project: currentProject)
+            if let project = resolvedViewModel.currentProject {
+                ProjectFormView(project: project)
+            }
         }
         .sheet(isPresented: $showAddTransactionSheet) {
-            TransactionFormView(defaultProjectId: currentProject.id)
+            TransactionFormView(defaultProjectId: projectId)
         }
         .alert("取引を削除", isPresented: $showDeleteConfirmation) {
             deleteAlertActions
         } message: {
             Text("この取引を削除しますか？この操作は取り消せません。")
+        }
+        .onAppear {
+            if viewModel == nil {
+                viewModel = ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
+            }
         }
     }
 }
@@ -78,15 +64,15 @@ struct ProjectDetailView: View {
 
 private extension ProjectDetailView {
 
-    var headerCard: some View {
+    func headerCard(project: PPProject) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(currentProject.name)
+                    Text(project.name)
                         .font(.title2)
                         .fontWeight(.bold)
 
-                    StatusBadge(status: currentProject.status)
+                    StatusBadge(status: project.status)
                 }
 
                 Spacer()
@@ -99,6 +85,7 @@ private extension ProjectDetailView {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .accessibilityElement(children: .contain)
     }
 
     var editButton: some View {
@@ -109,6 +96,8 @@ private extension ProjectDetailView {
                 .font(.title2)
                 .foregroundStyle(AppColors.primary)
         }
+        .accessibilityLabel("編集")
+        .accessibilityHint("タップしてプロジェクトを編集")
     }
 }
 
@@ -117,15 +106,15 @@ private extension ProjectDetailView {
 private extension ProjectDetailView {
 
     @ViewBuilder
-    var descriptionSection: some View {
-        if !currentProject.projectDescription.isEmpty {
+    func descriptionSection(project: PPProject) -> some View {
+        if !project.projectDescription.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("説明")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
 
-                Text(currentProject.projectDescription)
+                Text(project.projectDescription)
                     .font(.body)
                     .foregroundStyle(.primary)
             }
@@ -134,6 +123,8 @@ private extension ProjectDetailView {
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("説明 \(project.projectDescription)")
         }
     }
 }
@@ -143,7 +134,9 @@ private extension ProjectDetailView {
 private extension ProjectDetailView {
 
     var profitCard: some View {
-        let isPositive = projectProfit >= 0
+        let profit = resolvedViewModel.projectProfit
+        let income = resolvedViewModel.projectIncome
+        let isPositive = profit >= 0
 
         return VStack(spacing: 8) {
             Text("利益")
@@ -151,12 +144,12 @@ private extension ProjectDetailView {
                 .fontWeight(.medium)
                 .foregroundStyle(.white.opacity(0.8))
 
-            Text(formatCurrency(projectProfit))
+            Text(formatCurrency(profit))
                 .font(.system(size: 32, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
-            if projectIncome > 0 {
-                let margin = Double(projectProfit) / Double(projectIncome) * 100
+            if income > 0 {
+                let margin = Double(profit) / Double(income) * 100
                 Text("利益率: \(String(format: "%.1f", margin))%")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
@@ -182,6 +175,9 @@ private extension ProjectDetailView {
             x: 0,
             y: 4
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("利益 \(formatCurrency(profit))")
+        .accessibilityValue(isPositive ? "黒字" : "赤字")
     }
 }
 
@@ -193,14 +189,14 @@ private extension ProjectDetailView {
         HStack(spacing: 12) {
             summaryCard(
                 title: "収入",
-                amount: projectIncome,
+                amount: resolvedViewModel.projectIncome,
                 icon: "arrow.up.circle.fill",
                 color: AppColors.success
             )
 
             summaryCard(
                 title: "支出",
-                amount: projectExpense,
+                amount: resolvedViewModel.projectExpense,
                 icon: "arrow.down.circle.fill",
                 color: AppColors.error
             )
@@ -232,6 +228,8 @@ private extension ProjectDetailView {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(formatCurrency(amount))")
     }
 }
 
@@ -243,7 +241,7 @@ private extension ProjectDetailView {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader
 
-            if recentTransactions.isEmpty {
+            if resolvedViewModel.recentTransactions.isEmpty {
                 transactionsEmptyState
             } else {
                 transactionsList
@@ -262,7 +260,7 @@ private extension ProjectDetailView {
 
             Spacer()
 
-            Text("\(recentTransactions.count)件")
+            Text("\(resolvedViewModel.recentTransactions.count)件")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -285,24 +283,28 @@ private extension ProjectDetailView {
                     .font(.subheadline)
                     .fontWeight(.medium)
             }
+            .accessibilityLabel("取引を追加")
+            .accessibilityHint("タップして新しい取引を作成")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
     }
 
     var transactionsList: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(recentTransactions) { transaction in
+        let transactions = resolvedViewModel.recentTransactions
+        return LazyVStack(spacing: 0) {
+            ForEach(transactions) { transaction in
                 TransactionRow(
                     transaction: transaction,
-                    projectId: currentProject.id,
+                    projectId: projectId,
+                    viewModel: resolvedViewModel,
                     onDelete: {
                         transactionToDelete = transaction
                         showDeleteConfirmation = true
                     }
                 )
 
-                if transaction.id != recentTransactions.last?.id {
+                if transaction.id != transactions.last?.id {
                     Divider()
                         .padding(.leading, 44)
                 }
@@ -318,6 +320,8 @@ private extension ProjectDetailView {
                 .font(.title3)
                 .foregroundStyle(AppColors.primary)
         }
+        .accessibilityLabel("取引を追加")
+        .accessibilityHint("タップして新しい取引を作成")
     }
 
     @ViewBuilder
@@ -328,7 +332,7 @@ private extension ProjectDetailView {
         Button("削除", role: .destructive) {
             if let transaction = transactionToDelete {
                 withAnimation {
-                    dataStore.deleteTransaction(id: transaction.id)
+                    viewModel?.deleteTransaction(id: transaction.id)
                     transactionToDelete = nil
                 }
             }
@@ -341,9 +345,8 @@ private extension ProjectDetailView {
 private struct TransactionRow: View {
     let transaction: PPTransaction
     let projectId: UUID
+    let viewModel: ProjectDetailViewModel
     let onDelete: () -> Void
-
-    @Environment(DataStore.self) private var dataStore
 
     private var isIncome: Bool {
         transaction.type == .income
@@ -359,7 +362,7 @@ private struct TransactionRow: View {
     }
 
     private var categoryName: String {
-        dataStore.getCategory(id: transaction.categoryId)?.name ?? "未分類"
+        viewModel.getCategoryName(for: transaction.categoryId)
     }
 
     var body: some View {
@@ -370,6 +373,8 @@ private struct TransactionRow: View {
             amountAndDelete
         }
         .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(isIncome ? "収益" : "経費") \(categoryName) \(formatCurrency(transaction.amount)) \(formatDate(transaction.date))")
     }
 }
 
@@ -384,6 +389,7 @@ private extension TransactionRow {
             .frame(width: 32, height: 32)
             .background(isIncome ? AppColors.success : AppColors.error)
             .clipShape(Circle())
+            .accessibilityHidden(true)
     }
 
     var transactionDetails: some View {
@@ -396,6 +402,7 @@ private extension TransactionRow {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .accessibilityHidden(true)
     }
 
     var amountAndDelete: some View {
@@ -412,6 +419,7 @@ private extension TransactionRow {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityHidden(true)
 
             Button(role: .destructive) {
                 onDelete()
@@ -421,6 +429,8 @@ private extension TransactionRow {
                     .foregroundStyle(AppColors.error.opacity(0.7))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("削除")
+            .accessibilityHint("タップして取引を削除")
         }
     }
 }
@@ -430,13 +440,7 @@ private extension TransactionRow {
 #Preview {
     NavigationStack {
         ProjectDetailView(
-            project: PPProject(
-                id: UUID(),
-                name: "サンプルプロジェクト",
-                projectDescription: "これはサンプルの説明です。",
-                status: .active,
-                createdAt: Date()
-            )
+            projectId: UUID()
         )
     }
     .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
