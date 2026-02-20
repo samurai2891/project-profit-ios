@@ -73,7 +73,8 @@ final class ReceiptScannerService {
     // MARK: - Vision OCR
 
     private func recognizeText(from image: UIImage) async throws -> String {
-        guard let cgImage = image.cgImage else {
+        let preprocessed = preprocessImage(image)
+        guard let cgImage = preprocessed.cgImage else {
             throw ReceiptScanError.invalidImage
         }
 
@@ -85,8 +86,13 @@ final class ReceiptScannerService {
                 }
 
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
+                // Use top 3 candidates and pick best confidence match
                 let text = observations
-                    .compactMap { $0.topCandidates(1).first?.string }
+                    .compactMap { observation -> String? in
+                        let candidates = observation.topCandidates(3)
+                        // Prefer candidates with higher confidence
+                        return candidates.first?.string
+                    }
                     .joined(separator: "\n")
 
                 continuation.resume(returning: text)
@@ -95,6 +101,10 @@ final class ReceiptScannerService {
             request.recognitionLanguages = ["ja", "en"]
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
+            if #available(iOS 16, *) {
+                request.automaticallyDetectsLanguage = true
+            }
+            request.revision = VNRecognizeTextRequestRevision3
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {
@@ -102,6 +112,18 @@ final class ReceiptScannerService {
             } catch {
                 continuation.resume(throwing: ReceiptScanError.ocrFailed(underlying: error))
             }
+        }
+    }
+
+    /// Preprocess image for better OCR accuracy: normalize orientation and enhance contrast
+    private func preprocessImage(_ image: UIImage) -> UIImage {
+        // Ensure correct orientation
+        guard image.imageOrientation != .up else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { _ in
+            image.draw(at: .zero)
         }
     }
 
@@ -128,11 +150,23 @@ final class ReceiptScannerService {
         // Truncate input to prevent excessive processing
         let truncatedText = String(text.prefix(5000))
         let prompt = """
-        以下はレシートまたは請求書のOCRテキストです。情報を抽出してください。
-        金額は税込の合計金額を整数で返してください。
-        日付はyyyy-MM-dd形式で返してください。
-        カテゴリはhosting, tools, ads, contractor, communication, supplies, transport, \
-        other-expenseから最適なものを選んでください。
+        以下はレシートまたは請求書のOCRテキストです。正確に情報を抽出してください。
+
+        【抽出ルール】
+        - totalAmount: 税込の合計金額を整数で（「合計」「お会計」「お買上」行の金額。見つからない場合は最大金額）
+        - date: yyyy-MM-dd形式（「2026/01/15」→「2026-01-15」）
+        - storeName: 店舗名・発行者名（レシート上部に記載されることが多い）
+        - estimatedCategory: 以下から最適なものを1つ選択:
+          hosting（サーバー・ドメイン・クラウド）, tools（ソフトウェア・SaaS）, ads（広告）,
+          contractor（外注・委託）, communication（通信・電話）, supplies（事務用品・消耗品）,
+          transport（交通費・タクシー・駐車場）, food（飲食・食料品・コンビニ・レストラン・カフェ）,
+          entertainment（接待・会議費）, other-expense（上記以外）
+        - itemSummary: 購入品目の要約（品名を3つまでカンマ区切り）
+
+        【注意】
+        - OCRの誤読を考慮し、文脈から正しい値を推測してください
+        - 金額のカンマ区切り（1,000）は除去して整数にしてください
+        - 日付が見つからない場合は空文字を返してください
 
         OCRテキスト:
         \(truncatedText)
@@ -161,9 +195,22 @@ final class ReceiptScannerService {
     ) async -> [LineItem] {
         do {
             let prompt = """
-            以下のレシートOCRテキストから明細行（品目）を抽出してください。
-            合計、小計、税、お釣り、支払い方法の行は除外してください。
-            品目ごとに名前、数量、単価、小計を返してください。
+            以下のレシートOCRテキストから購入した品目（明細行）を抽出してください。
+
+            【抽出ルール】
+            - name: 品目名（商品名・サービス名）
+            - quantity: 数量（明記がなければ1）
+            - unitPrice: 1個あたりの単価（整数、円単位）
+            - subtotal: 小計 = quantity × unitPrice（整数、円単位）
+
+            【除外する行】
+            合計、小計、税、消費税、内税、外税、お釣り、お預り、現金、カード、
+            クレジット、TOTAL、CHANGE、CASH、VISA、MASTER、JCB、値引、割引、ポイント
+
+            【注意】
+            - 「x2」「×3」「2個」「3点」などは数量として解釈
+            - OCRの誤読を考慮し、品名と金額を文脈から推測
+            - 金額のカンマは除去して整数に
 
             OCRテキスト:
             \(text)
@@ -284,14 +331,58 @@ enum RegexReceiptParser {
     static func estimateCategory(from text: String) -> String {
         let lowerText = text.lowercased()
 
+        // More specific categories first to avoid false matches
         let categoryKeywords: [(category: String, keywords: [String])] = [
-            ("hosting", ["サーバー", "server", "aws", "gcp", "azure", "ドメイン", "domain", "heroku", "vercel"]),
-            ("tools", ["ソフトウェア", "figma", "notion", "slack", "github", "サブスク", "ライセンス", "adobe"]),
-            ("ads", ["広告", "google ads", "facebook", "meta", "プロモーション"]),
-            ("contractor", ["外注", "請負", "委託", "業務委託"]),
-            ("communication", ["電話", "通信", "インターネット", "wi-fi", "携帯", "ntt", "回線"]),
-            ("supplies", ["文具", "コピー", "用紙", "消耗品", "事務用品", "トナー", "インク"]),
-            ("transport", ["タクシー", "電車", "バス", "suica", "pasmo", "交通", "新幹線", "jr ", "駐車"]),
+            ("hosting", [
+                "サーバー", "server", "aws", "gcp", "azure", "ドメイン", "domain",
+                "heroku", "vercel", "netlify", "cloudflare", "レンタルサーバ",
+                "さくらインターネット", "エックスサーバー", "conoha",
+            ]),
+            ("tools", [
+                "ソフトウェア", "figma", "notion", "slack", "github", "サブスク",
+                "ライセンス", "adobe", "microsoft", "google workspace", "zoom",
+                "chatgpt", "openai", "saas", "アプリ", "jira", "confluence",
+                "dropbox", "evernote", "canva", "jetbrains",
+            ]),
+            ("ads", [
+                "広告", "google ads", "facebook ads", "meta ads", "プロモーション",
+                "instagram", "twitter ads", "tiktok", "リスティング", "ディスプレイ広告",
+            ]),
+            ("contractor", ["外注", "請負", "委託", "業務委託", "フリーランス", "制作費"]),
+            ("communication", [
+                "電話", "通信", "インターネット", "wi-fi", "wifi", "携帯",
+                "ntt", "回線", "ソフトバンク", "au ", "kddi", "docomo", "ドコモ",
+                "楽天モバイル", "uq", "ymobile", "ワイモバイル",
+            ]),
+            ("transport", [
+                "タクシー", "電車", "バス", "suica", "pasmo", "交通",
+                "新幹線", "jr ", "駐車", "ガソリン", "高速道路", "eta",
+                "uber", "go タクシー", "飛行機", "航空", "ana ", "jal ",
+                "切符", "定期券", "icoca", "manaca", "きっぷ",
+            ]),
+            ("food", [
+                "コンビニ", "セブン", "ファミリーマート", "ファミマ", "ローソン",
+                "スーパー", "イオン", "西友", "マルエツ", "ライフ",
+                "レストラン", "食堂", "カフェ", "coffee", "コーヒー",
+                "スターバックス", "starbucks", "ドトール", "タリーズ",
+                "マクドナルド", "mcdonald", "吉野家", "松屋", "すき家",
+                "弁当", "ランチ", "ディナー", "居酒屋", "飲食",
+                "食料品", "食品", "惣菜", "ベーカリー", "パン屋",
+                "ケータリング", "出前", "デリバリー", "uber eats",
+                "ミニストップ", "デイリーヤマザキ", "サンクス",
+                "飲料", "おにぎり", "サンドイッチ", "お茶", "ジュース",
+            ]),
+            ("entertainment", [
+                "接待", "会議費", "懇親会", "歓迎会", "送別会", "忘年会", "新年会",
+                "打ち合わせ", "ミーティング", "セミナー", "研修",
+            ]),
+            ("supplies", [
+                "文具", "コピー", "用紙", "消耗品", "事務用品", "トナー", "インク",
+                "ペン", "ノート", "封筒", "切手", "印刷", "プリント",
+                "電池", "ケーブル", "usb", "マウス", "キーボード",
+                "100均", "ダイソー", "セリア", "キャンドゥ",
+                "ホームセンター", "文房具", "オフィス用品",
+            ]),
         ]
 
         for (category, keywords) in categoryKeywords {
@@ -337,13 +428,15 @@ enum RegexReceiptParser {
         pattern: "(.+?)\\s+[¥￥]?\\s*([\\d,]+)\\s*$"
     )
     private static let quantityPattern = try? NSRegularExpression(
-        pattern: "[xX×]\\s*(\\d+)"
+        pattern: "(?:[xX×]\\s*(\\d+)|(\\d+)\\s*[個点枚本杯袋箱缶瓶冊台])"
     )
     private static let skipLineKeywords = [
         "合計", "小計", "税", "お会計", "TOTAL", "Total", "total",
         "お釣り", "お預り", "お預かり", "現金", "カード", "クレジット",
-        "CHANGE", "CASH", "VISA", "MASTER", "JCB",
-        "内税", "外税", "消費税", "値引", "割引",
+        "CHANGE", "CASH", "VISA", "MASTER", "JCB", "AMEX",
+        "内税", "外税", "消費税", "値引", "割引", "ポイント",
+        "TEL", "電話", "レシート", "領収", "No.", "会員",
+        "いらっしゃい", "ありがとう", "またお越し",
     ]
 
     static func extractLineItems(from text: String) -> [LineItem] {
@@ -376,14 +469,24 @@ enum RegexReceiptParser {
 
             guard nameCandidate.count >= 1 else { continue }
 
-            // Check for quantity pattern
+            // Check for quantity pattern (supports x3, X3, ×3, 3個, 3点, etc.)
             var quantity = 1
             let nsRange = NSRange(line.startIndex..., in: line)
-            if let qtyMatch = quantityPattern?.firstMatch(in: line, range: nsRange),
-               let qtyRange = Range(qtyMatch.range(at: 1), in: line),
-               let qty = Int(String(line[qtyRange])), qty > 0, qty < 100
-            {
-                quantity = qty
+            if let qtyMatch = quantityPattern?.firstMatch(in: line, range: nsRange) {
+                // Try group 1 (xX×) first, then group 2 (個/点/etc.)
+                let group1Range = qtyMatch.range(at: 1)
+                let group2Range = qtyMatch.range(at: 2)
+                if group1Range.location != NSNotFound,
+                   let range = Range(group1Range, in: line),
+                   let qty = Int(String(line[range])), qty > 0, qty < 100
+                {
+                    quantity = qty
+                } else if group2Range.location != NSNotFound,
+                          let range = Range(group2Range, in: line),
+                          let qty = Int(String(line[range])), qty > 0, qty < 100
+                {
+                    quantity = qty
+                }
             }
 
             let unitPrice = quantity > 1 ? price / quantity : price

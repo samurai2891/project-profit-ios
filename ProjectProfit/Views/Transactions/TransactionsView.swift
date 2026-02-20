@@ -22,7 +22,7 @@ struct TransactionsView: View {
     @State private var showAddSheet = false
     @State private var showFilterSheet = false
     @State private var showReceiptScanner = false
-    @State private var editingTransaction: PPTransaction?
+    @State private var selectedTransaction: PPTransaction?
     @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
     @State private var csvText = ""
@@ -56,8 +56,8 @@ struct TransactionsView: View {
             .sheet(isPresented: $showReceiptScanner) {
                 ReceiptScannerView()
             }
-            .sheet(item: $editingTransaction) { transaction in
-                TransactionFormView(transaction: transaction)
+            .sheet(item: $selectedTransaction) { transaction in
+                TransactionDetailView(transaction: transaction)
             }
             .sheet(isPresented: $showFilterSheet) {
                 FilterView(filter: Binding(
@@ -301,7 +301,7 @@ struct TransactionsView: View {
             ForEach(viewModel.filteredTransactions) { transaction in
                 TransactionCardView(
                     transaction: transaction,
-                    onEdit: { editingTransaction = transaction },
+                    onTap: { selectedTransaction = transaction },
                     onDelete: { deletingTransaction = transaction }
                 )
             }
@@ -368,7 +368,7 @@ struct TransactionsView: View {
 
 private struct TransactionCardView: View {
     let transaction: PPTransaction
-    let onEdit: () -> Void
+    let onTap: () -> Void
     let onDelete: () -> Void
 
     @Environment(DataStore.self) private var dataStore
@@ -405,7 +405,7 @@ private struct TransactionCardView: View {
     }
 
     var body: some View {
-        Button(action: onEdit) {
+        Button(action: onTap) {
             HStack(alignment: .top, spacing: 12) {
                 typeIndicator
                 transactionDetails
@@ -423,7 +423,7 @@ private struct TransactionCardView: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityDescription)
-        .accessibilityHint("タップして取引を編集")
+        .accessibilityHint("タップして取引の詳細を表示")
     }
 
     // MARK: - Card Subviews

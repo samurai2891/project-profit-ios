@@ -51,7 +51,7 @@ struct ReceiptExtraction {
     @Guide(description: "店舗名・発行者名")
     var storeName: String
 
-    @Guide(description: "推定カテゴリ: hosting, tools, ads, contractor, communication, supplies, transport, other-expense のいずれか")
+    @Guide(description: "推定カテゴリ: hosting, tools, ads, contractor, communication, supplies, transport, food, entertainment, other-expense のいずれか")
     var estimatedCategory: String
 
     @Guide(description: "明細の要約（品目名など）")
@@ -101,6 +101,8 @@ struct ReceiptData: Sendable, Hashable {
             "communication": "cat-communication",
             "supplies": "cat-supplies",
             "transport": "cat-transport",
+            "food": "cat-food",
+            "entertainment": "cat-entertainment",
             "other-expense": "cat-other-expense",
         ]
         return mapping[estimatedCategory] ?? "cat-other-expense"

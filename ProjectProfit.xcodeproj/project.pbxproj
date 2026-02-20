@@ -16,6 +16,7 @@
 		25111A7F5C96D87106EB4F03 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 30F820BD451D85876D9709F3 /* Preview Assets.xcassets */; };
 		26A0A3B306005337A944815B /* TransactionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F3BDCB029F505713916303 /* TransactionsViewModel.swift */; };
 		2B259B9648AE76FD3ADAC41D /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC59103F6625E2725107249 /* ProjectDetailView.swift */; };
+		2EF27CC2CE8761A9D3EBEBB9 /* TransactionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6DE69D5ED07599981786FE9 /* TransactionDetailView.swift */; };
 		2F10D4786F8242841B143F3E /* ReceiptImageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0780371B937F949A496304F6 /* ReceiptImageStoreTests.swift */; };
 		2F24C6589293A53F5466EEF9 /* ProjectProfitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA7BFF7AC521FFFE0C4FAF2 /* ProjectProfitApp.swift */; };
 		322AC79A8821683E12BF8B7A /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E91209CB1304D4A3084B775 /* DashboardViewModel.swift */; };
@@ -105,6 +106,7 @@
 		DBA4945543C8EB15B3D169CE /* TransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsView.swift; sourceTree = "<group>"; };
 		E381DD792F5D179A094CB2F9 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		E4FE6147CA6556C0ACC0686A /* RecurringViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringViewModel.swift; sourceTree = "<group>"; };
+		E6DE69D5ED07599981786FE9 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
 		F0EE00EFF66B281A5CDB89FE /* TransactionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionFormView.swift; sourceTree = "<group>"; };
 		F1052AB7B6FA648C63657462 /* RecurringHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringHistoryView.swift; sourceTree = "<group>"; };
 		F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegexReceiptParserLineItemTests.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 		14CBB32DD2261F9F6EF60780 /* Transactions */ = {
 			isa = PBXGroup;
 			children = (
+				E6DE69D5ED07599981786FE9 /* TransactionDetailView.swift */,
 				DBA4945543C8EB15B3D169CE /* TransactionsView.swift */,
 			);
 			path = Transactions;
@@ -418,6 +421,7 @@
 				B7D56AA504FC8B33248CCCA3 /* RecurringView.swift in Sources */,
 				7EDFE8EB3B9EA69B30D1081C /* RecurringViewModel.swift in Sources */,
 				722EABBD2C414B8BE300071D /* SettingsView.swift in Sources */,
+				2EF27CC2CE8761A9D3EBEBB9 /* TransactionDetailView.swift in Sources */,
 				BEB94C9C765A6A0606BD04FE /* TransactionFormView.swift in Sources */,
 				BEC6C522762268850E1861B4 /* TransactionsView.swift in Sources */,
 				26A0A3B306005337A944815B /* TransactionsViewModel.swift in Sources */,

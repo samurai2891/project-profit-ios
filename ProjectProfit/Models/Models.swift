@@ -259,6 +259,8 @@ let DEFAULT_CATEGORIES: [(id: String, name: String, type: CategoryType, icon: St
     ("cat-communication", "通信費", .expense, "wifi"),
     ("cat-supplies", "消耗品", .expense, "shippingbox"),
     ("cat-transport", "交通費", .expense, "car"),
+    ("cat-food", "食費・飲食", .expense, "fork.knife"),
+    ("cat-entertainment", "接待・会議費", .expense, "person.2.wave.2"),
     ("cat-other-expense", "その他経費", .expense, "ellipsis.circle"),
     ("cat-sales", "売上", .income, "yensign.circle"),
     ("cat-service", "サービス収入", .income, "briefcase"),

@@ -145,4 +145,90 @@ final class RegexReceiptParserLineItemTests: XCTestCase {
         }
         XCTAssertEqual(coffee.quantity, 1)
     }
+
+    // MARK: - Japanese Quantity Patterns
+
+    func testExtractLineItemsWithJapaneseQuantity() {
+        let text = """
+        おにぎり 3個 ¥450
+        """
+        let items = RegexReceiptParser.extractLineItems(from: text)
+        guard let onigiri = items.first(where: { $0.name.contains("おにぎり") }) else {
+            XCTFail("おにぎりが見つかりません")
+            return
+        }
+        XCTAssertEqual(onigiri.quantity, 3)
+    }
+
+    func testExtractLineItemsSkipsGreetingLines() {
+        let text = """
+        品目A ¥500
+        いらっしゃいませ 100
+        ありがとうございました 200
+        """
+        let items = RegexReceiptParser.extractLineItems(from: text)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertTrue(items[0].name.contains("品目A"))
+    }
+
+    func testExtractLineItemsSkipsPointLine() {
+        let text = """
+        品目A ¥500
+        ポイント ¥50
+        """
+        let items = RegexReceiptParser.extractLineItems(from: text)
+        XCTAssertEqual(items.count, 1)
+    }
+
+    // MARK: - Category Estimation
+
+    func testEstimateCategoryFood() {
+        let text = "セブンイレブン 東京店 コーヒー ¥150"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "food")
+    }
+
+    func testEstimateCategoryFoodCafe() {
+        let text = "スターバックス 渋谷店 カフェラテ ¥550"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "food")
+    }
+
+    func testEstimateCategoryTransport() {
+        let text = "タクシー 東京駅 ¥2,500"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "transport")
+    }
+
+    func testEstimateCategorySupplies() {
+        let text = "コピー用紙 A4 500枚 ¥450"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "supplies")
+    }
+
+    func testEstimateCategoryTools() {
+        let text = "Adobe Creative Cloud 月額 ¥6,480"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "tools")
+    }
+
+    func testEstimateCategoryHosting() {
+        let text = "AWS 請求書 EC2 + S3 ¥15,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "hosting")
+    }
+
+    func testEstimateCategoryEntertainment() {
+        let text = "忘年会 会費 ¥5,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "entertainment")
+    }
+
+    func testEstimateCategoryOtherExpense() {
+        let text = "特殊な支出 ¥1,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "other-expense")
+    }
+
+    func testEstimateCategoryConvenienceStore() {
+        let text = "ファミリーマート 弁当 ¥500"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "food")
+    }
+
+    func testEstimateCategoryCommunication() {
+        let text = "NTTドコモ 通信料 ¥8,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "communication")
+    }
 }

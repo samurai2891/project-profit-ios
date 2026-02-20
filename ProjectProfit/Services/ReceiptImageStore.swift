@@ -5,7 +5,7 @@ import UIKit
 
 enum ReceiptImageStore {
     private static let directoryName = "ReceiptImages"
-    private static let jpegQuality: CGFloat = 0.7
+    private static let jpegQuality: CGFloat = 0.8
 
     // MARK: - Directory
 

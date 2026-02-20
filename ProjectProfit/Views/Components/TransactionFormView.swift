@@ -53,8 +53,29 @@ struct TransactionFormView: View {
             }
             .sheet(isPresented: $showReceiptPreview) {
                 if let t = transaction, let path = t.receiptImagePath,
-                   let view = ReceiptImagePreviewView(fileName: path) {
+                   let view = ReceiptImagePreviewView(fileName: path)
+                {
                     view
+                } else {
+                    NavigationStack {
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 48))
+                                .foregroundStyle(AppColors.warning)
+                            Text("レシート画像を読み込めません")
+                                .font(.headline)
+                            Text("画像ファイルが見つかりません")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .navigationTitle("エラー")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("閉じる") { showReceiptPreview = false }
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(isEditMode ? "取引を編集" : "新規取引")

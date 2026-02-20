@@ -16,6 +16,7 @@ struct ReceiptReviewView: View {
     @State private var isSubmitting = false
     @State private var isInitialized = false
     @State private var showImagePreview = false
+    @State private var saveError: String?
 
     init(receiptData: ReceiptData, receiptImage: UIImage? = nil, onDismiss: @escaping () -> Void) {
         self.receiptData = receiptData
@@ -353,6 +354,7 @@ struct ReceiptReviewView: View {
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
+        saveError = nil
 
         // Validate amount is positive
         guard amount > 0 else { return }
@@ -360,10 +362,20 @@ struct ReceiptReviewView: View {
         // Validate date is not in the future
         let validDate = min(date, Date())
 
-        // Save receipt image
+        // Save receipt image with error handling
         var imagePath: String?
         if let image = receiptImage {
-            imagePath = try? ReceiptImageStore.saveImage(image)
+            do {
+                imagePath = try ReceiptImageStore.saveImage(image)
+                // Verify the image was actually saved
+                if let path = imagePath, !ReceiptImageStore.imageExists(fileName: path) {
+                    AppLogger.receipt.error("Receipt image save verification failed")
+                    imagePath = nil
+                }
+            } catch {
+                AppLogger.receipt.error("Failed to save receipt image: \(error.localizedDescription)")
+                // Continue without image - don't block transaction save
+            }
         }
 
         // Convert line items

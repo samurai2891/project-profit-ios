@@ -36,6 +36,8 @@ class DataStore {
 
             if categories.isEmpty {
                 seedDefaultCategories()
+            } else {
+                seedMissingCategories()
             }
         } catch {
             AppLogger.dataStore.error("Failed to load data: \(error.localizedDescription)")
@@ -58,6 +60,27 @@ class DataStore {
         save()
         let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
         categories = (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    /// Add any new default categories that don't exist yet (for app updates)
+    private func seedMissingCategories() {
+        let existingIds = Set(categories.map(\.id))
+        var added = false
+        for cat in DEFAULT_CATEGORIES where !existingIds.contains(cat.id) {
+            let category = PPCategory(
+                id: cat.id,
+                name: cat.name,
+                type: cat.type,
+                icon: cat.icon,
+                isDefault: true
+            )
+            modelContext.insert(category)
+            added = true
+        }
+        if added {
+            save()
+            refreshCategories()
+        }
     }
 
     private func save() {
