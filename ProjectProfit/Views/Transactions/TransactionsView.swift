@@ -21,6 +21,7 @@ struct TransactionsView: View {
 
     @State private var showAddSheet = false
     @State private var showFilterSheet = false
+    @State private var showReceiptScanner = false
     @State private var editingTransaction: PPTransaction?
     @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
@@ -51,6 +52,9 @@ struct TransactionsView: View {
             }
             .sheet(isPresented: $showAddSheet) {
                 TransactionFormView(transaction: nil)
+            }
+            .sheet(isPresented: $showReceiptScanner) {
+                ReceiptScannerView()
             }
             .sheet(item: $editingTransaction) { transaction in
                 TransactionFormView(transaction: transaction)
@@ -101,6 +105,16 @@ struct TransactionsView: View {
             }
 
             Spacer()
+
+            Button {
+                showReceiptScanner = true
+            } label: {
+                Image(systemName: "doc.text.viewfinder")
+                    .font(.title3)
+                    .foregroundStyle(AppColors.primary)
+            }
+            .accessibilityLabel("レシート読取")
+            .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
 
             Button {
                 csvText = viewModel.generateCSVText()
@@ -373,6 +387,10 @@ private struct TransactionCardView: View {
         }
     }
 
+    private var hasReceipt: Bool {
+        transaction.receiptImagePath != nil
+    }
+
     private var formattedAmount: String {
         let prefix = isIncome ? "+" : "-"
         return "\(prefix)\(formatCurrency(transaction.amount))"
@@ -380,9 +398,10 @@ private struct TransactionCardView: View {
 
     private var accessibilityDescription: String {
         let typeLabel = isIncome ? "収益" : "経費"
+        let receiptInfo = hasReceipt ? " レシートあり" : ""
         let projectInfo = projectNames.isEmpty ? "" : " \(projectNames.joined(separator: ", "))"
         let memoInfo = transaction.memo.isEmpty ? "" : " \(transaction.memo)"
-        return "\(typeLabel) \(categoryName) \(formattedAmount) \(formatDate(transaction.date))\(projectInfo)\(memoInfo)"
+        return "\(typeLabel) \(categoryName) \(formattedAmount) \(formatDate(transaction.date))\(receiptInfo)\(projectInfo)\(memoInfo)"
     }
 
     var body: some View {
@@ -424,10 +443,19 @@ private struct TransactionCardView: View {
 
     private var transactionDetails: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(categoryName)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(Color(.label))
+            HStack(spacing: 6) {
+                Text(categoryName)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(Color(.label))
+
+                if hasReceipt {
+                    Image(systemName: "doc.text.image")
+                        .font(.caption2)
+                        .foregroundStyle(AppColors.primary)
+                        .accessibilityLabel("レシートあり")
+                }
+            }
 
             Text(formatDate(transaction.date))
                 .font(.caption)
@@ -438,6 +466,16 @@ private struct TransactionCardView: View {
                     .font(.caption)
                     .foregroundStyle(AppColors.muted)
                     .lineLimit(1)
+            }
+
+            if !transaction.lineItems.isEmpty {
+                Text("\(transaction.lineItems.count)品目")
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppColors.primary.opacity(0.1))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
             }
 
             if !projectNames.isEmpty {

@@ -6,4 +6,5 @@ enum AppLogger {
     static let dataStore = Logger(subsystem: subsystem, category: "DataStore")
     static let notification = Logger(subsystem: subsystem, category: "Notification")
     static let general = Logger(subsystem: subsystem, category: "General")
+    static let receipt = Logger(subsystem: subsystem, category: "ReceiptScanner")
 }

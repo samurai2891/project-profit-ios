@@ -84,6 +84,20 @@ struct Allocation: Codable, Hashable {
     }
 }
 
+struct ReceiptLineItem: Codable, Hashable {
+    let name: String
+    let quantity: Int
+    let unitPrice: Int
+    let subtotal: Int
+
+    init(name: String, quantity: Int = 1, unitPrice: Int, subtotal: Int? = nil) {
+        self.name = name
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.subtotal = subtotal ?? (quantity * unitPrice)
+    }
+}
+
 // MARK: - SwiftData Models
 
 @Model
@@ -122,6 +136,8 @@ final class PPTransaction {
     var memo: String
     var allocations: [Allocation]
     var recurringId: UUID?
+    var receiptImagePath: String?
+    var lineItems: [ReceiptLineItem]
     var createdAt: Date
     var updatedAt: Date
 
@@ -134,6 +150,8 @@ final class PPTransaction {
         memo: String = "",
         allocations: [Allocation] = [],
         recurringId: UUID? = nil,
+        receiptImagePath: String? = nil,
+        lineItems: [ReceiptLineItem] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -145,6 +163,8 @@ final class PPTransaction {
         self.memo = memo
         self.allocations = allocations
         self.recurringId = recurringId
+        self.receiptImagePath = receiptImagePath
+        self.lineItems = lineItems
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

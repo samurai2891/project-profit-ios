@@ -14,6 +14,7 @@ struct TransactionFormView: View {
     @State private var memo: String = ""
     @State private var allocations: [(id: UUID, projectId: UUID, ratio: Int)] = []
     @State private var isSubmitting = false
+    @State private var showReceiptPreview = false
 
     private var isEditMode: Bool { transaction != nil }
 
@@ -40,13 +41,21 @@ struct TransactionFormView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     typeSection
+                    receiptSection
                     amountSection
                     dateSection
                     categorySection
+                    lineItemsSection
                     allocationSection
                     memoSection
                 }
                 .padding(20)
+            }
+            .sheet(isPresented: $showReceiptPreview) {
+                if let t = transaction, let path = t.receiptImagePath,
+                   let view = ReceiptImagePreviewView(fileName: path) {
+                    view
+                }
             }
             .navigationTitle(isEditMode ? "取引を編集" : "新規取引")
             .navigationBarTitleDisplayMode(.inline)
@@ -65,6 +74,82 @@ struct TransactionFormView: View {
             }
             .onAppear { setupInitialValues() }
             .onChange(of: type) { _, _ in autoSelectCategory() }
+        }
+    }
+
+    // MARK: - Receipt Section
+
+    @ViewBuilder
+    private var receiptSection: some View {
+        if let t = transaction, let imagePath = t.receiptImagePath {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("レシート")
+                    .font(.subheadline.weight(.medium))
+
+                if let image = ReceiptImageStore.loadImage(fileName: imagePath) {
+                    Button {
+                        showReceiptPreview = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Text("レシート画像を表示")
+                                .font(.subheadline)
+                                .foregroundStyle(AppColors.primary)
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(12)
+                        .background(AppColors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("レシート画像を表示")
+                }
+            }
+        }
+    }
+
+    // MARK: - Line Items Section
+
+    @ViewBuilder
+    private var lineItemsSection: some View {
+        if let t = transaction, !t.lineItems.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("明細")
+                    .font(.subheadline.weight(.medium))
+
+                ForEach(Array(t.lineItems.enumerated()), id: \.offset) { _, item in
+                    HStack {
+                        Text(item.name)
+                            .font(.subheadline)
+
+                        Spacer()
+
+                        if item.quantity > 1 {
+                            Text("×\(item.quantity)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(formatCurrency(item.subtotal))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
         }
     }
 

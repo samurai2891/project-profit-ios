@@ -158,7 +158,9 @@ class DataStore {
         categoryId: String,
         memo: String,
         allocations: [(projectId: UUID, ratio: Int)],
-        recurringId: UUID? = nil
+        recurringId: UUID? = nil,
+        receiptImagePath: String? = nil,
+        lineItems: [ReceiptLineItem] = []
     ) -> PPTransaction {
         let allocs = allocations.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: amount * $0.ratio / 100) }
         let transaction = PPTransaction(
@@ -168,7 +170,9 @@ class DataStore {
             categoryId: categoryId,
             memo: memo,
             allocations: allocs,
-            recurringId: recurringId
+            recurringId: recurringId,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems
         )
         modelContext.insert(transaction)
         save()
@@ -183,13 +187,17 @@ class DataStore {
         date: Date? = nil,
         categoryId: String? = nil,
         memo: String? = nil,
-        allocations: [(projectId: UUID, ratio: Int)]? = nil
+        allocations: [(projectId: UUID, ratio: Int)]? = nil,
+        receiptImagePath: String?? = nil,
+        lineItems: [ReceiptLineItem]? = nil
     ) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
         if let type { transaction.type = type }
         if let date { transaction.date = date }
         if let categoryId { transaction.categoryId = categoryId }
         if let memo { transaction.memo = memo }
+        if let receiptImagePath { transaction.receiptImagePath = receiptImagePath }
+        if let lineItems { transaction.lineItems = lineItems }
 
         let finalAmount = amount ?? transaction.amount
         if let amount { transaction.amount = amount }
@@ -211,7 +219,21 @@ class DataStore {
 
     func deleteTransaction(id: UUID) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
+        if let imagePath = transaction.receiptImagePath {
+            ReceiptImageStore.deleteImage(fileName: imagePath)
+        }
         modelContext.delete(transaction)
+        save()
+        refreshTransactions()
+    }
+
+    func removeReceiptImage(transactionId: UUID) {
+        guard let transaction = transactions.first(where: { $0.id == transactionId }) else { return }
+        if let imagePath = transaction.receiptImagePath {
+            ReceiptImageStore.deleteImage(fileName: imagePath)
+        }
+        transaction.receiptImagePath = nil
+        transaction.updatedAt = Date()
         save()
         refreshTransactions()
     }
@@ -633,6 +655,12 @@ class DataStore {
     // MARK: - Bulk Delete
 
     func deleteAllData() {
+        // Delete all receipt images
+        for t in transactions {
+            if let imagePath = t.receiptImagePath {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         for p in projects { modelContext.delete(p) }
         for t in transactions { modelContext.delete(t) }
         for c in categories { modelContext.delete(c) }
