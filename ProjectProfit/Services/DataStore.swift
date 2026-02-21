@@ -371,6 +371,8 @@ class DataStore {
         modelContext.insert(recurring)
         save()
         refreshRecurring()
+        processRecurringTransactions()
+        refreshTransactions()
         return recurring
     }
 
@@ -433,6 +435,8 @@ class DataStore {
         recurring.updatedAt = Date()
         save()
         refreshRecurring()
+        processRecurringTransactions()
+        refreshTransactions()
     }
 
     func deleteRecurring(id: UUID) {
