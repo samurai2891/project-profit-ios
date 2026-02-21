@@ -37,11 +37,10 @@ final class DashboardViewModel {
         dataStore.getOverallSummary(startDate: dateRange.start, endDate: dateRange.end)
     }
 
-    var topProjects: [ProjectSummary] {
+    var activeProjects: [ProjectSummary] {
         dataStore.getAllProjectSummaries()
+            .filter { $0.status == .active }
             .sorted { $0.profit > $1.profit }
-            .prefix(3)
-            .map { $0 }
     }
 
     var expenseCategories: [CategorySummary] {

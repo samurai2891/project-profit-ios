@@ -15,6 +15,7 @@ enum ViewMode: String, CaseIterable {
 struct DashboardView: View {
     @Environment(DataStore.self) private var dataStore
     @State private var viewModel: DashboardViewModel?
+    @State private var showAddProjectSheet = false
 
     var body: some View {
         Group {
@@ -39,7 +40,7 @@ struct DashboardView: View {
                 viewModeToggle(viewModel: viewModel)
                 summaryCards(viewModel: viewModel)
                 if viewModel.viewMode == .yearly { monthlyChart(viewModel: viewModel) }
-                topProjectsSection(viewModel: viewModel)
+                activeProjectsSection(viewModel: viewModel)
                 expenseCategoriesSection(viewModel: viewModel)
             }
             .padding(.bottom, 40)
@@ -50,6 +51,9 @@ struct DashboardView: View {
         }
         .navigationDestination(for: UUID.self) { projectId in
             ProjectDetailView(projectId: projectId)
+        }
+        .sheet(isPresented: $showAddProjectSheet) {
+            ProjectFormView(project: nil)
         }
     }
 
@@ -196,47 +200,43 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Top Projects
-    private func topProjectsSection(viewModel: DashboardViewModel) -> some View {
-        let topProjects = viewModel.topProjects
+    // MARK: - Active Projects
+    private func activeProjectsSection(viewModel: DashboardViewModel) -> some View {
+        let activeProjects = viewModel.activeProjects
         return VStack(alignment: .leading, spacing: 12) {
-            Text("利益トップ3")
-                .font(.headline)
-                .padding(.horizontal, 20)
+            HStack {
+                Text("進行中のプロジェクト")
+                    .font(.headline)
+                Text("\(activeProjects.count)件")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button { showAddProjectSheet = true } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppColors.primary)
+                }
+                .accessibilityLabel("新規プロジェクト")
+                .accessibilityHint("タップして新しいプロジェクトを作成")
+            }
+            .padding(.horizontal, 20)
 
-            if topProjects.isEmpty {
-                emptyCard(icon: "folder.fill", message: "プロジェクトがありません")
+            if activeProjects.isEmpty {
+                emptyCard(icon: "folder.badge.plus", message: "進行中のプロジェクトがありません")
                     .padding(.horizontal, 20)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(topProjects) { p in
-                        NavigationLink(value: p.projectId) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(p.projectName)
-                                        .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(.primary)
-                                    Text("収益 \(formatCurrency(p.totalIncome)) / 経費 \(formatCurrency(p.totalExpense))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text(formatCurrency(p.profit))
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(p.profit >= 0 ? AppColors.success : AppColors.error)
-                                    Text("\(String(format: "%.1f", p.profitMargin))%")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(16)
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(activeProjects.enumerated()), id: \.element.id) { index, project in
+                        NavigationLink(value: project.projectId) {
+                            activeProjectRow(project: project)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(p.projectName) 利益 \(formatCurrency(p.profit)) 利益率 \(String(format: "%.1f", p.profitMargin))%")
+                        .accessibilityLabel("\(project.projectName) 利益 \(formatCurrency(project.profit))")
                         .accessibilityHint("タップしてプロジェクト詳細を表示")
                         .accessibilityAddTraits(.isButton)
-                        Divider()
+                        if index < activeProjects.count - 1 {
+                            Divider()
+                        }
                     }
                 }
                 .background(AppColors.surface)
@@ -244,6 +244,29 @@ struct DashboardView: View {
                 .padding(.horizontal, 20)
             }
         }
+    }
+
+    private func activeProjectRow(project: ProjectSummary) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(project.projectName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text("収益 \(formatCurrency(project.totalIncome)) / 経費 \(formatCurrency(project.totalExpense))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(formatCurrency(project.profit))
+                    .font(.subheadline.bold())
+                    .foregroundStyle(project.profit >= 0 ? AppColors.success : AppColors.error)
+                Text("\(String(format: "%.1f", project.profitMargin))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
     }
 
     // MARK: - Expense Categories
