@@ -213,7 +213,7 @@ final class PPRecurringTransaction {
     var amount: Int
     var categoryId: String
     var memo: String
-    var allocationMode: AllocationMode = AllocationMode.manual
+    var allocationMode: AllocationMode
     var allocations: [Allocation]
     var frequency: RecurringFrequency
     var dayOfMonth: Int
