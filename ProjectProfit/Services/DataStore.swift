@@ -167,6 +167,43 @@ class DataStore {
         refreshRecurring()
     }
 
+    func deleteProjects(ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+
+        for id in ids {
+            guard let project = projects.first(where: { $0.id == id }) else { continue }
+
+            for transaction in transactions {
+                let filtered = transaction.allocations.filter { $0.projectId != id }
+                if filtered.count != transaction.allocations.count {
+                    if filtered.isEmpty {
+                        modelContext.delete(transaction)
+                    } else {
+                        transaction.allocations = filtered
+                    }
+                }
+            }
+
+            for recurring in recurringTransactions {
+                let filtered = recurring.allocations.filter { $0.projectId != id }
+                if filtered.count != recurring.allocations.count {
+                    if filtered.isEmpty {
+                        modelContext.delete(recurring)
+                    } else {
+                        recurring.allocations = filtered
+                    }
+                }
+            }
+
+            modelContext.delete(project)
+        }
+
+        save()
+        refreshProjects()
+        refreshTransactions()
+        refreshRecurring()
+    }
+
     func getProject(id: UUID) -> PPProject? {
         projects.first { $0.id == id }
     }

@@ -41,6 +41,10 @@ final class ProjectsViewModel {
         dataStore.deleteProject(id: id)
     }
 
+    func deleteProjects(ids: Set<UUID>) {
+        dataStore.deleteProjects(ids: ids)
+    }
+
     func getProjectSummary(projectId: UUID) -> ProjectSummary? {
         dataStore.getProjectSummary(projectId: projectId)
     }

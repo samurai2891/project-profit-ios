@@ -21,6 +21,9 @@ struct ProjectsView: View {
     @State private var showAddSheet = false
     @State private var projectToDelete: PPProject?
     @State private var showDeleteConfirmation = false
+    @State private var editMode: EditMode = .inactive
+    @State private var selectedProjectIds: Set<UUID> = []
+    @State private var showBatchDeleteConfirmation = false
 
     private var resolvedViewModel: ProjectsViewModel {
         viewModel ?? ProjectsViewModel(dataStore: dataStore)
@@ -34,12 +37,34 @@ struct ProjectsView: View {
                 projectListContent
             }
 
-            fabButton
+            if editMode == .active && !selectedProjectIds.isEmpty {
+                batchDeleteBar
+            } else if editMode == .inactive {
+                fabButton
+            }
         }
         .navigationTitle("プロジェクト")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 headerView
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if editMode == .active {
+                    Button("完了") {
+                        withAnimation {
+                            editMode = .inactive
+                            selectedProjectIds.removeAll()
+                        }
+                    }
+                } else {
+                    Button("選択") {
+                        withAnimation {
+                            selectedProjectIds.removeAll()
+                            editMode = .active
+                        }
+                    }
+                    .disabled(!resolvedViewModel.hasProjects)
+                }
             }
         }
         .sheet(isPresented: $showAddSheet) {
@@ -48,7 +73,12 @@ struct ProjectsView: View {
         .alert("プロジェクトを削除", isPresented: $showDeleteConfirmation) {
             deleteAlertActions
         } message: {
-            Text("「\(projectToDelete?.name ?? "")」を削除しますか？この操作は取り消せません。")
+            Text("「\(projectToDelete?.name ?? "")」を削除しますか？関連する取引も削除されます。この操作は取り消せません。")
+        }
+        .alert("プロジェクトを削除", isPresented: $showBatchDeleteConfirmation) {
+            batchDeleteAlertActions
+        } message: {
+            Text("\(selectedProjectIds.count)件のプロジェクトを削除しますか？関連する取引も削除されます。この操作は取り消せません。")
         }
         .onAppear {
             if viewModel == nil {
@@ -118,26 +148,32 @@ private extension ProjectsView {
     }
 
     var projectListContent: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                filterTabsView
+        VStack(spacing: 0) {
+            filterTabsView
 
-                if resolvedViewModel.filteredProjects.isEmpty {
-                    filteredEmptyView
-                } else {
+            if resolvedViewModel.filteredProjects.isEmpty {
+                filteredEmptyView
+            } else {
+                List(selection: $selectedProjectIds) {
                     ForEach(resolvedViewModel.filteredProjects) { project in
                         NavigationLink(destination: ProjectDetailView(projectId: project.id)) {
-                            ProjectCardView(
-                                project: project,
-                                onDelete: {
-                                    projectToDelete = project
-                                    showDeleteConfirmation = true
-                                }
-                            )
+                            ProjectCardView(project: project)
                         }
-                        .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                projectToDelete = project
+                                showDeleteConfirmation = true
+                            } label: {
+                                Label("削除", systemImage: "trash")
+                            }
+                        }
                     }
                 }
+                .listStyle(.plain)
+                .environment(\.editMode, $editMode)
             }
         }
     }
@@ -212,6 +248,36 @@ private extension ProjectsView {
         .padding(.bottom, 20)
     }
 
+    var batchDeleteBar: some View {
+        Button(role: .destructive) {
+            showBatchDeleteConfirmation = true
+        } label: {
+            Label("\(selectedProjectIds.count)件を削除", systemImage: "trash")
+                .font(.headline)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(AppColors.error)
+                .foregroundStyle(.white)
+                .clipShape(Capsule())
+                .shadow(color: AppColors.error.opacity(0.4), radius: 8, x: 0, y: 4)
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 20)
+        .accessibilityLabel("\(selectedProjectIds.count)件のプロジェクトを削除")
+    }
+
+    @ViewBuilder
+    var batchDeleteAlertActions: some View {
+        Button("キャンセル", role: .cancel) {}
+        Button("\(selectedProjectIds.count)件を削除", role: .destructive) {
+            withAnimation {
+                viewModel?.deleteProjects(ids: selectedProjectIds)
+                selectedProjectIds.removeAll()
+                editMode = .inactive
+            }
+        }
+    }
+
     @ViewBuilder
     var deleteAlertActions: some View {
         Button("キャンセル", role: .cancel) {
@@ -232,7 +298,6 @@ private extension ProjectsView {
 
 private struct ProjectCardView: View {
     let project: PPProject
-    let onDelete: () -> Void
 
     @Environment(DataStore.self) private var dataStore
 
@@ -262,14 +327,11 @@ private struct ProjectCardView: View {
             descriptionRow
             financialSummaryRow
             profitMarginBar
-            deleteRow
         }
         .padding(16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(project.name) \(statusLabel(project.status)) 収入 \(formatCurrency(projectIncome)) 支出 \(formatCurrency(projectExpense)) 利益 \(formatCurrency(projectProfit)) 利益率 \(Int(profitMargin))%")
         .accessibilityHint("タップしてプロジェクト詳細を表示")
@@ -375,21 +437,6 @@ private extension ProjectCardView {
         .accessibilityValue("\(Int(profitMargin))%")
     }
 
-    var deleteRow: some View {
-        HStack {
-            Spacer()
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("削除", systemImage: "trash")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("削除")
-            .accessibilityHint("タップして削除確認画面を表示")
-        }
-    }
 }
 
 // MARK: - StatusBadge
