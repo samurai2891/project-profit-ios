@@ -411,7 +411,7 @@ class DataStore {
         if let notificationTiming { recurring.notificationTiming = notificationTiming }
         if let skipDates { recurring.skipDates = skipDates }
 
-        let resolvedMode = allocationMode ?? recurring.allocationMode
+        let resolvedMode = allocationMode ?? recurring.allocationMode ?? .manual
         let finalAmount = amount ?? recurring.amount
         if let amount { recurring.amount = amount }
 
@@ -459,7 +459,7 @@ class DataStore {
 
         for recurring in recurringTransactions {
             guard recurring.isActive else { continue }
-            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
+            if (recurring.allocationMode ?? .manual) == .manual && recurring.allocations.isEmpty { continue }
 
             var shouldGenerate = false
             var transactionDate: Date?
@@ -510,7 +510,7 @@ class DataStore {
 
             let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
             let txAllocations: [Allocation]
-            switch recurring.allocationMode {
+            switch recurring.allocationMode ?? .manual {
             case .equalAll:
                 let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
                 guard !activeProjectIds.isEmpty else { continue }
