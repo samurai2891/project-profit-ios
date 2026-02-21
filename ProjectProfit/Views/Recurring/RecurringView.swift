@@ -230,9 +230,13 @@ struct RecurringView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        if !recurring.allocations.isEmpty {
-                            let names = vm.projectNamesText(recurring.allocations)
-                            Text(names)
+                        if recurring.allocationMode == .equalAll {
+                            Text("全プロジェクト（均等割）")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else if !recurring.allocations.isEmpty {
+                            Text(vm.projectNamesText(recurring.allocations))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

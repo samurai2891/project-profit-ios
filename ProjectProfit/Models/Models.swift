@@ -54,6 +54,18 @@ enum RecurringFrequency: String, Codable {
     }
 }
 
+enum AllocationMode: String, Codable {
+    case equalAll
+    case manual
+
+    var label: String {
+        switch self {
+        case .equalAll: "全体（均等割）"
+        case .manual: "プロジェクト指定"
+        }
+    }
+}
+
 enum NotificationTiming: String, Codable {
     case none
     case sameDay
@@ -201,6 +213,7 @@ final class PPRecurringTransaction {
     var amount: Int
     var categoryId: String
     var memo: String
+    var allocationMode: AllocationMode = AllocationMode.manual
     var allocations: [Allocation]
     var frequency: RecurringFrequency
     var dayOfMonth: Int
@@ -219,6 +232,7 @@ final class PPRecurringTransaction {
         amount: Int,
         categoryId: String,
         memo: String = "",
+        allocationMode: AllocationMode = .manual,
         allocations: [Allocation] = [],
         frequency: RecurringFrequency = .monthly,
         dayOfMonth: Int = 1,
@@ -236,6 +250,7 @@ final class PPRecurringTransaction {
         self.amount = amount
         self.categoryId = categoryId
         self.memo = memo
+        self.allocationMode = allocationMode
         self.allocations = allocations
         self.frequency = frequency
         self.dayOfMonth = min(28, max(1, dayOfMonth))

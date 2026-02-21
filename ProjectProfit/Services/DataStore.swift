@@ -343,18 +343,26 @@ class DataStore {
         amount: Int,
         categoryId: String,
         memo: String,
+        allocationMode: AllocationMode = .manual,
         allocations: [(projectId: UUID, ratio: Int)],
         frequency: RecurringFrequency,
         dayOfMonth: Int,
         monthOfYear: Int? = nil
     ) -> PPRecurringTransaction {
-        let allocs = allocations.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: amount * $0.ratio / 100) }
+        let allocs: [Allocation]
+        switch allocationMode {
+        case .equalAll:
+            allocs = []
+        case .manual:
+            allocs = allocations.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: amount * $0.ratio / 100) }
+        }
         let recurring = PPRecurringTransaction(
             name: name,
             type: type,
             amount: amount,
             categoryId: categoryId,
             memo: memo,
+            allocationMode: allocationMode,
             allocations: allocs,
             frequency: frequency,
             dayOfMonth: dayOfMonth,
@@ -373,6 +381,7 @@ class DataStore {
         amount: Int? = nil,
         categoryId: String? = nil,
         memo: String? = nil,
+        allocationMode: AllocationMode? = nil,
         allocations: [(projectId: UUID, ratio: Int)]? = nil,
         frequency: RecurringFrequency? = nil,
         dayOfMonth: Int? = nil,
@@ -386,9 +395,9 @@ class DataStore {
         if let type { recurring.type = type }
         if let categoryId { recurring.categoryId = categoryId }
         if let memo { recurring.memo = memo }
+        if let allocationMode { recurring.allocationMode = allocationMode }
         if let frequency {
             recurring.frequency = frequency
-            // Clear monthOfYear when switching to monthly; set it when switching to yearly
             if frequency == .monthly {
                 recurring.monthOfYear = nil
             } else if let monthOfYear {
@@ -402,16 +411,22 @@ class DataStore {
         if let notificationTiming { recurring.notificationTiming = notificationTiming }
         if let skipDates { recurring.skipDates = skipDates }
 
+        let resolvedMode = allocationMode ?? recurring.allocationMode
         let finalAmount = amount ?? recurring.amount
         if let amount { recurring.amount = amount }
 
-        if let allocations {
-            recurring.allocations = allocations.map {
-                Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: finalAmount * $0.ratio / 100)
-            }
-        } else if amount != nil {
-            recurring.allocations = recurring.allocations.map {
-                Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: finalAmount * $0.ratio / 100)
+        switch resolvedMode {
+        case .equalAll:
+            recurring.allocations = []
+        case .manual:
+            if let allocations {
+                recurring.allocations = allocations.map {
+                    Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: finalAmount * $0.ratio / 100)
+                }
+            } else if amount != nil {
+                recurring.allocations = recurring.allocations.map {
+                    Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: finalAmount * $0.ratio / 100)
+                }
             }
         }
 
@@ -443,7 +458,8 @@ class DataStore {
         var generatedCount = 0
 
         for recurring in recurringTransactions {
-            guard recurring.isActive, !recurring.allocations.isEmpty else { continue }
+            guard recurring.isActive else { continue }
+            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
 
             var shouldGenerate = false
             var transactionDate: Date?
@@ -493,15 +509,24 @@ class DataStore {
             }
 
             let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-            let allocs = recurring.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-            let txAllocs = allocs.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: recurring.amount * $0.ratio / 100) }
+            let txAllocations: [Allocation]
+            switch recurring.allocationMode {
+            case .equalAll:
+                let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
+                guard !activeProjectIds.isEmpty else { continue }
+                txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: activeProjectIds)
+            case .manual:
+                txAllocations = recurring.allocations.map {
+                    Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: recurring.amount * $0.ratio / 100)
+                }
+            }
             let transaction = PPTransaction(
                 type: recurring.type,
                 amount: recurring.amount,
                 date: txDate,
                 categoryId: recurring.categoryId,
                 memo: memo,
-                allocations: txAllocs,
+                allocations: txAllocations,
                 recurringId: recurring.id
             )
             modelContext.insert(transaction)

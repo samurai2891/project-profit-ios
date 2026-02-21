@@ -135,6 +135,26 @@ func getNextRegistrationDate(
     return NextRegistrationInfo(date: nextDate, label: label, daysUntil: daysUntil)
 }
 
+// MARK: - Equal Split Allocation
+
+func calculateEqualSplitAllocations(amount: Int, projectIds: [UUID]) -> [Allocation] {
+    guard !projectIds.isEmpty else { return [] }
+    let count = projectIds.count
+    let baseAmount = amount / count
+    let amountRemainder = amount - (baseAmount * count)
+    let baseRatio = 100 / count
+    let ratioRemainder = 100 - (baseRatio * count)
+
+    return projectIds.enumerated().map { index, projectId in
+        let isLast = index == count - 1
+        return Allocation(
+            projectId: projectId,
+            ratio: isLast ? baseRatio + ratioRemainder : baseRatio,
+            amount: isLast ? baseAmount + amountRemainder : baseAmount
+        )
+    }
+}
+
 // MARK: - CSV Import
 
 struct CSVImportResult {

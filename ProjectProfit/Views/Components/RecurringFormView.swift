@@ -16,6 +16,7 @@ struct RecurringFormView: View {
     @State private var dayOfMonth: Int
     @State private var monthOfYear: Int
     @State private var selectedCategoryId: String?
+    @State private var allocationMode: AllocationMode
     @State private var allocations: [(projectId: UUID, ratio: Int)]
     @State private var memo: String
     @State private var isActive: Bool
@@ -36,6 +37,7 @@ struct RecurringFormView: View {
         self._dayOfMonth = State(initialValue: recurring?.dayOfMonth ?? 1)
         self._monthOfYear = State(initialValue: recurring?.monthOfYear ?? 1)
         self._selectedCategoryId = State(initialValue: recurring?.categoryId)
+        self._allocationMode = State(initialValue: recurring?.allocationMode ?? .manual)
         self._allocations = State(
             initialValue: recurring?.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) } ?? []
         )
@@ -82,7 +84,12 @@ struct RecurringFormView: View {
                         frequencySection
                         dayOfMonthSection
                         categorySection
-                        projectAllocationSection
+                        allocationModeSection
+                        if allocationMode == .manual {
+                            projectAllocationSection
+                        } else {
+                            equalAllInfoSection
+                        }
                         memoField
 
                         if isEditMode {
@@ -276,6 +283,44 @@ struct RecurringFormView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Allocation Mode Section
+
+    private var allocationModeSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("配分方式")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("配分方式", selection: $allocationMode) {
+                Text("全体（均等割）").tag(AllocationMode.equalAll)
+                Text("プロジェクト指定").tag(AllocationMode.manual)
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onChange(of: allocationMode) { _, newMode in
+            if newMode == .equalAll {
+                allocations = []
+            }
+        }
+    }
+
+    private var equalAllInfoSection: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(AppColors.primary)
+            Text("取引登録時に全アクティブプロジェクトへ均等配分されます")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Project Allocation Section
 
     private var projectAllocationSection: some View {
@@ -423,11 +468,13 @@ struct RecurringFormView: View {
             return
         }
 
-        let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-        if totalRatio > 0 && totalRatio != 100 {
-            validationMessage = "プロジェクト配分の合計は100%にしてください"
-            showValidationError = true
-            return
+        if allocationMode == .manual {
+            let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
+            if totalRatio > 0 && totalRatio != 100 {
+                validationMessage = "プロジェクト配分の合計は100%にしてください"
+                showValidationError = true
+                return
+            }
         }
 
         let categoryId = selectedCategoryId ?? ""
@@ -441,6 +488,7 @@ struct RecurringFormView: View {
                 amount: amount,
                 categoryId: categoryId,
                 memo: memo,
+                allocationMode: allocationMode,
                 allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
                 frequency: frequency,
                 dayOfMonth: dayOfMonth,
@@ -454,6 +502,7 @@ struct RecurringFormView: View {
                 amount: amount,
                 categoryId: categoryId,
                 memo: memo,
+                allocationMode: allocationMode,
                 allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
                 frequency: frequency,
                 dayOfMonth: dayOfMonth,
