@@ -15,7 +15,6 @@ enum ViewMode: String, CaseIterable {
 struct DashboardView: View {
     @Environment(DataStore.self) private var dataStore
     @State private var viewModel: DashboardViewModel?
-    @State private var showReceiptScanner = false
 
     var body: some View {
         Group {
@@ -39,7 +38,6 @@ struct DashboardView: View {
                 headerSection(viewModel: viewModel)
                 viewModeToggle(viewModel: viewModel)
                 summaryCards(viewModel: viewModel)
-                quickActionsSection
                 if viewModel.viewMode == .yearly { monthlyChart(viewModel: viewModel) }
                 topProjectsSection(viewModel: viewModel)
                 expenseCategoriesSection(viewModel: viewModel)
@@ -52,9 +50,6 @@ struct DashboardView: View {
         }
         .navigationDestination(for: UUID.self) { projectId in
             ProjectDetailView(projectId: projectId)
-        }
-        .sheet(isPresented: $showReceiptScanner) {
-            ReceiptScannerView()
         }
     }
 
@@ -290,50 +285,6 @@ struct DashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 20)
             }
-        }
-    }
-
-    // MARK: - Quick Actions
-    private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("クイックアクション")
-                .font(.headline)
-                .padding(.horizontal, 20)
-
-            Button {
-                showReceiptScanner = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "doc.text.viewfinder")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(AppColors.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("レシート読取")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text("レシート・請求書から経費を自動登録")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(14)
-                .background(AppColors.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("レシート読取")
-            .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
-            .padding(.horizontal, 20)
         }
     }
 

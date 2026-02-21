@@ -10,6 +10,8 @@ struct ProjectDetailView: View {
     @State private var viewModel: ProjectDetailViewModel?
     @State private var showEditSheet = false
     @State private var showAddTransactionSheet = false
+    @State private var showReceiptScanner = false
+    @State private var selectedTransaction: PPTransaction?
     @State private var transactionToDelete: PPTransaction?
     @State private var showDeleteConfirmation = false
 
@@ -35,7 +37,8 @@ struct ProjectDetailView: View {
         .navigationTitle(resolvedViewModel.currentProject?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                receiptScanButton
                 addTransactionButton
             }
         }
@@ -46,6 +49,12 @@ struct ProjectDetailView: View {
         }
         .sheet(isPresented: $showAddTransactionSheet) {
             TransactionFormView(defaultProjectId: projectId)
+        }
+        .sheet(isPresented: $showReceiptScanner) {
+            ReceiptScannerView(defaultProjectId: projectId)
+        }
+        .sheet(item: $selectedTransaction) { transaction in
+            TransactionDetailView(transaction: transaction)
         }
         .alert("取引を削除", isPresented: $showDeleteConfirmation) {
             deleteAlertActions
@@ -255,7 +264,7 @@ private extension ProjectDetailView {
 
     var sectionHeader: some View {
         HStack {
-            Text("最近の取引")
+            Text("取引一覧")
                 .font(.headline)
 
             Spacer()
@@ -276,15 +285,27 @@ private extension ProjectDetailView {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Button {
-                showAddTransactionSheet = true
-            } label: {
-                Label("取引を追加", systemImage: "plus")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+            HStack(spacing: 12) {
+                Button {
+                    showReceiptScanner = true
+                } label: {
+                    Label("レシート読取", systemImage: "doc.text.viewfinder")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                .accessibilityLabel("レシート読取")
+                .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
+
+                Button {
+                    showAddTransactionSheet = true
+                } label: {
+                    Label("手動で追加", systemImage: "plus")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                .accessibilityLabel("取引を追加")
+                .accessibilityHint("タップして新しい取引を作成")
             }
-            .accessibilityLabel("取引を追加")
-            .accessibilityHint("タップして新しい取引を作成")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -294,15 +315,20 @@ private extension ProjectDetailView {
         let transactions = resolvedViewModel.recentTransactions
         return LazyVStack(spacing: 0) {
             ForEach(transactions) { transaction in
-                TransactionRow(
-                    transaction: transaction,
-                    projectId: projectId,
-                    viewModel: resolvedViewModel,
-                    onDelete: {
-                        transactionToDelete = transaction
-                        showDeleteConfirmation = true
-                    }
-                )
+                Button {
+                    selectedTransaction = transaction
+                } label: {
+                    TransactionRow(
+                        transaction: transaction,
+                        projectId: projectId,
+                        viewModel: resolvedViewModel,
+                        onDelete: {
+                            transactionToDelete = transaction
+                            showDeleteConfirmation = true
+                        }
+                    )
+                }
+                .buttonStyle(.plain)
 
                 if transaction.id != transactions.last?.id {
                     Divider()
@@ -310,6 +336,18 @@ private extension ProjectDetailView {
                 }
             }
         }
+    }
+
+    var receiptScanButton: some View {
+        Button {
+            showReceiptScanner = true
+        } label: {
+            Image(systemName: "doc.text.viewfinder")
+                .font(.title3)
+                .foregroundStyle(AppColors.primary)
+        }
+        .accessibilityLabel("レシート読取")
+        .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
     }
 
     var addTransactionButton: some View {
@@ -394,13 +432,38 @@ private extension TransactionRow {
 
     var transactionDetails: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(categoryName)
-                .font(.subheadline)
-                .fontWeight(.medium)
+            HStack(spacing: 6) {
+                Text(categoryName)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                if transaction.receiptImagePath != nil {
+                    Image(systemName: "doc.text.image")
+                        .font(.caption2)
+                        .foregroundStyle(AppColors.primary)
+                }
+            }
 
             Text(formatDate(transaction.date))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if !transaction.memo.isEmpty {
+                Text(transaction.memo)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if !transaction.lineItems.isEmpty {
+                Text("\(transaction.lineItems.count)品目")
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppColors.primary.opacity(0.1))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
         }
         .accessibilityHidden(true)
     }

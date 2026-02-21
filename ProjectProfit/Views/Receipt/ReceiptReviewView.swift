@@ -5,6 +5,7 @@ struct ReceiptReviewView: View {
 
     let receiptData: ReceiptData
     let receiptImage: UIImage?
+    let defaultProjectId: UUID?
     let onDismiss: () -> Void
 
     @State private var amountText: String = ""
@@ -18,9 +19,10 @@ struct ReceiptReviewView: View {
     @State private var showImagePreview = false
     @State private var saveError: String?
 
-    init(receiptData: ReceiptData, receiptImage: UIImage? = nil, onDismiss: @escaping () -> Void) {
+    init(receiptData: ReceiptData, receiptImage: UIImage? = nil, defaultProjectId: UUID? = nil, onDismiss: @escaping () -> Void) {
         self.receiptData = receiptData
         self.receiptImage = receiptImage
+        self.defaultProjectId = defaultProjectId
         self.onDismiss = onDismiss
     }
 
@@ -345,8 +347,10 @@ struct ReceiptReviewView: View {
             categoryId = expenseCategories.first?.id ?? "cat-other-expense"
         }
 
-        // Default allocation
-        if let firstProject = dataStore.projects.first {
+        // Default allocation - use defaultProjectId if provided
+        if let projectId = defaultProjectId, dataStore.projects.contains(where: { $0.id == projectId }) {
+            allocations = [(id: UUID(), projectId: projectId, ratio: 100)]
+        } else if let firstProject = dataStore.projects.first {
             allocations = [(id: UUID(), projectId: firstProject.id, ratio: 100)]
         }
     }

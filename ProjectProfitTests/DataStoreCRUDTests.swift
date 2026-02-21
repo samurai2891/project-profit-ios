@@ -417,6 +417,164 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(dataStore.transactions.count, 1)
     }
 
+    // MARK: - Transaction with Receipt & Line Items
+
+    func testAddTransactionWithReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1500,
+            date: Date(),
+            categoryId: "cat-food",
+            memo: "Lunch",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "test-receipt-123.jpg"
+        )
+
+        XCTAssertEqual(transaction.receiptImagePath, "test-receipt-123.jpg")
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertEqual(fetched?.receiptImagePath, "test-receipt-123.jpg")
+    }
+
+    func testAddTransactionWithLineItems() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let items = [
+            ReceiptLineItem(name: "コーヒー", unitPrice: 350),
+            ReceiptLineItem(name: "サンドイッチ", quantity: 2, unitPrice: 480),
+        ]
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1310,
+            date: Date(),
+            categoryId: "cat-food",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            lineItems: items
+        )
+
+        XCTAssertEqual(transaction.lineItems.count, 2)
+        XCTAssertEqual(transaction.lineItems[0].name, "コーヒー")
+        XCTAssertEqual(transaction.lineItems[0].subtotal, 350)
+        XCTAssertEqual(transaction.lineItems[1].name, "サンドイッチ")
+        XCTAssertEqual(transaction.lineItems[1].quantity, 2)
+        XCTAssertEqual(transaction.lineItems[1].subtotal, 960)
+    }
+
+    func testAddTransactionWithReceiptAndLineItems() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let items = [ReceiptLineItem(name: "ペン", quantity: 3, unitPrice: 100)]
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 300,
+            date: Date(),
+            categoryId: "cat-supplies",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "receipt-abc.jpg",
+            lineItems: items
+        )
+
+        XCTAssertEqual(transaction.receiptImagePath, "receipt-abc.jpg")
+        XCTAssertEqual(transaction.lineItems.count, 1)
+        XCTAssertEqual(transaction.lineItems[0].subtotal, 300)
+    }
+
+    func testAddTransactionDefaultsNoReceiptNoLineItems() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .income,
+            amount: 5000,
+            date: Date(),
+            categoryId: "cat-sales",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        XCTAssertNil(transaction.receiptImagePath)
+        XCTAssertTrue(transaction.lineItems.isEmpty)
+    }
+
+    func testUpdateTransactionReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "cat-food",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertNil(transaction.receiptImagePath)
+
+        dataStore.updateTransaction(id: transaction.id, receiptImagePath: "new-receipt.jpg")
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertEqual(fetched?.receiptImagePath, "new-receipt.jpg")
+    }
+
+    func testUpdateTransactionClearReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "cat-food",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "old-receipt.jpg"
+        )
+
+        dataStore.updateTransaction(id: transaction.id, receiptImagePath: .some(nil))
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertNil(fetched?.receiptImagePath)
+    }
+
+    func testUpdateTransactionLineItems() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 500,
+            date: Date(),
+            categoryId: "cat-supplies",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertTrue(transaction.lineItems.isEmpty)
+
+        let newItems = [
+            ReceiptLineItem(name: "ノート", unitPrice: 200),
+            ReceiptLineItem(name: "ペン", unitPrice: 300),
+        ]
+        dataStore.updateTransaction(id: transaction.id, lineItems: newItems)
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertEqual(fetched?.lineItems.count, 2)
+        XCTAssertEqual(fetched?.lineItems[0].name, "ノート")
+        XCTAssertEqual(fetched?.lineItems[1].name, "ペン")
+    }
+
+    func testRemoveReceiptImage() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "cat-food",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "to-remove.jpg"
+        )
+        XCTAssertNotNil(transaction.receiptImagePath)
+
+        dataStore.removeReceiptImage(transactionId: transaction.id)
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertNil(fetched?.receiptImagePath)
+    }
+
+    func testRemoveReceiptImageNonExistentTransactionIsNoOp() {
+        dataStore.removeReceiptImage(transactionId: UUID())
+        // Should not crash or error
+        XCTAssertEqual(dataStore.transactions.count, 0)
+    }
+
     // MARK: - Category CRUD
 
     func testDefaultCategoriesAreSeeded() {

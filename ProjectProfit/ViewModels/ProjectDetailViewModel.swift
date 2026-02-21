@@ -39,8 +39,6 @@ final class ProjectDetailViewModel {
         dataStore.transactions
             .filter { t in t.allocations.contains(where: { $0.projectId == projectId }) }
             .sorted { $0.date > $1.date }
-            .prefix(10)
-            .map { $0 }
     }
 
     // MARK: - Actions

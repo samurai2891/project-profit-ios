@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -82,7 +82,7 @@
 		44EE0CC65692704E599F3253 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		492371A3D955705C4D79A8B3 /* FilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterView.swift; sourceTree = "<group>"; };
 		4F48559A7F4D6BBE5121CDAF /* ReceiptData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptData.swift; sourceTree = "<group>"; };
-		52623B849DAB74FB8521FE1C /* ProjectProfit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ProjectProfit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		52623B849DAB74FB8521FE1C /* ProjectProfit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjectProfit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		54A95C3D59FD40A677B5178C /* RecurringFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringFormView.swift; sourceTree = "<group>"; };
 		5532FFAAEC276A9776BB1855 /* DataStoreSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreSummaryTests.swift; sourceTree = "<group>"; };
 		5580B9971CC999A5B7A1396B /* ProjectDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailViewModel.swift; sourceTree = "<group>"; };
@@ -345,7 +345,6 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					B0EC5EFA88C12CE310144BE3 = {
-						DevelopmentTeam = 52PPJXD67Z;
 						ProvisioningStyle = Automatic;
 					};
 					CEBE2334F607ECBED5AC3038 = {
@@ -364,7 +363,6 @@
 			);
 			mainGroup = BA1B761AD13397E8642DB9D4;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

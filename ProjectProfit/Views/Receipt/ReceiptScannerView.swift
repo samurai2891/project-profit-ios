@@ -8,10 +8,16 @@ struct ReceiptScannerView: View {
     @Environment(DataStore.self) private var dataStore
     @Environment(\.dismiss) private var dismiss
 
+    let defaultProjectId: UUID?
+
     @State private var selectedImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var scannerService = ReceiptScannerService()
+
+    init(defaultProjectId: UUID? = nil) {
+        self.defaultProjectId = defaultProjectId
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,7 +28,7 @@ struct ReceiptScannerView: View {
                 case .processing:
                     processingView
                 case .completed(let data):
-                    ReceiptReviewView(receiptData: data, receiptImage: selectedImage, onDismiss: { dismiss() })
+                    ReceiptReviewView(receiptData: data, receiptImage: selectedImage, defaultProjectId: defaultProjectId, onDismiss: { dismiss() })
                 case .failed(let message):
                     errorView(message: message)
                 default:
