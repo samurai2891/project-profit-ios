@@ -423,6 +423,15 @@ private struct TransactionRow: View {
             .ratio
     }
 
+    private var allocationAmount: Int? {
+        guard transaction.allocations.count > 1 else {
+            return nil
+        }
+        return transaction.allocations
+            .first(where: { $0.projectId == projectId })?
+            .amount
+    }
+
     private var categoryName: String {
         viewModel.getCategoryName(for: transaction.categoryId)
     }
@@ -436,7 +445,7 @@ private struct TransactionRow: View {
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(isIncome ? "収益" : "経費") \(categoryName) \(formatCurrency(transaction.amount)) \(formatDate(transaction.date))")
+        .accessibilityLabel("\(isIncome ? "収益" : "経費") \(categoryName) \(formatCurrency(allocationAmount ?? transaction.amount)) \(formatDate(transaction.date))")
     }
 }
 
@@ -495,13 +504,19 @@ private extension TransactionRow {
     var amountAndDelete: some View {
         HStack(spacing: 12) {
             VStack(alignment: .trailing, spacing: 2) {
-                Text(formatCurrency(transaction.amount))
+                Text(formatCurrency(allocationAmount ?? transaction.amount))
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
 
                 if let ratio = allocationRatio {
                     Text("\(ratio)%配分")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if allocationAmount != nil {
+                    Text("全体: \(formatCurrency(transaction.amount))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

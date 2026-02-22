@@ -584,7 +584,102 @@ final class ProRataDataStoreTests: XCTestCase {
         XCTAssertEqual(total, 31000)
     }
 
-    // MARK: - Test 17: recalculateAllPartialPeriodProjects includes startDate projects
+    // MARK: - Test 17: Multiple partial projects holistic calculation
+
+    func testMultiplePartialProjects_holisticCalculation_totalPreserved() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+        let projectC = makeProject(name: "Project C")
+
+        // April 2026 (30 days)
+        let transactionDate = makeDate(year: 2026, month: 4, day: 1)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "holistic test",
+            allocations: [
+                (projectId: projectA.id, ratio: 33),
+                (projectId: projectB.id, ratio: 33),
+                (projectId: projectC.id, ratio: 34)
+            ]
+        )
+
+        // A: 完了日=4月15日（15日稼働）
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 4, day: 15))
+        // C: 開始日=4月10日（21日稼働）
+        dataStore.updateProject(id: projectC.id, startDate: makeDate(year: 2026, month: 4, day: 10))
+
+        let transactions = fetchAllTransactions()
+        let tx = transactions.first { $0.memo == "holistic test" }!
+        let allocA = tx.allocations.first { $0.projectId == projectA.id }!
+        let allocB = tx.allocations.first { $0.projectId == projectB.id }!
+        let allocC = tx.allocations.first { $0.projectId == projectC.id }!
+
+        let total = allocA.amount + allocB.amount + allocC.amount
+        XCTAssertEqual(total, 10000, "Total must be exactly preserved with multiple partial projects")
+
+        // A: 3300 * 15/30 = 1650
+        XCTAssertEqual(allocA.amount, 1650, "Project A should be pro-rated for 15 days")
+        // C: 3400 * 21/30 = 2380
+        XCTAssertEqual(allocC.amount, 2380, "Project C should be pro-rated for 21 days")
+        // B gets the remainder: 10000 - 1650 - 2380 = 5970
+        XCTAssertEqual(allocB.amount, 5970, "Project B (full days) should absorb the freed amount")
+    }
+
+    // MARK: - Test 18: Startup recalculation with multiple partial projects
+
+    func testRecalculateAllPartialPeriodProjects_multiplePartialProjects_totalPreserved() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+        let projectC = makeProject(name: "Project C")
+
+        // April 2026 (30 days)
+        let transactionDate = makeDate(year: 2026, month: 4, day: 1)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "startup test",
+            allocations: [
+                (projectId: projectA.id, ratio: 33),
+                (projectId: projectB.id, ratio: 33),
+                (projectId: projectC.id, ratio: 34)
+            ]
+        )
+
+        // Manually set project states without triggering recalculation
+        let pA = dataStore.getProject(id: projectA.id)!
+        pA.status = .completed
+        pA.completedAt = makeDate(year: 2026, month: 4, day: 15)
+        let pC = dataStore.getProject(id: projectC.id)!
+        pC.startDate = makeDate(year: 2026, month: 4, day: 10)
+        try? context.save()
+        dataStore.loadData()
+
+        // Verify allocations are still ratio-based
+        var transactions = fetchAllTransactions()
+        var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(allocA.amount, 3300, "Before recalculation, should be ratio-based")
+
+        // Simulate startup recalculation
+        dataStore.recalculateAllPartialPeriodProjects()
+
+        transactions = fetchAllTransactions()
+        allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+        let allocC = transactions.first!.allocations.first { $0.projectId == projectC.id }!
+
+        let total = allocA.amount + allocB.amount + allocC.amount
+        XCTAssertEqual(total, 10000, "Total must be preserved after startup recalc with multiple partial projects")
+        XCTAssertEqual(allocA.amount, 1650)
+        XCTAssertEqual(allocC.amount, 2380)
+        XCTAssertEqual(allocB.amount, 5970)
+    }
+
+    // MARK: - Test 19: recalculateAllPartialPeriodProjects includes startDate projects
 
     func testRecalculateAllPartialPeriodProjects_includesStartDateProjects() {
         let projectA = makeProject(name: "Project A")

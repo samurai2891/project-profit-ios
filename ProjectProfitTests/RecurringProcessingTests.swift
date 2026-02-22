@@ -579,4 +579,52 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(transactions.count, 1)
         XCTAssertEqual(transactions.first?.recurringId, recurring.id, "Generated transaction must reference the recurring transaction's ID")
     }
+
+    // MARK: - 16. Manual mode with multiple partial projects (regression test)
+
+    func testRecurringManual_multiplePartialProjects_totalPreserved() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+        let projectC = makeProject(name: "Project C")
+
+        let today = todayComponents
+        guard let year = today.year, let month = today.month else {
+            XCTFail("Cannot get today's components")
+            return
+        }
+
+        // A: 今月15日に完了
+        let completedDate = calendar.date(from: DateComponents(year: year, month: month, day: 15))!
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        // C: 今月10日に開始
+        let startDate = calendar.date(from: DateComponents(year: year, month: month, day: 10))!
+        dataStore.updateProject(id: projectC.id, startDate: startDate)
+
+        // Manual recurring with 3 projects
+        dataStore.addRecurring(
+            name: "Manual Multi Partial",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "regression",
+            allocationMode: .manual,
+            allocations: [
+                (projectId: projectA.id, ratio: 33),
+                (projectId: projectB.id, ratio: 33),
+                (projectId: projectC.id, ratio: 34)
+            ],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        let transactions = fetchAllTransactions()
+        let recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("regression") }
+
+        XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
+
+        if let tx = recurringTx.first {
+            let total = tx.allocations.reduce(0) { $0 + $1.amount }
+            XCTAssertEqual(total, 10000, "Total must be exactly ¥10,000 — regression test for sequential processing bug")
+        }
+    }
 }

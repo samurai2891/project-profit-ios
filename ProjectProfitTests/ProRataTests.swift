@@ -471,4 +471,146 @@ final class ProRataTests: XCTestCase {
         let total = result.reduce(0) { $0 + $1.amount }
         XCTAssertEqual(total, 31000)
     }
+
+    // MARK: - calculateHolisticProRata
+
+    func testHolistic_multiplePartialProjects_totalPreserved() {
+        // バグの再現テスト: ¥10,000/月、30日月、3プロジェクト
+        // A: 33%, 15日目に完了（15日稼働）
+        // B: 33%, 全日稼働（30日）
+        // C: 34%, 10日目に開始（21日稼働）
+        let projectA = UUID()
+        let projectB = UUID()
+        let projectC = UUID()
+
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 33, activeDays: 15),
+                HolisticProRataInput(projectId: projectB, ratio: 33, activeDays: 30),
+                HolisticProRataInput(projectId: projectC, ratio: 34, activeDays: 21),
+            ]
+        )
+
+        let allocA = result.first { $0.projectId == projectA }!
+        let allocB = result.first { $0.projectId == projectB }!
+        let allocC = result.first { $0.projectId == projectC }!
+
+        // A: 3300 * 15/30 = 1650
+        XCTAssertEqual(allocA.amount, 1650)
+        // C: 3400 * 21/30 = 2380
+        XCTAssertEqual(allocC.amount, 2380)
+        // B: 3300 + 余剰(10000 - 1650 - 3300 - 2380 = 2670) = 5970
+        XCTAssertEqual(allocB.amount, 5970)
+        // 合計保持（最重要テスト）
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 10000, "Total must be preserved")
+    }
+
+    func testHolistic_allFullDays() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 20000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 60, activeDays: 30),
+                HolisticProRataInput(projectId: projectB, ratio: 40, activeDays: 30),
+            ]
+        )
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 12000)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 8000)
+        XCTAssertEqual(result.reduce(0) { $0 + $1.amount }, 20000)
+    }
+
+    func testHolistic_allPartialDays_noFullDayRecipient() {
+        // フル稼働プロジェクトがない場合、稼働プロジェクトに重みで分配
+        let projectA = UUID()
+        let projectB = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 30000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 50, activeDays: 15),
+                HolisticProRataInput(projectId: projectB, ratio: 50, activeDays: 10),
+            ]
+        )
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 30000, "Total must be preserved even without full-day projects")
+        // A prorated: 15000 * 15/30 = 7500
+        // B prorated: 15000 * 10/30 = 5000
+        // freed: 30000 - 7500 - 5000 = 17500
+        // A weight: 50*15=750, B weight: 50*10=500, total=1250
+        // A extra: 17500*750/1250 = 10500, B extra: 17500-10500 = 7000
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 7500 + 10500)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 5000 + 7000)
+    }
+
+    func testHolistic_zeroDaysProject() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 50, activeDays: 0),
+                HolisticProRataInput(projectId: projectB, ratio: 50, activeDays: 30),
+            ]
+        )
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 0)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 10000)
+    }
+
+    func testHolistic_singleProject() {
+        let projectA = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 100, activeDays: 15),
+            ]
+        )
+        XCTAssertEqual(result.count, 1)
+        // 10000 * 15/30 = 5000, freed = 5000, single partial project gets it back
+        XCTAssertEqual(result[0].amount, 10000)
+    }
+
+    func testHolistic_integerRounding() {
+        // 端数が出るケースで合計が保持されるか
+        let projectA = UUID()
+        let projectB = UUID()
+        let projectC = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10001,
+            totalDays: 31,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 33, activeDays: 17),
+                HolisticProRataInput(projectId: projectB, ratio: 33, activeDays: 31),
+                HolisticProRataInput(projectId: projectC, ratio: 34, activeDays: 11),
+            ]
+        )
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 10001, "Total must be exactly preserved with rounding")
+    }
+
+    func testHolistic_emptyInputs() {
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: []
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testHolistic_zeroTotalDays() {
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 0,
+            inputs: [
+                HolisticProRataInput(projectId: UUID(), ratio: 100, activeDays: 0),
+            ]
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
 }

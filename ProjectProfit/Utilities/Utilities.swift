@@ -396,6 +396,95 @@ func redistributeAllocationsForYearlyCompletion(
     return result
 }
 
+// MARK: - Holistic Pro-Rata (一括日割り) Calculation
+
+struct HolisticProRataInput {
+    let projectId: UUID
+    let ratio: Int
+    let activeDays: Int
+}
+
+/// 全プロジェクトの日割りを一括で計算する。
+/// 逐次処理のバグ（前の反復結果が後の反復で破壊される）を防ぐ。
+///
+/// アルゴリズム:
+/// 1. 各プロジェクトの基本額を計算: baseAmount = totalAmount * ratio / 100
+/// 2. 各プロジェクトの日割り額を計算: prorated = baseAmount * activeDays / totalDays
+/// 3. 余剰額 = totalAmount - sum(prorated)
+/// 4. 余剰額をフル稼働プロジェクトに比率按分で分配
+/// 5. フル稼働がなければ稼働プロジェクトに ratio × activeDays の重みで分配
+/// 6. 整数丸め端数を最後のプロジェクトに加算（合計=totalAmount保証）
+func calculateHolisticProRata(
+    totalAmount: Int,
+    totalDays: Int,
+    inputs: [HolisticProRataInput]
+) -> [Allocation] {
+    guard !inputs.isEmpty, totalDays > 0 else { return [] }
+
+    // 1-2: 各プロジェクトの日割り額を計算
+    let proratedEntries: [(input: HolisticProRataInput, baseAmount: Int, proratedAmount: Int)] = inputs.map { input in
+        let baseAmount = totalAmount * input.ratio / 100
+        let activeClamped = min(input.activeDays, totalDays)
+        let proratedAmount = activeClamped >= totalDays
+            ? baseAmount
+            : baseAmount * activeClamped / totalDays
+        return (input, baseAmount, proratedAmount)
+    }
+
+    // 3: 余剰額
+    let proratedTotal = proratedEntries.reduce(0) { $0 + $1.proratedAmount }
+    let freed = totalAmount - proratedTotal
+
+    // 4-5: 余剰額の分配先を決定
+    let fullDayEntries = proratedEntries.filter { $0.input.activeDays >= totalDays }
+    let activeEntries = proratedEntries.filter { $0.input.activeDays > 0 }
+
+    var amounts = proratedEntries.map(\.proratedAmount)
+
+    if freed != 0 {
+        let recipients: [(index: Int, weight: Int)]
+        if !fullDayEntries.isEmpty {
+            // フル稼働プロジェクトに比率按分
+            recipients = proratedEntries.enumerated().compactMap { idx, entry in
+                entry.input.activeDays >= totalDays ? (idx, entry.input.ratio) : nil
+            }
+        } else if !activeEntries.isEmpty {
+            // 稼働プロジェクトに ratio × activeDays の重みで分配
+            recipients = proratedEntries.enumerated().compactMap { idx, entry in
+                entry.input.activeDays > 0 ? (idx, entry.input.ratio * entry.input.activeDays) : nil
+            }
+        } else {
+            recipients = []
+        }
+
+        let totalWeight = recipients.reduce(0) { $0 + $1.weight }
+        if totalWeight > 0 {
+            var distributedSoFar = 0
+            for (i, recipient) in recipients.enumerated() {
+                if i == recipients.count - 1 {
+                    // 最後に端数を吸収
+                    amounts[recipient.index] += freed - distributedSoFar
+                } else {
+                    let share = freed * recipient.weight / totalWeight
+                    amounts[recipient.index] += share
+                    distributedSoFar += share
+                }
+            }
+        }
+    }
+
+    // 6: 最終端数調整（合計=totalAmount保証）
+    let currentTotal = amounts.reduce(0, +)
+    let finalRemainder = totalAmount - currentTotal
+    if finalRemainder != 0, let lastActiveIdx = proratedEntries.lastIndex(where: { $0.input.activeDays > 0 }) {
+        amounts[lastActiveIdx] += finalRemainder
+    }
+
+    return zip(inputs, amounts).map { input, amount in
+        Allocation(projectId: input.projectId, ratio: input.ratio, amount: amount)
+    }
+}
+
 // MARK: - Equal Split Allocation
 
 func calculateEqualSplitAllocations(amount: Int, projectIds: [UUID]) -> [Allocation] {
