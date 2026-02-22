@@ -30,63 +30,66 @@ struct TransactionsView: View {
     // MARK: - Body
 
     var body: some View {
-        contentView
-            .onAppear {
-                if viewModel == nil {
-                    viewModel = TransactionsViewModel(dataStore: dataStore)
-                }
+        Group {
+            if let viewModel {
+                mainContent(viewModel: viewModel)
+            } else {
+                ProgressView()
             }
+        }
+        .task {
+            if viewModel == nil {
+                viewModel = TransactionsViewModel(dataStore: dataStore)
+            }
+        }
     }
 
-    @ViewBuilder
-    private var contentView: some View {
-        if let viewModel {
-            ZStack(alignment: .bottomTrailing) {
-                VStack(spacing: 0) {
-                    headerSection(viewModel: viewModel)
-                    scrollContent(viewModel: viewModel)
-                }
-                .background(AppColors.surface)
+    private func mainContent(viewModel: TransactionsViewModel) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                headerSection(viewModel: viewModel)
+                scrollContent(viewModel: viewModel)
+            }
+            .background(AppColors.surface)
 
-                fabButton
+            fabButton
+        }
+        .sheet(isPresented: $showAddSheet) {
+            TransactionFormView(transaction: nil)
+        }
+        .sheet(isPresented: $showReceiptScanner) {
+            ReceiptScannerView()
+        }
+        .sheet(item: $selectedTransaction) { transaction in
+            TransactionDetailView(transaction: transaction)
+        }
+        .sheet(isPresented: $showFilterSheet) {
+            FilterView(filter: Binding(
+                get: { viewModel.filter },
+                set: { viewModel.filter = $0 }
+            ))
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityViewControllerWrapper(items: [csvText])
+        }
+        .alert(
+            "取引を削除",
+            isPresented: .init(
+                get: { deletingTransaction != nil },
+                set: { if !$0 { deletingTransaction = nil } }
+            )
+        ) {
+            Button("キャンセル", role: .cancel) {
+                deletingTransaction = nil
             }
-            .sheet(isPresented: $showAddSheet) {
-                TransactionFormView(transaction: nil)
-            }
-            .sheet(isPresented: $showReceiptScanner) {
-                ReceiptScannerView()
-            }
-            .sheet(item: $selectedTransaction) { transaction in
-                TransactionDetailView(transaction: transaction)
-            }
-            .sheet(isPresented: $showFilterSheet) {
-                FilterView(filter: Binding(
-                    get: { viewModel.filter },
-                    set: { viewModel.filter = $0 }
-                ))
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ActivityViewControllerWrapper(items: [csvText])
-            }
-            .alert(
-                "取引を削除",
-                isPresented: .init(
-                    get: { deletingTransaction != nil },
-                    set: { if !$0 { deletingTransaction = nil } }
-                )
-            ) {
-                Button("キャンセル", role: .cancel) {
+            Button("削除", role: .destructive) {
+                if let transaction = deletingTransaction {
+                    viewModel.deleteTransaction(id: transaction.id)
                     deletingTransaction = nil
                 }
-                Button("削除", role: .destructive) {
-                    if let transaction = deletingTransaction {
-                        viewModel.deleteTransaction(id: transaction.id)
-                        deletingTransaction = nil
-                    }
-                }
-            } message: {
-                Text("この取引を削除してもよろしいですか？")
             }
+        } message: {
+            Text("この取引を削除してもよろしいですか？")
         }
     }
 

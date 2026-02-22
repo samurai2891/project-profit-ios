@@ -100,7 +100,7 @@ struct RecurringView: View {
                 RecurringHistoryView(recurringId: target.id)
                     .environment(dataStore)
             }
-            .onAppear {
+            .task {
                 if viewModel == nil {
                     viewModel = RecurringViewModel(dataStore: dataStore)
                 }

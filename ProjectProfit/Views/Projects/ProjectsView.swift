@@ -80,7 +80,7 @@ struct ProjectsView: View {
         } message: {
             Text("\(selectedProjectIds.count)件のプロジェクトを削除しますか？関連する取引も削除されます。この操作は取り消せません。")
         }
-        .onAppear {
+        .task {
             if viewModel == nil {
                 viewModel = ProjectsViewModel(dataStore: dataStore)
             }

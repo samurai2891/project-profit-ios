@@ -61,7 +61,7 @@ struct ProjectDetailView: View {
         } message: {
             Text("この取引を削除しますか？この操作は取り消せません。")
         }
-        .onAppear {
+        .task {
             if viewModel == nil {
                 viewModel = ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
             }
