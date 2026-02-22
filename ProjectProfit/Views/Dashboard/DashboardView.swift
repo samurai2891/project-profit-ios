@@ -37,7 +37,11 @@ struct DashboardView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 headerSection(viewModel: viewModel)
+                yearNavigator(viewModel: viewModel)
                 viewModeToggle(viewModel: viewModel)
+                if viewModel.viewMode == .monthly {
+                    monthSelector(viewModel: viewModel)
+                }
                 summaryCards(viewModel: viewModel)
                 if viewModel.viewMode == .yearly { monthlyChart(viewModel: viewModel) }
                 activeProjectsSection(viewModel: viewModel)
@@ -46,6 +50,9 @@ struct DashboardView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("ダッシュボード")
+        .onAppear {
+            viewModel.reloadStartMonth()
+        }
         .refreshable {
             viewModel.refresh()
         }
@@ -67,6 +74,47 @@ struct DashboardView: View {
         .padding(.horizontal, 20)
     }
 
+    // MARK: - Year Navigator
+    private func yearNavigator(viewModel: DashboardViewModel) -> some View {
+        HStack {
+            Button {
+                viewModel.navigatePreviousYear()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppColors.primary)
+            }
+            .accessibilityLabel("前の年度")
+            .accessibilityHint("タップして前の年度を表示")
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text(viewModel.fiscalYearLabelText)
+                    .font(.headline)
+                Text(viewModel.fiscalYearPeriodText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                viewModel.navigateNextYear()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(viewModel.canNavigateNext ? AppColors.primary : AppColors.muted)
+            }
+            .disabled(!viewModel.canNavigateNext)
+            .accessibilityLabel("次の年度")
+            .accessibilityHint(viewModel.canNavigateNext ? "タップして次の年度を表示" : "現在の年度です")
+        }
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("年度切替 \(viewModel.fiscalYearLabelText)")
+    }
+
     // MARK: - Toggle
     private func viewModeToggle(viewModel: DashboardViewModel) -> some View {
         @Bindable var vm = viewModel
@@ -79,6 +127,38 @@ struct DashboardView: View {
         .padding(.horizontal, 20)
         .accessibilityLabel("表示期間の切り替え")
         .accessibilityHint("月次または年次の表示を切り替えます")
+    }
+
+    // MARK: - Month Selector
+    private func monthSelector(viewModel: DashboardViewModel) -> some View {
+        let months = viewModel.fiscalYearMonths
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(months, id: \.month) { pair in
+                        let isSelected = pair.month == viewModel.selectedMonth
+                        Button {
+                            viewModel.selectedMonth = pair.month
+                        } label: {
+                            Text("\(pair.month)月")
+                                .font(.subheadline.weight(isSelected ? .bold : .regular))
+                                .foregroundStyle(isSelected ? .white : .primary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(isSelected ? AppColors.primary : AppColors.surface)
+                                .clipShape(Capsule())
+                        }
+                        .id(pair.month)
+                        .accessibilityLabel("\(pair.month)月")
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .onAppear {
+                proxy.scrollTo(viewModel.selectedMonth, anchor: .center)
+            }
+        }
     }
 
     // MARK: - Summary Cards

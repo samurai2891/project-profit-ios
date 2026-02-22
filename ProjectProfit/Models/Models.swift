@@ -330,6 +330,16 @@ struct MonthlySummary: Identifiable {
     var id: String { month }
 }
 
+struct FiscalYearProjectSummary: Identifiable {
+    let fiscalYear: Int
+    let label: String
+    let income: Int
+    let expense: Int
+    let profit: Int
+
+    var id: Int { fiscalYear }
+}
+
 // MARK: - Filter/Sort Types
 
 struct TransactionFilter {

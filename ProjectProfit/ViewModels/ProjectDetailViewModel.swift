@@ -41,6 +41,10 @@ final class ProjectDetailViewModel {
             .sorted { $0.date > $1.date }
     }
 
+    var yearlyProfitLoss: [FiscalYearProjectSummary] {
+        dataStore.getYearlyProjectSummaries(projectId: projectId, startMonth: FiscalYearSettings.startMonth)
+    }
+
     // MARK: - Actions
 
     func deleteTransaction(id: UUID) {

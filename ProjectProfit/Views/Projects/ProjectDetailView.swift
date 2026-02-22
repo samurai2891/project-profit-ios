@@ -28,6 +28,7 @@ struct ProjectDetailView: View {
                 }
                 profitCard
                 incomeExpenseCards
+                yearlyProfitLossSection
                 recentTransactionsSection
             }
             .padding(.horizontal, 16)
@@ -211,6 +212,53 @@ private extension ProjectDetailView {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("利益 \(formatCurrency(profit))")
         .accessibilityValue(isPositive ? "黒字" : "赤字")
+    }
+}
+
+// MARK: - Yearly Profit/Loss
+
+private extension ProjectDetailView {
+
+    var yearlyProfitLossSection: some View {
+        let yearlyData = resolvedViewModel.yearlyProfitLoss
+        return Group {
+            if !yearlyData.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("年度別損益")
+                        .font(.headline)
+
+                    VStack(spacing: 8) {
+                        ForEach(yearlyData.reversed()) { fy in
+                            HStack {
+                                Text(fy.label)
+                                    .font(.subheadline.weight(.medium))
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(formatCurrency(fy.profit))
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(fy.profit >= 0 ? AppColors.success : AppColors.error)
+
+                                    Text("収入 \(formatCurrency(fy.income)) / 支出 \(formatCurrency(fy.expense))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(12)
+                            .background(AppColors.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(fy.label) 利益 \(formatCurrency(fy.profit))")
+                        }
+                    }
+                }
+                .padding(16)
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+            }
+        }
     }
 }
 

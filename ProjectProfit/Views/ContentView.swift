@@ -49,6 +49,13 @@ struct MainTabView: View {
             }
 
             NavigationStack {
+                ReportView()
+            }
+            .tabItem {
+                Label("レポート", systemImage: "chart.bar.doc.horizontal.fill")
+            }
+
+            NavigationStack {
                 SettingsView()
             }
             .tabItem {

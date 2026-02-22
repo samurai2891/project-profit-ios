@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(DataStore.self) private var dataStore
+    @AppStorage(FiscalYearSettings.userDefaultsKey) private var fiscalStartMonth = FiscalYearSettings.defaultStartMonth
     @State private var showCategorySheet = false
     @State private var showDeleteAlert = false
     @State private var showFileImporter = false
@@ -14,6 +15,9 @@ struct SettingsView: View {
             VStack(spacing: 24) {
                 // Stats
                 statsSection
+
+                // Fiscal Year
+                fiscalYearSection
 
                 // Management
                 managementSection
@@ -114,6 +118,56 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Fiscal Year
+
+    private var fiscalYearSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("会計年度")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.title3)
+                        .foregroundStyle(AppColors.warning)
+                        .frame(width: 40, height: 40)
+                        .background(AppColors.warning.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("会計年度の開始月")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(fiscalYearPeriodPreview)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Picker("開始月", selection: $fiscalStartMonth) {
+                        ForEach(1...12, id: \.self) { month in
+                            Text("\(month)月").tag(month)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityLabel("会計年度の開始月")
+                }
+                .padding(16)
+            }
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private var fiscalYearPeriodPreview: String {
+        let fy = currentFiscalYear(startMonth: fiscalStartMonth)
+        return fiscalYearPeriodLabel(fy, startMonth: fiscalStartMonth)
     }
 
     // MARK: - Management

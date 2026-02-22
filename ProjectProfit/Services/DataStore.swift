@@ -835,13 +835,15 @@ class DataStore {
 
     // MARK: - Summary Functions
 
-    func getProjectSummary(projectId: UUID) -> ProjectSummary? {
+    func getProjectSummary(projectId: UUID, startDate: Date? = nil, endDate: Date? = nil) -> ProjectSummary? {
         guard let project = getProject(id: projectId) else { return nil }
 
         var totalIncome = 0
         var totalExpense = 0
 
         for t in transactions {
+            if let start = startDate, t.date < start { continue }
+            if let end = endDate, t.date > end { continue }
             if let alloc = t.allocations.first(where: { $0.projectId == projectId }) {
                 if t.type == .income {
                     totalIncome += alloc.amount
@@ -865,8 +867,8 @@ class DataStore {
         )
     }
 
-    func getAllProjectSummaries() -> [ProjectSummary] {
-        projects.compactMap { getProjectSummary(projectId: $0.id) }
+    func getAllProjectSummaries(startDate: Date? = nil, endDate: Date? = nil) -> [ProjectSummary] {
+        projects.compactMap { getProjectSummary(projectId: $0.id, startDate: startDate, endDate: endDate) }
     }
 
     func getOverallSummary(startDate: Date? = nil, endDate: Date? = nil) -> OverallSummary {
@@ -932,6 +934,77 @@ class DataStore {
 
         return monthlyData.sorted { $0.key < $1.key }.map { key, data in
             MonthlySummary(month: key, income: data.income, expense: data.expense, profit: data.income - data.expense)
+        }
+    }
+
+    /// Returns 12 monthly summaries ordered by fiscal year months (e.g. Apr..Mar for startMonth=4).
+    func getMonthlySummaries(fiscalYear fy: Int, startMonth: Int) -> [MonthlySummary] {
+        let calendarMonths = fiscalYearCalendarMonths(fiscalYear: fy, startMonth: startMonth)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+
+        var monthlyData: [(key: String, income: Int, expense: Int)] = calendarMonths.map { pair in
+            let key = String(format: "%d-%02d", pair.year, pair.month)
+            return (key: key, income: 0, expense: 0)
+        }
+
+        let keySet = Set(monthlyData.map(\.key))
+
+        for t in transactions {
+            let month = formatter.string(from: t.date)
+            guard keySet.contains(month) else { continue }
+            guard let idx = monthlyData.firstIndex(where: { $0.key == month }) else { continue }
+            if t.type == .income {
+                monthlyData[idx].income += t.amount
+            } else {
+                monthlyData[idx].expense += t.amount
+            }
+        }
+
+        return monthlyData.map { data in
+            MonthlySummary(month: data.key, income: data.income, expense: data.expense, profit: data.income - data.expense)
+        }
+    }
+
+    /// Returns fiscal-year-by-fiscal-year summaries for a specific project.
+    func getYearlyProjectSummaries(projectId: UUID, startMonth: Int) -> [FiscalYearProjectSummary] {
+        guard getProject(id: projectId) != nil else { return [] }
+
+        // Collect all fiscal years that have transactions for this project
+        var fySet = Set<Int>()
+        for t in transactions {
+            guard t.allocations.contains(where: { $0.projectId == projectId }) else { continue }
+            fySet.insert(fiscalYear(for: t.date, startMonth: startMonth))
+        }
+
+        guard !fySet.isEmpty else { return [] }
+
+        return fySet.sorted().map { fy in
+            let start = startOfFiscalYear(fy, startMonth: startMonth)
+            let end = endOfFiscalYear(fy, startMonth: startMonth)
+
+            var income = 0
+            var expense = 0
+
+            for t in transactions {
+                guard t.date >= start, t.date <= end else { continue }
+                if let alloc = t.allocations.first(where: { $0.projectId == projectId }) {
+                    if t.type == .income {
+                        income += alloc.amount
+                    } else {
+                        expense += alloc.amount
+                    }
+                }
+            }
+
+            return FiscalYearProjectSummary(
+                fiscalYear: fy,
+                label: fiscalYearLabel(fy, startMonth: startMonth),
+                income: income,
+                expense: expense,
+                profit: income - expense
+            )
         }
     }
 
