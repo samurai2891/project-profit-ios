@@ -120,6 +120,9 @@ class DataStore {
         modelContext.insert(project)
         save()
         refreshProjects()
+        reprocessEqualAllCurrentPeriodTransactions()
+        processRecurringTransactions()
+        refreshTransactions()
         return project
     }
 
@@ -167,9 +170,13 @@ class DataStore {
             } else if statusChangedAwayFromCompleted {
                 // 両方の日付がクリアされ、かつ完了→非完了へ遷移した場合
                 reverseCompletionAllocations(projectId: id)
+                // 他のプロジェクトの日割りを再適用
+                recalculateAllPartialPeriodProjects()
             } else if previousStartDate != nil || previousCompletedAt != nil {
                 // 日割り対象だったが両方の日付がクリアされた場合、比率ベースに復元
                 reverseCompletionAllocations(projectId: id)
+                // 他のプロジェクトの日割りを再適用
+                recalculateAllPartialPeriodProjects()
             }
             processRecurringTransactions()
             refreshTransactions()
@@ -390,7 +397,8 @@ class DataStore {
         allocations: [(projectId: UUID, ratio: Int)],
         frequency: RecurringFrequency,
         dayOfMonth: Int,
-        monthOfYear: Int? = nil
+        monthOfYear: Int? = nil,
+        endDate: Date? = nil
     ) -> PPRecurringTransaction {
         let allocs: [Allocation]
         switch allocationMode {
@@ -409,7 +417,8 @@ class DataStore {
             allocations: allocs,
             frequency: frequency,
             dayOfMonth: dayOfMonth,
-            monthOfYear: monthOfYear
+            monthOfYear: monthOfYear,
+            endDate: endDate
         )
         modelContext.insert(recurring)
         save()
@@ -432,6 +441,7 @@ class DataStore {
         dayOfMonth: Int? = nil,
         monthOfYear: Int? = nil,
         isActive: Bool? = nil,
+        endDate: Date?? = nil,
         notificationTiming: NotificationTiming? = nil,
         skipDates: [Date]? = nil
     ) {
@@ -453,6 +463,7 @@ class DataStore {
         }
         if let dayOfMonth { recurring.dayOfMonth = min(28, max(1, dayOfMonth)) }
         if let isActive { recurring.isActive = isActive }
+        if let endDate { recurring.endDate = endDate }
         if let notificationTiming { recurring.notificationTiming = notificationTiming }
         if let skipDates { recurring.skipDates = skipDates }
 
@@ -494,6 +505,78 @@ class DataStore {
     }
 
     // MARK: - Pro-Rata Reallocation
+
+    /// equalAll定期取引の今期分トランザクションを、現在のアクティブプロジェクト一覧で再分配する
+    private func reprocessEqualAllCurrentPeriodTransactions() {
+        let calendar = Calendar.current
+        let today = todayDate()
+        let todayComps = calendar.dateComponents([.year, .month], from: today)
+
+        for recurring in recurringTransactions {
+            guard recurring.isActive,
+                  (recurring.allocationMode ?? .manual) == .equalAll
+            else { continue }
+
+            // この定期取引が生成した今期のトランザクションを検索
+            guard let latestTx = transactions
+                .filter({ $0.recurringId == recurring.id })
+                .sorted(by: { $0.date > $1.date })
+                .first
+            else { continue }
+
+            let txComps = calendar.dateComponents([.year, .month], from: latestTx.date)
+            let isCurrentPeriod: Bool
+            if recurring.frequency == .monthly {
+                isCurrentPeriod = txComps.year == todayComps.year && txComps.month == todayComps.month
+            } else {
+                isCurrentPeriod = txComps.year == todayComps.year
+            }
+            guard isCurrentPeriod else { continue }
+
+            // 現在のアクティブプロジェクト一覧でアロケーションを再計算
+            let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
+            let completedThisPeriod = projects.filter { p in
+                guard p.status == .completed, let completedAt = p.completedAt else { return false }
+                let compComps = calendar.dateComponents([.year, .month], from: completedAt)
+                return compComps.year == txComps.year && compComps.month == txComps.month
+            }
+            let allEligibleIds = activeProjectIds + completedThisPeriod.map(\.id)
+            guard !allEligibleIds.isEmpty else { continue }
+
+            var newAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+
+            // 日割り適用
+            let isYearly = recurring.frequency == .yearly
+            if let txYear = txComps.year, let txMonth = txComps.month {
+                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+                let needsProRata = newAllocations.contains { alloc in
+                    guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
+                    let activeDays = isYearly
+                        ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.completedAt, year: txYear)
+                        : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.completedAt, year: txYear, month: txMonth)
+                    return activeDays < totalDays
+                }
+                if needsProRata {
+                    let inputs: [HolisticProRataInput] = newAllocations.map { alloc in
+                        let project = projects.first { $0.id == alloc.projectId }
+                        let activeDays = isYearly
+                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.completedAt, year: txYear)
+                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.completedAt, year: txYear, month: txMonth)
+                        return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
+                    }
+                    newAllocations = calculateHolisticProRata(
+                        totalAmount: recurring.amount,
+                        totalDays: totalDays,
+                        inputs: inputs
+                    )
+                }
+            }
+
+            latestTx.allocations = newAllocations
+            latestTx.updatedAt = Date()
+        }
+        save()
+    }
 
     /// 完了状態が解除された場合、日割り済みアロケーションを元の比率ベースに復元する
     func reverseCompletionAllocations(projectId: UUID) {
@@ -556,7 +639,10 @@ class DataStore {
 
         for transaction in transactions {
             guard transaction.allocations.contains(where: { $0.projectId == projectId }) else { continue }
-            recalculateAllocationsForTransaction(transaction)
+            let isYearly = transaction.recurringId.flatMap { rid in
+                recurringTransactions.first { $0.id == rid }
+            }.map { $0.frequency == .yearly } ?? false
+            recalculateAllocationsForTransaction(transaction, isYearly: isYearly)
         }
         save()
     }
@@ -573,7 +659,10 @@ class DataStore {
             guard !processedIds.contains(transaction.id) else { continue }
             let hasPartialProject = transaction.allocations.contains { partialProjectIds.contains($0.projectId) }
             guard hasPartialProject else { continue }
-            recalculateAllocationsForTransaction(transaction)
+            let isYearly = transaction.recurringId.flatMap { rid in
+                recurringTransactions.first { $0.id == rid }
+            }.map { $0.frequency == .yearly } ?? false
+            recalculateAllocationsForTransaction(transaction, isYearly: isYearly)
             processedIds.insert(transaction.id)
         }
         save()
@@ -593,6 +682,12 @@ class DataStore {
 
         for recurring in recurringTransactions {
             guard recurring.isActive else { continue }
+            // endDateを過ぎた定期取引は自動停止する（過去の取引はそのまま保持）
+            if let endDate = recurring.endDate, today > endDate {
+                recurring.isActive = false
+                recurring.updatedAt = Date()
+                continue
+            }
             if (recurring.allocationMode ?? .manual) == .manual && recurring.allocations.isEmpty { continue }
 
             var shouldGenerate = false

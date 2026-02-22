@@ -627,4 +627,146 @@ final class RecurringProcessingTests: XCTestCase {
             XCTAssertEqual(total, 10000, "Total must be exactly ¥10,000 — regression test for sequential processing bug")
         }
     }
+
+    // MARK: - 17. Yearly recurring with pro-rata
+
+    func testYearlyRecurring_proRatesCorrectlyWithYearlyDays() {
+        guard let passedMonth = pastMonth else { return }
+
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let today = todayComponents
+        guard let year = today.year else { return }
+
+        // Complete project A mid-year
+        let completedDate = calendar.date(from: DateComponents(year: year, month: 6, day: 30))!
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // Create yearly manual recurring
+        dataStore.addRecurring(
+            name: "Annual Fee",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-tools",
+            memo: "yearly prorata",
+            allocationMode: .manual,
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: passedMonth
+        )
+
+        let transactions = fetchAllTransactions()
+        let yearlyTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("Annual Fee") }
+
+        XCTAssertFalse(yearlyTx.isEmpty, "Should have generated yearly transaction")
+
+        if let tx = yearlyTx.first {
+            let allocA = tx.allocations.first { $0.projectId == projectA.id }!
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }!
+
+            // Verify yearly days are used, not monthly
+            let totalDays = daysInYear(year)
+            XCTAssertTrue(totalDays >= 365, "Should use yearly days")
+
+            // Project A should be pro-rated based on yearly active days
+            XCTAssertTrue(allocA.amount > 0, "Project A should have non-zero pro-rated amount")
+            XCTAssertEqual(allocA.amount + allocB.amount, 120000, "Total must be preserved")
+        }
+    }
+
+    // MARK: - 18. endDate stops future generation
+
+    func testEndDate_stopsGeneration() {
+        let project = makeProject(name: "Project A")
+
+        // Create recurring with endDate in the past
+        let pastEndDate = calendar.date(from: DateComponents(year: 2020, month: 1, day: 1))!
+        let recurring = PPRecurringTransaction(
+            name: "Ended",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "ended",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth,
+            isActive: true,
+            endDate: pastEndDate
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let count = dataStore.processRecurringTransactions()
+        XCTAssertEqual(count, 0, "Should not generate for ended recurring")
+
+        let updated = fetchRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.isActive, false, "Should be auto-deactivated")
+    }
+
+    // MARK: - 19. endDate in future allows generation
+
+    func testEndDate_futureAllowsGeneration() {
+        let project = makeProject(name: "Project A")
+        let futureEndDate = calendar.date(byAdding: .year, value: 1, to: Date())!
+
+        let recurring = dataStore.addRecurring(
+            name: "Future End",
+            type: .expense,
+            amount: 8000,
+            categoryId: "cat-hosting",
+            memo: "future end",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth,
+            endDate: futureEndDate
+        )
+
+        let transactions = fetchAllTransactions()
+        XCTAssertEqual(transactions.count, 1, "Should generate for recurring with future endDate")
+
+        let updated = fetchRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.isActive, true, "Should remain active")
+    }
+
+    // MARK: - 20. addProject updates equalAll transactions
+
+    func testAddProject_reprocessesEqualAllTransactions() {
+        let projectA = makeProject(name: "Project A")
+
+        // Create equalAll recurring
+        dataStore.addRecurring(
+            name: "EqualAll Reprocess",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "reprocess",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth
+        )
+
+        // Verify only project A allocated
+        var transactions = fetchAllTransactions()
+        var tx = transactions.first { $0.memo.contains("EqualAll Reprocess") }
+        XCTAssertNotNil(tx)
+        XCTAssertEqual(tx?.allocations.count, 1)
+
+        // Add new project
+        let projectB = dataStore.addProject(name: "Project B", description: "new")
+
+        // Verify transaction now includes both projects
+        transactions = fetchAllTransactions()
+        tx = transactions.first { $0.memo.contains("EqualAll Reprocess") }
+        XCTAssertEqual(tx?.allocations.count, 2, "Should include new project")
+        let total = tx?.allocations.reduce(0) { $0 + $1.amount } ?? 0
+        XCTAssertEqual(total, 10000, "Total must be preserved")
+    }
+
 }

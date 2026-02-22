@@ -242,6 +242,17 @@ struct RecurringView: View {
                                 .lineLimit(1)
                         }
                     }
+
+                    if let endLabel = vm.endDateLabel(recurring) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.caption2)
+                                .foregroundStyle(AppColors.warning)
+                            Text(endLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 12)

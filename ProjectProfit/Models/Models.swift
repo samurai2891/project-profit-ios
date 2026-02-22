@@ -225,6 +225,7 @@ final class PPRecurringTransaction {
     var dayOfMonth: Int
     var monthOfYear: Int?
     var isActive: Bool
+    var endDate: Date?
     var lastGeneratedDate: Date?
     var skipDates: [Date]
     var notificationTiming: NotificationTiming
@@ -244,6 +245,7 @@ final class PPRecurringTransaction {
         dayOfMonth: Int = 1,
         monthOfYear: Int? = nil,
         isActive: Bool = true,
+        endDate: Date? = nil,
         lastGeneratedDate: Date? = nil,
         skipDates: [Date] = [],
         notificationTiming: NotificationTiming = .none,
@@ -262,6 +264,7 @@ final class PPRecurringTransaction {
         self.dayOfMonth = min(28, max(1, dayOfMonth))
         self.monthOfYear = frequency == .yearly ? monthOfYear : nil
         self.isActive = isActive
+        self.endDate = endDate
         self.lastGeneratedDate = lastGeneratedDate
         self.skipDates = skipDates
         self.notificationTiming = notificationTiming

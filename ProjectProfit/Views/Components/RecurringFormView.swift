@@ -20,6 +20,8 @@ struct RecurringFormView: View {
     @State private var allocations: [(projectId: UUID, ratio: Int)]
     @State private var memo: String
     @State private var isActive: Bool
+    @State private var hasEndDate: Bool
+    @State private var endDate: Date
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
@@ -43,6 +45,8 @@ struct RecurringFormView: View {
         )
         self._memo = State(initialValue: recurring?.memo ?? "")
         self._isActive = State(initialValue: recurring?.isActive ?? true)
+        self._hasEndDate = State(initialValue: recurring?.endDate != nil)
+        self._endDate = State(initialValue: recurring?.endDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date())!)
     }
 
     // MARK: - Computed Properties
@@ -91,6 +95,7 @@ struct RecurringFormView: View {
                             equalAllInfoSection
                         }
                         memoField
+                        endDateSection
 
                         if isEditMode {
                             activeToggle
@@ -422,6 +427,34 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - End Date Section
+
+    private var endDateSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("終了日を設定", isOn: $hasEndDate)
+                .font(.subheadline)
+                .tint(AppColors.primary)
+
+            if hasEndDate {
+                DatePicker(
+                    "終了日",
+                    selection: $endDate,
+                    in: Date()...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .environment(\.locale, Locale(identifier: "ja_JP"))
+
+                Text("この日以降は新しい取引が自動登録されません。過去の取引はそのまま保持されます。")
+                    .font(.caption2)
+                    .foregroundStyle(AppColors.muted)
+            }
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Active Toggle
 
     private var activeToggle: some View {
@@ -479,6 +512,7 @@ struct RecurringFormView: View {
 
         let categoryId = selectedCategoryId ?? ""
         let resolvedMonthOfYear = frequency == .yearly ? monthOfYear : nil
+        let resolvedEndDate: Date? = hasEndDate ? endDate : nil
 
         if let existing = recurring {
             dataStore.updateRecurring(
@@ -493,7 +527,8 @@ struct RecurringFormView: View {
                 frequency: frequency,
                 dayOfMonth: dayOfMonth,
                 monthOfYear: resolvedMonthOfYear,
-                isActive: isActive
+                isActive: isActive,
+                endDate: resolvedEndDate
             )
         } else {
             dataStore.addRecurring(
@@ -506,7 +541,8 @@ struct RecurringFormView: View {
                 allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
                 frequency: frequency,
                 dayOfMonth: dayOfMonth,
-                monthOfYear: resolvedMonthOfYear
+                monthOfYear: resolvedMonthOfYear,
+                endDate: resolvedEndDate
             )
         }
 

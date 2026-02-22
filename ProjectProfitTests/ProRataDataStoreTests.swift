@@ -718,4 +718,184 @@ final class ProRataDataStoreTests: XCTestCase {
         // 15500 * 17 / 31 = 8500
         XCTAssertEqual(allocA.amount, 8500, "Should be pro-rated after startup recalc")
     }
+
+    // MARK: - Test 20: isYearly detection in recalculateAllocationsForProject
+
+    func testRecalculateAllocationsForProject_yearlyTransaction_usesYearDays() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let today = todayComponents
+        guard let year = today.year else {
+            XCTFail("Cannot get year")
+            return
+        }
+
+        // Create a yearly recurring transaction
+        let pastMonth: Int? = (today.month ?? 1) >= 2 ? (today.month! - 1) : nil
+        guard let pMonth = pastMonth else { return } // Skip if January
+
+        let recurring = dataStore.addRecurring(
+            name: "Annual License",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-tools",
+            memo: "yearly",
+            allocationMode: .manual,
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: pMonth
+        )
+
+        // Verify transaction was generated
+        let transactions = fetchAllTransactions()
+        let yearlyTx = transactions.filter { $0.recurringId == recurring.id }
+        XCTAssertFalse(yearlyTx.isEmpty, "Should have generated yearly transaction")
+
+        guard let tx = yearlyTx.first else { return }
+
+        // Now complete project A mid-year
+        let completedDate = makeDate(year: year, month: 6, day: 30)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // Verify the yearly transaction was recalculated with yearly days (365/366)
+        let updatedTransactions = fetchAllTransactions()
+        let updatedTx = updatedTransactions.first { $0.recurringId == recurring.id }!
+        let allocA = updatedTx.allocations.first { $0.projectId == projectA.id }!
+        let allocB = updatedTx.allocations.first { $0.projectId == projectB.id }!
+
+        // allocA should use yearly days, not monthly
+        // If monthly was used incorrectly, amount would be much higher or much lower
+        let totalDays = daysInYear(year)
+        let activeDays = calculateActiveDaysInYear(startDate: nil, completedAt: completedDate, year: year)
+        let expectedA = 60000 * activeDays / totalDays
+        XCTAssertEqual(allocA.amount, expectedA, "Should use yearly day count, not monthly")
+        XCTAssertEqual(allocA.amount + allocB.amount, 120000, "Total must be preserved")
+    }
+
+    // MARK: - Test 21: addProject triggers equalAll reprocessing
+
+    func testAddProject_updatesEqualAllCurrentPeriodTransactions() {
+        let projectA = makeProject(name: "Project A")
+
+        // Create equalAll monthly recurring
+        dataStore.addRecurring(
+            name: "EqualAll Fee",
+            type: .expense,
+            amount: 12000,
+            categoryId: "cat-hosting",
+            memo: "equalall",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // Verify: only project A gets the full amount
+        var transactions = fetchAllTransactions()
+        var recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("EqualAll Fee") }
+        XCTAssertFalse(recurringTx.isEmpty, "Should have generated equalAll transaction")
+        if let tx = recurringTx.first {
+            XCTAssertEqual(tx.allocations.count, 1, "Should allocate to 1 project")
+            XCTAssertEqual(tx.allocations.first?.projectId, projectA.id)
+            XCTAssertEqual(tx.allocations.first?.amount, 12000)
+        }
+
+        // Add a new project
+        let projectB = dataStore.addProject(name: "Project B", description: "new")
+
+        // Verify: the existing transaction now includes project B
+        transactions = fetchAllTransactions()
+        recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("EqualAll Fee") }
+        if let tx = recurringTx.first {
+            XCTAssertEqual(tx.allocations.count, 2, "Should now allocate to 2 projects")
+            let hasA = tx.allocations.contains { $0.projectId == projectA.id }
+            let hasB = tx.allocations.contains { $0.projectId == projectB.id }
+            XCTAssertTrue(hasA, "Project A should still be allocated")
+            XCTAssertTrue(hasB, "New Project B should be allocated")
+            let total = tx.allocations.reduce(0) { $0 + $1.amount }
+            XCTAssertEqual(total, 12000, "Total must be preserved")
+        }
+    }
+
+    // MARK: - Test 22: endDate auto-deactivates recurring
+
+    func testProcessRecurring_endDatePassed_deactivatesRecurring() {
+        let project = makeProject(name: "Project A")
+
+        // Insert recurring directly with endDate in the past
+        let pastDate = makeDate(year: 2020, month: 1, day: 1)
+        let recurring = PPRecurringTransaction(
+            name: "Ended Recurring",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "ended",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            isActive: true,
+            endDate: pastDate
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        // Process should deactivate
+        dataStore.processRecurringTransactions()
+
+        let updated = dataStore.getRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.isActive, false, "Recurring with past endDate should be deactivated")
+        XCTAssertTrue(fetchAllTransactions().isEmpty, "No transaction should be generated for deactivated recurring")
+    }
+
+    // MARK: - Test 23: reverseCompletionAllocations recalculates remaining partials
+
+    func testReverseCompletion_recalculatesRemainingPartialProjects() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Add a transaction for March 2026 (31 days)
+        let transactionDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 31000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "reverse test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Set project B startDate to March 15 (17 days active)
+        dataStore.updateProject(id: projectB.id, startDate: makeDate(year: 2026, month: 3, day: 15))
+
+        var transactions = fetchAllTransactions()
+        var allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+        // B should be pro-rated: 15500 * 17/31 = 8500
+        XCTAssertEqual(allocB.amount, 8500, "B should be pro-rated initially")
+
+        // Complete project A on March 20
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 3, day: 20))
+
+        // Now reactivate project A
+        dataStore.updateProject(id: projectA.id, status: .active)
+
+        // After reactivation, A's allocations are restored to ratio-based first,
+        // then B's pro-rata should be re-applied
+        transactions = fetchAllTransactions()
+        allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+        let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+
+        // B still has startDate Mar 15, so should still be pro-rated
+        XCTAssertEqual(allocB.amount, 8500, "B should still be pro-rated after A reactivation")
+        XCTAssertEqual(allocA.amount + allocB.amount, 31000, "Total must be preserved")
+    }
+
 }

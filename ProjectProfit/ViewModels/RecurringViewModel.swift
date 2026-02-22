@@ -93,4 +93,9 @@ final class RecurringViewModel {
     func updateNotificationTiming(for recurring: PPRecurringTransaction, timing: NotificationTiming) {
         dataStore.updateRecurring(id: recurring.id, notificationTiming: timing)
     }
+
+    func endDateLabel(_ recurring: PPRecurringTransaction) -> String? {
+        guard let endDate = recurring.endDate else { return nil }
+        return "終了日: \(formatDate(endDate))"
+    }
 }

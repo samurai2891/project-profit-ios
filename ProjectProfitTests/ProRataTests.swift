@@ -613,4 +613,59 @@ final class ProRataTests: XCTestCase {
         )
         XCTAssertTrue(result.isEmpty)
     }
+
+    // MARK: - Holistic Pro-Rata with Yearly
+
+    func testHolistic_yearlyFrequency_totalPreserved() {
+        // 年間¥120,000、365日、3プロジェクト
+        let projectA = UUID()
+        let projectB = UUID()
+        let projectC = UUID()
+
+        let result = calculateHolisticProRata(
+            totalAmount: 120000,
+            totalDays: 365,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 40, activeDays: 90),
+                HolisticProRataInput(projectId: projectB, ratio: 30, activeDays: 365),
+                HolisticProRataInput(projectId: projectC, ratio: 30, activeDays: 180),
+            ]
+        )
+
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 120000, "Yearly total must be preserved")
+
+        let allocA = result.first { $0.projectId == projectA }!
+        // 48000 * 90/365 = 11835
+        XCTAssertEqual(allocA.amount, 11835)
+    }
+
+    func testHolistic_yearlyFrequency_singleProject_fullYear() {
+        let projectA = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 120000,
+            totalDays: 365,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 100, activeDays: 365),
+            ]
+        )
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].amount, 120000)
+    }
+
+    func testHolistic_yearlyFrequency_leapYear() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 36600,
+            totalDays: 366,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 50, activeDays: 183),
+                HolisticProRataInput(projectId: projectB, ratio: 50, activeDays: 366),
+            ]
+        )
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 36600, "Leap year total must be preserved")
+    }
+
 }

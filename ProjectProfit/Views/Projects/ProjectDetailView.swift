@@ -424,10 +424,7 @@ private struct TransactionRow: View {
     }
 
     private var allocationAmount: Int? {
-        guard transaction.allocations.count > 1 else {
-            return nil
-        }
-        return transaction.allocations
+        transaction.allocations
             .first(where: { $0.projectId == projectId })?
             .amount
     }
