@@ -137,17 +137,33 @@ struct TransactionsView: View {
         ScrollView {
             VStack(spacing: 12) {
                 summaryBar(viewModel: viewModel)
+                typeSegmentControl(viewModel: viewModel)
                 filterSortBar(viewModel: viewModel)
 
                 if viewModel.filteredTransactions.isEmpty {
                     emptyState
                 } else {
-                    transactionList(viewModel: viewModel)
+                    groupedTransactionList(viewModel: viewModel)
                 }
             }
             .padding(.horizontal)
             .padding(.bottom, 80)
         }
+    }
+
+    // MARK: - Type Segment Control
+
+    private func typeSegmentControl(viewModel: TransactionsViewModel) -> some View {
+        Picker("取引種別", selection: Binding(
+            get: { viewModel.selectedType },
+            set: { viewModel.selectedType = $0 }
+        )) {
+            Text("全て").tag(TransactionType?.none)
+            Text("収益").tag(TransactionType?.some(.income))
+            Text("経費").tag(TransactionType?.some(.expense))
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("取引種別フィルター")
     }
 
     // MARK: - Summary Bar
@@ -294,18 +310,50 @@ struct TransactionsView: View {
         .accessibilityHint("タップして昇順と降順を切り替え")
     }
 
-    // MARK: - Transaction List
+    // MARK: - Grouped Transaction List
 
-    private func transactionList(viewModel: TransactionsViewModel) -> some View {
-        LazyVStack(spacing: 8) {
-            ForEach(viewModel.filteredTransactions) { transaction in
-                TransactionCardView(
-                    transaction: transaction,
-                    onTap: { selectedTransaction = transaction },
-                    onDelete: { deletingTransaction = transaction }
-                )
+    private func groupedTransactionList(viewModel: TransactionsViewModel) -> some View {
+        LazyVStack(spacing: 16) {
+            ForEach(viewModel.groupedTransactions) { group in
+                Section {
+                    LazyVStack(spacing: 8) {
+                        ForEach(group.transactions) { transaction in
+                            TransactionCardView(
+                                transaction: transaction,
+                                onTap: { selectedTransaction = transaction },
+                                onDelete: { deletingTransaction = transaction }
+                            )
+                        }
+                    }
+                } header: {
+                    sectionHeader(group: group)
+                }
             }
         }
+    }
+
+    private func sectionHeader(group: TransactionGroup) -> some View {
+        HStack {
+            Text(group.displayLabel)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color(.label))
+
+            Spacer()
+
+            HStack(spacing: 12) {
+                Text("収益: \(formatCurrency(group.income))")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.success)
+                Text("経費: \(formatCurrency(group.expense))")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.error)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.displayLabel) 収益 \(formatCurrency(group.income)) 経費 \(formatCurrency(group.expense))")
     }
 
     // MARK: - Empty State
@@ -457,7 +505,7 @@ private struct TransactionCardView: View {
                 }
             }
 
-            Text(formatDate(transaction.date))
+            Text(formatDateShort(transaction.date))
                 .font(.caption)
                 .foregroundStyle(AppColors.muted)
 

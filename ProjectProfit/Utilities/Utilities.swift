@@ -38,6 +38,17 @@ func formatDateShort(_ date: Date) -> String {
     shortDateFormatter.string(from: date)
 }
 
+private let yearMonthFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "ja_JP")
+    f.dateFormat = "yyyy年M月"
+    return f
+}()
+
+func formatYearMonth(_ date: Date) -> String {
+    yearMonthFormatter.string(from: date)
+}
+
 func todayDate() -> Date {
     Calendar.current.startOfDay(for: Date())
 }

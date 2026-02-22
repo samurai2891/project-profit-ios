@@ -9,6 +9,7 @@ struct TransactionDetailView: View {
     @State private var showReceiptPreview = false
     @State private var showEditSheet = false
     @State private var showDeleteAlert = false
+    @State private var showRecurringHistory = false
 
     private var isIncome: Bool { transaction.type == .income }
 
@@ -20,10 +21,10 @@ struct TransactionDetailView: View {
         dataStore.getCategory(id: transaction.categoryId)?.icon ?? "ellipsis.circle"
     }
 
-    private var projectAllocations: [(name: String, ratio: Int, amount: Int)] {
+    private var projectAllocations: [(projectId: UUID, name: String, ratio: Int, amount: Int)] {
         transaction.allocations.compactMap { alloc in
             guard let project = dataStore.getProject(id: alloc.projectId) else { return nil }
-            return (name: project.name, ratio: alloc.ratio, amount: alloc.amount)
+            return (projectId: alloc.projectId, name: project.name, ratio: alloc.ratio, amount: alloc.amount)
         }
     }
 
@@ -72,6 +73,9 @@ struct TransactionDetailView: View {
                     view
                 }
             }
+            .navigationDestination(for: UUID.self) { projectId in
+                ProjectDetailView(projectId: projectId)
+            }
             .alert("取引を削除", isPresented: $showDeleteAlert) {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) {
@@ -80,6 +84,11 @@ struct TransactionDetailView: View {
                 }
             } message: {
                 Text("この取引を削除してもよろしいですか？")
+            }
+            .sheet(isPresented: $showRecurringHistory) {
+                if let recurringId = transaction.recurringId {
+                    RecurringHistoryView(recurringId: recurringId)
+                }
             }
         }
     }
@@ -131,17 +140,9 @@ struct TransactionDetailView: View {
                     .font(.subheadline)
             }
 
-            if transaction.recurringId != nil {
+            if let recurringId = transaction.recurringId {
                 Divider().padding(.leading, 44)
-                infoRow(label: "定期取引", icon: "repeat") {
-                    Text("自動生成")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(AppColors.primary.opacity(0.1))
-                        .foregroundStyle(AppColors.primary)
-                        .clipShape(Capsule())
-                }
+                recurringInfoRow(recurringId: recurringId)
             }
         }
         .background(Color(.systemBackground))
@@ -166,6 +167,41 @@ struct TransactionDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private func recurringInfoRow(recurringId: UUID) -> some View {
+        let recurring = dataStore.getRecurring(id: recurringId)
+        return Button {
+            showRecurringHistory = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "repeat")
+                    .font(.subheadline)
+                    .foregroundStyle(AppColors.primary)
+                    .frame(width: 24)
+                Text("定期取引")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let recurring {
+                    Text("\(recurring.name) (\(recurring.frequency.label))")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppColors.primary)
+                } else {
+                    Text("自動生成")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(AppColors.primary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("定期取引: \(recurring?.name ?? "自動生成")")
+        .accessibilityHint("タップして定期取引の履歴を表示")
     }
 
     // MARK: - Line Items Section
@@ -227,25 +263,34 @@ struct TransactionDetailView: View {
             }
 
             ForEach(Array(projectAllocations.enumerated()), id: \.offset) { _, alloc in
-                HStack {
-                    Text(alloc.name)
-                        .font(.subheadline)
-                    Spacer()
-                    Text("\(alloc.ratio)%")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(AppColors.primary.opacity(0.1))
-                        .foregroundStyle(AppColors.primary)
-                        .clipShape(Capsule())
-                    Text(formatCurrency(alloc.amount))
-                        .font(.subheadline.weight(.medium))
-                        .frame(width: 80, alignment: .trailing)
+                NavigationLink(value: alloc.projectId) {
+                    HStack {
+                        Text(alloc.name)
+                            .font(.subheadline)
+                            .foregroundStyle(Color(.label))
+                        Spacer()
+                        Text("\(alloc.ratio)%")
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(AppColors.primary.opacity(0.1))
+                            .foregroundStyle(AppColors.primary)
+                            .clipShape(Capsule())
+                        Text(formatCurrency(alloc.amount))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color(.label))
+                            .frame(width: 80, alignment: .trailing)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AppColors.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(AppColors.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel("\(alloc.name) \(alloc.ratio)パーセント \(formatCurrency(alloc.amount))")
+                .accessibilityHint("タップしてプロジェクト詳細を表示")
             }
         }
         .padding(16)
