@@ -32,10 +32,9 @@ struct RecurringHistoryView: View {
             .navigationTitle("定期取引履歴")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .foregroundStyle(.primary)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
                     }
                 }
             }

@@ -44,10 +44,8 @@ struct ProjectsView: View {
             }
         }
         .navigationTitle("プロジェクト")
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                headerView
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 if editMode == .active {
                     Button("完了") {
@@ -91,16 +89,6 @@ struct ProjectsView: View {
 // MARK: - Subviews
 
 private extension ProjectsView {
-
-    var headerView: some View {
-        VStack(spacing: 2) {
-            Text("プロジェクト")
-                .font(.headline)
-            Text("\(resolvedViewModel.projectCount)件")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
 
     var filterTabsView: some View {
         ScrollView(.horizontal, showsIndicators: false) {

@@ -33,6 +33,7 @@ struct ReportView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("レポート")
+        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             viewModel.reloadStartMonth()
         }

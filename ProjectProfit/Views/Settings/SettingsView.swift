@@ -32,6 +32,7 @@ struct SettingsView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("設定")
+        .navigationBarTitleDisplayMode(.large)
         .alert("データを削除", isPresented: $showDeleteAlert) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {

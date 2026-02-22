@@ -50,6 +50,7 @@ struct DashboardView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("ダッシュボード")
+        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             viewModel.reloadStartMonth()
         }

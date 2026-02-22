@@ -3,7 +3,6 @@ import SwiftUI
 
 struct RecurringView: View {
     @Environment(DataStore.self) private var dataStore
-    @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: RecurringViewModel?
     @State private var showFormSheet = false
@@ -18,92 +17,79 @@ struct RecurringView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppColors.surface
-                    .ignoresSafeArea()
+        ZStack {
+            AppColors.surface
+                .ignoresSafeArea()
 
-                if let vm = viewModel {
-                    if vm.hasRecurringTransactions {
-                        contentView(vm)
-                    } else {
-                        emptyStateView
-                    }
+            if let vm = viewModel {
+                if vm.hasRecurringTransactions {
+                    contentView(vm)
+                } else {
+                    emptyStateView
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .foregroundStyle(.primary)
-                    }
-                    .accessibilityLabel("戻る")
-                    .accessibilityHint("タップして前の画面に戻る")
+        }
+        .navigationTitle("定期取引")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showFormSheet = true }) {
+                    Image(systemName: "plus")
+                        .foregroundStyle(AppColors.primary)
                 }
-                ToolbarItem(placement: .principal) {
-                    Text("定期取引")
-                        .font(.headline)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showFormSheet = true }) {
-                        Image(systemName: "plus")
-                            .foregroundStyle(AppColors.primary)
-                    }
-                    .accessibilityLabel("新規追加")
-                    .accessibilityHint("タップして新しい定期取引を作成")
-                }
+                .accessibilityLabel("新規追加")
+                .accessibilityHint("タップして新しい定期取引を作成")
             }
-            .sheet(isPresented: $showFormSheet, onDismiss: { editingRecurring = nil }) {
-                RecurringFormView(recurring: editingRecurring)
-                    .environment(dataStore)
+        }
+        .sheet(isPresented: $showFormSheet, onDismiss: { editingRecurring = nil }) {
+            RecurringFormView(recurring: editingRecurring)
+                .environment(dataStore)
+        }
+        .alert("次回をスキップ", isPresented: $showSkipAlert) {
+            Button("キャンセル", role: .cancel) {
+                skipTarget = nil
             }
-            .alert("次回をスキップ", isPresented: $showSkipAlert) {
-                Button("キャンセル", role: .cancel) {
-                    skipTarget = nil
+            Button("スキップ", role: .destructive) {
+                if let target = skipTarget, let vm = viewModel {
+                    vm.confirmSkip(target)
                 }
-                Button("スキップ", role: .destructive) {
-                    if let target = skipTarget, let vm = viewModel {
-                        vm.confirmSkip(target)
-                    }
-                    skipTarget = nil
-                }
-            } message: {
-                if let target = skipTarget {
-                    Text("\(target.name)の次回登録をスキップしますか？")
-                }
+                skipTarget = nil
             }
-            .alert("削除の確認", isPresented: $showDeleteAlert) {
-                Button("キャンセル", role: .cancel) {
-                    deleteTarget = nil
-                }
-                Button("削除", role: .destructive) {
-                    if let target = deleteTarget, let vm = viewModel {
-                        vm.deleteRecurring(target)
-                    }
-                    deleteTarget = nil
-                }
-            } message: {
-                if let target = deleteTarget {
-                    Text("\(target.name)を削除しますか？この操作は取り消せません。")
-                }
+        } message: {
+            if let target = skipTarget {
+                Text("\(target.name)の次回登録をスキップしますか？")
             }
-            .sheet(item: $notificationTarget) { target in
-                NotificationSettingsView(
-                    currentTiming: target.notificationTiming,
-                    onSave: { timing in
-                        viewModel?.updateNotificationTiming(for: target, timing: timing)
-                    }
-                )
+        }
+        .alert("削除の確認", isPresented: $showDeleteAlert) {
+            Button("キャンセル", role: .cancel) {
+                deleteTarget = nil
             }
-            .sheet(item: $historyTarget) { target in
-                RecurringHistoryView(recurringId: target.id)
-                    .environment(dataStore)
-            }
-            .task {
-                if viewModel == nil {
-                    viewModel = RecurringViewModel(dataStore: dataStore)
+            Button("削除", role: .destructive) {
+                if let target = deleteTarget, let vm = viewModel {
+                    vm.deleteRecurring(target)
                 }
+                deleteTarget = nil
+            }
+        } message: {
+            if let target = deleteTarget {
+                Text("\(target.name)を削除しますか？この操作は取り消せません。")
+            }
+        }
+        .sheet(item: $notificationTarget) { target in
+            NotificationSettingsView(
+                currentTiming: target.notificationTiming,
+                onSave: { timing in
+                    viewModel?.updateNotificationTiming(for: target, timing: timing)
+                }
+            )
+        }
+        .sheet(item: $historyTarget) { target in
+            RecurringHistoryView(recurringId: target.id)
+                .environment(dataStore)
+        }
+        .task {
+            if viewModel == nil {
+                viewModel = RecurringViewModel(dataStore: dataStore)
             }
         }
     }

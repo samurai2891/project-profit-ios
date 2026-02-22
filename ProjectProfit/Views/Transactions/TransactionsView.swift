@@ -46,13 +46,34 @@ struct TransactionsView: View {
 
     private func mainContent(viewModel: TransactionsViewModel) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                headerSection(viewModel: viewModel)
-                scrollContent(viewModel: viewModel)
-            }
-            .background(AppColors.surface)
+            scrollContent(viewModel: viewModel)
+                .background(AppColors.surface)
 
             fabButton
+        }
+        .navigationTitle("取引履歴")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showReceiptScanner = true
+                } label: {
+                    Image(systemName: "doc.text.viewfinder")
+                }
+                .accessibilityLabel("レシート読取")
+                .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    csvText = viewModel.generateCSVText()
+                    showShareSheet = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("CSV出力")
+                .accessibilityHint("タップして取引データをCSVで共有")
+            }
         }
         .sheet(isPresented: $showAddSheet) {
             TransactionFormView(transaction: nil)
@@ -93,52 +114,19 @@ struct TransactionsView: View {
         }
     }
 
-    // MARK: - Header
-
-    private func headerSection(viewModel: TransactionsViewModel) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("取引履歴")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                Text("\(viewModel.filteredTransactions.count)件")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.muted)
-            }
-
-            Spacer()
-
-            Button {
-                showReceiptScanner = true
-            } label: {
-                Image(systemName: "doc.text.viewfinder")
-                    .font(.title3)
-                    .foregroundStyle(AppColors.primary)
-            }
-            .accessibilityLabel("レシート読取")
-            .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
-
-            Button {
-                csvText = viewModel.generateCSVText()
-                showShareSheet = true
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.title3)
-                    .foregroundStyle(AppColors.primary)
-            }
-            .accessibilityLabel("CSV出力")
-            .accessibilityHint("タップして取引データをCSVで共有")
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
-    }
-
     // MARK: - Scroll Content
 
     private func scrollContent(viewModel: TransactionsViewModel) -> some View {
         ScrollView {
             VStack(spacing: 12) {
+                HStack {
+                    Text("\(viewModel.filteredTransactions.count)件")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.muted)
+                    Spacer()
+                }
+                .padding(.top, 4)
+
                 summaryBar(viewModel: viewModel)
                 typeSegmentControl(viewModel: viewModel)
                 filterSortBar(viewModel: viewModel)
