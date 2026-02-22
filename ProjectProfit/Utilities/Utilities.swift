@@ -172,7 +172,66 @@ func daysInMonth(year: Int, month: Int) -> Int {
     return range.count
 }
 
-/// プロジェクト完了に伴いアロケーションを日割り再分配する
+/// 月内の稼働日数を計算する（開始日と完了日の両方を考慮）
+func calculateActiveDaysInMonth(
+    startDate: Date?, completedAt: Date?, year: Int, month: Int
+) -> Int {
+    let calendar = Calendar.current
+    guard let periodStart = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else { return 0 }
+    let totalDays = daysInMonth(year: year, month: month)
+    guard let periodEnd = calendar.date(from: DateComponents(year: year, month: month, day: totalDays)) else { return 0 }
+
+    let effectiveStart: Date
+    if let startDate {
+        let startDay = calendar.startOfDay(for: startDate)
+        effectiveStart = max(periodStart, startDay)
+    } else {
+        effectiveStart = periodStart
+    }
+
+    let effectiveEnd: Date
+    if let completedAt {
+        let completedDay = calendar.startOfDay(for: completedAt)
+        effectiveEnd = min(periodEnd, completedDay)
+    } else {
+        effectiveEnd = periodEnd
+    }
+
+    if effectiveStart > effectiveEnd { return 0 }
+    return (calendar.dateComponents([.day], from: effectiveStart, to: effectiveEnd).day ?? 0) + 1
+}
+
+/// 年間の稼働日数を計算する（開始日と完了日の両方を考慮）
+func calculateActiveDaysInYear(
+    startDate: Date?, completedAt: Date?, year: Int
+) -> Int {
+    let calendar = Calendar.current
+    guard let periodStart = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+          let periodEnd = calendar.date(from: DateComponents(year: year, month: 12, day: 31))
+    else { return 0 }
+
+    let effectiveStart: Date
+    if let startDate {
+        let startDay = calendar.startOfDay(for: startDate)
+        effectiveStart = max(periodStart, startDay)
+    } else {
+        effectiveStart = periodStart
+    }
+
+    let effectiveEnd: Date
+    if let completedAt {
+        let completedDay = calendar.startOfDay(for: completedAt)
+        effectiveEnd = min(periodEnd, completedDay)
+    } else {
+        effectiveEnd = periodEnd
+    }
+
+    if effectiveStart > effectiveEnd { return 0 }
+    return (calendar.dateComponents([.day], from: effectiveStart, to: effectiveEnd).day ?? 0) + 1
+}
+
+/// プロジェクト完了/開始に伴いアロケーションを日割り再分配する
+/// - startDate: 開始日（nilの場合は期間の初日から稼働とみなす）
 /// - completedAt: 完了日
 /// - transactionDate: 取引の対象月（この月の1日〜末日で計算）
 /// - originalAllocations: 元のアロケーション
@@ -184,28 +243,22 @@ func redistributeAllocationsForCompletion(
     completedAt: Date,
     transactionDate: Date,
     originalAllocations: [Allocation],
-    activeProjectIds: Set<UUID>
+    activeProjectIds: Set<UUID>,
+    startDate: Date? = nil
 ) -> [Allocation] {
     let calendar = Calendar.current
     let txComps = calendar.dateComponents([.year, .month], from: transactionDate)
-    let compComps = calendar.dateComponents([.year, .month, .day], from: completedAt)
-    guard let txYear = txComps.year, let txMonth = txComps.month,
-          let compYear = compComps.year, let compMonth = compComps.month,
-          let compDay = compComps.day
+    guard let txYear = txComps.year, let txMonth = txComps.month
     else { return originalAllocations }
 
     let totalDays = daysInMonth(year: txYear, month: txMonth)
 
-    // 完了プロジェクトの稼働日数を決定
-    let activeDays: Int
-    if compYear == txYear && compMonth == txMonth {
-        // 同月に完了: 完了日までの日数
-        activeDays = compDay
-    } else if compYear < txYear || (compYear == txYear && compMonth < txMonth) {
-        // 完了月より後の月: 稼働日数0
-        activeDays = 0
-    } else {
-        // 完了月より前の月: フル稼働
+    let activeDays = calculateActiveDaysInMonth(
+        startDate: startDate, completedAt: completedAt, year: txYear, month: txMonth
+    )
+
+    // フル稼働なら変更不要
+    if activeDays >= totalDays {
         return originalAllocations
     }
 
@@ -271,7 +324,7 @@ func daysInYear(_ year: Int) -> Int {
     return calendar.dateComponents([.day], from: start, to: end).day ?? 365
 }
 
-/// 年額取引のプロジェクト完了に伴い、年間の稼働期間に基づいて日割り再分配する
+/// 年額取引のプロジェクト完了/開始に伴い、年間の稼働期間に基づいて日割り再分配する
 /// - transactionYear: 取引の対象年（この年の1月1日〜12月31日で計算）
 func redistributeAllocationsForYearlyCompletion(
     totalAmount: Int,
@@ -279,27 +332,18 @@ func redistributeAllocationsForYearlyCompletion(
     completedAt: Date,
     transactionYear: Int,
     originalAllocations: [Allocation],
-    activeProjectIds: Set<UUID>
+    activeProjectIds: Set<UUID>,
+    startDate: Date? = nil
 ) -> [Allocation] {
-    let calendar = Calendar.current
-    let compYear = calendar.component(.year, from: completedAt)
-
     let totalDays = daysInYear(transactionYear)
 
-    // 完了プロジェクトの年間稼働日数を決定
-    let activeDays: Int
-    if compYear > transactionYear {
-        // 完了年が取引年より後: フル稼働
+    let activeDays = calculateActiveDaysInYear(
+        startDate: startDate, completedAt: completedAt, year: transactionYear
+    )
+
+    // フル稼働なら変更不要
+    if activeDays >= totalDays {
         return originalAllocations
-    } else if compYear < transactionYear {
-        // 完了年が取引年より前: 稼働日数0
-        activeDays = 0
-    } else {
-        // 同年に完了: 年初から完了日までの日数
-        guard let yearStart = calendar.date(from: DateComponents(year: transactionYear, month: 1, day: 1)) else {
-            return originalAllocations
-        }
-        activeDays = (calendar.dateComponents([.day], from: yearStart, to: completedAt).day ?? 0) + 1
     }
 
     guard let completedAlloc = originalAllocations.first(where: { $0.projectId == completedProjectId }) else {

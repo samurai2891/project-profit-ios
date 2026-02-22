@@ -17,7 +17,7 @@ struct ContentView: View {
         .task {
             let store = DataStore(modelContext: modelContext)
             store.loadData()
-            store.recalculateAllCompletedProjects()
+            store.recalculateAllPartialPeriodProjects()
             _ = store.processRecurringTransactions()
             self.dataStore = store
         }

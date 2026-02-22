@@ -833,4 +833,25 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(project.status, .completed)
         XCTAssertNotNil(project.completedAt)
     }
+
+    // MARK: - PPProject startDate
+
+    func testProjectInitDefaultStartDateNil() {
+        let project = PPProject(name: "Test")
+        XCTAssertNil(project.startDate)
+    }
+
+    func testProjectInitWithStartDate() {
+        let date = Date()
+        let project = PPProject(name: "Test", startDate: date)
+        XCTAssertEqual(project.startDate, date)
+    }
+
+    func testProjectInitWithStartDateAndCompletedAt() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let end = Date(timeIntervalSince1970: 2_000_000)
+        let project = PPProject(name: "Test", startDate: start, completedAt: end)
+        XCTAssertEqual(project.startDate, start)
+        XCTAssertEqual(project.completedAt, end)
+    }
 }

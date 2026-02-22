@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -28,6 +28,7 @@
 		4FCC939E224F53CF577FDC77 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44EE0CC65692704E599F3253 /* Logger.swift */; };
 		51A3D7DC3AA898DB588B2F1A /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12D2CDA98F6E670075284410 /* NotificationService.swift */; };
 		5587567D731B881DDA4792D2 /* ProjectDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5580B9971CC999A5B7A1396B /* ProjectDetailViewModel.swift */; };
+		59125D3D62BE2DF4A05C7DA5 /* TransactionHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CC302CCC2D662F715B7F9BD /* TransactionHistoryTests.swift */; };
 		5AC5054322DA67C9B4B446D1 /* ReceiptScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A2B2D3D8EC7CFF1C077573 /* ReceiptScannerService.swift */; };
 		5B1D744286736A44CD4F348B /* RecurringFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A95C3D59FD40A677B5178C /* RecurringFormView.swift */; };
 		6F6FC4351375668C83CB9D9C /* RegexReceiptParserLineItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */; };
@@ -38,6 +39,7 @@
 		8474293679CF3D6378432F87 /* ReceiptReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C23EF9E9AE689ED1638AE67 /* ReceiptReviewView.swift */; };
 		8B96D397508889B28E10BA50 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F9CAEBBA2E6CF2E58E2161 /* AppColors.swift */; };
 		9A8E241A275149284C5BEA43 /* UtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */; };
+		9F115E26752B46F9C75F8482 /* ProRataDataStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0A86F0677FFFDD0CAE723A /* ProRataDataStoreTests.swift */; };
 		AE176AEF18562606801FC6BA /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D457467467CE1C760BA893F7 /* Utilities.swift */; };
 		AF81A27AC659B89B013EB08E /* CategoryManageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42039D8715E69297CAB8D284 /* CategoryManageView.swift */; };
 		B6C6F24C707483A67E2BBB86 /* LineItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD4A493F79541BF4E5906DF /* LineItemTests.swift */; };
@@ -48,10 +50,8 @@
 		BEC6C522762268850E1861B4 /* TransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA4945543C8EB15B3D169CE /* TransactionsView.swift */; };
 		C0C01CE05331DD8AF903F0B2 /* ReceiptImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A73E9F970A14A82011654E0 /* ReceiptImageStore.swift */; };
 		CA46C06F0745309F9C06F7E2 /* ProjectFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD8A10AEB255406F2B83859 /* ProjectFormView.swift */; };
+		CE599106503E91C5A360DBD2 /* ProRataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36B3E39C115B30D51EE941D /* ProRataTests.swift */; };
 		D6556BAF29115963203B63D9 /* RecurringProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9533EBD75C0132D1F9B6FB /* RecurringProcessingTests.swift */; };
-		1B26BFBEAE8C4443B318D2EB /* ProRataDataStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEF81435280497CB4CC23CB /* ProRataDataStoreTests.swift */; };
-		02DA9BCBBE5E41D5B466F6F9 /* ProRataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C228CA718D4B8F9883844E /* ProRataTests.swift */; };
-		F3E2D1C0B9A8F7E6D5C4B3A2 /* TransactionHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* TransactionHistoryTests.swift */; };
 		DA095F7502423FBE9AE8CA74 /* ReceiptData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F48559A7F4D6BBE5121CDAF /* ReceiptData.swift */; };
 		E93C8CBF074012BDC3500DF8 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB74A0CA5C604E4D9817FA /* ProjectsViewModel.swift */; };
 		F924271069F2DA74FA3BED88 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E82AE221FF384FA7F76E653 /* AppError.swift */; };
@@ -76,8 +76,7 @@
 		1C23EF9E9AE689ED1638AE67 /* ReceiptReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptReviewView.swift; sourceTree = "<group>"; };
 		2AD4A493F79541BF4E5906DF /* LineItemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineItemTests.swift; sourceTree = "<group>"; };
 		2B9533EBD75C0132D1F9B6FB /* RecurringProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringProcessingTests.swift; sourceTree = "<group>"; };
-		29C228CA718D4B8F9883844E /* ProRataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataTests.swift; sourceTree = "<group>"; };
-		ADEF81435280497CB4CC23CB /* ProRataDataStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataDataStoreTests.swift; sourceTree = "<group>"; };
+		2CC302CCC2D662F715B7F9BD /* TransactionHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionHistoryTests.swift; sourceTree = "<group>"; };
 		2CD8A10AEB255406F2B83859 /* ProjectFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFormView.swift; sourceTree = "<group>"; };
 		30F820BD451D85876D9709F3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		34972547443B4D43E57421DF /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
@@ -87,7 +86,7 @@
 		44EE0CC65692704E599F3253 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		492371A3D955705C4D79A8B3 /* FilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterView.swift; sourceTree = "<group>"; };
 		4F48559A7F4D6BBE5121CDAF /* ReceiptData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptData.swift; sourceTree = "<group>"; };
-		52623B849DAB74FB8521FE1C /* ProjectProfit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProjectProfit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		52623B849DAB74FB8521FE1C /* ProjectProfit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ProjectProfit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		54A95C3D59FD40A677B5178C /* RecurringFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringFormView.swift; sourceTree = "<group>"; };
 		5532FFAAEC276A9776BB1855 /* DataStoreSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreSummaryTests.swift; sourceTree = "<group>"; };
 		5580B9971CC999A5B7A1396B /* ProjectDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailViewModel.swift; sourceTree = "<group>"; };
@@ -104,17 +103,18 @@
 		BA5B687F55BE7167FE6A6C0C /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		BB232AA65A4C5F8F6DCDFE7E /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilitiesTests.swift; sourceTree = "<group>"; };
+		CF0A86F0677FFFDD0CAE723A /* ProRataDataStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataDataStoreTests.swift; sourceTree = "<group>"; };
 		D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreCRUDTests.swift; sourceTree = "<group>"; };
 		D2FB74A0CA5C604E4D9817FA /* ProjectsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsViewModel.swift; sourceTree = "<group>"; };
 		D457467467CE1C760BA893F7 /* Utilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities.swift; sourceTree = "<group>"; };
 		D4F3BDCB029F505713916303 /* TransactionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsViewModel.swift; sourceTree = "<group>"; };
 		DBA4945543C8EB15B3D169CE /* TransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsView.swift; sourceTree = "<group>"; };
+		E36B3E39C115B30D51EE941D /* ProRataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataTests.swift; sourceTree = "<group>"; };
 		E381DD792F5D179A094CB2F9 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
 		E4FE6147CA6556C0ACC0686A /* RecurringViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringViewModel.swift; sourceTree = "<group>"; };
 		E6DE69D5ED07599981786FE9 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
 		F0EE00EFF66B281A5CDB89FE /* TransactionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionFormView.swift; sourceTree = "<group>"; };
 		F1052AB7B6FA648C63657462 /* RecurringHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringHistoryView.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F6A7B8C9D0E1F2 /* TransactionHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionHistoryTests.swift; sourceTree = "<group>"; };
 		F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegexReceiptParserLineItemTests.swift; sourceTree = "<group>"; };
 		F99B1D02EFBCB0EE2D7689AD /* ProjectProfitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ProjectProfitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FCC59103F6625E2725107249 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
@@ -174,12 +174,12 @@
 				5532FFAAEC276A9776BB1855 /* DataStoreSummaryTests.swift */,
 				2AD4A493F79541BF4E5906DF /* LineItemTests.swift */,
 				E381DD792F5D179A094CB2F9 /* ModelsTests.swift */,
-				ADEF81435280497CB4CC23CB /* ProRataDataStoreTests.swift */,
-				29C228CA718D4B8F9883844E /* ProRataTests.swift */,
+				CF0A86F0677FFFDD0CAE723A /* ProRataDataStoreTests.swift */,
+				E36B3E39C115B30D51EE941D /* ProRataTests.swift */,
 				0780371B937F949A496304F6 /* ReceiptImageStoreTests.swift */,
 				2B9533EBD75C0132D1F9B6FB /* RecurringProcessingTests.swift */,
 				F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */,
-				A1B2C3D4E5F6A7B8C9D0E1F2 /* TransactionHistoryTests.swift */,
+				2CC302CCC2D662F715B7F9BD /* TransactionHistoryTests.swift */,
 				BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */,
 			);
 			path = ProjectProfitTests;
@@ -354,6 +354,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					B0EC5EFA88C12CE310144BE3 = {
+						DevelopmentTeam = 52PPJXD67Z;
 						ProvisioningStyle = Automatic;
 					};
 					CEBE2334F607ECBED5AC3038 = {
@@ -372,6 +373,7 @@
 			);
 			mainGroup = BA1B761AD13397E8642DB9D4;
 			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -444,12 +446,12 @@
 				13B331FCA855B8C13ECAE210 /* DataStoreSummaryTests.swift in Sources */,
 				B6C6F24C707483A67E2BBB86 /* LineItemTests.swift in Sources */,
 				4A8130E3078B559221E684B6 /* ModelsTests.swift in Sources */,
-				1B26BFBEAE8C4443B318D2EB /* ProRataDataStoreTests.swift in Sources */,
-				02DA9BCBBE5E41D5B466F6F9 /* ProRataTests.swift in Sources */,
+				9F115E26752B46F9C75F8482 /* ProRataDataStoreTests.swift in Sources */,
+				CE599106503E91C5A360DBD2 /* ProRataTests.swift in Sources */,
 				2F10D4786F8242841B143F3E /* ReceiptImageStoreTests.swift in Sources */,
 				D6556BAF29115963203B63D9 /* RecurringProcessingTests.swift in Sources */,
 				6F6FC4351375668C83CB9D9C /* RegexReceiptParserLineItemTests.swift in Sources */,
-				F3E2D1C0B9A8F7E6D5C4B3A2 /* TransactionHistoryTests.swift in Sources */,
+				59125D3D62BE2DF4A05C7DA5 /* TransactionHistoryTests.swift in Sources */,
 				9A8E241A275149284C5BEA43 /* UtilitiesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

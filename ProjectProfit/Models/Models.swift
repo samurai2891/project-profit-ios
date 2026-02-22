@@ -118,6 +118,7 @@ final class PPProject {
     var name: String
     var projectDescription: String
     var status: ProjectStatus
+    var startDate: Date?
     var completedAt: Date?
     var createdAt: Date
     var updatedAt: Date
@@ -127,6 +128,7 @@ final class PPProject {
         name: String,
         projectDescription: String = "",
         status: ProjectStatus = .active,
+        startDate: Date? = nil,
         completedAt: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -135,6 +137,7 @@ final class PPProject {
         self.name = name
         self.projectDescription = projectDescription
         self.status = status
+        self.startDate = startDate
         self.completedAt = completedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt

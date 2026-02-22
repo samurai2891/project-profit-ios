@@ -288,4 +288,187 @@ final class ProRataTests: XCTestCase {
         // 36600 * 1 / 366 = 100
         XCTAssertEqual(allocA.amount, 100)
     }
+
+    // MARK: - calculateActiveDaysInMonth
+
+    func testActiveDaysInMonth_startDateOnly_midMonth() {
+        // Project starts Mar 15, month is March (31 days)
+        // Active: Mar 15..31 = 17 days
+        let startDate = makeDate(year: 2026, month: 3, day: 15)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: nil, year: 2026, month: 3)
+        XCTAssertEqual(result, 17)
+    }
+
+    func testActiveDaysInMonth_startDateOnly_outsideMonth() {
+        // Project starts Jan 10, month is March -> full month (31 days)
+        let startDate = makeDate(year: 2026, month: 1, day: 10)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: nil, year: 2026, month: 3)
+        XCTAssertEqual(result, 31)
+    }
+
+    func testActiveDaysInMonth_startDateOnly_afterMonth() {
+        // Project starts Apr 1, month is March -> 0 days
+        let startDate = makeDate(year: 2026, month: 4, day: 1)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: nil, year: 2026, month: 3)
+        XCTAssertEqual(result, 0)
+    }
+
+    func testActiveDaysInMonth_completedAtOnly_backwardCompat() {
+        // Project completes Feb 15 in 28-day month
+        // Active: Feb 1..15 = 15 days
+        let completedAt = makeDate(year: 2026, month: 2, day: 15)
+        let result = calculateActiveDaysInMonth(startDate: nil, completedAt: completedAt, year: 2026, month: 2)
+        XCTAssertEqual(result, 15)
+    }
+
+    func testActiveDaysInMonth_bothSet_sameMonth() {
+        // Start Mar 10, complete Mar 20 in a 31-day month
+        // Active: Mar 10..20 = 11 days
+        let startDate = makeDate(year: 2026, month: 3, day: 10)
+        let completedAt = makeDate(year: 2026, month: 3, day: 20)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: completedAt, year: 2026, month: 3)
+        XCTAssertEqual(result, 11)
+    }
+
+    func testActiveDaysInMonth_bothSet_outsideMonth() {
+        // Start Jan 1, complete Dec 31 -> March is full month
+        let startDate = makeDate(year: 2026, month: 1, day: 1)
+        let completedAt = makeDate(year: 2026, month: 12, day: 31)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: completedAt, year: 2026, month: 3)
+        XCTAssertEqual(result, 31)
+    }
+
+    func testActiveDaysInMonth_nilNil_fullMonth() {
+        // Both nil -> full month
+        let result = calculateActiveDaysInMonth(startDate: nil, completedAt: nil, year: 2026, month: 4)
+        XCTAssertEqual(result, 30)
+    }
+
+    func testActiveDaysInMonth_leapYearFebruary() {
+        // Feb 2024 has 29 days, start Feb 10
+        let startDate = makeDate(year: 2024, month: 2, day: 10)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: nil, year: 2024, month: 2)
+        XCTAssertEqual(result, 20) // Feb 10..29 = 20 days
+    }
+
+    // MARK: - calculateActiveDaysInYear
+
+    func testActiveDaysInYear_startDateOnly() {
+        // Project starts Jul 1 in 2025 (non-leap, 365 days)
+        // Active: Jul 1..Dec 31 = 184 days
+        let startDate = makeDate(year: 2025, month: 7, day: 1)
+        let result = calculateActiveDaysInYear(startDate: startDate, completedAt: nil, year: 2025)
+        XCTAssertEqual(result, 184)
+    }
+
+    func testActiveDaysInYear_completedAtOnly() {
+        // Project completes Mar 31 in 2025
+        // Active: Jan 1..Mar 31 = 90 days
+        let completedAt = makeDate(year: 2025, month: 3, day: 31)
+        let result = calculateActiveDaysInYear(startDate: nil, completedAt: completedAt, year: 2025)
+        XCTAssertEqual(result, 90)
+    }
+
+    func testActiveDaysInYear_bothNil() {
+        let result = calculateActiveDaysInYear(startDate: nil, completedAt: nil, year: 2025)
+        XCTAssertEqual(result, 365)
+    }
+
+    // MARK: - redistributeAllocationsForCompletion with startDate
+
+    func testRedistribute_withStartDate_midMonth() {
+        // Project A starts Mar 15 (not completed), Project B is active from start of month
+        // March has 31 days. Project A: active 17 days (Mar 15..31)
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 15500),
+            Allocation(projectId: projectB, ratio: 50, amount: 15500),
+        ]
+        // Use endOfMonth as completedAt since project is not actually completed
+        let result = redistributeAllocationsForCompletion(
+            totalAmount: 31000,
+            completedProjectId: projectA,
+            completedAt: makeDate(year: 2026, month: 3, day: 31),
+            transactionDate: makeDate(year: 2026, month: 3, day: 1),
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB]),
+            startDate: makeDate(year: 2026, month: 3, day: 15)
+        )
+        let allocA = result.first(where: { $0.projectId == projectA })!
+        // 15500 * 17 / 31 = 8500
+        XCTAssertEqual(allocA.amount, 8500)
+        // Total preserved
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 31000)
+    }
+
+    func testRedistribute_withStartDateAndCompletedAt_sameMonth() {
+        // Project A starts Mar 10, completes Mar 20
+        // Active days: 11 (Mar 10..20), March has 31 days
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 15500),
+            Allocation(projectId: projectB, ratio: 50, amount: 15500),
+        ]
+        let result = redistributeAllocationsForCompletion(
+            totalAmount: 31000,
+            completedProjectId: projectA,
+            completedAt: makeDate(year: 2026, month: 3, day: 20),
+            transactionDate: makeDate(year: 2026, month: 3, day: 1),
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB]),
+            startDate: makeDate(year: 2026, month: 3, day: 10)
+        )
+        let allocA = result.first(where: { $0.projectId == projectA })!
+        // 15500 * 11 / 31 = 5500
+        XCTAssertEqual(allocA.amount, 5500)
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 31000)
+    }
+
+    // MARK: - Edge cases: same-day start and completion
+
+    func testActiveDaysInMonth_startDateEqualsCompletedAt_sameDay() {
+        let date = makeDate(year: 2026, month: 3, day: 15)
+        let result = calculateActiveDaysInMonth(startDate: date, completedAt: date, year: 2026, month: 3)
+        XCTAssertEqual(result, 1, "Single day should count as 1 active day")
+    }
+
+    func testActiveDaysInMonth_startDateOnFirstOfMonth_fullMonth() {
+        let startDate = makeDate(year: 2026, month: 3, day: 1)
+        let result = calculateActiveDaysInMonth(startDate: startDate, completedAt: nil, year: 2026, month: 3)
+        XCTAssertEqual(result, 31, "Starting on day 1 should count full month")
+    }
+
+    func testActiveDaysInYear_startDateEqualsCompletedAt_sameDay() {
+        let date = makeDate(year: 2025, month: 6, day: 15)
+        let result = calculateActiveDaysInYear(startDate: date, completedAt: date, year: 2025)
+        XCTAssertEqual(result, 1, "Single day should count as 1 active day")
+    }
+
+    func testRedistribute_startDateEqualsCompletedAt_sameDay() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 15500),
+            Allocation(projectId: projectB, ratio: 50, amount: 15500),
+        ]
+        let sameDay = makeDate(year: 2026, month: 3, day: 15)
+        let result = redistributeAllocationsForCompletion(
+            totalAmount: 31000,
+            completedProjectId: projectA,
+            completedAt: sameDay,
+            transactionDate: makeDate(year: 2026, month: 3, day: 1),
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB]),
+            startDate: sameDay
+        )
+        let allocA = result.first(where: { $0.projectId == projectA })!
+        // 15500 * 1 / 31 = 500
+        XCTAssertEqual(allocA.amount, 500)
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 31000)
+    }
 }

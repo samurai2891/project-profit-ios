@@ -1431,4 +1431,51 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(dataStore.recurringTransactions.count, 0)
         XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count)
     }
+
+    // MARK: - Project startDate CRUD
+
+    func testAddProjectWithStartDate() {
+        let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
+        let project = dataStore.addProject(name: "Started", description: "desc", startDate: startDate)
+
+        XCTAssertNotNil(project.startDate)
+        let fetched = dataStore.getProject(id: project.id)
+        XCTAssertNotNil(fetched?.startDate)
+    }
+
+    func testAddProjectWithoutStartDate() {
+        let project = dataStore.addProject(name: "No Start", description: "desc")
+        XCTAssertNil(project.startDate)
+    }
+
+    func testUpdateProjectStartDate() {
+        let project = dataStore.addProject(name: "Test", description: "desc")
+        XCTAssertNil(project.startDate)
+
+        let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
+        dataStore.updateProject(id: project.id, startDate: startDate)
+
+        let fetched = dataStore.getProject(id: project.id)
+        XCTAssertNotNil(fetched?.startDate)
+    }
+
+    func testUpdateProjectClearStartDate() {
+        let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
+        let project = dataStore.addProject(name: "Test", description: "desc", startDate: startDate)
+        XCTAssertNotNil(project.startDate)
+
+        dataStore.updateProject(id: project.id, startDate: .some(nil))
+
+        let fetched = dataStore.getProject(id: project.id)
+        XCTAssertNil(fetched?.startDate, "startDate should be nil after clearing")
+    }
+
+    func testStartDatePersistsAfterReload() {
+        let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
+        let project = dataStore.addProject(name: "Persist", description: "", startDate: startDate)
+
+        dataStore.loadData()
+        let fetched = dataStore.getProject(id: project.id)
+        XCTAssertNotNil(fetched?.startDate)
+    }
 }

@@ -274,9 +274,9 @@ final class ProRataDataStoreTests: XCTestCase {
         }
     }
 
-    // MARK: - Test 7: recalculateAllCompletedProjects at startup
+    // MARK: - Test 7: recalculateAllPartialPeriodProjects at startup
 
-    func testRecalculateAllCompletedProjects_fixesExistingTransactions() {
+    func testRecalculateAllPartialPeriodProjects_fixesExistingTransactions() {
         let projectA = makeProject(name: "Project A")
         let projectB = makeProject(name: "Project B")
 
@@ -307,8 +307,8 @@ final class ProRataDataStoreTests: XCTestCase {
         var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
         XCTAssertEqual(allocA.amount, 5000, "Before recalculation, should be original amount")
 
-        // Call recalculateAllCompletedProjects (simulating app startup)
-        dataStore.recalculateAllCompletedProjects()
+        // Call recalculateAllPartialPeriodProjects (simulating app startup)
+        dataStore.recalculateAllPartialPeriodProjects()
 
         // Verify pro-rata was applied
         transactions = fetchAllTransactions()
@@ -461,5 +461,166 @@ final class ProRataDataStoreTests: XCTestCase {
 
     func testDaysInYear_leap() {
         XCTAssertEqual(daysInYear(2024), 366)
+    }
+
+    // MARK: - Test 13: addProject with startDate
+
+    func testAddProject_withStartDate() {
+        let startDate = makeDate(year: 2026, month: 3, day: 15)
+        let project = dataStore.addProject(name: "Started Project", description: "desc", startDate: startDate)
+
+        XCTAssertEqual(project.name, "Started Project")
+        XCTAssertNotNil(project.startDate)
+
+        let comps = calendar.dateComponents([.year, .month, .day], from: project.startDate!)
+        XCTAssertEqual(comps.year, 2026)
+        XCTAssertEqual(comps.month, 3)
+        XCTAssertEqual(comps.day, 15)
+    }
+
+    // MARK: - Test 14: updateProject with startDate triggers recalculation
+
+    func testUpdateProject_startDate_recalculatesAllocations() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Add a transaction for March 2026 (31 days)
+        let transactionDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 31000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Set startDate to March 15 for project A
+        let startDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.updateProject(id: projectA.id, startDate: startDate)
+
+        let transactions = fetchAllTransactions()
+        let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+
+        // Project A: 15500 * 17 / 31 = 8500
+        XCTAssertEqual(allocA.amount, 8500, "Project A should get pro-rated amount for 17 days")
+        XCTAssertEqual(allocA.amount + allocB.amount, 31000)
+    }
+
+    // MARK: - Test 15: startDate change triggers recalculation
+
+    func testUpdateProject_changeStartDate_recalculates() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let transactionDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 31000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // First set startDate to March 15
+        dataStore.updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 15))
+
+        var transactions = fetchAllTransactions()
+        var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(allocA.amount, 8500, "First: 15500 * 17 / 31")
+
+        // Change startDate to March 20 (12 days active)
+        dataStore.updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 20))
+
+        transactions = fetchAllTransactions()
+        allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        // 15500 * 12 / 31 = 6000
+        XCTAssertEqual(allocA.amount, 6000, "Second: 15500 * 12 / 31")
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+        XCTAssertEqual(allocA.amount + allocB.amount, 31000, "Total should be preserved")
+    }
+
+    // MARK: - Test 16: startDate and completedAt in same month
+
+    func testUpdateProject_startDateAndCompletedAt_sameMonth() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let transactionDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 31000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Set startDate to March 10 and completedAt to March 20
+        dataStore.updateProject(
+            id: projectA.id,
+            status: .completed,
+            startDate: makeDate(year: 2026, month: 3, day: 10),
+            completedAt: makeDate(year: 2026, month: 3, day: 20)
+        )
+
+        let transactions = fetchAllTransactions()
+        let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+
+        // Active days: Mar 10..20 = 11 days, 15500 * 11 / 31 = 5500
+        XCTAssertEqual(allocA.amount, 5500, "Should be pro-rated for 11 days")
+        let total = transactions.first!.allocations.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 31000)
+    }
+
+    // MARK: - Test 17: recalculateAllPartialPeriodProjects includes startDate projects
+
+    func testRecalculateAllPartialPeriodProjects_includesStartDateProjects() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Add a transaction for March 2026
+        let transactionDate = makeDate(year: 2026, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 31000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Manually set startDate without triggering recalculation
+        let project = dataStore.getProject(id: projectA.id)!
+        project.startDate = makeDate(year: 2026, month: 3, day: 15)
+        try? context.save()
+        dataStore.loadData()
+
+        // Verify allocations are still original
+        var transactions = fetchAllTransactions()
+        var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(allocA.amount, 15500)
+
+        // Call recalculateAllPartialPeriodProjects
+        dataStore.recalculateAllPartialPeriodProjects()
+
+        transactions = fetchAllTransactions()
+        allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        // 15500 * 17 / 31 = 8500
+        XCTAssertEqual(allocA.amount, 8500, "Should be pro-rated after startup recalc")
     }
 }
