@@ -123,14 +123,46 @@ class DataStore {
         return project
     }
 
-    func updateProject(id: UUID, name: String? = nil, description: String? = nil, status: ProjectStatus? = nil) {
+    func updateProject(id: UUID, name: String? = nil, description: String? = nil, status: ProjectStatus? = nil, completedAt: Date?? = nil) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
         if let name { project.name = name }
         if let description { project.projectDescription = description }
+
+        let previousStatus = project.status
+        let previousCompletedAt = project.completedAt
+
         if let status { project.status = status }
+
+        // completedAtの処理: 明示的に指定された場合はそれを使用、そうでなければ自動管理
+        if let completedAt {
+            // 明示的に指定された（nilも含む）
+            project.completedAt = completedAt
+        } else {
+            // 指定されていない場合、ステータスに基づいて自動管理
+            if project.status == .completed && project.completedAt == nil {
+                project.completedAt = Date()
+            }
+            if project.status != .completed {
+                project.completedAt = nil
+            }
+        }
+
         project.updatedAt = Date()
         save()
         refreshProjects()
+
+        // completedAtが変更された場合の処理
+        let completedAtChanged = project.completedAt != previousCompletedAt
+        let statusChangedAwayFromCompleted = previousStatus == .completed && project.status != .completed
+        if completedAtChanged {
+            if project.status == .completed {
+                recalculateAllocationsForCompletedProject(projectId: id)
+            } else if statusChangedAwayFromCompleted {
+                reverseCompletionAllocations(projectId: id)
+            }
+            processRecurringTransactions()
+            refreshTransactions()
+        }
     }
 
     func deleteProject(id: UUID) {
@@ -450,6 +482,80 @@ class DataStore {
         recurringTransactions.first { $0.id == id }
     }
 
+    // MARK: - Pro-Rata Reallocation
+
+    /// 完了状態が解除された場合、日割り済みアロケーションを元の比率ベースに復元する
+    func reverseCompletionAllocations(projectId: UUID) {
+        for transaction in transactions {
+            guard transaction.allocations.contains(where: { $0.projectId == projectId }) else { continue }
+            let restored = transaction.allocations.map { alloc in
+                Allocation(
+                    projectId: alloc.projectId,
+                    ratio: alloc.ratio,
+                    amount: transaction.amount * alloc.ratio / 100
+                )
+            }
+            transaction.allocations = restored
+            transaction.updatedAt = Date()
+        }
+        save()
+    }
+
+    /// 完了したプロジェクトの取引を日割り再分配する（完了月およびそれ以降の月が対象）
+    func recalculateAllocationsForCompletedProject(projectId: UUID) {
+        guard let project = getProject(id: projectId),
+              project.status == .completed,
+              let completedAt = project.completedAt
+        else { return }
+
+        let calendar = Calendar.current
+        let compComps = calendar.dateComponents([.year, .month], from: completedAt)
+        guard let compYear = compComps.year, let compMonth = compComps.month else { return }
+
+        let activeProjectIds = Set(projects.filter { $0.status == .active }.map(\.id))
+
+        for transaction in transactions {
+            guard transaction.allocations.contains(where: { $0.projectId == projectId }) else { continue }
+
+            let txComps = calendar.dateComponents([.year, .month], from: transaction.date)
+            guard let txYear = txComps.year, let txMonth = txComps.month else { continue }
+
+            // 完了月より前の取引はスキップ（プロジェクトはフル稼働中だった）
+            if txYear < compYear || (txYear == compYear && txMonth < compMonth) { continue }
+
+            // まず比率ベースのアロケーションに復元してから日割り計算
+            let restoredAllocations = transaction.allocations.map { alloc in
+                Allocation(
+                    projectId: alloc.projectId,
+                    ratio: alloc.ratio,
+                    amount: transaction.amount * alloc.ratio / 100
+                )
+            }
+
+            let newAllocations = redistributeAllocationsForCompletion(
+                totalAmount: transaction.amount,
+                completedProjectId: projectId,
+                completedAt: completedAt,
+                transactionDate: transaction.date,
+                originalAllocations: restoredAllocations,
+                activeProjectIds: activeProjectIds
+            )
+            transaction.allocations = newAllocations
+            transaction.updatedAt = Date()
+        }
+        save()
+    }
+
+    /// アプリ起動時に全ての完了プロジェクトのアロケーションを再計算する
+    func recalculateAllCompletedProjects() {
+        let completedProjects = projects.filter { $0.status == .completed && $0.completedAt != nil }
+        guard !completedProjects.isEmpty else { return }
+        for project in completedProjects {
+            recalculateAllocationsForCompletedProject(projectId: project.id)
+        }
+        refreshTransactions()
+    }
+
     // MARK: - Process Recurring Transactions
 
     @discardableResult
@@ -513,15 +619,79 @@ class DataStore {
             }
 
             let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-            let txAllocations: [Allocation]
+            var txAllocations: [Allocation]
             switch recurring.allocationMode ?? .manual {
             case .equalAll:
                 let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
-                guard !activeProjectIds.isEmpty else { continue }
-                txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: activeProjectIds)
+                // 完了月に日割り対象の完了プロジェクトも含める
+                let completedThisMonth = projects.filter { p in
+                    guard p.status == .completed, let completedAt = p.completedAt else { return false }
+                    let compComps = calendar.dateComponents([.year, .month], from: completedAt)
+                    let txComps = calendar.dateComponents([.year, .month], from: txDate)
+                    return compComps.year == txComps.year && compComps.month == txComps.month
+                }
+                let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
+                guard !allEligibleIds.isEmpty else { continue }
+                txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+
+                // 完了プロジェクトの日割り再分配
+                let activeIdSet = Set(activeProjectIds)
+                for completed in completedThisMonth {
+                    guard let completedAt = completed.completedAt else { continue }
+                    if recurring.frequency == .yearly {
+                        txAllocations = redistributeAllocationsForYearlyCompletion(
+                            totalAmount: recurring.amount,
+                            completedProjectId: completed.id,
+                            completedAt: completedAt,
+                            transactionYear: calendar.component(.year, from: txDate),
+                            originalAllocations: txAllocations,
+                            activeProjectIds: activeIdSet
+                        )
+                    } else {
+                        txAllocations = redistributeAllocationsForCompletion(
+                            totalAmount: recurring.amount,
+                            completedProjectId: completed.id,
+                            completedAt: completedAt,
+                            transactionDate: txDate,
+                            originalAllocations: txAllocations,
+                            activeProjectIds: activeIdSet
+                        )
+                    }
+                }
             case .manual:
                 txAllocations = recurring.allocations.map {
                     Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: recurring.amount * $0.ratio / 100)
+                }
+                // manual モードでも完了プロジェクトがある場合は日割り再分配
+                let activeIdSet = Set(projects.filter { $0.status == .active }.map(\.id))
+                for alloc in recurring.allocations {
+                    guard let project = projects.first(where: { $0.id == alloc.projectId }),
+                          project.status == .completed,
+                          let completedAt = project.completedAt
+                    else { continue }
+                    // redistributeAllocationsForCompletion handles all time relationships:
+                    // - same month: pro-rata by days
+                    // - after completion month: 0 active days
+                    // - before completion month: full allocation (unchanged)
+                    if recurring.frequency == .yearly {
+                        txAllocations = redistributeAllocationsForYearlyCompletion(
+                            totalAmount: recurring.amount,
+                            completedProjectId: alloc.projectId,
+                            completedAt: completedAt,
+                            transactionYear: calendar.component(.year, from: txDate),
+                            originalAllocations: txAllocations,
+                            activeProjectIds: activeIdSet
+                        )
+                    } else {
+                        txAllocations = redistributeAllocationsForCompletion(
+                            totalAmount: recurring.amount,
+                            completedProjectId: alloc.projectId,
+                            completedAt: completedAt,
+                            transactionDate: txDate,
+                            originalAllocations: txAllocations,
+                            activeProjectIds: activeIdSet
+                        )
+                    }
                 }
             }
             let transaction = PPTransaction(

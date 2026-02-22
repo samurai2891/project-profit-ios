@@ -813,4 +813,24 @@ final class ModelsTests: XCTestCase {
         sort.order = .desc
         XCTAssertEqual(sort.order, .desc)
     }
+
+    // MARK: - PPProject completedAt
+
+    func testProjectInitDefaultCompletedAtNil() {
+        let project = PPProject(name: "Test")
+        XCTAssertNil(project.completedAt)
+    }
+
+    func testProjectInitWithCompletedAt() {
+        let date = Date()
+        let project = PPProject(name: "Test", completedAt: date)
+        XCTAssertEqual(project.completedAt, date)
+    }
+
+    func testProjectCompletedStatusWithDate() {
+        let date = Date()
+        let project = PPProject(name: "Test", status: .completed, completedAt: date)
+        XCTAssertEqual(project.status, .completed)
+        XCTAssertNotNil(project.completedAt)
+    }
 }

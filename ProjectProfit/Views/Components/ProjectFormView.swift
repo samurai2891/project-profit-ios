@@ -9,6 +9,8 @@ struct ProjectFormView: View {
     @State private var name: String = ""
     @State private var description: String = ""
     @State private var status: ProjectStatus = .active
+    @State private var completedAt: Date = Date()
+    @State private var hasCompletedAt: Bool = false
 
     private var isEditMode: Bool { project != nil }
 
@@ -44,6 +46,29 @@ struct ProjectFormView: View {
                         .accessibilityValue(status.label)
                         .accessibilityHint("タップしてステータスを変更")
                     }
+
+                    if status == .completed {
+                        Section("完了日") {
+                            Toggle("完了日を設定", isOn: $hasCompletedAt)
+                                .accessibilityLabel("完了日を設定")
+                                .accessibilityHint("オンにすると完了日を指定できます")
+
+                            if hasCompletedAt {
+                                DatePicker(
+                                    "完了日",
+                                    selection: $completedAt,
+                                    displayedComponents: .date
+                                )
+                                .environment(\.locale, Locale(identifier: "ja_JP"))
+                                .accessibilityLabel("完了日")
+                                .accessibilityValue(formatDate(completedAt))
+
+                                Text("完了月の取引は日割り計算で再配分されます")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(isEditMode ? "プロジェクトを編集" : "新規プロジェクト")
@@ -67,6 +92,16 @@ struct ProjectFormView: View {
                     name = project.name
                     description = project.projectDescription
                     status = project.status
+                    if let date = project.completedAt {
+                        completedAt = date
+                        hasCompletedAt = true
+                    }
+                }
+            }
+            .onChange(of: status) { _, newStatus in
+                if newStatus == .completed && !hasCompletedAt {
+                    hasCompletedAt = true
+                    completedAt = Date()
                 }
             }
         }
@@ -77,7 +112,14 @@ struct ProjectFormView: View {
         guard !trimmedName.isEmpty else { return }
 
         if let project {
-            dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status)
+            if status == .completed && hasCompletedAt {
+                // ユーザーが明示的に完了日を指定
+                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, completedAt: completedAt)
+            } else {
+                // completedAtを渡さず、DataStoreの自動管理に任せる
+                // (.completed時はtodayを自動設定、それ以外はnilにクリア)
+                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status)
+            }
         } else {
             dataStore.addProject(name: trimmedName, description: description)
         }

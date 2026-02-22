@@ -146,6 +146,212 @@ func getNextRegistrationDate(
     return NextRegistrationInfo(date: nextDate, label: label, daysUntil: daysUntil)
 }
 
+// MARK: - Pro-Rata (日割り) Calculation
+
+struct ProRataResult {
+    let projectId: UUID
+    let activeDays: Int
+    let totalDays: Int
+    let amount: Int
+    let ratio: Int
+}
+
+/// 月内の稼働日数に基づいて日割り金額を計算する
+func calculateProRataAmount(totalAmount: Int, activeDays: Int, totalDays: Int) -> Int {
+    guard totalDays > 0, activeDays >= 0 else { return 0 }
+    if activeDays >= totalDays { return totalAmount }
+    return totalAmount * activeDays / totalDays
+}
+
+/// 月の日数を返す
+func daysInMonth(year: Int, month: Int) -> Int {
+    let calendar = Calendar.current
+    guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+          let range = calendar.range(of: .day, in: .month, for: date)
+    else { return 30 }
+    return range.count
+}
+
+/// プロジェクト完了に伴いアロケーションを日割り再分配する
+/// - completedAt: 完了日
+/// - transactionDate: 取引の対象月（この月の1日〜末日で計算）
+/// - originalAllocations: 元のアロケーション
+/// - activeProjectIds: 現在アクティブなプロジェクトIDの集合
+/// - Returns: 日割り再分配後のアロケーション
+func redistributeAllocationsForCompletion(
+    totalAmount: Int,
+    completedProjectId: UUID,
+    completedAt: Date,
+    transactionDate: Date,
+    originalAllocations: [Allocation],
+    activeProjectIds: Set<UUID>
+) -> [Allocation] {
+    let calendar = Calendar.current
+    let txComps = calendar.dateComponents([.year, .month], from: transactionDate)
+    let compComps = calendar.dateComponents([.year, .month, .day], from: completedAt)
+    guard let txYear = txComps.year, let txMonth = txComps.month,
+          let compYear = compComps.year, let compMonth = compComps.month,
+          let compDay = compComps.day
+    else { return originalAllocations }
+
+    let totalDays = daysInMonth(year: txYear, month: txMonth)
+
+    // 完了プロジェクトの稼働日数を決定
+    let activeDays: Int
+    if compYear == txYear && compMonth == txMonth {
+        // 同月に完了: 完了日までの日数
+        activeDays = compDay
+    } else if compYear < txYear || (compYear == txYear && compMonth < txMonth) {
+        // 完了月より後の月: 稼働日数0
+        activeDays = 0
+    } else {
+        // 完了月より前の月: フル稼働
+        return originalAllocations
+    }
+
+    guard let completedAlloc = originalAllocations.first(where: { $0.projectId == completedProjectId }) else {
+        return originalAllocations
+    }
+
+    let completedOriginalAmount = totalAmount * completedAlloc.ratio / 100
+    let proratedAmount = calculateProRataAmount(totalAmount: completedOriginalAmount, activeDays: activeDays, totalDays: totalDays)
+    let redistributableAmount = completedOriginalAmount - proratedAmount
+
+    // 完了プロジェクト以外のアクティブなプロジェクトを取得
+    let otherActiveAllocs = originalAllocations.filter {
+        $0.projectId != completedProjectId && activeProjectIds.contains($0.projectId)
+    }
+
+    guard !otherActiveAllocs.isEmpty else {
+        // 他にアクティブなプロジェクトがない場合、完了プロジェクトのみ日割り
+        return originalAllocations.map { alloc in
+            if alloc.projectId == completedProjectId {
+                return Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: proratedAmount)
+            }
+            return alloc
+        }
+    }
+
+    let otherTotalRatio = otherActiveAllocs.reduce(0) { $0 + $1.ratio }
+
+    var result: [Allocation] = []
+    var distributedSoFar = 0
+
+    for alloc in originalAllocations {
+        if alloc.projectId == completedProjectId {
+            result.append(Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: proratedAmount))
+        } else if activeProjectIds.contains(alloc.projectId) {
+            let extraShare = otherTotalRatio > 0
+                ? redistributableAmount * alloc.ratio / otherTotalRatio
+                : 0
+            let newAmount = alloc.amount + extraShare
+            distributedSoFar += extraShare
+            result.append(Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: newAmount))
+        } else {
+            result.append(alloc)
+        }
+    }
+
+    // 端数調整: 最後のアクティブプロジェクトに残りを加算
+    let remainder = redistributableAmount - distributedSoFar
+    if remainder != 0, let lastActiveIdx = result.lastIndex(where: { activeProjectIds.contains($0.projectId) && $0.projectId != completedProjectId }) {
+        let last = result[lastActiveIdx]
+        result[lastActiveIdx] = Allocation(projectId: last.projectId, ratio: last.ratio, amount: last.amount + remainder)
+    }
+
+    return result
+}
+
+/// 年の日数を返す
+func daysInYear(_ year: Int) -> Int {
+    let calendar = Calendar.current
+    guard let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+          let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1))
+    else { return 365 }
+    return calendar.dateComponents([.day], from: start, to: end).day ?? 365
+}
+
+/// 年額取引のプロジェクト完了に伴い、年間の稼働期間に基づいて日割り再分配する
+/// - transactionYear: 取引の対象年（この年の1月1日〜12月31日で計算）
+func redistributeAllocationsForYearlyCompletion(
+    totalAmount: Int,
+    completedProjectId: UUID,
+    completedAt: Date,
+    transactionYear: Int,
+    originalAllocations: [Allocation],
+    activeProjectIds: Set<UUID>
+) -> [Allocation] {
+    let calendar = Calendar.current
+    let compYear = calendar.component(.year, from: completedAt)
+
+    let totalDays = daysInYear(transactionYear)
+
+    // 完了プロジェクトの年間稼働日数を決定
+    let activeDays: Int
+    if compYear > transactionYear {
+        // 完了年が取引年より後: フル稼働
+        return originalAllocations
+    } else if compYear < transactionYear {
+        // 完了年が取引年より前: 稼働日数0
+        activeDays = 0
+    } else {
+        // 同年に完了: 年初から完了日までの日数
+        guard let yearStart = calendar.date(from: DateComponents(year: transactionYear, month: 1, day: 1)) else {
+            return originalAllocations
+        }
+        activeDays = (calendar.dateComponents([.day], from: yearStart, to: completedAt).day ?? 0) + 1
+    }
+
+    guard let completedAlloc = originalAllocations.first(where: { $0.projectId == completedProjectId }) else {
+        return originalAllocations
+    }
+
+    let completedOriginalAmount = totalAmount * completedAlloc.ratio / 100
+    let proratedAmount = calculateProRataAmount(totalAmount: completedOriginalAmount, activeDays: activeDays, totalDays: totalDays)
+    let redistributableAmount = completedOriginalAmount - proratedAmount
+
+    let otherActiveAllocs = originalAllocations.filter {
+        $0.projectId != completedProjectId && activeProjectIds.contains($0.projectId)
+    }
+
+    guard !otherActiveAllocs.isEmpty else {
+        return originalAllocations.map { alloc in
+            if alloc.projectId == completedProjectId {
+                return Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: proratedAmount)
+            }
+            return alloc
+        }
+    }
+
+    let otherTotalRatio = otherActiveAllocs.reduce(0) { $0 + $1.ratio }
+
+    var result: [Allocation] = []
+    var distributedSoFar = 0
+
+    for alloc in originalAllocations {
+        if alloc.projectId == completedProjectId {
+            result.append(Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: proratedAmount))
+        } else if activeProjectIds.contains(alloc.projectId) {
+            let extraShare = otherTotalRatio > 0
+                ? redistributableAmount * alloc.ratio / otherTotalRatio
+                : 0
+            let newAmount = alloc.amount + extraShare
+            distributedSoFar += extraShare
+            result.append(Allocation(projectId: alloc.projectId, ratio: alloc.ratio, amount: newAmount))
+        } else {
+            result.append(alloc)
+        }
+    }
+
+    let remainder = redistributableAmount - distributedSoFar
+    if remainder != 0, let lastActiveIdx = result.lastIndex(where: { activeProjectIds.contains($0.projectId) && $0.projectId != completedProjectId }) {
+        let last = result[lastActiveIdx]
+        result[lastActiveIdx] = Allocation(projectId: last.projectId, ratio: last.ratio, amount: last.amount + remainder)
+    }
+
+    return result
+}
+
 // MARK: - Equal Split Allocation
 
 func calculateEqualSplitAllocations(amount: Int, projectIds: [UUID]) -> [Allocation] {

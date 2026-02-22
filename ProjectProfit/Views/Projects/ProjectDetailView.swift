@@ -82,6 +82,18 @@ private extension ProjectDetailView {
                         .fontWeight(.bold)
 
                     StatusBadge(status: project.status)
+
+                    if project.status == .completed, let completedAt = project.completedAt {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(AppColors.success)
+                            Text("完了日: \(formatDate(completedAt))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("完了日 \(formatDate(completedAt))")
+                    }
                 }
 
                 Spacer()

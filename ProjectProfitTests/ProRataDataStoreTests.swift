@@ -1,0 +1,465 @@
+import XCTest
+import SwiftData
+@testable import ProjectProfit
+
+// MARK: - ProRataDataStoreTests
+
+@MainActor
+final class ProRataDataStoreTests: XCTestCase {
+    var container: ModelContainer!
+    var context: ModelContext!
+    var dataStore: ProjectProfit.DataStore!
+
+    private let calendar = Calendar.current
+
+    override func setUp() {
+        super.setUp()
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        container = try! ModelContainer(
+            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self,
+            configurations: config
+        )
+        context = ModelContext(container)
+        dataStore = ProjectProfit.DataStore(modelContext: context)
+        dataStore.loadData()
+    }
+
+    override func tearDown() {
+        dataStore = nil
+        context = nil
+        container = nil
+        super.tearDown()
+    }
+
+    // MARK: - Helpers
+
+    /// Creates a project in the data store and returns it.
+    private func makeProject(name: String = "TestProject") -> PPProject {
+        dataStore.addProject(name: name, description: "desc")
+    }
+
+    /// Fetches all PPTransaction objects from the model context.
+    private func fetchAllTransactions() -> [PPTransaction] {
+        let descriptor = FetchDescriptor<PPTransaction>()
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    /// Creates a date from year, month, day components.
+    private func makeDate(year: Int, month: Int, day: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    /// Returns today's year, month, day components.
+    private var todayComponents: DateComponents {
+        calendar.dateComponents([.year, .month, .day], from: todayDate())
+    }
+
+    // MARK: - Test 1: updateProject_completedWithDate_recalculatesAllocations
+
+    func testUpdateProject_completedWithDate_recalculatesAllocations() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let transactionDate = makeDate(year: 2024, month: 2, day: 28)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test expense",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Verify original allocations: 5000 each
+        var transactions = fetchAllTransactions()
+        XCTAssertEqual(transactions.count, 1)
+        let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+        XCTAssertEqual(allocA.amount, 5000)
+        XCTAssertEqual(allocB.amount, 5000)
+
+        // Complete project A on Feb 15, 2024 (leap year, 29 days)
+        let completedDate = makeDate(year: 2024, month: 2, day: 15)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // Project A: 5000 * 15 / 29 = 2586
+        // Project B: 5000 + (5000 - 2586) = 7414
+        transactions = fetchAllTransactions()
+        let newAllocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let newAllocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+
+        XCTAssertEqual(newAllocA.amount, 2586, "Project A should get pro-rated amount for 15 days")
+        XCTAssertEqual(newAllocB.amount, 7414, "Project B should get original + redistributed")
+        XCTAssertEqual(newAllocA.amount + newAllocB.amount, 10000)
+    }
+
+    // MARK: - Test 2: updateProject_completedAutoSetsDate
+
+    func testUpdateProject_completedAutoSetsDate() {
+        let project = makeProject(name: "Auto Complete")
+
+        dataStore.updateProject(id: project.id, status: .completed)
+
+        let updated = dataStore.getProject(id: project.id)!
+        XCTAssertNotNil(updated.completedAt, "completedAt should be auto-set")
+
+        let today = todayDate()
+        let completedDate = updated.completedAt!
+        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
+        let completedComps = calendar.dateComponents([.year, .month, .day], from: completedDate)
+
+        XCTAssertEqual(todayComps.year, completedComps.year)
+        XCTAssertEqual(todayComps.month, completedComps.month)
+        XCTAssertEqual(todayComps.day, completedComps.day)
+    }
+
+    // MARK: - Test 3: updateProject_reactivated_clearsCompletedAt
+
+    func testUpdateProject_reactivated_clearsCompletedAt() {
+        let project = makeProject(name: "Reactivate")
+
+        let completedDate = makeDate(year: 2024, month: 2, day: 15)
+        dataStore.updateProject(id: project.id, status: .completed, completedAt: completedDate)
+
+        var updated = dataStore.getProject(id: project.id)!
+        XCTAssertEqual(updated.status, .completed)
+        XCTAssertNotNil(updated.completedAt)
+
+        dataStore.updateProject(id: project.id, status: .active)
+
+        updated = dataStore.getProject(id: project.id)!
+        XCTAssertEqual(updated.status, .active)
+        XCTAssertNil(updated.completedAt, "completedAt should be nil when status is not .completed")
+    }
+
+    // MARK: - Test 4: updateProject_changeCompletedAt_recalculates
+
+    func testUpdateProject_changeCompletedAt_recalculates() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let transactionDate = makeDate(year: 2024, month: 2, day: 28)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Complete on Feb 15 first
+        let firstCompletedDate = makeDate(year: 2024, month: 2, day: 15)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: firstCompletedDate)
+
+        var transactions = fetchAllTransactions()
+        var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(allocA.amount, 2586, "First: 5000 * 15 / 29")
+
+        // Change to Feb 10
+        let secondCompletedDate = makeDate(year: 2024, month: 2, day: 10)
+        dataStore.updateProject(id: projectA.id, completedAt: secondCompletedDate)
+
+        transactions = fetchAllTransactions()
+        allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+
+        XCTAssertEqual(allocA.amount, 1724, "Second: 5000 * 10 / 29")
+        XCTAssertEqual(allocB.amount, 8276, "Project B gets remainder")
+        XCTAssertEqual(allocA.amount + allocB.amount, 10000)
+    }
+
+    // MARK: - Test 5: Recurring equalAll via processRecurringTransactions
+
+    func testRecurringEqualAll_processRecurringTransactions_excludesCompletedProject() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Get today's info to set up recurring that will generate
+        let today = todayComponents
+        guard let year = today.year, let month = today.month, let day = today.day else {
+            XCTFail("Cannot get today's components")
+            return
+        }
+
+        // Complete project A last month
+        let lastMonth = month == 1 ? 12 : month - 1
+        let lastMonthYear = month == 1 ? year - 1 : year
+        let completedDate = makeDate(year: lastMonthYear, month: lastMonth, day: 15)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // Create equalAll recurring with dayOfMonth = 1 (already passed or is today for day>=1)
+        dataStore.addRecurring(
+            name: "EqualAll Monthly",
+            type: .expense,
+            amount: 9000,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // addRecurring internally calls processRecurringTransactions
+        // Since today >= day 1, it should generate for this month
+        let transactions = fetchAllTransactions()
+        let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
+
+        XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
+
+        if let tx = recurringTx.first {
+            // Project A is completed (last month), only project B should be allocated
+            let hasProjectA = tx.allocations.contains { $0.projectId == projectA.id }
+            XCTAssertFalse(hasProjectA, "Completed project A should be excluded from equalAll")
+
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }
+            XCTAssertNotNil(allocB, "Project B should be in allocations")
+            XCTAssertEqual(allocB?.amount, 9000, "Project B should get full amount")
+        }
+    }
+
+    // MARK: - Test 6: Recurring manual via processRecurringTransactions (Bug 1 fix)
+
+    func testRecurringManual_processRecurringTransactions_proRatesCompletedProject() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        let today = todayComponents
+        guard let year = today.year, let month = today.month else {
+            XCTFail("Cannot get today's components")
+            return
+        }
+
+        // Complete project A last month (so it's after completion month for this month's tx)
+        let lastMonth = month == 1 ? 12 : month - 1
+        let lastMonthYear = month == 1 ? year - 1 : year
+        let completedDate = makeDate(year: lastMonthYear, month: lastMonth, day: 15)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // Create manual recurring with 50/50 to both projects, dayOfMonth = 1
+        dataStore.addRecurring(
+            name: "Manual Monthly",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "manual",
+            allocationMode: .manual,
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        let transactions = fetchAllTransactions()
+        let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
+
+        XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
+
+        if let tx = recurringTx.first {
+            let allocA = tx.allocations.first { $0.projectId == projectA.id }!
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }!
+
+            // Project A completed last month, so for this month it gets 0 active days
+            XCTAssertEqual(allocA.amount, 0, "Project A should get 0 (completed before this month)")
+            XCTAssertEqual(allocB.amount, 10000, "Project B should get full amount")
+        }
+    }
+
+    // MARK: - Test 7: recalculateAllCompletedProjects at startup
+
+    func testRecalculateAllCompletedProjects_fixesExistingTransactions() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Add a transaction for Feb 2024 with 50/50 allocation
+        let transactionDate = makeDate(year: 2024, month: 2, day: 28)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Manually set project A as completed without triggering recalculation
+        // (simulating state that exists before the fix was deployed)
+        let project = dataStore.getProject(id: projectA.id)!
+        project.status = .completed
+        project.completedAt = makeDate(year: 2024, month: 2, day: 15)
+        try? context.save()
+        dataStore.loadData()
+
+        // Verify allocations are still original (not yet recalculated)
+        var transactions = fetchAllTransactions()
+        var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(allocA.amount, 5000, "Before recalculation, should be original amount")
+
+        // Call recalculateAllCompletedProjects (simulating app startup)
+        dataStore.recalculateAllCompletedProjects()
+
+        // Verify pro-rata was applied
+        transactions = fetchAllTransactions()
+        allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
+        let allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
+
+        XCTAssertEqual(allocA.amount, 2586, "After startup recalc: 5000 * 15 / 29")
+        XCTAssertEqual(allocB.amount, 7414, "Project B gets redistributed amount")
+        XCTAssertEqual(allocA.amount + allocB.amount, 10000)
+    }
+
+    // MARK: - Test 8: Post-completion month transactions get 0 allocation
+
+    func testUpdateProject_completedRecalculatesFutureMonthTransactions() {
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+
+        // Add transactions in Feb and March 2024
+        let febDate = makeDate(year: 2024, month: 2, day: 28)
+        let marchDate = makeDate(year: 2024, month: 3, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: febDate,
+            categoryId: "cat-hosting",
+            memo: "feb expense",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: marchDate,
+            categoryId: "cat-hosting",
+            memo: "march expense",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Complete project A on Feb 15, 2024
+        let completedDate = makeDate(year: 2024, month: 2, day: 15)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        let transactions = fetchAllTransactions()
+        let febTx = transactions.first { $0.memo == "feb expense" }!
+        let marchTx = transactions.first { $0.memo == "march expense" }!
+
+        // Feb: same month as completion, pro-rated
+        let febAllocA = febTx.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertEqual(febAllocA.amount, 2586, "Feb: 5000 * 15 / 29")
+
+        // March: after completion month, 0 active days
+        let marchAllocA = marchTx.allocations.first { $0.projectId == projectA.id }!
+        let marchAllocB = marchTx.allocations.first { $0.projectId == projectB.id }!
+        XCTAssertEqual(marchAllocA.amount, 0, "March: project A should get 0 after completion month")
+        XCTAssertEqual(marchAllocB.amount, 10000, "March: project B gets full amount")
+    }
+
+    // MARK: - Test 9: Yearly pro-rata utility function
+
+    func testRedistributeAllocationsForYearlyCompletion_midYear() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 60000),
+            Allocation(projectId: projectB, ratio: 50, amount: 60000),
+        ]
+
+        // Project A completes on Jun 30, 2026 (181st day of year, non-leap)
+        // 2026 has 365 days
+        // Active days = 181 (Jan 1 through Jun 30)
+        // Pro-rated: 60000 * 181 / 365 = 29753
+        let result = redistributeAllocationsForYearlyCompletion(
+            totalAmount: 120000,
+            completedProjectId: projectA,
+            completedAt: makeDate(year: 2026, month: 6, day: 30),
+            transactionYear: 2026,
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB])
+        )
+
+        let allocA = result.first { $0.projectId == projectA }!
+        let allocB = result.first { $0.projectId == projectB }!
+
+        // 60000 * 181 / 365 = 29753
+        XCTAssertEqual(allocA.amount, 29753, "Yearly pro-rata for 181 days")
+        XCTAssertEqual(allocA.amount + allocB.amount, 120000, "Total should be preserved")
+    }
+
+    // MARK: - Test 10: Yearly pro-rata before year returns full
+
+    func testRedistributeAllocationsForYearlyCompletion_completedNextYear() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 60000),
+            Allocation(projectId: projectB, ratio: 50, amount: 60000),
+        ]
+
+        // Project completes in 2027, transaction year is 2026 → full allocation
+        let result = redistributeAllocationsForYearlyCompletion(
+            totalAmount: 120000,
+            completedProjectId: projectA,
+            completedAt: makeDate(year: 2027, month: 3, day: 1),
+            transactionYear: 2026,
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB])
+        )
+
+        XCTAssertEqual(result[0].amount, 60000, "Should be unchanged")
+        XCTAssertEqual(result[1].amount, 60000, "Should be unchanged")
+    }
+
+    // MARK: - Test 11: Yearly pro-rata previous year returns 0
+
+    func testRedistributeAllocationsForYearlyCompletion_completedPreviousYear() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let allocations = [
+            Allocation(projectId: projectA, ratio: 50, amount: 60000),
+            Allocation(projectId: projectB, ratio: 50, amount: 60000),
+        ]
+
+        // Project completed in 2025, transaction year is 2026 → 0 active days
+        let result = redistributeAllocationsForYearlyCompletion(
+            totalAmount: 120000,
+            completedProjectId: projectA,
+            completedAt: makeDate(year: 2025, month: 12, day: 31),
+            transactionYear: 2026,
+            originalAllocations: allocations,
+            activeProjectIds: Set([projectB])
+        )
+
+        let allocA = result.first { $0.projectId == projectA }!
+        let allocB = result.first { $0.projectId == projectB }!
+
+        XCTAssertEqual(allocA.amount, 0, "Completed before year: 0 allocation")
+        XCTAssertEqual(allocB.amount, 120000, "Project B gets full amount")
+    }
+
+    // MARK: - Test 12: daysInYear
+
+    func testDaysInYear_nonLeap() {
+        XCTAssertEqual(daysInYear(2026), 365)
+    }
+
+    func testDaysInYear_leap() {
+        XCTAssertEqual(daysInYear(2024), 366)
+    }
+}
