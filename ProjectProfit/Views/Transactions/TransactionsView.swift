@@ -315,18 +315,16 @@ struct TransactionsView: View {
     private func groupedTransactionList(viewModel: TransactionsViewModel) -> some View {
         LazyVStack(spacing: 16) {
             ForEach(viewModel.groupedTransactions) { group in
-                Section {
-                    LazyVStack(spacing: 8) {
-                        ForEach(group.transactions) { transaction in
-                            TransactionCardView(
-                                transaction: transaction,
-                                onTap: { selectedTransaction = transaction },
-                                onDelete: { deletingTransaction = transaction }
-                            )
-                        }
-                    }
-                } header: {
+                VStack(spacing: 8) {
                     sectionHeader(group: group)
+
+                    ForEach(group.transactions) { transaction in
+                        TransactionCardView(
+                            transaction: transaction,
+                            onTap: { selectedTransaction = transaction },
+                            onDelete: { deletingTransaction = transaction }
+                        )
+                    }
                 }
             }
         }
