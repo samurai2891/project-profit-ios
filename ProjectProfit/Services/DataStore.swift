@@ -198,6 +198,9 @@ class DataStore {
             let filtered = transaction.allocations.filter { $0.projectId != id }
             if filtered.count != transaction.allocations.count {
                 if filtered.isEmpty {
+                    if let imagePath = transaction.receiptImagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
                     modelContext.delete(transaction)
                 } else {
                     transaction.allocations = redistributeAllocations(
@@ -213,6 +216,9 @@ class DataStore {
             let filtered = recurring.allocations.filter { $0.projectId != id }
             if filtered.count != recurring.allocations.count {
                 if filtered.isEmpty {
+                    if let imagePath = recurring.receiptImagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
                     modelContext.delete(recurring)
                 } else {
                     recurring.allocations = redistributeAllocations(
@@ -238,6 +244,9 @@ class DataStore {
             let filtered = transaction.allocations.filter { !ids.contains($0.projectId) }
             if filtered.count != transaction.allocations.count {
                 if filtered.isEmpty {
+                    if let imagePath = transaction.receiptImagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
                     modelContext.delete(transaction)
                 } else {
                     transaction.allocations = redistributeAllocations(
@@ -252,6 +261,9 @@ class DataStore {
             let filtered = recurring.allocations.filter { !ids.contains($0.projectId) }
             if filtered.count != recurring.allocations.count {
                 if filtered.isEmpty {
+                    if let imagePath = recurring.receiptImagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
                     modelContext.delete(recurring)
                 } else {
                     recurring.allocations = redistributeAllocations(
@@ -419,7 +431,8 @@ class DataStore {
         dayOfMonth: Int,
         monthOfYear: Int? = nil,
         endDate: Date? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode? = nil
+        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
+        receiptImagePath: String? = nil
     ) -> PPRecurringTransaction {
         let allocs: [Allocation]
         switch allocationMode {
@@ -440,7 +453,8 @@ class DataStore {
             dayOfMonth: dayOfMonth,
             monthOfYear: monthOfYear,
             endDate: endDate,
-            yearlyAmortizationMode: yearlyAmortizationMode
+            yearlyAmortizationMode: yearlyAmortizationMode,
+            receiptImagePath: receiptImagePath
         )
         modelContext.insert(recurring)
         save()
@@ -466,7 +480,8 @@ class DataStore {
         endDate: Date?? = nil,
         yearlyAmortizationMode: YearlyAmortizationMode? = nil,
         notificationTiming: NotificationTiming? = nil,
-        skipDates: [Date]? = nil
+        skipDates: [Date]? = nil,
+        receiptImagePath: String?? = nil
     ) {
         guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
         if let name { recurring.name = name }
@@ -504,6 +519,7 @@ class DataStore {
         }
         if let notificationTiming { recurring.notificationTiming = notificationTiming }
         if let skipDates { recurring.skipDates = skipDates }
+        if let receiptImagePath { recurring.receiptImagePath = receiptImagePath }
 
         let resolvedMode = allocationMode ?? recurring.allocationMode ?? .manual
         let finalAmount = amount ?? recurring.amount
@@ -533,6 +549,9 @@ class DataStore {
 
     func deleteRecurring(id: UUID) {
         guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
+        if let imagePath = recurring.receiptImagePath {
+            ReceiptImageStore.deleteImage(fileName: imagePath)
+        }
         modelContext.delete(recurring)
         save()
         refreshRecurring()

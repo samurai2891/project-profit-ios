@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftData
 import SwiftUI
 
@@ -26,6 +27,12 @@ struct RecurringFormView: View {
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
+    @State private var selectedImage: UIImage?
+    @State private var photoPickerItem: PhotosPickerItem?
+    @State private var showCamera = false
+    @State private var showReceiptPreview = false
+    @State private var showRemoveImageAlert = false
+    @State private var imageRemoved = false
 
     private var isEditMode: Bool { recurring != nil }
 
@@ -100,6 +107,7 @@ struct RecurringFormView: View {
                             equalAllInfoSection
                         }
                         memoField
+                        receiptImageSection
                         endDateSection
 
                         if isEditMode {
@@ -126,6 +134,31 @@ struct RecurringFormView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(validationMessage)
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraView(image: $selectedImage)
+                    .ignoresSafeArea()
+            }
+            .sheet(isPresented: $showReceiptPreview) {
+                if let image = selectedImage {
+                    ReceiptImagePreviewView(image: image)
+                } else if let r = recurring, let path = r.receiptImagePath,
+                          let view = ReceiptImagePreviewView(fileName: path) {
+                    view
+                }
+            }
+            .onChange(of: photoPickerItem) { _, newItem in
+                loadPhoto(from: newItem)
+            }
+            .alert("画像を削除", isPresented: $showRemoveImageAlert) {
+                Button("キャンセル", role: .cancel) {}
+                Button("削除", role: .destructive) {
+                    selectedImage = nil
+                    photoPickerItem = nil
+                    imageRemoved = true
+                }
+            } message: {
+                Text("添付画像を削除しますか？")
             }
         }
     }
@@ -484,6 +517,118 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - Receipt Image Section
+
+    private var receiptImageSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("添付画像")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let image = selectedImage {
+                receiptImagePreviewRow(image: image)
+            } else if !imageRemoved, let r = recurring, let imagePath = r.receiptImagePath,
+                      let existingImage = ReceiptImageStore.loadImage(fileName: imagePath) {
+                receiptImagePreviewRow(image: existingImage)
+            } else {
+                recurringImagePickerButtons
+            }
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func receiptImagePreviewRow(image: UIImage) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                showReceiptPreview = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Text("添付画像を表示")
+                        .font(.subheadline)
+                        .foregroundStyle(AppColors.primary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("添付画像を表示")
+
+            HStack(spacing: 12) {
+                Button {
+                    showRemoveImageAlert = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                        Text("削除")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppColors.error)
+                }
+                .accessibilityLabel("添付画像を削除")
+
+                Spacer()
+
+                recurringImagePickerButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recurringImagePickerButtons: some View {
+        HStack(spacing: 12) {
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button {
+                    showCamera = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.fill")
+                        Text("撮影")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppColors.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AppColors.primary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("カメラで撮影")
+            }
+
+            PhotosPicker(
+                selection: $photoPickerItem,
+                matching: .images
+            ) {
+                HStack(spacing: 4) {
+                    Image(systemName: "photo.on.rectangle")
+                    Text("選択")
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppColors.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppColors.primary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("フォトライブラリから選択")
+        }
+    }
+
     // MARK: - End Date Section
 
     private var endDateSection: some View {
@@ -535,6 +680,20 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - Image Helpers
+
+    private func loadPhoto(from item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let uiImage = UIImage(data: data)
+            {
+                selectedImage = uiImage
+                imageRemoved = false
+            }
+        }
+    }
+
     // MARK: - Save
 
     private func save() {
@@ -572,23 +731,76 @@ struct RecurringFormView: View {
         let resolvedEndDate: Date? = hasEndDate ? endDate : nil
         let resolvedAmortizationMode: YearlyAmortizationMode? = frequency == .yearly ? yearlyAmortizationMode : nil
 
+        var imagePath: String?
+        if let image = selectedImage {
+            do {
+                imagePath = try ReceiptImageStore.saveImage(image)
+            } catch {
+                // 画像保存失敗でも定期取引は保存する
+            }
+        }
+
         if let existing = recurring {
-            dataStore.updateRecurring(
-                id: existing.id,
-                name: trimmedName,
-                type: type,
-                amount: amount,
-                categoryId: categoryId,
-                memo: memo,
-                allocationMode: allocationMode,
-                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                frequency: frequency,
-                dayOfMonth: dayOfMonth,
-                monthOfYear: resolvedMonthOfYear,
-                isActive: isActive,
-                endDate: resolvedEndDate,
-                yearlyAmortizationMode: resolvedAmortizationMode
-            )
+            if selectedImage != nil {
+                if let oldPath = existing.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
+                dataStore.updateRecurring(
+                    id: existing.id,
+                    name: trimmedName,
+                    type: type,
+                    amount: amount,
+                    categoryId: categoryId,
+                    memo: memo,
+                    allocationMode: allocationMode,
+                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                    frequency: frequency,
+                    dayOfMonth: dayOfMonth,
+                    monthOfYear: resolvedMonthOfYear,
+                    isActive: isActive,
+                    endDate: resolvedEndDate,
+                    yearlyAmortizationMode: resolvedAmortizationMode,
+                    receiptImagePath: imagePath
+                )
+            } else if imageRemoved {
+                if let oldPath = existing.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
+                dataStore.updateRecurring(
+                    id: existing.id,
+                    name: trimmedName,
+                    type: type,
+                    amount: amount,
+                    categoryId: categoryId,
+                    memo: memo,
+                    allocationMode: allocationMode,
+                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                    frequency: frequency,
+                    dayOfMonth: dayOfMonth,
+                    monthOfYear: resolvedMonthOfYear,
+                    isActive: isActive,
+                    endDate: resolvedEndDate,
+                    yearlyAmortizationMode: resolvedAmortizationMode,
+                    receiptImagePath: .some(nil)
+                )
+            } else {
+                dataStore.updateRecurring(
+                    id: existing.id,
+                    name: trimmedName,
+                    type: type,
+                    amount: amount,
+                    categoryId: categoryId,
+                    memo: memo,
+                    allocationMode: allocationMode,
+                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                    frequency: frequency,
+                    dayOfMonth: dayOfMonth,
+                    monthOfYear: resolvedMonthOfYear,
+                    isActive: isActive,
+                    endDate: resolvedEndDate,
+                    yearlyAmortizationMode: resolvedAmortizationMode
+                )
+            }
         } else {
             dataStore.addRecurring(
                 name: trimmedName,
@@ -602,7 +814,8 @@ struct RecurringFormView: View {
                 dayOfMonth: dayOfMonth,
                 monthOfYear: resolvedMonthOfYear,
                 endDate: resolvedEndDate,
-                yearlyAmortizationMode: resolvedAmortizationMode
+                yearlyAmortizationMode: resolvedAmortizationMode,
+                receiptImagePath: imagePath
             )
         }
 

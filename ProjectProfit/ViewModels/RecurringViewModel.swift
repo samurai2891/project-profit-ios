@@ -89,6 +89,35 @@ final class RecurringViewModel {
         dataStore.updateRecurring(id: recurring.id, skipDates: updatedSkipDates)
     }
 
+    func cancelSkip(_ recurring: PPRecurringTransaction) {
+        guard let info = getNextRegistrationDate(
+            frequency: recurring.frequency,
+            dayOfMonth: recurring.dayOfMonth,
+            monthOfYear: recurring.monthOfYear,
+            isActive: recurring.isActive,
+            lastGeneratedDate: recurring.lastGeneratedDate
+        ) else { return }
+
+        let updatedSkipDates = recurring.skipDates.filter {
+            !Calendar.current.isDate($0, inSameDayAs: info.date)
+        }
+        dataStore.updateRecurring(id: recurring.id, skipDates: updatedSkipDates)
+    }
+
+    func isNextDateSkipped(_ recurring: PPRecurringTransaction) -> Bool {
+        guard let info = getNextRegistrationDate(
+            frequency: recurring.frequency,
+            dayOfMonth: recurring.dayOfMonth,
+            monthOfYear: recurring.monthOfYear,
+            isActive: recurring.isActive,
+            lastGeneratedDate: recurring.lastGeneratedDate
+        ) else { return false }
+
+        return recurring.skipDates.contains {
+            Calendar.current.isDate($0, inSameDayAs: info.date)
+        }
+    }
+
     func deleteRecurring(_ recurring: PPRecurringTransaction) {
         dataStore.deleteRecurring(id: recurring.id)
     }

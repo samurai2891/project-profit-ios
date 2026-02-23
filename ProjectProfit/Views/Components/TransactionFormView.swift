@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct TransactionFormView: View {
@@ -15,6 +16,11 @@ struct TransactionFormView: View {
     @State private var allocations: [(id: UUID, projectId: UUID, ratio: Int)] = []
     @State private var isSubmitting = false
     @State private var showReceiptPreview = false
+    @State private var selectedImage: UIImage?
+    @State private var photoPickerItem: PhotosPickerItem?
+    @State private var showCamera = false
+    @State private var showRemoveImageAlert = false
+    @State private var imageRemoved = false
 
     private var isEditMode: Bool { transaction != nil }
 
@@ -52,11 +58,30 @@ struct TransactionFormView: View {
                 .padding(20)
             }
             .sheet(isPresented: $showReceiptPreview) {
-                if let t = transaction, let path = t.receiptImagePath,
-                   let view = ReceiptImagePreviewView(fileName: path)
+                if let image = selectedImage {
+                    ReceiptImagePreviewView(image: image)
+                } else if let t = transaction, let path = t.receiptImagePath,
+                          let view = ReceiptImagePreviewView(fileName: path)
                 {
                     view
                 }
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraView(image: $selectedImage)
+                    .ignoresSafeArea()
+            }
+            .onChange(of: photoPickerItem) { _, newItem in
+                loadPhoto(from: newItem)
+            }
+            .alert("画像を削除", isPresented: $showRemoveImageAlert) {
+                Button("キャンセル", role: .cancel) {}
+                Button("削除", role: .destructive) {
+                    selectedImage = nil
+                    photoPickerItem = nil
+                    imageRemoved = true
+                }
+            } message: {
+                Text("添付画像を削除しますか？")
             }
             .navigationTitle(isEditMode ? "取引を編集" : "新規取引")
             .navigationBarTitleDisplayMode(.inline)
@@ -80,42 +105,109 @@ struct TransactionFormView: View {
 
     // MARK: - Receipt Section
 
-    @ViewBuilder
     private var receiptSection: some View {
-        if let t = transaction, let imagePath = t.receiptImagePath {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("レシート")
-                    .font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("添付画像")
+                .font(.subheadline.weight(.medium))
 
-                if let image = ReceiptImageStore.loadImage(fileName: imagePath) {
-                    Button {
-                        showReceiptPreview = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 48, height: 48)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                            Text("レシート画像を表示")
-                                .font(.subheadline)
-                                .foregroundStyle(AppColors.primary)
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(12)
-                        .background(AppColors.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("レシート画像を表示")
-                }
+            if let image = selectedImage {
+                receiptImagePreview(image: image)
+            } else if !imageRemoved, let t = transaction, let imagePath = t.receiptImagePath,
+                      let existingImage = ReceiptImageStore.loadImage(fileName: imagePath) {
+                receiptImagePreview(image: existingImage)
+            } else {
+                imagePickerButtons
             }
+        }
+    }
+
+    private func receiptImagePreview(image: UIImage) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                showReceiptPreview = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Text("添付画像を表示")
+                        .font(.subheadline)
+                        .foregroundStyle(AppColors.primary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("添付画像を表示")
+
+            HStack(spacing: 12) {
+                Button {
+                    showRemoveImageAlert = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                        Text("削除")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppColors.error)
+                }
+                .accessibilityLabel("添付画像を削除")
+
+                Spacer()
+
+                imagePickerButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var imagePickerButtons: some View {
+        HStack(spacing: 12) {
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button {
+                    showCamera = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.fill")
+                        Text("撮影")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppColors.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AppColors.primary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("カメラで撮影")
+            }
+
+            PhotosPicker(
+                selection: $photoPickerItem,
+                matching: .images
+            ) {
+                HStack(spacing: 4) {
+                    Image(systemName: "photo.on.rectangle")
+                    Text("選択")
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppColors.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppColors.primary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("フォトライブラリから選択")
         }
     }
 
@@ -402,15 +494,64 @@ struct TransactionFormView: View {
         }
     }
 
+    private func loadPhoto(from item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let uiImage = UIImage(data: data)
+            {
+                selectedImage = uiImage
+                imageRemoved = false
+            }
+        }
+    }
+
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
 
         let allocs = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+
+        var imagePath: String?
+        if let image = selectedImage {
+            do {
+                imagePath = try ReceiptImageStore.saveImage(image)
+            } catch {
+                // 画像保存失敗でも取引は保存する
+            }
+        }
+
         if let t = transaction {
-            dataStore.updateTransaction(id: t.id, type: type, amount: amount, date: date, categoryId: categoryId, memo: memo, allocations: allocs)
+            if selectedImage != nil {
+                if let oldPath = t.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
+                dataStore.updateTransaction(
+                    id: t.id, type: type, amount: amount, date: date,
+                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    receiptImagePath: imagePath
+                )
+            } else if imageRemoved {
+                if let oldPath = t.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
+                dataStore.updateTransaction(
+                    id: t.id, type: type, amount: amount, date: date,
+                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    receiptImagePath: .some(nil)
+                )
+            } else {
+                dataStore.updateTransaction(
+                    id: t.id, type: type, amount: amount, date: date,
+                    categoryId: categoryId, memo: memo, allocations: allocs
+                )
+            }
         } else {
-            dataStore.addTransaction(type: type, amount: amount, date: date, categoryId: categoryId, memo: memo, allocations: allocs)
+            dataStore.addTransaction(
+                type: type, amount: amount, date: date,
+                categoryId: categoryId, memo: memo, allocations: allocs,
+                receiptImagePath: imagePath
+            )
         }
         dismiss()
     }

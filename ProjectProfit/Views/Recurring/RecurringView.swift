@@ -11,6 +11,8 @@ struct RecurringView: View {
     @State private var skipTarget: PPRecurringTransaction? = nil
     @State private var showDeleteAlert = false
     @State private var deleteTarget: PPRecurringTransaction? = nil
+    @State private var showCancelSkipAlert = false
+    @State private var cancelSkipTarget: PPRecurringTransaction? = nil
     @State private var notificationTarget: PPRecurringTransaction? = nil
     @State private var historyTarget: PPRecurringTransaction? = nil
 
@@ -58,6 +60,21 @@ struct RecurringView: View {
         } message: {
             if let target = skipTarget {
                 Text("\(target.name)の次回登録をスキップしますか？")
+            }
+        }
+        .alert("スキップ取り消し", isPresented: $showCancelSkipAlert) {
+            Button("キャンセル", role: .cancel) {
+                cancelSkipTarget = nil
+            }
+            Button("取り消す") {
+                if let target = cancelSkipTarget, let vm = viewModel {
+                    vm.cancelSkip(target)
+                }
+                cancelSkipTarget = nil
+            }
+        } message: {
+            if let target = cancelSkipTarget {
+                Text("\(target.name)の次回スキップを取り消しますか？")
             }
         }
         .alert("削除の確認", isPresented: $showDeleteAlert) {
@@ -352,13 +369,24 @@ struct RecurringView: View {
 
     private func actionButtonsRow(_ recurring: PPRecurringTransaction, vm: RecurringViewModel) -> some View {
         HStack(spacing: 0) {
-            actionButton(
-                icon: "forward.end",
-                label: "スキップ",
-                color: .secondary
-            ) {
-                skipTarget = recurring
-                showSkipAlert = true
+            if vm.isNextDateSkipped(recurring) {
+                actionButton(
+                    icon: "arrow.uturn.backward",
+                    label: "スキップ取消",
+                    color: AppColors.warning
+                ) {
+                    cancelSkipTarget = recurring
+                    showCancelSkipAlert = true
+                }
+            } else {
+                actionButton(
+                    icon: "forward.end",
+                    label: "スキップ",
+                    color: .secondary
+                ) {
+                    skipTarget = recurring
+                    showSkipAlert = true
+                }
             }
 
             actionButton(
@@ -420,6 +448,7 @@ struct RecurringView: View {
     private func actionButtonHint(for label: String) -> String {
         switch label {
         case "スキップ": return "タップして次回登録をスキップ"
+        case "スキップ取消": return "タップして次回スキップを取り消す"
         case "通知": return "タップして通知設定を変更"
         case "履歴": return "タップして登録履歴を表示"
         case "停止": return "タップして定期取引を一時停止"

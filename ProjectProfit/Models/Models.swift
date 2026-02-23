@@ -253,6 +253,7 @@ final class PPRecurringTransaction {
     var yearlyAmortizationMode: YearlyAmortizationMode?  // nil = .lumpSum
     var lastGeneratedMonths: [String]  // ["2026-01", "2026-02", ...] 月次分割の生成追跡用
     var notificationTiming: NotificationTiming
+    var receiptImagePath: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -275,6 +276,7 @@ final class PPRecurringTransaction {
         yearlyAmortizationMode: YearlyAmortizationMode? = nil,
         lastGeneratedMonths: [String] = [],
         notificationTiming: NotificationTiming = .none,
+        receiptImagePath: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -296,6 +298,7 @@ final class PPRecurringTransaction {
         self.yearlyAmortizationMode = yearlyAmortizationMode
         self.lastGeneratedMonths = lastGeneratedMonths
         self.notificationTiming = notificationTiming
+        self.receiptImagePath = receiptImagePath
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

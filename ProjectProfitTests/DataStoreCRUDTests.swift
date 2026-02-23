@@ -1664,4 +1664,79 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(totalRatio, 100, "ratio合計が100になるべき")
         XCTAssertEqual(fetched.allocations.count, 2)
     }
+
+    // MARK: - Recurring Receipt Image
+
+    func testAddRecurringWithReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Monthly Server",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 15,
+            receiptImagePath: "contract-scan.jpg"
+        )
+
+        XCTAssertEqual(recurring.receiptImagePath, "contract-scan.jpg")
+        let fetched = dataStore.getRecurring(id: recurring.id)
+        XCTAssertEqual(fetched?.receiptImagePath, "contract-scan.jpg")
+    }
+
+    func testAddRecurringDefaultsNoReceiptImage() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Monthly Fee",
+            type: .expense,
+            amount: 3000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        XCTAssertNil(recurring.receiptImagePath)
+    }
+
+    func testUpdateRecurringReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Fee",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 15
+        )
+        XCTAssertNil(recurring.receiptImagePath)
+
+        dataStore.updateRecurring(id: recurring.id, receiptImagePath: "new-scan.jpg")
+        let fetched = dataStore.getRecurring(id: recurring.id)
+        XCTAssertEqual(fetched?.receiptImagePath, "new-scan.jpg")
+    }
+
+    func testUpdateRecurringClearReceiptImagePath() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Fee",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 15,
+            receiptImagePath: "old-scan.jpg"
+        )
+
+        dataStore.updateRecurring(id: recurring.id, receiptImagePath: .some(nil))
+        let fetched = dataStore.getRecurring(id: recurring.id)
+        XCTAssertNil(fetched?.receiptImagePath)
+    }
 }

@@ -769,4 +769,116 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(total, 10000, "Total must be preserved")
     }
 
+    // MARK: - 21. Skip Cancellation
+
+    func testCancelSkip_removesNextDateFromSkipDates() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        var nextMonth = currentMonth + 1
+        var nextYear = currentYear
+        if nextMonth > 12 {
+            nextMonth = 1
+            nextYear += 1
+        }
+        let nextDate = calendar.date(from: DateComponents(
+            year: nextYear, month: nextMonth, day: dayOfMonth
+        ))!
+
+        let recurring = PPRecurringTransaction(
+            name: "SkipCancel Test",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: currentYear, month: currentMonth, day: dayOfMonth
+            )),
+            skipDates: [nextDate]
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        XCTAssertEqual(recurring.skipDates.count, 1)
+
+        let vm = RecurringViewModel(dataStore: dataStore)
+        vm.cancelSkip(recurring)
+
+        let updated = fetchRecurring(id: recurring.id)
+        XCTAssertTrue(updated?.skipDates.isEmpty ?? false,
+                      "cancelSkip should remove the next date from skipDates")
+    }
+
+    func testIsNextDateSkipped_returnsTrueWhenSkipped() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        var nextMonth = currentMonth + 1
+        var nextYear = currentYear
+        if nextMonth > 12 { nextMonth = 1; nextYear += 1 }
+        let nextDate = calendar.date(from: DateComponents(
+            year: nextYear, month: nextMonth, day: dayOfMonth
+        ))!
+
+        let recurring = PPRecurringTransaction(
+            name: "IsSkipped Test",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: currentYear, month: currentMonth, day: dayOfMonth
+            )),
+            skipDates: [nextDate]
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let vm = RecurringViewModel(dataStore: dataStore)
+        XCTAssertTrue(vm.isNextDateSkipped(recurring))
+    }
+
+    func testIsNextDateSkipped_returnsFalseWhenNotSkipped() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        let recurring = PPRecurringTransaction(
+            name: "NotSkipped Test",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: currentYear, month: currentMonth, day: dayOfMonth
+            )),
+            skipDates: []
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let vm = RecurringViewModel(dataStore: dataStore)
+        XCTAssertFalse(vm.isNextDateSkipped(recurring))
+    }
+
 }
