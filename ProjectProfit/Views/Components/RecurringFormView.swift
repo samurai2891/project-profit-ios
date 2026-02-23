@@ -17,7 +17,7 @@ struct RecurringFormView: View {
     @State private var monthOfYear: Int
     @State private var selectedCategoryId: String?
     @State private var allocationMode: AllocationMode
-    @State private var allocations: [(projectId: UUID, ratio: Int)]
+    @State private var allocations: [(id: UUID, projectId: UUID, ratio: Int)]
     @State private var memo: String
     @State private var isActive: Bool
     @State private var hasEndDate: Bool
@@ -42,7 +42,7 @@ struct RecurringFormView: View {
         self._selectedCategoryId = State(initialValue: recurring?.categoryId)
         self._allocationMode = State(initialValue: recurring?.allocationMode ?? .manual)
         self._allocations = State(
-            initialValue: recurring?.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) } ?? []
+            initialValue: recurring?.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) } ?? []
         )
         self._memo = State(initialValue: recurring?.memo ?? "")
         self._isActive = State(initialValue: recurring?.isActive ?? true)
@@ -358,86 +358,113 @@ struct RecurringFormView: View {
 
     // MARK: - Project Allocation Section
 
+    private var totalRatio: Int {
+        allocations.reduce(0) { $0 + $1.ratio }
+    }
+
     private var projectAllocationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("プロジェクト配分")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("プロジェクト配分")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("合計: \(totalRatio)%")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(totalRatio == 100 ? AppColors.success : AppColors.error)
+            }
 
             if dataStore.projects.isEmpty {
                 Text("プロジェクトがありません")
                     .font(.subheadline)
                     .foregroundStyle(AppColors.muted)
             } else {
-                ForEach(dataStore.projects) { project in
-                    projectAllocationRow(project)
-                }
-            }
+                ForEach(Array(allocations.enumerated()), id: \.element.id) { index, alloc in
+                    let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
+                    HStack {
+                        Menu {
+                            ForEach(dataStore.projects, id: \.id) { project in
+                                Button(project.name) {
+                                    var updated = allocations
+                                    updated[index] = (id: alloc.id, projectId: project.id, ratio: alloc.ratio)
+                                    allocations = updated
+                                }
+                            }
+                        } label: {
+                            Text(projectName)
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(AppColors.primary.opacity(0.1))
+                                .foregroundStyle(AppColors.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
 
-            let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-            if totalRatio > 0 {
-                HStack {
-                    Spacer()
-                    Text("合計: \(totalRatio)%")
-                        .font(.caption)
-                        .foregroundStyle(
-                            totalRatio == 100
-                                ? AppColors.success
-                                : AppColors.warning
+                        Spacer()
+
+                        HStack(spacing: 4) {
+                            TextField("0", text: Binding(
+                                get: { String(allocations[index].ratio) },
+                                set: { newValue in
+                                    let clamped = min(100, max(0, Int(newValue) ?? 0))
+                                    var updated = allocations
+                                    updated[index] = (id: alloc.id, projectId: alloc.projectId, ratio: clamped)
+                                    allocations = updated
+                                }
+                            ))
+                            .keyboardType(.numberPad)
+                            .frame(width: 50)
+                            .multilineTextAlignment(.center)
+                            .padding(6)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.border))
+
+                            Text("%")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if allocations.count > 1 {
+                            Button {
+                                allocations = allocations.filter { $0.id != alloc.id }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(AppColors.error)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(AppColors.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                if dataStore.projects.count > allocations.count {
+                    Button {
+                        let usedIds = Set(allocations.map(\.projectId))
+                        if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) }) {
+                            allocations = allocations + [(id: UUID(), projectId: available.id, ratio: 0)]
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                            Text("プロジェクトを追加（按分）")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppColors.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(AppColors.border, style: StrokeStyle(lineWidth: 1, dash: [6]))
                         )
+                    }
                 }
             }
         }
         .padding(16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func projectAllocationRow(_ project: PPProject) -> some View {
-        let currentRatio = allocations.first(where: { $0.projectId == project.id })?.ratio ?? 0
-
-        return HStack {
-            Text(project.name)
-                .font(.subheadline)
-                .lineLimit(1)
-
-            Spacer()
-
-            HStack(spacing: 4) {
-                Button(action: { adjustAllocation(projectId: project.id, delta: -10) }) {
-                    Image(systemName: "minus.circle")
-                        .foregroundStyle(currentRatio > 0 ? .secondary : AppColors.muted)
-                }
-                .disabled(currentRatio <= 0)
-                .buttonStyle(.plain)
-
-                Text("\(currentRatio)%")
-                    .font(.subheadline.monospacedDigit())
-                    .frame(width: 44, alignment: .center)
-
-                Button(action: { adjustAllocation(projectId: project.id, delta: 10) }) {
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func adjustAllocation(projectId: UUID, delta: Int) {
-        let existingIndex = allocations.firstIndex(where: { $0.projectId == projectId })
-        let currentRatio = existingIndex.map { allocations[$0].ratio } ?? 0
-        let newRatio = max(0, min(100, currentRatio + delta))
-
-        if newRatio == 0 {
-            allocations = allocations.filter { $0.projectId != projectId }
-        } else if let index = existingIndex {
-            var updated = allocations
-            updated[index] = (projectId: projectId, ratio: newRatio)
-            allocations = updated
-        } else {
-            allocations = allocations + [(projectId: projectId, ratio: newRatio)]
-        }
     }
 
     // MARK: - Memo Field
