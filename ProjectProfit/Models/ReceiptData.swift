@@ -42,8 +42,11 @@ struct LineItemExtraction {
 @available(iOS 26, *)
 @Generable
 struct ReceiptExtraction {
-    @Guide(description: "レシートの合計金額（税込、整数、円単位）")
+    @Guide(description: "レシートの合計金額（税込、整数、円単位）。お預り・お釣り・支払い方法の金額は除外すること")
     var totalAmount: Int
+
+    @Guide(description: "消費税額（整数、円単位、不明なら0）")
+    var taxAmount: Int
 
     @Guide(description: "日付 yyyy-MM-dd形式")
     var date: String
@@ -70,6 +73,8 @@ struct LineItemsExtraction {
 
 struct ReceiptData: Sendable, Hashable {
     let totalAmount: Int
+    let taxAmount: Int
+    let subtotalAmount: Int
     let date: String
     let storeName: String
     let estimatedCategory: String
@@ -78,6 +83,8 @@ struct ReceiptData: Sendable, Hashable {
 
     init(
         totalAmount: Int,
+        taxAmount: Int = 0,
+        subtotalAmount: Int = 0,
         date: String,
         storeName: String,
         estimatedCategory: String,
@@ -85,6 +92,8 @@ struct ReceiptData: Sendable, Hashable {
         lineItems: [LineItem] = []
     ) {
         self.totalAmount = totalAmount
+        self.taxAmount = taxAmount
+        self.subtotalAmount = subtotalAmount
         self.date = date
         self.storeName = storeName
         self.estimatedCategory = estimatedCategory

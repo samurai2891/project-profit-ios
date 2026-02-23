@@ -46,6 +46,14 @@ enum ReceiptScanState {
 @MainActor
 @Observable
 final class ReceiptScannerService {
+    private static let ciContext = CIContext()
+    private static let digitPattern = try? NSRegularExpression(pattern: "\\d")
+
+    // OCR confidence thresholds
+    private static let minimumConfidence: Float = 0.3
+    private static let mediumConfidenceThreshold: Float = 0.7
+    private static let alternativeConfidenceMultiplier: Float = 0.8
+
     private(set) var state: ReceiptScanState = .idle
 
     func reset() {
@@ -86,12 +94,30 @@ final class ReceiptScannerService {
                 }
 
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
-                // Use top 3 candidates and pick best confidence match
                 let text = observations
                     .compactMap { observation -> String? in
                         let candidates = observation.topCandidates(3)
-                        // Prefer candidates with higher confidence
-                        return candidates.first?.string
+                        guard let best = candidates.first else { return nil }
+
+                        // Skip very low confidence results
+                        guard best.confidence >= Self.minimumConfidence else { return nil }
+
+                        // For lines containing digits (likely amounts), try to find
+                        // the candidate with highest confidence that parses numbers
+                        if best.confidence < Self.mediumConfidenceThreshold,
+                           let digitRegex = Self.digitPattern
+                        {
+                            for candidate in candidates {
+                                let str = candidate.string
+                                let range = NSRange(str.startIndex..., in: str)
+                                let hasDigits = digitRegex.firstMatch(in: str, range: range) != nil
+                                if hasDigits && candidate.confidence > best.confidence * Self.alternativeConfidenceMultiplier {
+                                    return candidate.string
+                                }
+                            }
+                        }
+
+                        return best.string
                     }
                     .joined(separator: "\n")
 
@@ -117,14 +143,38 @@ final class ReceiptScannerService {
 
     /// Preprocess image for better OCR accuracy: normalize orientation and enhance contrast
     private func preprocessImage(_ image: UIImage) -> UIImage {
-        // Ensure correct orientation
-        guard image.imageOrientation != .up else { return image }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = image.scale
-        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
-        return renderer.image { _ in
-            image.draw(at: .zero)
+        // Step 1: Normalize orientation
+        let oriented: UIImage
+        if image.imageOrientation != .up {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+            oriented = renderer.image { _ in
+                image.draw(at: .zero)
+            }
+        } else {
+            oriented = image
         }
+
+        // Step 2: Apply CIFilter-based enhancement for better OCR
+        guard let ciImage = CIImage(image: oriented) else { return oriented }
+        let context = Self.ciContext
+
+        // Enhance contrast and brightness (helps with faded thermal receipts)
+        let enhanced = ciImage
+            .applyingFilter("CIColorControls", parameters: [
+                kCIInputContrastKey: 1.4,
+                kCIInputBrightnessKey: 0.05,
+            ])
+            // Sharpen to improve text edge clarity
+            .applyingFilter("CISharpenLuminance", parameters: [
+                kCIInputSharpnessKey: 0.4,
+            ])
+
+        guard let cgImage = context.createCGImage(enhanced, from: enhanced.extent) else {
+            return oriented
+        }
+        return UIImage(cgImage: cgImage, scale: oriented.scale, orientation: .up)
     }
 
     // MARK: - Data Extraction
@@ -153,7 +203,12 @@ final class ReceiptScannerService {
         以下はレシートまたは請求書のOCRテキストです。正確に情報を抽出してください。
 
         【抽出ルール】
-        - totalAmount: 税込の合計金額を整数で（「合計」「お会計」「お買上」行の金額。見つからない場合は最大金額）
+        - totalAmount: 税込の合計金額を整数で。以下の優先順で探す:
+          1. 「税込合計」「お支払い合計」「お支払い金額」行の金額（最優先）
+          2. 「合計」「お会計」「お買上」行の金額
+          3. 見つからない場合は最大金額
+          ※「お預り」「お預かり」「お釣り」「現金」「クレジット」行の金額は合計ではないので除外すること
+        - taxAmount: 消費税額を整数で（「消費税」「内税」「外税」行の金額。不明なら0）
         - date: yyyy-MM-dd形式（「2026/01/15」→「2026-01-15」）
         - storeName: 店舗名・発行者名（レシート上部に記載されることが多い）
         - estimatedCategory: 以下から最適なものを1つ選択:
@@ -167,6 +222,9 @@ final class ReceiptScannerService {
         - OCRの誤読を考慮し、文脈から正しい値を推測してください
         - 金額のカンマ区切り（1,000）は除去して整数にしてください
         - 日付が見つからない場合は空文字を返してください
+        - 「お預り」「お預かり」金額は、お客様から受け取った金額であり合計金額ではありません
+        - 「お釣り」は返金額であり合計金額ではありません
+        - 合計が税抜と税込の両方ある場合は、必ず税込（大きい方）の金額を選んでください
 
         OCRテキスト:
         \(truncatedText)
@@ -178,8 +236,16 @@ final class ReceiptScannerService {
         // Extract line items in a separate request to avoid nesting issues
         let lineItems = await extractLineItemsWithFoundationModels(from: truncatedText, session: session)
 
+        // Use regex as supplementary for tax/subtotal if FM didn't provide
+        let taxAmount = extraction.taxAmount > 0
+            ? extraction.taxAmount
+            : RegexReceiptParser.extractTax(from: text)
+        let subtotalAmount = RegexReceiptParser.extractSubtotal(from: text)
+
         return ReceiptData(
             totalAmount: extraction.totalAmount,
+            taxAmount: taxAmount,
+            subtotalAmount: subtotalAmount,
             date: extraction.date,
             storeName: extraction.storeName,
             estimatedCategory: extraction.estimatedCategory,
@@ -235,8 +301,14 @@ final class ReceiptScannerService {
     // MARK: - Regex Fallback
 
     private func extractWithRegex(from text: String) -> ReceiptData {
-        ReceiptData(
-            totalAmount: RegexReceiptParser.extractAmount(from: text),
+        let totalAmount = RegexReceiptParser.extractAmount(from: text)
+        let taxAmount = RegexReceiptParser.extractTax(from: text)
+        let subtotalAmount = RegexReceiptParser.extractSubtotal(from: text)
+
+        return ReceiptData(
+            totalAmount: totalAmount,
+            taxAmount: taxAmount,
+            subtotalAmount: subtotalAmount,
             date: RegexReceiptParser.extractDate(from: text),
             storeName: RegexReceiptParser.extractStoreName(from: text),
             estimatedCategory: RegexReceiptParser.estimateCategory(from: text),
@@ -259,10 +331,18 @@ enum RegexReceiptParser {
         "([\\d,]+)\\s*円",
         "([\\d,]{3,})",
     ].compactMap { try? NSRegularExpression(pattern: $0) }
+    private static let plainNumberEndPattern = try? NSRegularExpression(pattern: "([\\d,]{2,})\\s*$")
     private static let storeSkipPatterns: [NSRegularExpression] = [
         "^\\d+$", "^[¥￥]", "^20\\d{2}", "^\\d{1,2}[:/]",
         "^TEL", "^T\\d{4}", "^レシート", "^領収",
     ].compactMap { try? NSRegularExpression(pattern: $0) }
+
+    // Tax-inclusive total keywords (highest priority)
+    private static let taxInclusiveTotalKeywords = [
+        "税込合計", "税込計", "税込金額",
+        "お支払い合計", "お支払合計", "お支払い金額", "お支払金額",
+        "お買い上げ合計", "お買上合計",
+    ]
 
     private static let totalKeywords = [
         "合計", "お会計", "お買上", "お買い上げ",
@@ -270,25 +350,99 @@ enum RegexReceiptParser {
         "TOTAL", "Total",
     ]
 
+    // Lines containing these keywords should be excluded from amount extraction
+    private static let amountExcludeKeywords = [
+        "お預り", "お預かり", "お釣り", "釣銭",
+        "現金", "クレジット", "VISA", "MASTER", "JCB", "AMEX",
+        "カード", "電子マネー", "PayPay", "paypay",
+        "交通系", "Suica", "PASMO", "ICOCA",
+        "CHANGE", "CASH", "nanaco", "WAON", "iD",
+        "小計",
+    ]
+
+    private static let taxKeywords = [
+        "消費税", "内税", "外税", "内消費税", "うち消費税",
+    ]
+
     static func extractAmount(from text: String) -> Int {
         let lines = text.components(separatedBy: .newlines)
+        let nonExcludedLines = lines.filter { line in
+            !amountExcludeKeywords.contains { line.contains($0) }
+        }
 
-        // Priority 1: lines containing total keywords
-        for keyword in totalKeywords {
-            for line in lines where line.contains(keyword) {
+        // Priority 0: Tax-inclusive total keywords (most reliable)
+        for keyword in taxInclusiveTotalKeywords {
+            for line in nonExcludedLines where line.contains(keyword) {
                 if let amount = extractFirstNumber(from: line), amount > 0 {
                     return amount
                 }
             }
         }
 
-        // Priority 2: largest yen-prefixed number
-        var maxAmount = findMaxAmount(in: lines, using: yenPrefixPattern)
+        // Priority 1: Total keywords — prefer the LAST matching line
+        // (receipts typically list subtotal first, then tax, then total)
+        for keyword in totalKeywords {
+            var lastAmount = 0
+            for line in nonExcludedLines where line.contains(keyword) {
+                // Skip lines that also contain tax keywords (e.g., "消費税")
+                let isTaxLine = taxKeywords.contains { line.contains($0) }
+                guard !isTaxLine else { continue }
+                if let amount = extractFirstNumber(from: line), amount > 0 {
+                    lastAmount = amount
+                }
+            }
+            if lastAmount > 0 {
+                return lastAmount
+            }
+        }
+
+        // Priority 2: largest yen-prefixed number (excluding payment/deposit lines)
+        var maxAmount = findMaxAmount(in: nonExcludedLines, using: yenPrefixPattern)
         if maxAmount > 0 { return maxAmount }
 
-        // Priority 3: number followed by 円
-        maxAmount = findMaxAmount(in: lines, using: yenSuffixPattern)
+        // Priority 3: number followed by 円 (excluding payment/deposit lines)
+        maxAmount = findMaxAmount(in: nonExcludedLines, using: yenSuffixPattern)
         return maxAmount
+    }
+
+    // MARK: - Tax Extraction
+
+    static func extractTax(from text: String) -> Int {
+        let lines = text.components(separatedBy: .newlines)
+        var totalTax = 0
+
+        // Pattern: lines containing tax keywords with amounts
+        for line in lines {
+            let isTaxLine = taxKeywords.contains { line.contains($0) }
+            guard isTaxLine else { continue }
+            // Skip lines that are tax rate descriptions (e.g., "税率10% 対象 ¥1,000")
+            if line.contains("税率") && line.contains("対象") { continue }
+            if let amount = extractFirstNumber(from: line), amount > 0 {
+                totalTax += amount
+            }
+        }
+
+        return totalTax
+    }
+
+    // MARK: - Subtotal Extraction
+
+    static func extractSubtotal(from text: String) -> Int {
+        let lines = text.components(separatedBy: .newlines)
+        let subtotalKeywords = ["小計"]
+
+        for keyword in subtotalKeywords {
+            for line in lines where line.contains(keyword) {
+                // Avoid lines that also match total keywords
+                let isTotalLine = totalKeywords.contains { line.contains($0) }
+                guard !isTotalLine else { continue }
+                if let amount = extractFirstNumber(from: line), amount > 0 {
+                    return amount
+                }
+            }
+        }
+
+        return 0
     }
 
     static func extractDate(from text: String) -> String {
@@ -520,8 +674,7 @@ enum RegexReceiptParser {
         }
 
         // Try plain number at end of line
-        let plainNumberPattern = try? NSRegularExpression(pattern: "([\\d,]{2,})\\s*$")
-        if let match = plainNumberPattern?.firstMatch(in: line, range: nsRange),
+        if let match = plainNumberEndPattern?.firstMatch(in: line, range: nsRange),
            let numRange = Range(match.range(at: 1), in: line)
         {
             let numStr = String(line[numRange]).replacingOccurrences(of: ",", with: "")

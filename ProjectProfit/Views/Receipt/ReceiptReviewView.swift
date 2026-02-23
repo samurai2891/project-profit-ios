@@ -156,7 +156,42 @@ struct ReceiptReviewView: View {
             .padding(16)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            // Tax information (reference)
+            if receiptData.taxAmount > 0 || receiptData.subtotalAmount > 0 {
+                taxInfoView
+            }
         }
+    }
+
+    @ViewBuilder
+    private var taxInfoView: some View {
+        HStack(spacing: 16) {
+            if receiptData.subtotalAmount > 0 {
+                Label {
+                    Text("税抜 ¥\(receiptData.subtotalAmount.formatted())")
+                        .font(.caption)
+                } icon: {
+                    Image(systemName: "minus.circle")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("税抜金額 \(receiptData.subtotalAmount)円")
+            }
+            if receiptData.taxAmount > 0 {
+                Label {
+                    Text("消費税 ¥\(receiptData.taxAmount.formatted())")
+                        .font(.caption)
+                } icon: {
+                    Image(systemName: "percent")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("消費税 \(receiptData.taxAmount)円")
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 4)
     }
 
     // MARK: - Date
