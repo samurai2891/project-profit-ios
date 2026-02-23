@@ -59,7 +59,7 @@ struct ProjectFormView: View {
                     }
                 }
 
-                if isEditMode && status != .completed {
+                if status != .completed {
                     Section("終了予定日") {
                         Toggle("終了予定日を設定", isOn: $hasPlannedEndDate)
                             .accessibilityLabel("終了予定日を設定")
