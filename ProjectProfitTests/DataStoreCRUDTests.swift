@@ -1478,4 +1478,190 @@ final class DataStoreCRUDTests: XCTestCase {
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertNotNil(fetched?.startDate)
     }
+
+    // MARK: - Delete Project Redistribution
+
+    func testDeleteProject_redistributesRemainingAllocations() {
+        // 3プロジェクト(50/30/20)のうち1つ削除→残り2つが再分配
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectC = dataStore.addProject(name: "C", description: "")
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 30),
+                (projectId: projectC.id, ratio: 20),
+            ]
+        )
+
+        dataStore.deleteProject(id: projectA.id)
+
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        XCTAssertEqual(fetched.allocations.count, 2)
+
+        // B: 30/(30+20) × 100 = 60%, C: 20/(30+20) × 100 = 40%
+        let allocB = fetched.allocations.first { $0.projectId == projectB.id }!
+        let allocC = fetched.allocations.first { $0.projectId == projectC.id }!
+
+        XCTAssertEqual(allocB.ratio, 60, "Bのratioが60%になるべき")
+        XCTAssertEqual(allocC.ratio, 40, "Cのratioが40%になるべき")
+        XCTAssertEqual(allocB.amount, 6000, "Bのamountが¥6,000になるべき")
+        XCTAssertEqual(allocC.amount, 4000, "Cのamountが¥4,000になるべき")
+        XCTAssertEqual(allocB.amount + allocC.amount, 10000, "合計が元のamountと一致すべき")
+    }
+
+    func testDeleteProject_redistributes_twoProjects() {
+        // 2プロジェクト(60/40)のうち1つ削除→残り1つが100%
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 5000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [
+                (projectId: projectA.id, ratio: 60),
+                (projectId: projectB.id, ratio: 40),
+            ]
+        )
+
+        dataStore.deleteProject(id: projectA.id)
+
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        XCTAssertEqual(fetched.allocations.count, 1)
+        XCTAssertEqual(fetched.allocations[0].projectId, projectB.id)
+        XCTAssertEqual(fetched.allocations[0].ratio, 100, "残り1つなのでratioは100%")
+        XCTAssertEqual(fetched.allocations[0].amount, 5000, "残り1つなのでamountは全額")
+    }
+
+    func testDeleteProject_redistributes_preservesTotal() {
+        // 端数が出るケース: 33/33/34 → 33/34 → 49/51 (or similar)
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectC = dataStore.addProject(name: "C", description: "")
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [
+                (projectId: projectA.id, ratio: 33),
+                (projectId: projectB.id, ratio: 33),
+                (projectId: projectC.id, ratio: 34),
+            ]
+        )
+
+        dataStore.deleteProject(id: projectA.id)
+
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        let totalAmount = fetched.allocations.reduce(0) { $0 + $1.amount }
+        let totalRatio = fetched.allocations.reduce(0) { $0 + $1.ratio }
+        XCTAssertEqual(totalAmount, 10000, "再分配後の金額合計がtransaction.amountと一致すべき")
+        XCTAssertEqual(totalRatio, 100, "再分配後のratio合計が100になるべき")
+    }
+
+    func testDeleteProject_redistributes_recurringManual() {
+        // 定期取引(manual)のアロケーション再分配
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectC = dataStore.addProject(name: "C", description: "")
+
+        let rec = dataStore.addRecurring(
+            name: "Test recurring",
+            type: .expense,
+            amount: 12000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocationMode: .manual,
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 30),
+                (projectId: projectC.id, ratio: 20),
+            ],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        dataStore.deleteProject(id: projectA.id)
+
+        let fetched = dataStore.getRecurring(id: rec.id)!
+        XCTAssertEqual(fetched.allocations.count, 2)
+
+        let allocB = fetched.allocations.first { $0.projectId == projectB.id }!
+        let allocC = fetched.allocations.first { $0.projectId == projectC.id }!
+
+        XCTAssertEqual(allocB.ratio, 60)
+        XCTAssertEqual(allocC.ratio, 40)
+        XCTAssertEqual(allocB.amount + allocC.amount, 12000, "定期取引の合計金額が保持されるべき")
+    }
+
+    func testDeleteProjects_batch_redistributes() {
+        // バッチ削除での再分配
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectC = dataStore.addProject(name: "C", description: "")
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 9000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [
+                (projectId: projectA.id, ratio: 30),
+                (projectId: projectB.id, ratio: 30),
+                (projectId: projectC.id, ratio: 40),
+            ]
+        )
+
+        // AとBを一括削除
+        dataStore.deleteProjects(ids: [projectA.id, projectB.id])
+
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        XCTAssertEqual(fetched.allocations.count, 1)
+        XCTAssertEqual(fetched.allocations[0].projectId, projectC.id)
+        XCTAssertEqual(fetched.allocations[0].ratio, 100)
+        XCTAssertEqual(fetched.allocations[0].amount, 9000, "残り1プロジェクトが全額を受け取るべき")
+    }
+
+    func testDeleteProject_redistributes_withRoundingRemainder() {
+        // 端数処理の正確性: 3等分できないケース
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectC = dataStore.addProject(name: "C", description: "")
+
+        // 各プロジェクト: ratio=25, 25, 50 → amount=2500, 2500, 5000
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 10001,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [
+                (projectId: projectA.id, ratio: 25),
+                (projectId: projectB.id, ratio: 25),
+                (projectId: projectC.id, ratio: 50),
+            ]
+        )
+
+        dataStore.deleteProject(id: projectC.id)
+
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        let totalAmount = fetched.allocations.reduce(0) { $0 + $1.amount }
+        let totalRatio = fetched.allocations.reduce(0) { $0 + $1.ratio }
+
+        XCTAssertEqual(totalAmount, 10001, "端数があっても合計金額が正確に保持されるべき")
+        XCTAssertEqual(totalRatio, 100, "ratio合計が100になるべき")
+        XCTAssertEqual(fetched.allocations.count, 2)
+    }
 }

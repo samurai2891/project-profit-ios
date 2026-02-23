@@ -200,7 +200,10 @@ class DataStore {
                 if filtered.isEmpty {
                     modelContext.delete(transaction)
                 } else {
-                    transaction.allocations = filtered
+                    transaction.allocations = redistributeAllocations(
+                        totalAmount: transaction.amount,
+                        remainingAllocations: filtered
+                    )
                 }
             }
         }
@@ -212,7 +215,10 @@ class DataStore {
                 if filtered.isEmpty {
                     modelContext.delete(recurring)
                 } else {
-                    recurring.allocations = filtered
+                    recurring.allocations = redistributeAllocations(
+                        totalAmount: recurring.amount,
+                        remainingAllocations: filtered
+                    )
                 }
             }
         }
@@ -227,32 +233,39 @@ class DataStore {
     func deleteProjects(ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
 
+        // 全削除対象を一括でフィルタリング（再分配は1回のみ）
+        for transaction in transactions {
+            let filtered = transaction.allocations.filter { !ids.contains($0.projectId) }
+            if filtered.count != transaction.allocations.count {
+                if filtered.isEmpty {
+                    modelContext.delete(transaction)
+                } else {
+                    transaction.allocations = redistributeAllocations(
+                        totalAmount: transaction.amount,
+                        remainingAllocations: filtered
+                    )
+                }
+            }
+        }
+
+        for recurring in recurringTransactions {
+            let filtered = recurring.allocations.filter { !ids.contains($0.projectId) }
+            if filtered.count != recurring.allocations.count {
+                if filtered.isEmpty {
+                    modelContext.delete(recurring)
+                } else {
+                    recurring.allocations = redistributeAllocations(
+                        totalAmount: recurring.amount,
+                        remainingAllocations: filtered
+                    )
+                }
+            }
+        }
+
         for id in ids {
-            guard let project = projects.first(where: { $0.id == id }) else { continue }
-
-            for transaction in transactions {
-                let filtered = transaction.allocations.filter { $0.projectId != id }
-                if filtered.count != transaction.allocations.count {
-                    if filtered.isEmpty {
-                        modelContext.delete(transaction)
-                    } else {
-                        transaction.allocations = filtered
-                    }
-                }
+            if let project = projects.first(where: { $0.id == id }) {
+                modelContext.delete(project)
             }
-
-            for recurring in recurringTransactions {
-                let filtered = recurring.allocations.filter { $0.projectId != id }
-                if filtered.count != recurring.allocations.count {
-                    if filtered.isEmpty {
-                        modelContext.delete(recurring)
-                    } else {
-                        recurring.allocations = filtered
-                    }
-                }
-            }
-
-            modelContext.delete(project)
         }
 
         save()

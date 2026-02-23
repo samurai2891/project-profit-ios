@@ -505,6 +505,40 @@ func calculateEqualSplitAllocations(amount: Int, projectIds: [UUID]) -> [Allocat
     }
 }
 
+// MARK: - Redistribute Allocations After Project Deletion
+
+/// プロジェクト削除後、残りのアロケーションのratio/amountを再計算する。
+/// ratio合計が100になり、amount合計がtotalAmountと一致することを保証する。
+func redistributeAllocations(totalAmount: Int, remainingAllocations: [Allocation]) -> [Allocation] {
+    guard !remainingAllocations.isEmpty else { return [] }
+
+    let count = remainingAllocations.count
+    if count == 1 {
+        return [Allocation(
+            projectId: remainingAllocations[0].projectId,
+            ratio: 100,
+            amount: totalAmount
+        )]
+    }
+
+    let sumRatio = remainingAllocations.reduce(0) { $0 + $1.ratio }
+    guard sumRatio > 0 else { return remainingAllocations }
+
+    // 新しいratioを計算（端数はlastに付与）
+    var newRatios: [Int] = remainingAllocations.map { $0.ratio * 100 / sumRatio }
+    let ratioRemainder = 100 - newRatios.reduce(0, +)
+    newRatios[count - 1] += ratioRemainder
+
+    // 新しいamountを計算（端数はlastに付与）
+    var newAmounts: [Int] = newRatios.map { totalAmount * $0 / 100 }
+    let amountRemainder = totalAmount - newAmounts.reduce(0, +)
+    newAmounts[count - 1] += amountRemainder
+
+    return zip(remainingAllocations, zip(newRatios, newAmounts)).map { alloc, pair in
+        Allocation(projectId: alloc.projectId, ratio: pair.0, amount: pair.1)
+    }
+}
+
 // MARK: - CSV Import
 
 struct CSVImportResult {
