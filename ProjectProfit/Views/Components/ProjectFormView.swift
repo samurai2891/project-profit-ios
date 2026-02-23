@@ -13,6 +13,8 @@ struct ProjectFormView: View {
     @State private var hasStartDate: Bool = true
     @State private var completedAt: Date = Date()
     @State private var hasCompletedAt: Bool = false
+    @State private var hasPlannedEndDate: Bool = false
+    @State private var plannedEndDate: Date = Date()
 
     private var isEditMode: Bool { project != nil }
 
@@ -54,6 +56,33 @@ struct ProjectFormView: View {
                         Text("開始月の取引は日割り計算で再配分されます")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                }
+
+                if isEditMode && status != .completed {
+                    Section("終了予定日") {
+                        Toggle("終了予定日を設定", isOn: $hasPlannedEndDate)
+                            .accessibilityLabel("終了予定日を設定")
+                            .accessibilityHint("オンにすると終了予定日を指定できます")
+
+                        if hasPlannedEndDate {
+                            DatePicker(
+                                "終了予定日",
+                                selection: $plannedEndDate,
+                                displayedComponents: .date
+                            )
+                            .environment(\.locale, Locale(identifier: "ja_JP"))
+                            .accessibilityLabel("終了予定日")
+                            .accessibilityValue(formatDate(plannedEndDate))
+
+                            Text("予定完了月の取引は日割り計算で推定配分されます")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+
+                            Text("予定完了日を過ぎてもプロジェクトは自動的に完了しません")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -125,12 +154,16 @@ struct ProjectFormView: View {
                         completedAt = date
                         hasCompletedAt = true
                     }
+                    if let date = project.plannedEndDate {
+                        plannedEndDate = date
+                        hasPlannedEndDate = true
+                    }
                 }
             }
             .onChange(of: status) { _, newStatus in
                 if newStatus == .completed && !hasCompletedAt {
                     hasCompletedAt = true
-                    completedAt = Date()
+                    completedAt = hasPlannedEndDate ? plannedEndDate : Date()
                 }
             }
         }
@@ -141,15 +174,16 @@ struct ProjectFormView: View {
         guard !trimmedName.isEmpty else { return }
 
         let resolvedStartDate: Date?? = hasStartDate ? .some(startDate) : .some(nil)
+        let resolvedPlannedEndDate: Date?? = hasPlannedEndDate ? .some(plannedEndDate) : .some(nil)
 
         if let project {
             if status == .completed && hasCompletedAt {
-                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate, completedAt: completedAt)
+                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate, completedAt: completedAt, plannedEndDate: .some(nil))
             } else {
-                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate)
+                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate, plannedEndDate: resolvedPlannedEndDate)
             }
         } else {
-            dataStore.addProject(name: trimmedName, description: description, startDate: hasStartDate ? startDate : nil)
+            dataStore.addProject(name: trimmedName, description: description, startDate: hasStartDate ? startDate : nil, plannedEndDate: hasPlannedEndDate ? plannedEndDate : nil)
         }
         dismiss()
     }

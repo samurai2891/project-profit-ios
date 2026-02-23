@@ -66,6 +66,18 @@ enum AllocationMode: String, Codable {
     }
 }
 
+enum YearlyAmortizationMode: String, Codable {
+    case lumpSum       // 一括登録（既存動作）
+    case monthlySpread // 月次分割
+
+    var label: String {
+        switch self {
+        case .lumpSum: "一括登録"
+        case .monthlySpread: "月次分割"
+        }
+    }
+}
+
 enum NotificationTiming: String, Codable {
     case none
     case sameDay
@@ -120,6 +132,7 @@ final class PPProject {
     var status: ProjectStatus
     var startDate: Date?
     var completedAt: Date?
+    var plannedEndDate: Date?
     var createdAt: Date
     var updatedAt: Date
 
@@ -130,6 +143,7 @@ final class PPProject {
         status: ProjectStatus = .active,
         startDate: Date? = nil,
         completedAt: Date? = nil,
+        plannedEndDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -139,9 +153,17 @@ final class PPProject {
         self.status = status
         self.startDate = startDate
         self.completedAt = completedAt
+        self.plannedEndDate = plannedEndDate
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+}
+
+extension PPProject {
+    /// プロラタ計算用の有効終了日: completedAt > plannedEndDate > nil
+    var effectiveEndDate: Date? { completedAt ?? plannedEndDate }
+    /// 予定日ベースの推定配分かどうか
+    var isUsingPlannedEndDate: Bool { completedAt == nil && plannedEndDate != nil }
 }
 
 @Model
@@ -228,6 +250,8 @@ final class PPRecurringTransaction {
     var endDate: Date?
     var lastGeneratedDate: Date?
     var skipDates: [Date]
+    var yearlyAmortizationMode: YearlyAmortizationMode?  // nil = .lumpSum
+    var lastGeneratedMonths: [String]  // ["2026-01", "2026-02", ...] 月次分割の生成追跡用
     var notificationTiming: NotificationTiming
     var createdAt: Date
     var updatedAt: Date
@@ -248,6 +272,8 @@ final class PPRecurringTransaction {
         endDate: Date? = nil,
         lastGeneratedDate: Date? = nil,
         skipDates: [Date] = [],
+        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
+        lastGeneratedMonths: [String] = [],
         notificationTiming: NotificationTiming = .none,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -267,6 +293,8 @@ final class PPRecurringTransaction {
         self.endDate = endDate
         self.lastGeneratedDate = lastGeneratedDate
         self.skipDates = skipDates
+        self.yearlyAmortizationMode = yearlyAmortizationMode
+        self.lastGeneratedMonths = lastGeneratedMonths
         self.notificationTiming = notificationTiming
         self.createdAt = createdAt
         self.updatedAt = updatedAt

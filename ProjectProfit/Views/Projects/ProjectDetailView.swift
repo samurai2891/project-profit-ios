@@ -96,6 +96,18 @@ private extension ProjectDetailView {
                         .accessibilityLabel("開始日 \(formatDate(startDate))")
                     }
 
+                    if project.status != .completed, let plannedEndDate = project.plannedEndDate {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Text("終了予定日: \(formatDate(plannedEndDate))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("終了予定日 \(formatDate(plannedEndDate))")
+                    }
+
                     if project.status == .completed, let completedAt = project.completedAt {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")

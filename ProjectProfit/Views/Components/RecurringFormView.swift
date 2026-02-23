@@ -22,6 +22,7 @@ struct RecurringFormView: View {
     @State private var isActive: Bool
     @State private var hasEndDate: Bool
     @State private var endDate: Date
+    @State private var yearlyAmortizationMode: YearlyAmortizationMode
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
@@ -47,6 +48,7 @@ struct RecurringFormView: View {
         self._isActive = State(initialValue: recurring?.isActive ?? true)
         self._hasEndDate = State(initialValue: recurring?.endDate != nil)
         self._endDate = State(initialValue: recurring?.endDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date())!)
+        self._yearlyAmortizationMode = State(initialValue: recurring?.yearlyAmortizationMode ?? .lumpSum)
     }
 
     // MARK: - Computed Properties
@@ -87,6 +89,9 @@ struct RecurringFormView: View {
                         amountField
                         frequencySection
                         dayOfMonthSection
+                        if frequency == .yearly {
+                            yearlyAmortizationSection
+                        }
                         categorySection
                         allocationModeSection
                         if allocationMode == .manual {
@@ -236,6 +241,31 @@ struct RecurringFormView: View {
             Text("※ 29日以降は月末の不一致を避けるため選択できません")
                 .font(.caption2)
                 .foregroundStyle(AppColors.muted)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - Yearly Amortization Section
+
+    private var yearlyAmortizationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("登録方法")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("登録方法", selection: $yearlyAmortizationMode) {
+                Text("一括登録").tag(YearlyAmortizationMode.lumpSum)
+                Text("月次分割").tag(YearlyAmortizationMode.monthlySpread)
+            }
+            .pickerStyle(.segmented)
+
+            if yearlyAmortizationMode == .monthlySpread {
+                Text("年額を12ヶ月で分割し、毎月\(dayOfMonth)日に登録します")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.primary)
+            }
         }
         .padding(16)
         .background(Color(.systemBackground))
@@ -513,6 +543,7 @@ struct RecurringFormView: View {
         let categoryId = selectedCategoryId ?? ""
         let resolvedMonthOfYear = frequency == .yearly ? monthOfYear : nil
         let resolvedEndDate: Date? = hasEndDate ? endDate : nil
+        let resolvedAmortizationMode: YearlyAmortizationMode? = frequency == .yearly ? yearlyAmortizationMode : nil
 
         if let existing = recurring {
             dataStore.updateRecurring(
@@ -528,7 +559,8 @@ struct RecurringFormView: View {
                 dayOfMonth: dayOfMonth,
                 monthOfYear: resolvedMonthOfYear,
                 isActive: isActive,
-                endDate: resolvedEndDate
+                endDate: resolvedEndDate,
+                yearlyAmortizationMode: resolvedAmortizationMode
             )
         } else {
             dataStore.addRecurring(
@@ -542,7 +574,8 @@ struct RecurringFormView: View {
                 frequency: frequency,
                 dayOfMonth: dayOfMonth,
                 monthOfYear: resolvedMonthOfYear,
-                endDate: resolvedEndDate
+                endDate: resolvedEndDate,
+                yearlyAmortizationMode: resolvedAmortizationMode
             )
         }
 

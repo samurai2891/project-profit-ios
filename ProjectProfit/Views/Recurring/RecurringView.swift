@@ -193,6 +193,16 @@ struct RecurringView: View {
                                 .clipShape(Capsule())
                         }
 
+                        if recurring.frequency == .yearly && (recurring.yearlyAmortizationMode ?? .lumpSum) == .monthlySpread {
+                            Text("月次")
+                                .font(.caption2)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AppColors.success)
+                                .clipShape(Capsule())
+                        }
+
                         Spacer()
 
                         Text(formatCurrency(recurring.amount))
