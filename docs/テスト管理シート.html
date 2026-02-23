@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProjectProfit テスト管理シート</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;background:#f0f2f5;color:#1a1a2e;line-height:1.6}
+.container{max-width:960px;margin:0 auto;padding:16px}
+header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:24px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+header h1{text-align:center;font-size:1.4em;margin-bottom:8px}
+.progress-wrap{max-width:960px;margin:0 auto;padding:0 16px}
+.progress-bar{background:rgba(255,255,255,.2);border-radius:20px;height:24px;overflow:hidden;position:relative}
+.progress-fill{height:100%;background:linear-gradient(90deg,#00c853,#64dd17);border-radius:20px;transition:width .4s ease}
+.progress-text{position:absolute;top:0;left:0;right:0;text-align:center;font-size:12px;line-height:24px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.stats-row{display:flex;justify-content:center;gap:24px;margin-top:8px;font-size:13px}
+.stats-row span{opacity:.9}
+.stats-row .ok{color:#b9f6ca}.stats-row .ng{color:#ff8a80}.stats-row .pending{color:#fff59d}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.controls button{padding:6px 16px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:20px;cursor:pointer;font-size:12px;transition:all .2s}
+.controls button:hover,.controls button.active{background:rgba(255,255,255,.25);border-color:#fff}
+.tester-info{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.tester-info summary{cursor:pointer;font-weight:600;font-size:15px;color:#667eea}
+.tester-info .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.tester-info label{font-size:13px;color:#666;display:block;margin-bottom:4px}
+.tester-info input{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px}
+.phase-section{margin:16px 0}
+.phase-header{background:#fff;padding:14px 20px;border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.06);transition:all .2s;user-select:none}
+.phase-header:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.phase-header h2{font-size:15px;color:#333}
+.phase-badge{display:flex;gap:6px;align-items:center}
+.phase-badge .count{font-size:12px;padding:2px 10px;border-radius:12px;font-weight:600}
+.phase-badge .ok-count{background:#e8f5e9;color:#2e7d32}
+.phase-badge .ng-count{background:#ffebee;color:#c62828}
+.phase-badge .arrow{font-size:12px;color:#999;transition:transform .2s}
+.phase-section.open .arrow{transform:rotate(180deg)}
+.phase-body{display:none;padding:8px 0}
+.phase-section.open .phase-body{display:block}
+.scenario-card{background:#fff;border-radius:10px;margin:8px 0;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #e0e0e0;transition:border-color .2s}
+.scenario-card.ok{border-left-color:#4caf50}
+.scenario-card.ng{border-left-color:#f44336}
+.scenario-card .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.scenario-card .card-info{flex:1}
+.scenario-card .scenario-id{font-weight:700;color:#667eea;font-size:14px;margin-right:8px}
+.scenario-card .scenario-title{font-weight:600;font-size:14px}
+.radio-group{display:flex;gap:4px;flex-shrink:0}
+.radio-group label{padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid #e0e0e0;transition:all .2s;user-select:none}
+.radio-group input{display:none}
+.radio-group .radio-ok:has(input:checked){background:#4caf50;color:#fff;border-color:#4caf50}
+.radio-group .radio-ng:has(input:checked){background:#f44336;color:#fff;border-color:#f44336}
+.radio-group label:hover{background:#f5f5f5}
+.radio-group .radio-ok:has(input:checked):hover{background:#43a047}
+.radio-group .radio-ng:has(input:checked):hover{background:#e53935}
+.detail-toggle{font-size:12px;color:#667eea;cursor:pointer;margin-top:6px;display:inline-block}
+.detail-toggle:hover{text-decoration:underline}
+.scenario-detail{display:none;margin-top:12px;padding:12px;background:#f8f9fa;border-radius:8px;font-size:13px}
+.scenario-detail.show{display:block}
+.scenario-detail h4{font-size:12px;color:#666;margin:8px 0 4px;font-weight:600}
+.scenario-detail h4:first-child{margin-top:0}
+.scenario-detail ul{padding-left:20px;margin:0}
+.scenario-detail li{margin:2px 0;color:#444}
+.note-input{width:100%;margin-top:8px;padding:8px 10px;border:1px solid #e0e0e0;border-radius:6px;font-size:13px;resize:vertical;min-height:32px;font-family:inherit}
+.note-input:focus{outline:none;border-color:#667eea}
+.summary-section{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.summary-section h2{font-size:16px;margin-bottom:16px;color:#333}
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.summary-card{text-align:center;padding:16px;border-radius:10px}
+.summary-card .num{font-size:28px;font-weight:700}
+.summary-card .label{font-size:12px;margin-top:4px}
+.summary-card.total{background:#f3e5f5;color:#6a1b9a}
+.summary-card.s-ok{background:#e8f5e9;color:#2e7d32}
+.summary-card.s-ng{background:#ffebee;color:#c62828}
+.summary-card.s-pending{background:#fff8e1;color:#f57f17}
+.bug-section{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bug-section h2{font-size:16px;margin-bottom:12px;color:#333}
+.bug-list{margin-bottom:16px}
+.bug-item{background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:12px;margin:8px 0}
+.bug-item .bug-header{display:flex;justify-content:space-between;align-items:center}
+.bug-item .bug-id{font-weight:700;color:#c62828}
+.bug-item .bug-title{font-weight:600;margin:4px 0}
+.bug-item .bug-detail{font-size:13px;color:#666;white-space:pre-wrap}
+.bug-item button.del-bug{background:none;border:none;color:#999;cursor:pointer;font-size:16px}
+.bug-form .row{margin:8px 0}
+.bug-form label{font-size:13px;color:#666;display:block;margin-bottom:4px}
+.bug-form input,.bug-form select,.bug-form textarea{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit}
+.bug-form textarea{min-height:60px;resize:vertical}
+.btn{padding:8px 20px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-primary{background:#667eea;color:#fff}.btn-primary:hover{background:#5a6fd6}
+.btn-danger{background:#f44336;color:#fff}.btn-danger:hover{background:#e53935}
+.btn-outline{background:transparent;border:1px solid #667eea;color:#667eea}.btn-outline:hover{background:#f0f0ff}
+.export-bar{display:flex;gap:8px;justify-content:center;margin:20px 0;flex-wrap:wrap}
+.footer{text-align:center;padding:24px;color:#999;font-size:12px}
+@media print{header{position:static;background:#333!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.controls,.export-bar,.bug-form,.note-input,.detail-toggle,.radio-group{display:none!important}.scenario-card{page-break-inside:avoid}.phase-body{display:block!important}}
+@media(max-width:600px){.summary-grid{grid-template-columns:repeat(2,1fr)}.tester-info .grid{grid-template-columns:1fr}.radio-group label{padding:6px 10px}}
+</style>
+</head>
+<body>
+<header>
+<h1>ProjectProfit テスト管理シート</h1>
+<div class="progress-wrap">
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div><div class="progress-text" id="progressText">0 / 88 (0%)</div></div>
+<div class="stats-row">
+<span class="ok">✓ OK: <b id="statOk">0</b></span>
+<span class="ng">✗ NG: <b id="statNg">0</b></span>
+<span class="pending">○ 未実施: <b id="statPending">88</b></span>
+</div>
+<div class="controls">
+<button class="active" onclick="filterScenarios('all')">すべて</button>
+<button onclick="filterScenarios('pending')">未実施</button>
+<button onclick="filterScenarios('ok')">OK</button>
+<button onclick="filterScenarios('ng')">NG</button>
+<button onclick="expandAll()">全展開</button>
+<button onclick="collapseAll()">全閉じ</button>
+</div>
+</div>
+</header>
+
+<div class="container">
+<details class="tester-info" open>
+<summary>テスター情報</summary>
+<div class="grid">
+<div><label>テスター名</label><input id="testerName" placeholder="氏名" oninput="saveTesterInfo()"></div>
+<div><label>テスト実施日</label><input id="testDate" type="date" oninput="saveTesterInfo()"></div>
+<div><label>デバイス名</label><input id="deviceName" placeholder="例: iPhone 15 Pro" oninput="saveTesterInfo()"></div>
+<div><label>iOSバージョン</label><input id="iosVersion" placeholder="例: iOS 17.4" oninput="saveTesterInfo()"></div>
+</div>
+</details>
+
+<div id="phasesContainer"></div>
+
+<div class="summary-section">
+<h2>テスト結果サマリー</h2>
+<div class="summary-grid">
+<div class="summary-card total"><div class="num" id="sumTotal">88</div><div class="label">総テスト数</div></div>
+<div class="summary-card s-ok"><div class="num" id="sumOk">0</div><div class="label">OK</div></div>
+<div class="summary-card s-ng"><div class="num" id="sumNg">0</div><div class="label">NG</div></div>
+<div class="summary-card s-pending"><div class="num" id="sumPending">88</div><div class="label">未実施</div></div>
+</div>
+<div style="text-align:center">
+<div style="font-size:36px;font-weight:700;color:#667eea" id="sumRate">0%</div>
+<div style="font-size:13px;color:#666">合格率 (OK / 実施済み)</div>
+</div>
+</div>
+
+<div class="bug-section">
+<h2>不具合報告</h2>
+<div class="bug-list" id="bugList"></div>
+<details>
+<summary style="cursor:pointer;color:#667eea;font-weight:600;font-size:14px">+ 不具合を追加</summary>
+<div class="bug-form" style="margin-top:12px">
+<div class="row"><label>関連シナリオID</label><input id="bugScenario" placeholder="例: T-04"></div>
+<div class="row"><label>タイトル</label><input id="bugTitle" placeholder="簡潔な不具合タイトル"></div>
+<div class="row"><label>重要度</label><select id="bugSeverity"><option value="致命的">致命的（クラッシュ・データ消失）</option><option value="重大">重大（機能不能・データ不正確）</option><option value="軽微" selected>軽微（表示崩れ・操作感）</option><option value="要改善">要改善（提案）</option></select></div>
+<div class="row"><label>再現手順・詳細</label><textarea id="bugDetail" placeholder="1. 〜をタップ&#10;2. 〜を入力&#10;3. 〜が発生"></textarea></div>
+<button class="btn btn-danger" onclick="addBug()" style="margin-top:8px">不具合を登録</button>
+</div>
+</details>
+</div>
+
+<div class="export-bar">
+<button class="btn btn-primary" onclick="exportCSV()">CSVエクスポート</button>
+<button class="btn btn-outline" onclick="exportJSON()">JSONバックアップ</button>
+<button class="btn btn-outline" onclick="importJSON()">JSONインポート</button>
+<button class="btn btn-outline" onclick="window.print()">印刷</button>
+<button class="btn btn-danger" onclick="resetAll()">全リセット</button>
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
+</div>
+
+<div class="footer">ProjectProfit テスト管理シート v1.0 — データはブラウザのlocalStorageに自動保存されます</div>
+</div>
+
+<script>
+const SCENARIOS = [
+// Phase 1: プロジェクト作成
+{phase:1,phaseTitle:"Phase 1: プロジェクト作成",id:"P-01",title:"プロジェクト新規作成",steps:["アプリを起動する","「プロジェクト」タブをタップ","右上の「+」ボタンをタップ","プロジェクト名「ウェブ制作」、説明「テスト用Webプロジェクト」、開始日2025/10/01を入力","「保存」をタップ"],expected:["プロジェクト一覧に「ウェブ制作」が表示","ステータスが「進行中」と表示","収益・経費ともに¥0"]},
+{phase:1,phaseTitle:"Phase 1: プロジェクト作成",id:"P-02",title:"2つ目のプロジェクト作成",steps:["「+」をタップ","プロジェクト名「アプリ開発」、説明、開始日2025/11/01を入力","「保存」"],expected:["一覧に「ウェブ制作」「アプリ開発」の2件表示"]},
+{phase:1,phaseTitle:"Phase 1: プロジェクト作成",id:"P-03",title:"3つ目のプロジェクト作成",steps:["「+」をタップ","プロジェクト名「デザイン案件」、開始日2025/12/01を入力","「保存」"],expected:["一覧に3件のプロジェクト表示"]},
+{phase:1,phaseTitle:"Phase 1: プロジェクト作成",id:"P-04",title:"プロジェクト詳細表示",steps:["一覧から「ウェブ制作」をタップ"],expected:["プロジェクト名・説明が表示","ステータス「進行中」が緑色バッジで表示","開始日が表示","収益¥0、経費¥0、利益¥0","取引一覧は空"]},
+{phase:1,phaseTitle:"Phase 1: プロジェクト作成",id:"P-05",title:"プロジェクト名バリデーション",steps:["「+」で新規作成画面を開く","名前を空のまま「保存」を確認","「キャンセル」で閉じる"],expected:["保存ボタンが無効（グレーアウト）で押せない"]},
+// Phase 2: 取引登録
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-01",title:"単一プロジェクト収益登録",steps:["「取引」タブ→「+」","種類:収益(緑)、金額:300000、日付:2026/01/15","カテゴリ:売上、配分:ウェブ制作100%、メモ:制作費一括","「保存」"],expected:["取引一覧に¥300,000の収益が表示","カテゴリ「売上」表示","メモ「制作費一括」表示"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-02",title:"2つ目の収益登録",steps:["「+」→収益/金額:200000/日付:2026/01/20","カテゴリ:サービス収入/配分:アプリ開発100%/メモ:初回納品","「保存」"],expected:["取引一覧に2件表示"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-03",title:"3つ目の収益登録",steps:["「+」→収益/金額:150000/日付:2026/01/25","カテゴリ:売上/配分:デザイン案件100%/メモ:デザイン料","「保存」"],expected:["取引一覧に3件表示"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-04",title:"複数プロジェクト経費配分(60/40)",steps:["「+」→経費(赤)/金額:10000/日付:2026/01/10","カテゴリ:交通費","配分:ウェブ制作60%→「プロジェクトを追加」→アプリ開発40%","合計100%(緑)を確認/メモ:打合せ交通費/「保存」"],expected:["保存成功","配分金額:ウェブ制作¥6,000/アプリ開発¥4,000"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-05",title:"2プロジェクト50/50配分",steps:["「+」→経費/金額:5000/日付:2026/01/12","カテゴリ:ツール/配分:ウェブ制作50%+デザイン案件50%","メモ:Figma月額/「保存」"],expected:["配分金額:ウェブ制作¥2,500/デザイン案件¥2,500"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-06",title:"単一プロジェクト経費",steps:["「+」→経費/金額:8000/日付:2026/01/18","カテゴリ:食費・飲食/配分:アプリ開発100%/メモ:クライアント会食","「保存」"],expected:["正常に保存される"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-07",title:"3プロジェクト均等配分(34/33/33)",steps:["「+」→経費/金額:3000/日付:2026/01/22/カテゴリ:消耗品","配分:ウェブ制作34%+アプリ開発33%+デザイン案件33%","合計100%を確認/メモ:USBケーブル等/「保存」"],expected:["保存成功","配分金額:ウェブ制作¥1,020/アプリ開発¥990/デザイン案件¥990"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-08",title:"単一経費登録",steps:["「+」→経費/金額:6000/日付:2026/01/28","カテゴリ:ホスティング/配分:デザイン案件100%/メモ:サーバー費","「保存」"],expected:["正常に保存される"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-09",title:"配分100%バリデーション",steps:["「+」→経費/金額:1000/カテゴリ:その他経費","配分:ウェブ制作50%(合計50%のまま)","保存ボタンの状態を確認→「キャンセル」"],expected:["合計が50%と赤色で表示","保存ボタンが無効"]},
+{phase:2,phaseTitle:"Phase 2: 取引登録",id:"T-10",title:"金額0バリデーション",steps:["「+」→収益/金額:空or0","カテゴリ:売上/配分:ウェブ制作100%","保存ボタン確認→「キャンセル」"],expected:["保存ボタンが無効"]},
+// Phase 3: ダッシュボード確認
+{phase:3,phaseTitle:"Phase 3: ダッシュボード確認",id:"D-01",title:"ダッシュボード集計確認",steps:["「ダッシュボード」タブをタップ"],expected:["収益合計:¥650,000","経費合計:¥32,000","純利益:¥618,000"]},
+{phase:3,phaseTitle:"Phase 3: ダッシュボード確認",id:"D-02",title:"プロジェクト別カード確認",steps:["ダッシュボードのプロジェクトカードを確認"],expected:["ウェブ制作:収益¥300,000が表示","アプリ開発:収益¥200,000が表示","デザイン案件:収益¥150,000が表示"]},
+{phase:3,phaseTitle:"Phase 3: ダッシュボード確認",id:"D-03",title:"月別フィルタ確認",steps:["月ナビゲーターで2026年1月を選択","他の月に切り替える"],expected:["2026年1月のデータが表示","他の月では0件表示"]},
+{phase:3,phaseTitle:"Phase 3: ダッシュボード確認",id:"D-04",title:"ダッシュボード→プロジェクト遷移",steps:["プロジェクトカード「ウェブ制作」をタップ"],expected:["プロジェクト詳細画面に遷移","取引一覧が表示","戻るボタンで戻れる"]},
+// Phase 4: 取引編集・削除
+{phase:4,phaseTitle:"Phase 4: 取引編集・削除",id:"E-01",title:"取引の編集（メモ変更）",steps:["「取引」タブで「制作費一括」をタップ→編集","メモを「制作費一括（更新済み）」に変更","「保存」"],expected:["メモが更新される","金額やカテゴリは変更なし"]},
+{phase:4,phaseTitle:"Phase 4: 取引編集・削除",id:"E-02",title:"取引金額の変更",steps:["同じ取引を編集→金額を350000に変更","「保存」"],expected:["金額が¥350,000に更新","ダッシュボード収益が¥700,000に更新"]},
+{phase:4,phaseTitle:"Phase 4: 取引編集・削除",id:"E-03",title:"金額を元に戻す",steps:["同じ取引を編集→金額300000/メモ「制作費一括」に戻す","「保存」"],expected:["¥300,000に復帰","ダッシュボード収益¥650,000に戻る"]},
+{phase:4,phaseTitle:"Phase 4: 取引編集・削除",id:"E-04",title:"取引の削除",steps:["テスト用取引を作成:経費¥999/その他経費/ウェブ制作100%","作成した取引をタップ→「削除」→確認で「削除」"],expected:["取引が一覧から消える","ダッシュボード集計に反映"]},
+{phase:4,phaseTitle:"Phase 4: 取引編集・削除",id:"E-05",title:"編集キャンセル",steps:["任意の取引→編集→金額を変更","「キャンセル」をタップ"],expected:["変更が保存されず元の値のまま"]},
+// Phase 5: プロジェクト編集・ステータス
+{phase:5,phaseTitle:"Phase 5: プロジェクト編集・ステータス",id:"PS-01",title:"プロジェクト名の変更",steps:["「ウェブ制作」→編集→名前を「ウェブ制作（テスト更新）」に変更","「保存」"],expected:["一覧に更新された名前が表示","取引の配分先にも反映"]},
+{phase:5,phaseTitle:"Phase 5: プロジェクト編集・ステータス",id:"PS-02",title:"プロジェクト名を元に戻す",steps:["再度編集→「ウェブ制作」に戻す→「保存」"],expected:["元の名前に復帰"]},
+{phase:5,phaseTitle:"Phase 5: プロジェクト編集・ステータス",id:"PS-03",title:"ステータス「保留」変更",steps:["「デザイン案件」→編集→ステータスを「保留」に","「保存」"],expected:["バッジが「保留」（黄色）に変更","ダッシュボードにも反映"]},
+{phase:5,phaseTitle:"Phase 5: プロジェクト編集・ステータス",id:"PS-04",title:"ステータス「完了」変更",steps:["「デザイン案件」→編集→ステータスを「完了」に","完了日が自動設定されることを確認→「保存」"],expected:["ステータス「完了」（青色）に変更","完了日が表示"]},
+{phase:5,phaseTitle:"Phase 5: プロジェクト編集・ステータス",id:"PS-05",title:"完了→進行中復帰",steps:["「デザイン案件」→編集→「進行中」に変更→「保存」"],expected:["ステータス「進行中」（緑）に復帰","完了日がクリア"]},
+// Phase 6: レシートスキャン
+{phase:6,phaseTitle:"Phase 6: レシートスキャン",id:"R-01",title:"レシート画像からの取引作成",steps:["「取引」→「+」またはスキャンボタン","「フォトライブラリから選択」→レシート画像選択","OCR処理完了まで待機"],expected:["レシートプレビュー表示","OCRで金額が自動入力","明細検出時は一覧表示"]},
+{phase:6,phaseTitle:"Phase 6: レシートスキャン",id:"R-02",title:"レシート取引保存",steps:["OCR結果を確認・修正","カテゴリ選択（例:食費・飲食）","配分設定（例:ウェブ制作100%）→「保存」"],expected:["取引が正常に保存","取引一覧に追加","レシート画像がアプリ内に保存"]},
+{phase:6,phaseTitle:"Phase 6: レシートスキャン",id:"R-03",title:"保存済みレシート画像の表示",steps:["保存した取引→詳細→編集","「レシート画像を表示」をタップ"],expected:["サムネイル表示","タップでフルサイズプレビュー","プレビュー閉じて戻れる"]},
+{phase:6,phaseTitle:"Phase 6: レシートスキャン",id:"R-04",title:"明細（ラインアイテム）表示",steps:["レシート取引の編集画面→「明細」セクション確認"],expected:["明細あり:名前・数量・小計が表示","数量2以上:×2のように表示","明細なし:セクション非表示"]},
+{phase:6,phaseTitle:"Phase 6: レシートスキャン",id:"R-05",title:"スキャンキャンセル",steps:["スキャン画面を開く","画像選択前に「キャンセル」"],expected:["画面が閉じる","取引は作成されない","エラーなし"]},
+// Phase 7: 定期取引
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-01",title:"月次定期取引の作成",steps:["「設定」→「定期取引の管理」→「+」","名前:サーバー費用/経費/金額:3000","カテゴリ:ホスティング/毎月/15日/ウェブ制作100%","「保存」"],expected:["一覧に「サーバー費用」表示","¥3,000が赤色表示","「毎月15日」表示","次回登録日バナー表示"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-02",title:"年次定期取引の作成",steps:["「+」→名前:年会費/経費/金額:120000","カテゴリ:ツール/毎年/4月1日/一括登録","配分:アプリ開発100%→「保存」"],expected:["「年会費」表示","「毎年4月1日」表示","¥120,000表示"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-03",title:"均等割定期取引作成",steps:["「+」→名前:共通経費/経費/金額:9000","カテゴリ:その他経費/毎月/1日","配分モード:全体（均等割）→「保存」"],expected:["「全プロジェクト（均等割）」表示"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-04",title:"サマリーカード確認",steps:["定期取引一覧上部のサマリーカードを確認"],expected:["登録数:3","有効:3","月額合計が表示"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-05",title:"定期取引編集",steps:["「サーバー費用」をタップ→金額を5000に変更→「保存」"],expected:["¥5,000に更新","月額合計更新"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-06",title:"定期取引金額復帰",steps:["「サーバー費用」→金額を3000に戻す→「保存」"],expected:["¥3,000に復帰"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-07",title:"定期取引一時停止",steps:["「サーバー費用」の「停止」ボタンをタップ"],expected:["「停止中」バッジ表示","次回登録日バナー非表示","有効数が2に減る"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-08",title:"定期取引再開",steps:["「サーバー費用」の「再開」ボタンをタップ"],expected:["「停止中」消える","次回登録日バナー再表示","有効数3に戻る"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-09",title:"次回スキップ",steps:["「サーバー費用」の「スキップ」をタップ","確認ダイアログで「スキップ」"],expected:["次回登録日に取り消し線","「次回スキップ」表示"]},
+{phase:7,phaseTitle:"Phase 7: 定期取引",id:"RC-10",title:"通知設定変更",steps:["「サーバー費用」の「通知」ボタンをタップ","「前日に通知」を選択→「保存」"],expected:["通知設定画面が表示","4つの選択肢表示","保存後に設定反映"]},
+// Phase 8: 定期取引の履歴・削除
+{phase:8,phaseTitle:"Phase 8: 定期取引の履歴・削除",id:"RH-01",title:"定期取引履歴表示",steps:["「共通経費」の「履歴」ボタンをタップ"],expected:["「定期取引履歴」画面表示","未実行時:「まだ登録された取引はありません」","「閉じる」で戻れる"]},
+{phase:8,phaseTitle:"Phase 8: 定期取引の履歴・削除",id:"RH-02",title:"定期取引削除",steps:["「共通経費」の「削除」→確認で「削除」"],expected:["一覧から消える","登録数2に減る","有効数2に減る"]},
+{phase:8,phaseTitle:"Phase 8: 定期取引の履歴・削除",id:"RH-03",title:"終了日付き定期取引",steps:["「+」→名前:期限付き経費/経費/¥2,000","毎月/1日/終了日:3ヶ月後/ウェブ制作100%","「保存」"],expected:["カードに終了日がカレンダーアイコン付きで表示"]},
+// Phase 9: レポート画面
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-01",title:"レポート画面表示",steps:["「レポート」タブをタップ"],expected:["年度ナビゲーター表示","年間純利益カード（黒字:緑背景）","収益合計・経費合計カード"]},
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-02",title:"年度ナビゲーション",steps:["「◀」で前年度に移動","「▶」で元の年度に戻る"],expected:["前年度:データなしなら0表示","元の年度:データ復帰","現在年度より先は進めない"]},
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-03",title:"前年比較セクション",steps:["「前年比較」セクションを確認"],expected:["収益・経費・利益の前年比表示","矢印アイコンで方向表示","経費増=赤、経費減=緑（逆ルール）"]},
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-04",title:"月別推移チャート",steps:["「月別推移」セクションを確認"],expected:["12ヶ月分の横棒グラフ","緑=収益、赤=経費","各月の利益金額が右側に表示","凡例表示"]},
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-05",title:"カテゴリ内訳",steps:["「経費カテゴリ内訳」と「収益カテゴリ内訳」を確認"],expected:["経費:交通費/ツール/食費・飲食/消耗品/ホスティング","各カテゴリの金額と%とプログレスバー","収益:売上/サービス収入"]},
+{phase:9,phaseTitle:"Phase 9: レポート画面",id:"RP-06",title:"プロジェクト別損益ランキング",steps:["「プロジェクト別損益」セクションを確認"],expected:["利益順にランキング表示","順位番号・プロジェクト名・収益・経費・利益","利益正=緑、負=赤"]},
+// Phase 10: 設定画面
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-01",title:"設定画面表示",steps:["「設定」タブをタップ"],expected:["カテゴリの管理/定期取引の管理/データ管理/会計年度設定が表示"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-02",title:"カテゴリ管理画面",steps:["「カテゴリの管理」をタップ"],expected:["経費カテゴリ10件表示","収益カテゴリ3件表示","各カテゴリにアイコン表示"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-03",title:"カスタムカテゴリ追加",steps:["「+」→名前:テストカテゴリ/種類:経費→「保存」"],expected:["経費カテゴリに追加（計11件）","取引作成時にも表示"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-04",title:"カスタムカテゴリ削除",steps:["「テストカテゴリ」をスワイプまたは削除"],expected:["カテゴリが削除される","デフォルトカテゴリは削除不可"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-05",title:"会計年度設定変更",steps:["「会計年度設定」→開始月を「1月」に変更→保存"],expected:["会計年度の開始月が変更","レポートの年度表示が更新"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-06",title:"会計年度復帰",steps:["開始月を「4月」に戻す→保存"],expected:["4月始まりに復帰"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-07",title:"CSVエクスポート",steps:["「データ管理」→「CSVエクスポート」"],expected:["共有シート表示","CSVファイル生成"]},
+{phase:10,phaseTitle:"Phase 10: 設定画面",id:"S-08",title:"CSVインポート",steps:["「CSVインポート」→エクスポートしたCSVを選択"],expected:["インポート処理開始","重複はスキップ","結果表示（0件取込が正常）"]},
+// Phase 11: ナビゲーション
+{phase:11,phaseTitle:"Phase 11: ナビゲーション・画面遷移",id:"N-01",title:"タブ切り替え",steps:["ダッシュボード→プロジェクト→取引→レポート→設定の順にタップ","逆順にも切り替え"],expected:["全5タブが正常に切り替わる","各タブのタイトルが正しい","データが消えない"]},
+{phase:11,phaseTitle:"Phase 11: ナビゲーション・画面遷移",id:"N-02",title:"戻るボタン（重複なし確認）",steps:["「設定」→「定期取引の管理」をタップ","画面上部を確認","戻るボタンをタップ"],expected:["戻るボタンが1つだけ表示（2つでない）","正しく設定画面に戻る"]},
+{phase:11,phaseTitle:"Phase 11: ナビゲーション・画面遷移",id:"N-03",title:"シート表示/閉じ方",steps:["取引「+」でシートを開く→「キャンセル」で閉じる","再度開く→スワイプダウンで閉じる"],expected:["キャンセルで閉じる","スワイプダウンでも閉じる","元の画面が正常"]},
+{phase:11,phaseTitle:"Phase 11: ナビゲーション・画面遷移",id:"N-04",title:"プロジェクト→取引詳細遷移",steps:["「プロジェクト」→「ウェブ制作」→取引をタップ","戻るボタンで戻る"],expected:["取引詳細に遷移できる","戻るボタンで正しく戻れる"]},
+{phase:11,phaseTitle:"Phase 11: ナビゲーション・画面遷移",id:"N-05",title:"アラートダイアログ",steps:["テスト用取引作成:経費¥100","削除→確認ダイアログ→「キャンセル」","再度「削除」→「削除」で実行"],expected:["確認ダイアログ表示","キャンセルで削除されない","削除で実際に削除"]},
+// Phase 12: 終了予定日
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-01",title:"終了予定日設定（新規作成）",steps:["「プロジェクト」→「+」","名前:LP制作/開始日:2026/01/01","「終了予定日を設定」トグルON/終了予定日:2026/06/30","警告テキスト確認→「保存」"],expected:["プロジェクト作成成功","オレンジ色カレンダーアイコンで終了予定日表示","警告テキスト2つ表示"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-02",title:"終了予定日表示確認",steps:["「LP制作」をタップして詳細確認"],expected:["オレンジ色カレンダーアイコン付き終了予定日","ステータス「進行中」","完了日は未表示"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-03",title:"プロラタ計算確認",steps:["「取引」→「+」→経費¥30,000/2026/06/15/ツール","配分:LP制作50%+ウェブ制作50%/メモ:プロラタテスト","「保存」→配分金額確認"],expected:["取引が正常に保存","LP制作は終了予定日の影響あり","エラーなし"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-04",title:"既存に終了予定日追加",steps:["「ウェブ制作」→編集→終了予定日トグルON","終了予定日:2026/09/30→「保存」"],expected:["終了予定日が設定される","詳細に表示される"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-05",title:"終了予定日削除",steps:["「ウェブ制作」→編集→終了予定日トグルOFF→「保存」"],expected:["終了予定日が削除","詳細から消える"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-06",title:"終了予定日→完了（自動日付）",steps:["「LP制作」→編集→ステータス「完了」に変更","完了日フィールドを確認→「保存」"],expected:["完了日に2026/06/30が自動設定","ステータス「完了」","終了予定日表示→完了日表示に切替"]},
+{phase:12,phaseTitle:"Phase 12: 終了予定日",id:"PD-07",title:"完了→進行中復帰",steps:["「LP制作」→編集→「進行中」に変更→「保存」"],expected:["ステータス「進行中」に復帰","完了日クリア","終了予定日(2026/06/30)が再表示"]},
+// Phase 13: 月次分割
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-01",title:"月次分割モード作成",steps:["「設定」→「定期取引の管理」→「+」","名前:クラウドサービス年額/経費/¥120,000/ツール","毎年/4月/1日→「登録方法」で「月次分割」選択","ヘルパーテキスト確認/配分:アプリ開発100%→「保存」"],expected:["緑色「月次」バッジ表示","¥120,000表示","ヘルパーテキストに「毎月1日」含む"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-02",title:"月次バッジ表示確認",steps:["定期取引一覧で各カードを確認"],expected:["クラウドサービス年額:緑「月次」バッジあり","年会費（一括）:バッジなし","サーバー費用（毎月）:バッジなし"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-03",title:"割り切れる金額(¥120,000÷12)",steps:["履歴ボタンで生成された取引を確認","またはトランザクション一覧で確認"],expected:["各月¥10,000","メモに「[定期/月次]」プレフィックス","12ヶ月合計¥120,000"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-04",title:"割り切れない金額(¥100,000÷12)",steps:["「+」→名前:保険料年額/経費/¥100,000","毎年/4月/1日/月次分割/ウェブ制作100%→「保存」"],expected:["作成成功","11ヶ月:¥8,333、最終月:¥8,337","12ヶ月合計¥100,000"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-05",title:"月次→一括切替",steps:["「クラウドサービス年額」→編集→「一括登録」に変更→「保存」"],expected:["「月次」バッジが消える"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-06",title:"一括→月次切替",steps:["「クラウドサービス年額」→編集→「月次分割」に変更→「保存」"],expected:["「月次」バッジが再表示"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-07",title:"年次のみ表示確認",steps:["「+」→頻度:毎月→「登録方法」セクション確認","頻度を毎年に変更→確認→「キャンセル」"],expected:["毎月:「登録方法」非表示","毎年:「登録方法」表示"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-08",title:"月次分割停止/再開",steps:["「クラウドサービス年額」の「停止」をタップ","表示確認→「再開」をタップ"],expected:["停止中:「月次」+「停止中」両方表示","再開後:「停止中」消え「月次」のみ"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-09",title:"月次分割スキップ",steps:["「クラウドサービス年額」の「スキップ」→確認で「スキップ」"],expected:["次回登録に取り消し線","「次回スキップ」表示"]},
+{phase:13,phaseTitle:"Phase 13: 月次分割",id:"MA-10",title:"月次分割削除",steps:["「保険料年額」の「削除」→確認で「削除」"],expected:["一覧から削除","登録数・有効数が更新"]},
+// Phase 14: 複合機能テスト
+{phase:14,phaseTitle:"Phase 14: 複合機能テスト",id:"CF-01",title:"終了予定日+月次分割組合せ",steps:["LP制作の終了予定日(2026/06/30)を確認","クラウドサービス年額の配分をLP制作50%+アプリ開発50%に変更","「保存」→生成取引を確認"],expected:["月次分割取引が正常生成","エラー・クラッシュなし"]},
+{phase:14,phaseTitle:"Phase 14: 複合機能テスト",id:"CF-02",title:"パフォーマンス確認",steps:["テスト用取引を5件追加作成","各画面の表示速度確認","スクロール操作確認"],expected:["各画面2秒以内で表示","スクロールが滑らか","集計値が正しい"]},
+{phase:14,phaseTitle:"Phase 14: 複合機能テスト",id:"CF-03",title:"アプリ再起動後データ保持",steps:["ダッシュボードの集計値をメモ","アプリをタスクキル（完全終了）","再起動→集計値確認"],expected:["全データが保持","プロジェクト・取引・定期取引が存在","集計値が一致"]},
+// Phase 15: クリーンアップ
+{phase:15,phaseTitle:"Phase 15: クリーンアップ",id:"CL-01",title:"テストデータ最終確認",steps:["全プロジェクト一覧を確認","全取引一覧を確認","定期取引一覧を確認"],expected:["テスト中作成の全データが保持","削除したデータは表示されない"]},
+{phase:15,phaseTitle:"Phase 15: クリーンアップ",id:"CL-02",title:"環境リセット",steps:["テスト完了後、アプリ削除→再インストール","またはデータ管理からリセット"],expected:["テスト完了後のクリーンアップ完了"]},
+];
+
+const STORAGE_KEY = 'pp-test-sheet';
+let state = loadState();
+
+function loadState() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    return s ? JSON.parse(s) : {results:{},notes:{},tester:{},bugs:[]};
+  } catch(e) { return {results:{},notes:{},tester:{},bugs:[]}; }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  updateStats();
+}
+
+function saveTesterInfo() {
+  state.tester = {
+    name: document.getElementById('testerName').value,
+    date: document.getElementById('testDate').value,
+    device: document.getElementById('deviceName').value,
+    ios: document.getElementById('iosVersion').value
+  };
+  saveState();
+}
+
+function setResult(id, result) {
+  state.results[id] = result;
+  const card = document.querySelector(`[data-id="${id}"]`);
+  if (card) {
+    card.classList.remove('ok','ng');
+    if (result) card.classList.add(result);
+  }
+  saveState();
+}
+
+function setNote(id, note) {
+  state.notes[id] = note;
+  saveState();
+}
+
+function updateStats() {
+  let ok=0, ng=0;
+  SCENARIOS.forEach(s => {
+    const r = state.results[s.id];
+    if (r === 'ok') ok++;
+    else if (r === 'ng') ng++;
+  });
+  const total = SCENARIOS.length;
+  const pending = total - ok - ng;
+  const done = ok + ng;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const rate = done > 0 ? Math.round((ok / done) * 100) : 0;
+
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${total} (${pct}%)`;
+  document.getElementById('statOk').textContent = ok;
+  document.getElementById('statNg').textContent = ng;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('sumTotal').textContent = total;
+  document.getElementById('sumOk').textContent = ok;
+  document.getElementById('sumNg').textContent = ng;
+  document.getElementById('sumPending').textContent = pending;
+  document.getElementById('sumRate').textContent = rate + '%';
+
+  // Update phase badges
+  const phases = [...new Set(SCENARIOS.map(s => s.phase))];
+  phases.forEach(p => {
+    const pScenarios = SCENARIOS.filter(s => s.phase === p);
+    let pOk=0, pNg=0;
+    pScenarios.forEach(s => {
+      const r = state.results[s.id];
+      if (r === 'ok') pOk++;
+      else if (r === 'ng') pNg++;
+    });
+    const okEl = document.getElementById(`phase-ok-${p}`);
+    const ngEl = document.getElementById(`phase-ng-${p}`);
+    if (okEl) okEl.textContent = `✓${pOk}`;
+    if (ngEl) ngEl.textContent = `✗${pNg}`;
+    if (ngEl) ngEl.style.display = pNg > 0 ? 'inline' : 'none';
+  });
+}
+
+function filterScenarios(filter) {
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.scenario-card').forEach(card => {
+    const id = card.dataset.id;
+    const r = state.results[id] || 'pending';
+    card.style.display = (filter === 'all' || r === filter) ? '' : 'none';
+  });
+}
+
+function expandAll() {
+  document.querySelectorAll('.phase-section').forEach(s => s.classList.add('open'));
+}
+function collapseAll() {
+  document.querySelectorAll('.phase-section').forEach(s => s.classList.remove('open'));
+}
+
+function togglePhase(el) {
+  el.closest('.phase-section').classList.toggle('open');
+}
+
+function toggleDetail(el) {
+  const detail = el.nextElementSibling;
+  detail.classList.toggle('show');
+  el.textContent = detail.classList.contains('show') ? '▲ 詳細を閉じる' : '▼ 詳細を表示';
+}
+
+function renderPhases() {
+  const container = document.getElementById('phasesContainer');
+  const phases = [...new Set(SCENARIOS.map(s => s.phase))];
+  let html = '';
+
+  phases.forEach(p => {
+    const pScenarios = SCENARIOS.filter(s => s.phase === p);
+    const title = pScenarios[0].phaseTitle;
+    html += `<div class="phase-section">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h2>${title} (${pScenarios.length}件)</h2>
+        <div class="phase-badge">
+          <span class="count ok-count" id="phase-ok-${p}">✓0</span>
+          <span class="count ng-count" id="phase-ng-${p}" style="display:none">✗0</span>
+          <span class="arrow">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">`;
+
+    pScenarios.forEach(s => {
+      const r = state.results[s.id] || '';
+      const note = state.notes[s.id] || '';
+      html += `<div class="scenario-card ${r}" data-id="${s.id}">
+        <div class="card-top">
+          <div class="card-info">
+            <span class="scenario-id">${s.id}</span>
+            <span class="scenario-title">${s.title}</span>
+          </div>
+          <div class="radio-group">
+            <label class="radio-ok"><input type="radio" name="r-${s.id}" value="ok" ${r==='ok'?'checked':''} onchange="setResult('${s.id}','ok')">OK</label>
+            <label class="radio-ng"><input type="radio" name="r-${s.id}" value="ng" ${r==='ng'?'checked':''} onchange="setResult('${s.id}','ng')">NG</label>
+          </div>
+        </div>
+        <span class="detail-toggle" onclick="toggleDetail(this)">▼ 詳細を表示</span>
+        <div class="scenario-detail">
+          <h4>手順</h4><ul>${s.steps.map(st=>`<li>${st}</li>`).join('')}</ul>
+          <h4>期待結果</h4><ul>${s.expected.map(e=>`<li>✅ ${e}</li>`).join('')}</ul>
+        </div>
+        <input class="note-input" placeholder="備考・不具合メモ" value="${note.replace(/"/g,'&quot;')}" oninput="setNote('${s.id}',this.value)">
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function addBug() {
+  const scenario = document.getElementById('bugScenario').value;
+  const title = document.getElementById('bugTitle').value;
+  const severity = document.getElementById('bugSeverity').value;
+  const detail = document.getElementById('bugDetail').value;
+  if (!title) { alert('タイトルを入力してください'); return; }
+  state.bugs.push({id: Date.now(), scenario, title, severity, detail, date: new Date().toLocaleDateString('ja-JP')});
+  saveState();
+  renderBugs();
+  document.getElementById('bugScenario').value = '';
+  document.getElementById('bugTitle').value = '';
+  document.getElementById('bugDetail').value = '';
+}
+
+function deleteBug(id) {
+  state.bugs = state.bugs.filter(b => b.id !== id);
+  saveState();
+  renderBugs();
+}
+
+function renderBugs() {
+  const list = document.getElementById('bugList');
+  if (state.bugs.length === 0) { list.innerHTML = '<p style="color:#999;font-size:13px">不具合報告はまだありません</p>'; return; }
+  list.innerHTML = state.bugs.map(b => `
+    <div class="bug-item">
+      <div class="bug-header">
+        <span class="bug-id">#${b.scenario || '---'} [${b.severity}]</span>
+        <button class="del-bug" onclick="deleteBug(${b.id})">✕</button>
+      </div>
+      <div class="bug-title">${b.title}</div>
+      <div class="bug-detail">${b.detail}</div>
+      <div style="font-size:11px;color:#999;margin-top:4px">${b.date}</div>
+    </div>`).join('');
+}
+
+function exportCSV() {
+  let csv = '\uFEFF"#","Phase","シナリオID","テスト内容","結果","備考"\n';
+  SCENARIOS.forEach((s,i) => {
+    const r = state.results[s.id] || '未実施';
+    const n = (state.notes[s.id] || '').replace(/"/g,'""');
+    csv += `"${i+1}","${s.phaseTitle}","${s.id}","${s.title}","${r}","${n}"\n`;
+  });
+  if (state.bugs.length > 0) {
+    csv += '\n"不具合報告"\n"シナリオ","タイトル","重要度","詳細","日付"\n';
+    state.bugs.forEach(b => {
+      csv += `"${b.scenario}","${b.title}","${b.severity}","${b.detail.replace(/"/g,'""')}","${b.date}"\n`;
+    });
+  }
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `テスト結果_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `テスト管理バックアップ_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importJSON() {
+  document.getElementById('importFile').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (imported.results) {
+        state = imported;
+        saveState();
+        init();
+        alert('インポート完了');
+      }
+    } catch(err) { alert('無効なJSONファイルです'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function resetAll() {
+  if (!confirm('すべてのテスト結果をリセットしますか？この操作は取り消せません。')) return;
+  state = {results:{},notes:{},tester:{},bugs:[]};
+  saveState();
+  init();
+}
+
+function init() {
+  renderPhases();
+  renderBugs();
+  if (state.tester) {
+    document.getElementById('testerName').value = state.tester.name || '';
+    document.getElementById('testDate').value = state.tester.date || '';
+    document.getElementById('deviceName').value = state.tester.device || '';
+    document.getElementById('iosVersion').value = state.tester.ios || '';
+  }
+  updateStats();
+}
+
+init();
+</script>
+</body>
+</html>
