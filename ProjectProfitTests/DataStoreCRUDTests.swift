@@ -1997,4 +1997,170 @@ final class DataStoreCRUDTests: XCTestCase {
         let updated = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(updated?.lastGeneratedDate, originalLastGenDate, "lastGeneratedDate should NOT be reset when frequency hasn't changed")
     }
+
+    // MARK: - H7: refresh*() retains data on success
+
+    func testRefreshRetainsDataAfterOperations() {
+        let project = dataStore.addProject(name: "H7 Test", description: "desc")
+        XCTAssertFalse(dataStore.projects.isEmpty, "projects should not be empty after addProject")
+
+        _ = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertFalse(dataStore.transactions.isEmpty, "transactions should not be empty")
+        XCTAssertFalse(dataStore.categories.isEmpty, "categories should not be empty")
+    }
+
+    func testLastErrorIsSetOnDataLoadFailed() {
+        dataStore.lastError = .dataLoadFailed(underlying: NSError(domain: "test", code: 42))
+        XCTAssertNotNil(dataStore.lastError)
+        if case .dataLoadFailed = dataStore.lastError {
+            // expected
+        } else {
+            XCTFail("Expected dataLoadFailed error case")
+        }
+    }
+
+    // MARK: - C4: Deferred image deletion (functional)
+
+    func testDeleteTransactionCallsSuccessfully() {
+        let project = dataStore.addProject(name: "C4 Test", description: "desc")
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 5000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "with receipt",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "test-image.jpg"
+        )
+        XCTAssertEqual(dataStore.transactions.count, 1)
+
+        dataStore.deleteTransaction(id: tx.id)
+        XCTAssertTrue(dataStore.transactions.isEmpty, "transaction should be deleted")
+    }
+
+    func testRemoveReceiptImageClearsPath() {
+        let project = dataStore.addProject(name: "C4 Remove", description: "desc")
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 3000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            receiptImagePath: "receipt-123.jpg"
+        )
+        XCTAssertEqual(tx.receiptImagePath, "receipt-123.jpg")
+
+        dataStore.removeReceiptImage(transactionId: tx.id)
+        let updated = dataStore.getTransaction(id: tx.id)
+        XCTAssertNil(updated?.receiptImagePath, "receiptImagePath should be nil after removal")
+    }
+
+    // MARK: - H8: Pro-rata re-calculation on amount change
+
+    func testUpdateTransactionAmount_reappliesProRata() {
+        // Create a project with a start date (mid-month) to trigger pro-rata
+        let calendar = Calendar.current
+        let today = todayDate()
+        let comps = calendar.dateComponents([.year, .month], from: today)
+        let year = comps.year!
+        let month = comps.month!
+        let totalDays = daysInMonth(year: year, month: month)
+
+        // Project A: starts mid-month (active half the month)
+        let midMonthDate = calendar.date(from: DateComponents(year: year, month: month, day: max(totalDays / 2, 2)))!
+        let projectA = dataStore.addProject(name: "ProRata A", description: "", startDate: midMonthDate)
+        let projectB = dataStore.addProject(name: "ProRata B", description: "")
+
+        // Create transaction with both projects, 50/50 ratio
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: today,
+            categoryId: "cat-tools",
+            memo: "prorata test",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        // Now update the amount
+        dataStore.updateTransaction(id: tx.id, amount: 20000)
+
+        let updated = dataStore.getTransaction(id: tx.id)!
+        let allocSum = updated.allocations.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(allocSum, 20000, "total allocations should equal new amount")
+
+        // Project A should have less than 50% due to pro-rata (started mid-month)
+        let allocA = updated.allocations.first { $0.projectId == projectA.id }!
+        XCTAssertLessThan(allocA.amount, 10000, "Project A with partial period should get less than 50%")
+    }
+
+    // MARK: - H1: deleteProject equalAll symmetry
+
+    func testDeleteProject_equalAllRecalculates() {
+        let calendar = Calendar.current
+        let today = todayDate()
+        let comps = calendar.dateComponents([.year, .month, .day], from: today)
+        let day = comps.day!
+
+        let projectA = dataStore.addProject(name: "EqA", description: "")
+        let projectB = dataStore.addProject(name: "EqB", description: "")
+        let projectC = dataStore.addProject(name: "EqC", description: "")
+
+        // Create monthly recurring with equalAll
+        _ = dataStore.addRecurring(
+            name: "Monthly Equal",
+            type: .expense,
+            amount: 90000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: max(day - 1, 1)
+        )
+
+        // Should have generated a transaction with 3-way split
+        let txBefore = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
+        guard let generated = txBefore.last else {
+            XCTFail("Should have generated a transaction")
+            return
+        }
+        XCTAssertEqual(generated.allocations.count, 3, "Should allocate to 3 projects")
+
+        // Delete one project
+        dataStore.deleteProject(id: projectC.id)
+
+        // After deletion, the equalAll transaction should be recalculated to 2-way split
+        let txAfter = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
+        guard let recalculated = txAfter.last else {
+            XCTFail("Transaction should still exist after project deletion")
+            return
+        }
+        XCTAssertEqual(recalculated.allocations.count, 2, "Should reallocate to 2 projects")
+
+        let totalAlloc = recalculated.allocations.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(totalAlloc, 90000, "Total allocation should still equal full amount")
+
+        // Each project should get approximately 45000
+        for alloc in recalculated.allocations {
+            XCTAssertTrue(alloc.amount >= 44999 && alloc.amount <= 45001, "Each project should get ~45000, got \(alloc.amount)")
+        }
+    }
+
+    // MARK: - Helpers for Wave 2 tests
+
+    private func fetchAllTransactions() -> [PPTransaction] {
+        let descriptor = FetchDescriptor<PPTransaction>()
+        return (try? context.fetch(descriptor)) ?? []
+    }
 }

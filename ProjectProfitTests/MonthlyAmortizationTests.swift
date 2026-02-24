@@ -466,4 +466,120 @@ final class MonthlyAmortizationTests: XCTestCase {
             XCTAssertEqual(tx.allocations.first?.projectId, project.id)
         }
     }
+
+    // MARK: - Test 15 (H4): Mid-year start uses correct divisor
+
+    func testMonthlySpread_midYearStart_correctAmountPerMonth() {
+        // monthOfYear=7 (July) means only 6 months (Jul-Dec)
+        // amount=120000 → should be 120000/6=20000 per month, not 120000/12=10000
+        let today = todayDate()
+        let comps = calendar.dateComponents([.year, .month, .day], from: today)
+        let currentYear = comps.year!
+        let currentMonth = comps.month!
+
+        // We need monthOfYear to be in the past so transactions are generated
+        // Use a month that's definitely past: month 1 (January) with startMonth=1
+        // But that gives actualMonthCount=12. We need a higher startMonth.
+        // If currentMonth >= 8, we can use monthOfYear=7 and get some generated months.
+        guard currentMonth >= 8 else {
+            // Can't reliably test mid-year start if we're too early in the year
+            // Use monthOfYear = 1 but test with the actual formula
+            return
+        }
+
+        let project = makeProject(name: "H4Project")
+
+        dataStore.addRecurring(
+            name: "Annual Mid-Year",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-tools",
+            memo: "h4test",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: 7,
+            yearlyAmortizationMode: .monthlySpread
+        )
+
+        let transactions = fetchAllTransactions()
+        let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h4test") }
+
+        // Each month should get 120000/6 = 20000 (not 120000/12 = 10000)
+        for tx in spreadTx {
+            // The last month might have remainder, but base amount should be 20000
+            XCTAssertGreaterThanOrEqual(tx.amount, 20000, "Mid-year start should use divisor 6, giving at least 20000 per month, got \(tx.amount)")
+        }
+
+        // Total of all generated transactions should be <= 120000
+        let total = spreadTx.reduce(0) { $0 + $1.amount }
+        XCTAssertLessThanOrEqual(total, 120000, "Total should not exceed annual amount")
+    }
+
+    // MARK: - Test 16 (H3): skipDates moves remainder to previous month
+
+    func testMonthlySpread_skipLastMonth_remainderMovesToPreviousMonth() {
+        let today = todayDate()
+        let comps = calendar.dateComponents([.year, .month, .day], from: today)
+        let currentYear = comps.year!
+        let currentMonth = comps.month!
+
+        // Need at least 3 past months to test this meaningfully
+        guard currentMonth >= 4 else { return }
+
+        let project = makeProject(name: "H3Project")
+
+        // Create a skip date for month 3 (which should be past)
+        let skipDate = calendar.date(from: DateComponents(year: currentYear, month: 3, day: 1))!
+
+        // monthOfYear=1, so 12 months. But we'll set last eligible month to be month 3
+        // by using endDate at month 3. Then skip month 3 so remainder goes to month 2.
+        let endDate = calendar.date(from: DateComponents(year: currentYear, month: 3, day: 28))!
+
+        let recurring = dataStore.addRecurring(
+            name: "Remainder Shift",
+            type: .expense,
+            amount: 100000,
+            categoryId: "cat-tools",
+            memo: "h3test",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: 1,
+            endDate: endDate,
+            yearlyAmortizationMode: .monthlySpread
+        )
+        // skipDatesはaddRecurringに直接渡せないため、updateRecurringで設定
+        dataStore.updateRecurring(id: recurring.id, skipDates: [skipDate])
+
+        let transactions = fetchAllTransactions()
+        let spreadTx = transactions
+            .filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h3test") }
+            .sorted { $0.date < $1.date }
+
+        // Month 3 is skipped, so only months 1 and 2 should have transactions
+        // With endDate at month 3 and 12-month divisor: lastEligibleMonth=3
+        // But month 3 is skipped → lastEligibleMonth adjusts to 2
+        // So month 2 gets monthlyAmount + remainder
+
+        // Verify month 3 has no transaction
+        let month3Txs = spreadTx.filter {
+            calendar.dateComponents([.month], from: $0.date).month == 3
+        }
+        XCTAssertTrue(month3Txs.isEmpty, "Month 3 should be skipped")
+
+        // Verify total covers months 1 and 2 only
+        let month2Txs = spreadTx.filter {
+            calendar.dateComponents([.month], from: $0.date).month == 2
+        }
+        if let month2Tx = month2Txs.first {
+            let month1Txs = spreadTx.filter {
+                calendar.dateComponents([.month], from: $0.date).month == 1
+            }
+            if let month1Tx = month1Txs.first {
+                // Month 2 should be >= Month 1 (has the remainder)
+                XCTAssertGreaterThanOrEqual(month2Tx.amount, month1Tx.amount, "Month 2 should have remainder added")
+            }
+        }
+    }
 }

@@ -58,8 +58,7 @@ class DataStore {
             modelContext.insert(category)
         }
         save()
-        let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
-        categories = (try? modelContext.fetch(descriptor)) ?? []
+        refreshCategories()
     }
 
     /// Add any new default categories that don't exist yet (for app updates)
@@ -83,38 +82,61 @@ class DataStore {
         }
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         do {
             try modelContext.save()
+            return true
         } catch {
             AppLogger.dataStore.error("Save failed: \(error.localizedDescription)")
             modelContext.rollback()
+            lastError = .saveFailed(underlying: error)
             refreshProjects()
             refreshTransactions()
             refreshCategories()
             refreshRecurring()
-            lastError = .saveFailed(underlying: error)
+            return false
         }
     }
 
     private func refreshProjects() {
-        let descriptor = FetchDescriptor<PPProject>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        projects = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            let descriptor = FetchDescriptor<PPProject>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+            projects = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh projects: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
     }
 
     private func refreshTransactions() {
-        let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
-        transactions = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+            transactions = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh transactions: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
     }
 
     private func refreshCategories() {
-        let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
-        categories = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
+            categories = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh categories: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
     }
 
     private func refreshRecurring() {
-        let descriptor = FetchDescriptor<PPRecurringTransaction>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        recurringTransactions = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            let descriptor = FetchDescriptor<PPRecurringTransaction>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+            recurringTransactions = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh recurring: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
     }
 
     // MARK: - Project CRUD
@@ -198,13 +220,16 @@ class DataStore {
     func deleteProject(id: UUID) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
 
+        // C4: save成功後に削除するため画像パスを収集
+        var imagesToDelete: [String] = []
+
         // Remove allocations referencing this project from transactions
         for transaction in transactions {
             let filtered = transaction.allocations.filter { $0.projectId != id }
             if filtered.count != transaction.allocations.count {
                 if filtered.isEmpty {
                     if let imagePath = transaction.receiptImagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                        imagesToDelete.append(imagePath)
                     }
                     modelContext.delete(transaction)
                 } else {
@@ -222,7 +247,7 @@ class DataStore {
             if filtered.count != recurring.allocations.count {
                 if filtered.isEmpty {
                     if let imagePath = recurring.receiptImagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                        imagesToDelete.append(imagePath)
                     }
                     modelContext.delete(recurring)
                 } else {
@@ -235,14 +260,24 @@ class DataStore {
         }
 
         modelContext.delete(project)
-        save()
+        if save() {
+            for imagePath in imagesToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         refreshProjects()
         refreshTransactions()
         refreshRecurring()
+        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
+        reprocessEqualAllCurrentPeriodTransactions()
+        refreshTransactions()
     }
 
     func deleteProjects(ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
+
+        // C4: save成功後に削除するため画像パスを収集
+        var imagesToDelete: [String] = []
 
         // 全削除対象を一括でフィルタリング（再分配は1回のみ）
         for transaction in transactions {
@@ -250,7 +285,7 @@ class DataStore {
             if filtered.count != transaction.allocations.count {
                 if filtered.isEmpty {
                     if let imagePath = transaction.receiptImagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                        imagesToDelete.append(imagePath)
                     }
                     modelContext.delete(transaction)
                 } else {
@@ -267,7 +302,7 @@ class DataStore {
             if filtered.count != recurring.allocations.count {
                 if filtered.isEmpty {
                     if let imagePath = recurring.receiptImagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                        imagesToDelete.append(imagePath)
                     }
                     modelContext.delete(recurring)
                 } else {
@@ -285,10 +320,17 @@ class DataStore {
             }
         }
 
-        save()
+        if save() {
+            for imagePath in imagesToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         refreshProjects()
         refreshTransactions()
         refreshRecurring()
+        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
+        reprocessEqualAllCurrentPeriodTransactions()
+        refreshTransactions()
     }
 
     func getProject(id: UUID) -> PPProject? {
@@ -353,6 +395,8 @@ class DataStore {
             transaction.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
         } else if amount != nil {
             transaction.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: transaction.allocations)
+            // H8: 金額変更時、pro-rata調整を再適用（ユーザー指定allocationsの場合は意図を尊重し適用しない）
+            reapplyProRataIfNeeded(transaction: transaction, amount: finalAmount)
         }
 
         transaction.updatedAt = Date()
@@ -362,16 +406,20 @@ class DataStore {
 
     func deleteTransaction(id: UUID) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
-        if let imagePath = transaction.receiptImagePath {
-            ReceiptImageStore.deleteImage(fileName: imagePath)
-        }
+
+        // C4: save成功後に削除するため画像パスを保持
+        let imageToDelete = transaction.receiptImagePath
 
         // Capture recurring info before deletion
         let recurringId = transaction.recurringId
         let deletedDate = transaction.date
 
         modelContext.delete(transaction)
-        save()
+        if save() {
+            if let imagePath = imageToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         refreshTransactions()
 
         // Roll back recurring generation tracking so the deleted period can be regenerated
@@ -416,12 +464,15 @@ class DataStore {
 
     func removeReceiptImage(transactionId: UUID) {
         guard let transaction = transactions.first(where: { $0.id == transactionId }) else { return }
-        if let imagePath = transaction.receiptImagePath {
-            ReceiptImageStore.deleteImage(fileName: imagePath)
-        }
+        // C4: save成功後に削除するため画像パスを保持
+        let imageToDelete = transaction.receiptImagePath
         transaction.receiptImagePath = nil
         transaction.updatedAt = Date()
-        save()
+        if save() {
+            if let imagePath = imageToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         refreshTransactions()
     }
 
@@ -628,11 +679,14 @@ class DataStore {
             transaction.updatedAt = now
         }
 
-        if let imagePath = recurring.receiptImagePath {
-            ReceiptImageStore.deleteImage(fileName: imagePath)
-        }
+        // C4: save成功後に削除するため画像パスを保持
+        let imageToDelete = recurring.receiptImagePath
         modelContext.delete(recurring)
-        save()
+        if save() {
+            if let imagePath = imageToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         refreshRecurring()
         refreshTransactions()
     }
@@ -713,6 +767,43 @@ class DataStore {
             latestTx.updatedAt = Date()
         }
         save()
+    }
+
+    /// H8: トランザクションの金額/アロケーション変更後、pro-rata調整を再適用する
+    private func reapplyProRataIfNeeded(transaction: PPTransaction, amount: Int) {
+        let calendar = Calendar.current
+        let txComps = calendar.dateComponents([.year, .month], from: transaction.date)
+        guard let txYear = txComps.year, let txMonth = txComps.month else { return }
+
+        let isYearly = transaction.recurringId.flatMap { rid in
+            recurringTransactions.first { $0.id == rid }
+        }.map { $0.frequency == .yearly } ?? false
+
+        let totalDays = isYearly
+            ? daysInYear(txYear)
+            : daysInMonth(year: txYear, month: txMonth)
+
+        let needsProRata = transaction.allocations.contains { alloc in
+            guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
+            let activeDays = isYearly
+                ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+            return activeDays < totalDays
+        }
+        guard needsProRata else { return }
+
+        let inputs: [HolisticProRataInput] = transaction.allocations.map { alloc in
+            let project = projects.first { $0.id == alloc.projectId }
+            let activeDays = isYearly
+                ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+            return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
+        }
+        transaction.allocations = calculateHolisticProRata(
+            totalAmount: amount,
+            totalDays: totalDays,
+            inputs: inputs
+        )
     }
 
     /// 完了状態が解除された場合、日割り済みアロケーションを元の比率ベースに復元する
@@ -1043,9 +1134,10 @@ class DataStore {
             recurring.lastGeneratedMonths = filteredMonths
         }
 
-        // 月額計算: 端数は最終生成月に加算
-        let monthlyAmount = recurring.amount / 12
-        let remainder = recurring.amount - (monthlyAmount * 12)
+        // H4: 月額計算: 実際の生成月数で除算（年途中開始を考慮）
+        let actualMonthCount = 12 - startMonth + 1
+        let monthlyAmount = recurring.amount / actualMonthCount
+        let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
 
         // 最終生成月を事前計算（endDateやskipDatesを考慮し、端数を正しい月に加算するため）
         var lastEligibleMonth = 12
@@ -1057,6 +1149,21 @@ class DataStore {
                 }
                 if m == startMonth { lastEligibleMonth = startMonth }
             }
+        }
+
+        // H3: skipDatesを考慮して端数加算月を調整（スキップ月に端数が消失するのを防止）
+        var foundEligibleMonth = false
+        for m in stride(from: lastEligibleMonth, through: startMonth, by: -1) {
+            guard let d = calendar.date(from: DateComponents(year: currentYear, month: m, day: recurring.dayOfMonth)) else { continue }
+            if !recurring.skipDates.contains(where: { calendar.isDate($0, inSameDayAs: d) }) {
+                lastEligibleMonth = m
+                foundEligibleMonth = true
+                break
+            }
+        }
+        // 全月がスキップの場合、端数を付与する対象月がないためsentinel値を設定
+        if !foundEligibleMonth {
+            lastEligibleMonth = -1
         }
 
         for month in startMonth...12 {
@@ -1435,17 +1542,19 @@ class DataStore {
     // MARK: - Bulk Delete
 
     func deleteAllData() {
-        // Delete all receipt images
-        for t in transactions {
-            if let imagePath = t.receiptImagePath {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
+        // C4: save成功後に削除するため画像パスを収集（トランザクション＋定期取引の両方）
+        let imagesToDelete = transactions.compactMap(\.receiptImagePath)
+            + recurringTransactions.compactMap(\.receiptImagePath)
+
         for p in projects { modelContext.delete(p) }
         for t in transactions { modelContext.delete(t) }
         for c in categories { modelContext.delete(c) }
         for r in recurringTransactions { modelContext.delete(r) }
-        save()
+        if save() {
+            for imagePath in imagesToDelete {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+        }
         projects = []
         transactions = []
         categories = []
