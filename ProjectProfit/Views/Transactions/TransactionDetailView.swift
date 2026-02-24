@@ -311,7 +311,7 @@ struct TransactionDetailView: View {
                 HStack {
                     Image(systemName: "doc.text.image")
                         .foregroundStyle(AppColors.primary)
-                    Text("レシート画像")
+                    Text("添付画像")
                         .font(.subheadline.weight(.medium))
                 }
 

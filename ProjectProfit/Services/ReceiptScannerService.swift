@@ -71,6 +71,7 @@ final class ReceiptScannerService {
 
             AppLogger.receipt.info("OCR extracted \(text.count) characters")
             let receiptData = try await extractReceiptData(from: text)
+            AppLogger.receipt.info("OCR inferred document=\(receiptData.documentType.rawValue) type=\(receiptData.suggestedTransactionType.rawValue) confidence=\(receiptData.confidence)")
             state = .completed(receiptData)
         } catch {
             AppLogger.receipt.error("Scan failed: \(error.localizedDescription)")
@@ -200,7 +201,7 @@ final class ReceiptScannerService {
         // Truncate input to prevent excessive processing
         let truncatedText = String(text.prefix(5000))
         let prompt = """
-        以下はレシートまたは請求書のOCRテキストです。正確に情報を抽出してください。
+        以下はレシート・請求書・領収書のOCRテキストです。正確に情報を抽出してください。
 
         【抽出ルール】
         - totalAmount: 税込の合計金額を整数で。以下の優先順で探す:
@@ -210,13 +211,17 @@ final class ReceiptScannerService {
           ※「お預り」「お預かり」「お釣り」「現金」「クレジット」行の金額は合計ではないので除外すること
         - taxAmount: 消費税額を整数で（「消費税」「内税」「外税」行の金額。不明なら0）
         - date: yyyy-MM-dd形式（「2026/01/15」→「2026-01-15」）
-        - storeName: 店舗名・発行者名（レシート上部に記載されることが多い）
+        - storeName: 店舗名・発行者名
+        - documentType: receipt / invoice / expense-receipt / unknown から選択
+        - transactionType: income / expense のどちらかを選択（請求書は原則 income、領収書・レシートは原則 expense）
         - estimatedCategory: 以下から最適なものを1つ選択:
           hosting（サーバー・ドメイン・クラウド）, tools（ソフトウェア・SaaS）, ads（広告）,
           contractor（外注・委託）, communication（通信・電話）, supplies（事務用品・消耗品）,
           transport（交通費・タクシー・駐車場）, food（飲食・食料品・コンビニ・レストラン・カフェ）,
-          entertainment（接待・会議費）, other-expense（上記以外）
+          entertainment（接待・会議費）, other-expense（上記以外の経費）,
+          sales（売上）, service（サービス収入）, other-income（上記以外の収益）
         - itemSummary: 購入品目の要約（品名を3つまでカンマ区切り）
+        - confidence: 推定の信頼度を0.0〜1.0で返す
 
         【注意】
         - OCRの誤読を考慮し、文脈から正しい値を推測してください
@@ -236,21 +241,43 @@ final class ReceiptScannerService {
         // Extract line items in a separate request to avoid nesting issues
         let lineItems = await extractLineItemsWithFoundationModels(from: truncatedText, session: session)
 
+        let documentType = Self.parseDocumentType(extraction.documentType)
+        let inferredType = Self.parseTransactionType(extraction.transactionType)
+            ?? RegexReceiptParser.inferTransactionType(from: text, documentType: documentType)
+        let inferredCategory = RegexReceiptParser.normalizeEstimatedCategory(
+            extraction.estimatedCategory,
+            type: inferredType,
+            fallbackText: text
+        )
+
         // Use regex as supplementary for tax/subtotal if FM didn't provide
         let taxAmount = extraction.taxAmount > 0
             ? extraction.taxAmount
             : RegexReceiptParser.extractTax(from: text)
         let subtotalAmount = RegexReceiptParser.extractSubtotal(from: text)
+        let normalizedDate = extraction.date.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? RegexReceiptParser.extractDate(from: text)
+            : extraction.date
+        let normalizedStoreName = extraction.storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? RegexReceiptParser.extractStoreName(from: text)
+            : extraction.storeName
+        let normalizedLineItems = lineItems.isEmpty
+            ? RegexReceiptParser.extractLineItems(from: text)
+            : lineItems
+        let confidence = max(0, min(1, extraction.confidence))
 
         return ReceiptData(
             totalAmount: extraction.totalAmount,
             taxAmount: taxAmount,
             subtotalAmount: subtotalAmount,
-            date: extraction.date,
-            storeName: extraction.storeName,
-            estimatedCategory: extraction.estimatedCategory,
+            date: normalizedDate,
+            storeName: normalizedStoreName,
+            estimatedCategory: inferredCategory,
             itemSummary: extraction.itemSummary,
-            lineItems: lineItems
+            lineItems: normalizedLineItems,
+            documentType: documentType,
+            suggestedTransactionType: inferredType,
+            confidence: confidence
         )
     }
 
@@ -261,7 +288,7 @@ final class ReceiptScannerService {
     ) async -> [LineItem] {
         do {
             let prompt = """
-            以下のレシートOCRテキストから購入した品目（明細行）を抽出してください。
+            以下の書類OCRテキストから購入した品目（明細行）を抽出してください。
 
             【抽出ルール】
             - name: 品目名（商品名・サービス名）
@@ -304,6 +331,13 @@ final class ReceiptScannerService {
         let totalAmount = RegexReceiptParser.extractAmount(from: text)
         let taxAmount = RegexReceiptParser.extractTax(from: text)
         let subtotalAmount = RegexReceiptParser.extractSubtotal(from: text)
+        let documentType = RegexReceiptParser.detectDocumentType(from: text)
+        let transactionType = RegexReceiptParser.inferTransactionType(from: text, documentType: documentType)
+        let confidence = RegexReceiptParser.inferenceConfidence(
+            from: text,
+            documentType: documentType,
+            transactionType: transactionType
+        )
 
         return ReceiptData(
             totalAmount: totalAmount,
@@ -311,10 +345,41 @@ final class ReceiptScannerService {
             subtotalAmount: subtotalAmount,
             date: RegexReceiptParser.extractDate(from: text),
             storeName: RegexReceiptParser.extractStoreName(from: text),
-            estimatedCategory: RegexReceiptParser.estimateCategory(from: text),
+            estimatedCategory: RegexReceiptParser.estimateCategory(from: text, type: transactionType),
             itemSummary: RegexReceiptParser.extractSummary(from: text),
-            lineItems: RegexReceiptParser.extractLineItems(from: text)
+            lineItems: RegexReceiptParser.extractLineItems(from: text),
+            documentType: documentType,
+            suggestedTransactionType: transactionType,
+            confidence: confidence
         )
+    }
+
+    private static func parseDocumentType(_ rawValue: String) -> ScannedDocumentType {
+        let normalized = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+        switch normalized {
+        case "receipt":
+            return .receipt
+        case "invoice":
+            return .invoice
+        case "expense-receipt", "expense-receipts", "expense receipt":
+            return .expenseReceipt
+        default:
+            return .unknown
+        }
+    }
+
+    private static func parseTransactionType(_ rawValue: String) -> TransactionType? {
+        switch rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "income":
+            return .income
+        case "expense":
+            return .expense
+        default:
+            return nil
+        }
     }
 }
 
@@ -362,6 +427,27 @@ enum RegexReceiptParser {
 
     private static let taxKeywords = [
         "消費税", "内税", "外税", "内消費税", "うち消費税",
+    ]
+
+    private static let invoiceKeywords = [
+        "請求書", "請求日", "請求番号", "ご請求", "請求先", "請求金額", "請求額",
+        "お支払期限", "支払期限", "振込先", "御中", "invoice", "bill to",
+    ]
+
+    private static let expenseReceiptKeywords = [
+        "領収書", "領収証", "領収", "受領", "receipt",
+    ]
+
+    private static let receiptKeywords = [
+        "レシート", "お会計", "お買上", "小計", "お預り", "お釣り", "change", "cash",
+    ]
+
+    private static let incomeHintKeywords = [
+        "請求書", "請求金額", "売上", "入金", "振込", "御中", "納品", "invoice", "billing",
+    ]
+
+    private static let expenseHintKeywords = [
+        "領収書", "領収証", "レシート", "お預り", "お釣り", "現金", "クレジット", "小計", "receipt",
     ]
 
     static func extractAmount(from text: String) -> Int {
@@ -482,8 +568,128 @@ enum RegexReceiptParser {
         return ""
     }
 
+    static func detectDocumentType(from text: String) -> ScannedDocumentType {
+        let normalized = text.lowercased()
+        let invoiceScore = keywordScore(in: normalized, keywords: invoiceKeywords)
+        let expenseReceiptScore = keywordScore(in: normalized, keywords: expenseReceiptKeywords)
+        let receiptScore = keywordScore(in: normalized, keywords: receiptKeywords)
+
+        if expenseReceiptScore > 0, expenseReceiptScore >= invoiceScore, expenseReceiptScore >= receiptScore {
+            return .expenseReceipt
+        }
+        if invoiceScore > 0, invoiceScore >= receiptScore {
+            return .invoice
+        }
+        if receiptScore > 0 {
+            return .receipt
+        }
+        return .unknown
+    }
+
+    static func inferTransactionType(from text: String, documentType: ScannedDocumentType? = nil) -> TransactionType {
+        let resolvedDocumentType = documentType ?? detectDocumentType(from: text)
+        let normalized = text.lowercased()
+
+        var incomeScore = keywordScore(in: normalized, keywords: incomeHintKeywords)
+        var expenseScore = keywordScore(in: normalized, keywords: expenseHintKeywords)
+
+        switch resolvedDocumentType {
+        case .invoice:
+            incomeScore += 2
+        case .expenseReceipt, .receipt:
+            expenseScore += 2
+        case .unknown:
+            break
+        }
+
+        if incomeScore == expenseScore {
+            return resolvedDocumentType == .invoice ? .income : .expense
+        }
+        return incomeScore > expenseScore ? .income : .expense
+    }
+
+    static func inferenceConfidence(
+        from text: String,
+        documentType: ScannedDocumentType,
+        transactionType: TransactionType
+    ) -> Double {
+        let normalized = text.lowercased()
+        let documentScore: Int
+        switch documentType {
+        case .invoice:
+            documentScore = keywordScore(in: normalized, keywords: invoiceKeywords)
+        case .expenseReceipt:
+            documentScore = keywordScore(in: normalized, keywords: expenseReceiptKeywords)
+        case .receipt:
+            documentScore = keywordScore(in: normalized, keywords: receiptKeywords)
+        case .unknown:
+            documentScore = 0
+        }
+
+        let transactionScore: Int
+        switch transactionType {
+        case .income:
+            transactionScore = keywordScore(in: normalized, keywords: incomeHintKeywords)
+        case .expense:
+            transactionScore = keywordScore(in: normalized, keywords: expenseHintKeywords)
+        }
+        let base = documentType == .unknown ? 0.45 : 0.58
+        let bonus = Double(documentScore + transactionScore) * 0.06
+        return min(0.95, base + bonus)
+    }
+
+    static func normalizeEstimatedCategory(
+        _ category: String,
+        type: TransactionType,
+        fallbackText: String
+    ) -> String {
+        let normalized = category
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let validIncome = Set(["sales", "service", "other-income"])
+        let validExpense = Set([
+            "hosting", "tools", "ads", "contractor", "communication",
+            "supplies", "transport", "food", "entertainment", "other-expense",
+        ])
+
+        if type == .income {
+            if validIncome.contains(normalized) { return normalized }
+            return estimateCategory(from: fallbackText, type: .income)
+        }
+
+        if validExpense.contains(normalized) { return normalized }
+        return estimateCategory(from: fallbackText, type: .expense)
+    }
+
     static func estimateCategory(from text: String) -> String {
+        estimateCategory(from: text, type: .expense)
+    }
+
+    static func estimateCategory(from text: String, type: TransactionType) -> String {
         let lowerText = text.lowercased()
+
+        if type == .income {
+            let incomeCategoryKeywords: [(category: String, keywords: [String])] = [
+                ("sales", [
+                    "売上", "売掛", "請求書", "ご請求", "請求金額", "請求額",
+                    "受注", "納品", "制作費", "開発費", "販売",
+                ]),
+                ("service", [
+                    "サービス", "保守", "サポート", "運用", "顧問", "コンサル",
+                    "利用料", "月額", "契約料", "手数料",
+                ]),
+            ]
+
+            for (category, keywords) in incomeCategoryKeywords {
+                for keyword in keywords {
+                    if lowerText.contains(keyword.lowercased()) {
+                        return category
+                    }
+                }
+            }
+            return "other-income"
+        }
 
         // More specific categories first to avoid false matches
         let categoryKeywords: [(category: String, keywords: [String])] = [
@@ -685,6 +891,12 @@ enum RegexReceiptParser {
     }
 
     // MARK: - Helpers
+
+    private static func keywordScore(in text: String, keywords: [String]) -> Int {
+        keywords.reduce(0) { partial, keyword in
+            partial + (text.contains(keyword.lowercased()) ? 1 : 0)
+        }
+    }
 
     private static func findMaxAmount(in lines: [String], using pattern: NSRegularExpression?) -> Int {
         var maxAmount = 0

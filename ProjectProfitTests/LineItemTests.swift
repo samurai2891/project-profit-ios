@@ -179,4 +179,28 @@ final class LineItemTests: XCTestCase {
         )
         XCTAssertTrue(data.lineItems.isEmpty)
     }
+
+    func testReceiptDataIncomeCategoryMapping() {
+        let data = ReceiptData(
+            totalAmount: 120000,
+            date: "2026-02-01",
+            storeName: "株式会社テスト",
+            estimatedCategory: "service",
+            itemSummary: "保守契約",
+            suggestedTransactionType: .income
+        )
+        XCTAssertEqual(data.categoryId, "cat-service")
+    }
+
+    func testReceiptDataFormattedMemoUsesDocumentLabel() {
+        let data = ReceiptData(
+            totalAmount: 5500,
+            date: "2026-02-01",
+            storeName: "テスト商店",
+            estimatedCategory: "food",
+            itemSummary: "会食",
+            documentType: .expenseReceipt
+        )
+        XCTAssertTrue(data.formattedMemo.contains("[領収書]"))
+    }
 }

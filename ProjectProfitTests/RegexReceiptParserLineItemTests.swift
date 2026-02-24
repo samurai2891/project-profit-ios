@@ -231,4 +231,24 @@ final class RegexReceiptParserLineItemTests: XCTestCase {
         let text = "NTTドコモ 通信料 ¥8,000"
         XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "communication")
     }
+
+    func testEstimateCategoryIncomeSales() {
+        let text = "請求書 ご請求金額 ¥150,000 納品分"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text, type: .income), "sales")
+    }
+
+    func testEstimateCategoryIncomeService() {
+        let text = "保守サービス 月額利用料 ¥30,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text, type: .income), "service")
+    }
+
+    func testNormalizeEstimatedCategoryFallsBackByType() {
+        let text = "請求書 ご請求金額 ¥150,000"
+        let normalized = RegexReceiptParser.normalizeEstimatedCategory(
+            "tools",
+            type: .income,
+            fallbackText: text
+        )
+        XCTAssertEqual(normalized, "sales")
+    }
 }

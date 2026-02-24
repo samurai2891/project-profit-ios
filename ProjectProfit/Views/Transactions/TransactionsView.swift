@@ -60,8 +60,8 @@ struct TransactionsView: View {
                 } label: {
                     Image(systemName: "doc.text.viewfinder")
                 }
-                .accessibilityLabel("レシート読取")
-                .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
+                .accessibilityLabel("書類読取")
+                .accessibilityHint("タップして書類を読み取り取引を自動入力")
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -435,7 +435,7 @@ private struct TransactionCardView: View {
 
     private var accessibilityDescription: String {
         let typeLabel = isIncome ? "収益" : "経費"
-        let receiptInfo = hasReceipt ? " レシートあり" : ""
+        let receiptInfo = hasReceipt ? " 添付画像あり" : ""
         let projectInfo = projectNames.isEmpty ? "" : " \(projectNames.joined(separator: ", "))"
         let memoInfo = transaction.memo.isEmpty ? "" : " \(transaction.memo)"
         return "\(typeLabel) \(categoryName) \(formattedAmount) \(formatDate(transaction.date))\(receiptInfo)\(projectInfo)\(memoInfo)"
@@ -490,7 +490,7 @@ private struct TransactionCardView: View {
                     Image(systemName: "doc.text.image")
                         .font(.caption2)
                         .foregroundStyle(AppColors.primary)
-                        .accessibilityLabel("レシートあり")
+                        .accessibilityLabel("添付画像あり")
                 }
             }
 

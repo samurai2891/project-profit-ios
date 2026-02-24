@@ -4,6 +4,24 @@ import Foundation
 import FoundationModels
 #endif
 
+// MARK: - Document Type
+
+enum ScannedDocumentType: String, Sendable, Hashable, Codable {
+    case receipt
+    case invoice
+    case expenseReceipt
+    case unknown
+
+    var label: String {
+        switch self {
+        case .receipt: "レシート"
+        case .invoice: "請求書"
+        case .expenseReceipt: "領収書"
+        case .unknown: "書類"
+        }
+    }
+}
+
 // MARK: - Line Item
 
 struct LineItem: Sendable, Hashable, Codable {
@@ -59,6 +77,15 @@ struct ReceiptExtraction {
 
     @Guide(description: "明細の要約（品目名など）")
     var itemSummary: String
+
+    @Guide(description: "書類種別: receipt, invoice, expense-receipt, unknown のいずれか")
+    var documentType: String
+
+    @Guide(description: "推定取引種別: income または expense")
+    var transactionType: String
+
+    @Guide(description: "推定の信頼度（0.0〜1.0）")
+    var confidence: Double
 }
 
 @available(iOS 26, *)
@@ -80,6 +107,9 @@ struct ReceiptData: Sendable, Hashable {
     let estimatedCategory: String
     let itemSummary: String
     let lineItems: [LineItem]
+    let documentType: ScannedDocumentType
+    let suggestedTransactionType: TransactionType
+    let confidence: Double
 
     init(
         totalAmount: Int,
@@ -89,7 +119,10 @@ struct ReceiptData: Sendable, Hashable {
         storeName: String,
         estimatedCategory: String,
         itemSummary: String,
-        lineItems: [LineItem] = []
+        lineItems: [LineItem] = [],
+        documentType: ScannedDocumentType = .receipt,
+        suggestedTransactionType: TransactionType = .expense,
+        confidence: Double = 0
     ) {
         self.totalAmount = totalAmount
         self.taxAmount = taxAmount
@@ -99,9 +132,21 @@ struct ReceiptData: Sendable, Hashable {
         self.estimatedCategory = estimatedCategory
         self.itemSummary = itemSummary
         self.lineItems = lineItems
+        self.documentType = documentType
+        self.suggestedTransactionType = suggestedTransactionType
+        self.confidence = confidence
     }
 
     var categoryId: String {
+        if suggestedTransactionType == .income {
+            let incomeMapping: [String: String] = [
+                "sales": "cat-sales",
+                "service": "cat-service",
+                "other-income": "cat-other-income",
+            ]
+            return incomeMapping[estimatedCategory] ?? "cat-other-income"
+        }
+
         let mapping: [String: String] = [
             "hosting": "cat-hosting",
             "tools": "cat-tools",
@@ -126,10 +171,11 @@ struct ReceiptData: Sendable, Hashable {
 
     var formattedMemo: String {
         var parts: [String] = []
+        let documentLabel = documentType.label
         if !storeName.isEmpty {
-            parts.append("[レシート] \(storeName)")
+            parts.append("[\(documentLabel)] \(storeName)")
         } else {
-            parts.append("[レシート]")
+            parts.append("[\(documentLabel)]")
         }
         if !lineItems.isEmpty {
             let itemNames = lineItems.prefix(3).map(\.name).joined(separator: "、")

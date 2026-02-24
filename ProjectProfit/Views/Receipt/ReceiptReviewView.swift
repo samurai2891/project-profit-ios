@@ -10,6 +10,7 @@ struct ReceiptReviewView: View {
 
     @State private var amountText: String = ""
     @State private var date: Date = Date()
+    @State private var type: TransactionType = .expense
     @State private var categoryId: String = ""
     @State private var memo: String = ""
     @State private var allocations: [(id: UUID, projectId: UUID, ratio: Int)] = []
@@ -26,8 +27,13 @@ struct ReceiptReviewView: View {
         self.onDismiss = onDismiss
     }
 
-    private var expenseCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .expense }
+    private var categories: [PPCategory] {
+        let categoryType: CategoryType = type == .income ? .income : .expense
+        return dataStore.categories.filter { $0.type == categoryType }
+    }
+
+    private var typeBadgeColor: Color {
+        type == .income ? AppColors.success : AppColors.error
     }
 
     private var totalRatio: Int {
@@ -44,6 +50,7 @@ struct ReceiptReviewView: View {
             VStack(spacing: 20) {
                 ocrBanner
                 receiptImageSection
+                typeSection
                 amountSection
                 dateSection
                 categorySection
@@ -58,10 +65,13 @@ struct ReceiptReviewView: View {
                 Button("登録") { save() }
                     .disabled(!isValid || isSubmitting)
                     .accessibilityLabel("登録")
-                    .accessibilityHint(isValid ? "タップしてレシートの取引を登録" : "すべての必須項目を入力してください")
+                    .accessibilityHint(isValid ? "タップして取引を登録" : "すべての必須項目を入力してください")
             }
         }
         .onAppear { setupFromReceiptData() }
+        .onChange(of: type) { _, _ in
+            ensureValidCategorySelection()
+        }
         .sheet(isPresented: $showImagePreview) {
             if let image = receiptImage {
                 ReceiptImagePreviewView(image: image)
@@ -76,9 +86,9 @@ struct ReceiptReviewView: View {
             Image(systemName: "doc.text.viewfinder")
                 .foregroundStyle(AppColors.primary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("レシート読み取り結果")
+                Text("書類読み取り結果")
                     .font(.subheadline.weight(.medium))
-                Text("内容を確認して必要に応じて修正してください")
+                Text("\(receiptData.documentType.label) / 推定精度 \(Int(receiptData.confidence * 100))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -88,7 +98,7 @@ struct ReceiptReviewView: View {
         .background(AppColors.primary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("レシート読み取り結果。内容を確認して必要に応じて修正してください")
+        .accessibilityLabel("書類読み取り結果。内容を確認して必要に応じて修正してください")
     }
 
     // MARK: - Receipt Image
@@ -97,7 +107,7 @@ struct ReceiptReviewView: View {
     private var receiptImageSection: some View {
         if let image = receiptImage {
             VStack(alignment: .leading, spacing: 8) {
-                Text("レシート画像")
+                Text("添付画像")
                     .font(.subheadline.weight(.medium))
 
                 Button {
@@ -121,10 +131,49 @@ struct ReceiptReviewView: View {
                                 .padding(8)
                         }
                 }
-                .accessibilityLabel("レシート画像をプレビュー")
+                .accessibilityLabel("添付画像をプレビュー")
                 .accessibilityHint("タップして全画面表示")
             }
         }
+    }
+
+    // MARK: - Type
+
+    private var typeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("種類")
+                .font(.subheadline.weight(.medium))
+            HStack(spacing: 12) {
+                typeButton(for: .expense, label: "経費", icon: "arrow.down.circle.fill", activeColor: AppColors.error)
+                typeButton(for: .income, label: "収益", icon: "arrow.up.circle.fill", activeColor: AppColors.success)
+            }
+        }
+    }
+
+    private func typeButton(for txType: TransactionType, label: String, icon: String, activeColor: Color) -> some View {
+        let isSelected = type == txType
+        return Button {
+            type = txType
+        } label: {
+            HStack {
+                Image(systemName: icon)
+                Text(label)
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(isSelected ? activeColor : AppColors.surface)
+            .foregroundStyle(isSelected ? .white : .primary)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? activeColor : AppColors.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("種類: \(label)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint("タップして\(label)を選択")
     }
 
     // MARK: - Amount
@@ -135,12 +184,12 @@ struct ReceiptReviewView: View {
                 Text("金額")
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                Text("経費")
+                Text(type.label)
                     .font(.caption.weight(.medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(AppColors.error.opacity(0.12))
-                    .foregroundStyle(AppColors.error)
+                    .background(typeBadgeColor.opacity(0.12))
+                    .foregroundStyle(typeBadgeColor)
                     .clipShape(Capsule())
             }
             HStack {
@@ -215,28 +264,34 @@ struct ReceiptReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("カテゴリ")
                 .font(.subheadline.weight(.medium))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(expenseCategories, id: \.id) { cat in
-                        let isSelected = categoryId == cat.id
-                        Button {
-                            categoryId = cat.id
-                        } label: {
-                            Text(cat.name)
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(isSelected ? AppColors.primary : AppColors.surface)
-                                .foregroundStyle(isSelected ? .white : .primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(isSelected ? AppColors.primary : AppColors.border, lineWidth: 1)
-                                )
+            if categories.isEmpty {
+                Text("この種類のカテゴリがありません")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(categories, id: \.id) { cat in
+                            let isSelected = categoryId == cat.id
+                            Button {
+                                categoryId = cat.id
+                            } label: {
+                                Text(cat.name)
+                                    .font(.subheadline.weight(.medium))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(isSelected ? AppColors.primary : AppColors.surface)
+                                    .foregroundStyle(isSelected ? .white : .primary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(isSelected ? AppColors.primary : AppColors.border, lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("カテゴリ: \(cat.name)")
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("カテゴリ: \(cat.name)")
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
             }
@@ -371,16 +426,15 @@ struct ReceiptReviewView: View {
         guard !isInitialized else { return }
         isInitialized = true
 
+        type = receiptData.suggestedTransactionType
         amountText = receiptData.totalAmount > 0 ? String(receiptData.totalAmount) : ""
         date = receiptData.parsedDate
         categoryId = receiptData.categoryId
         memo = receiptData.formattedMemo
         editableLineItems = receiptData.lineItems.map { EditableLineItem(from: $0) }
 
-        // Validate category exists
-        if !expenseCategories.contains(where: { $0.id == categoryId }) {
-            categoryId = expenseCategories.first?.id ?? "cat-other-expense"
-        }
+        // Validate category exists for selected transaction type
+        ensureValidCategorySelection()
 
         // Default allocation - use defaultProjectId if provided
         if let projectId = defaultProjectId, dataStore.projects.contains(where: { $0.id == projectId }) {
@@ -424,7 +478,7 @@ struct ReceiptReviewView: View {
 
         let allocs = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
         dataStore.addTransaction(
-            type: .expense,
+            type: type,
             amount: amount,
             date: validDate,
             categoryId: categoryId,
@@ -435,5 +489,15 @@ struct ReceiptReviewView: View {
         )
 
         onDismiss()
+    }
+
+    private func ensureValidCategorySelection() {
+        if !categories.contains(where: { $0.id == categoryId }) {
+            categoryId = categories.first?.id ?? fallbackCategoryId(for: type)
+        }
+    }
+
+    private func fallbackCategoryId(for transactionType: TransactionType) -> String {
+        transactionType == .income ? "cat-other-income" : "cat-other-expense"
     }
 }

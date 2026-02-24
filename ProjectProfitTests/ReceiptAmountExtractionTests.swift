@@ -299,4 +299,44 @@ final class ReceiptAmountExtractionTests: XCTestCase {
         """
         XCTAssertEqual(RegexReceiptParser.extractSubtotal(from: text), 0)
     }
+
+    // MARK: - Document/Type Inference
+
+    func testDetectDocumentTypeInvoice() {
+        let text = """
+        請求書
+        ご請求金額 ¥120,000
+        お支払期限 2026/02/28
+        """
+        XCTAssertEqual(RegexReceiptParser.detectDocumentType(from: text), .invoice)
+    }
+
+    func testDetectDocumentTypeExpenseReceipt() {
+        let text = """
+        領収書
+        但し お食事代として
+        合計 ¥5,500
+        """
+        XCTAssertEqual(RegexReceiptParser.detectDocumentType(from: text), .expenseReceipt)
+    }
+
+    func testInferTransactionTypeInvoiceDefaultsToIncome() {
+        let text = """
+        請求書
+        請求先: 株式会社テスト 御中
+        請求金額 ¥80,000
+        """
+        let type = RegexReceiptParser.inferTransactionType(from: text)
+        XCTAssertEqual(type, .income)
+    }
+
+    func testInferTransactionTypeReceiptDefaultsToExpense() {
+        let text = """
+        レシート
+        小計 ¥1,000
+        合計 ¥1,100
+        """
+        let type = RegexReceiptParser.inferTransactionType(from: text)
+        XCTAssertEqual(type, .expense)
+    }
 }

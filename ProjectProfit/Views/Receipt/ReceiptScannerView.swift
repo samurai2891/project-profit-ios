@@ -5,7 +5,6 @@ import UIKit
 // MARK: - Scanner View
 
 struct ReceiptScannerView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.dismiss) private var dismiss
 
     let defaultProjectId: UUID?
@@ -56,7 +55,7 @@ struct ReceiptScannerView: View {
         switch scannerService.state {
         case .completed: "確認・登録"
         case .processing: "読み取り中..."
-        default: "レシート読取"
+        default: "書類読取"
         }
     }
 
@@ -71,7 +70,7 @@ struct ReceiptScannerView: View {
                 .foregroundStyle(AppColors.primary)
                 .accessibilityHidden(true)
 
-            Text("レシート・請求書を読み取り")
+            Text("レシート・請求書・領収書を読み取り")
                 .font(.title3.weight(.semibold))
 
             Text("カメラで撮影するか\nフォトライブラリから選択してください")
@@ -96,7 +95,7 @@ struct ReceiptScannerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .accessibilityLabel("カメラで撮影")
-                    .accessibilityHint("カメラを起動してレシートを撮影")
+                    .accessibilityHint("カメラを起動して書類を撮影")
                 }
 
                 PhotosPicker(
@@ -119,7 +118,7 @@ struct ReceiptScannerView: View {
                     )
                 }
                 .accessibilityLabel("フォトライブラリから選択")
-                .accessibilityHint("写真アプリからレシート画像を選択")
+                .accessibilityHint("写真アプリから書類画像を選択")
             }
             .padding(.horizontal, 20)
 
@@ -141,7 +140,7 @@ struct ReceiptScannerView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(AppColors.border, lineWidth: 1)
                 )
-                .accessibilityLabel("選択されたレシート画像")
+                .accessibilityLabel("選択された書類画像")
 
             HStack(spacing: 12) {
                 Button {
@@ -179,7 +178,7 @@ struct ReceiptScannerView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .accessibilityLabel("読み取り開始")
-                .accessibilityHint("レシートのテキストを読み取ります")
+                .accessibilityHint("書類のテキストを読み取ります")
             }
         }
         .padding(20)
@@ -194,7 +193,7 @@ struct ReceiptScannerView: View {
             ProgressView()
                 .scaleEffect(1.5)
 
-            Text("レシートを読み取り中...")
+            Text("書類を読み取り中...")
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
@@ -205,7 +204,7 @@ struct ReceiptScannerView: View {
             Spacer()
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("レシートを読み取り中")
+        .accessibilityLabel("書類を読み取り中")
     }
 
     // MARK: - Error

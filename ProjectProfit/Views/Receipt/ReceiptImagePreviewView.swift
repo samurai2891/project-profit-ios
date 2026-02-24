@@ -55,7 +55,7 @@ struct ReceiptImagePreviewView: View {
                     }
                 }
             }
-            .navigationTitle("レシート画像")
+            .navigationTitle("添付画像")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

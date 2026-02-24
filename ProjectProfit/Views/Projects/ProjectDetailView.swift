@@ -373,12 +373,12 @@ private extension ProjectDetailView {
                 Button {
                     showReceiptScanner = true
                 } label: {
-                    Label("レシート読取", systemImage: "doc.text.viewfinder")
+                    Label("書類読取", systemImage: "doc.text.viewfinder")
                         .font(.subheadline)
                         .fontWeight(.medium)
                 }
-                .accessibilityLabel("レシート読取")
-                .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
+                .accessibilityLabel("書類読取")
+                .accessibilityHint("タップして書類を読み取り取引を自動入力")
 
                 Button {
                     showAddTransactionSheet = true
@@ -430,8 +430,8 @@ private extension ProjectDetailView {
                 .font(.title3)
                 .foregroundStyle(AppColors.primary)
         }
-        .accessibilityLabel("レシート読取")
-        .accessibilityHint("タップしてレシートを読み取り経費を自動登録")
+        .accessibilityLabel("書類読取")
+        .accessibilityHint("タップして書類を読み取り取引を自動入力")
     }
 
     var addTransactionButton: some View {

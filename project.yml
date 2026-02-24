@@ -28,8 +28,8 @@ targets:
         DEVELOPMENT_TEAM: 52PPJXD67Z
         PRODUCT_BUNDLE_IDENTIFIER: com.projectprofit.ProjectProfit
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSCameraUsageDescription: "レシートを撮影して経費を自動登録するためにカメラを使用します"
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "レシート画像を選択するためにフォトライブラリを使用します"
+        INFOPLIST_KEY_NSCameraUsageDescription: "レシート・請求書・領収書を撮影して取引を自動入力するためにカメラを使用します"
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "レシート・請求書・領収書の画像を選択するためにフォトライブラリを使用します"
         DEVELOPMENT_ASSET_PATHS: "\"ProjectProfit/Preview Content\""
         ENABLE_PREVIEWS: YES
 
