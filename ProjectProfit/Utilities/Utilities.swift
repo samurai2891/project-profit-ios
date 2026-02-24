@@ -454,7 +454,10 @@ func calculateHolisticProRata(
                 entry.input.activeDays > 0 ? (idx, entry.input.ratio * entry.input.activeDays) : nil
             }
         } else {
-            recipients = []
+            // 全プロジェクトが0日 → 比率ベースでフォールバック配分
+            recipients = proratedEntries.enumerated().map { idx, entry in
+                (idx, entry.input.ratio)
+            }
         }
 
         let totalWeight = recipients.reduce(0) { $0 + $1.weight }
@@ -476,8 +479,12 @@ func calculateHolisticProRata(
     // 6: 最終端数調整（合計=totalAmount保証）
     let currentTotal = amounts.reduce(0, +)
     let finalRemainder = totalAmount - currentTotal
-    if finalRemainder != 0, let lastActiveIdx = proratedEntries.lastIndex(where: { $0.input.activeDays > 0 }) {
-        amounts[lastActiveIdx] += finalRemainder
+    if finalRemainder != 0 {
+        let lastIdx = proratedEntries.lastIndex(where: { $0.input.activeDays > 0 })
+            ?? proratedEntries.indices.last
+        if let lastIdx {
+            amounts[lastIdx] += finalRemainder
+        }
     }
 
     return zip(inputs, amounts).map { input, amount in

@@ -668,4 +668,60 @@ final class ProRataTests: XCTestCase {
         XCTAssertEqual(total, 36600, "Leap year total must be preserved")
     }
 
+    // MARK: - H6: All Zero Days Edge Case
+
+    func testHolistic_allZeroDays_fallsBackToRatioAllocation() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 60, activeDays: 0),
+                HolisticProRataInput(projectId: projectB, ratio: 40, activeDays: 0),
+            ]
+        )
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 6000)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 4000)
+        XCTAssertEqual(result.reduce(0) { $0 + $1.amount }, 10000, "Total must be preserved")
+    }
+
+    func testHolistic_allZeroDays_remainderHandling() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let projectC = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10000,
+            totalDays: 30,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 33, activeDays: 0),
+                HolisticProRataInput(projectId: projectB, ratio: 33, activeDays: 0),
+                HolisticProRataInput(projectId: projectC, ratio: 34, activeDays: 0),
+            ]
+        )
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 3300)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 3300)
+        XCTAssertEqual(result.first { $0.projectId == projectC }!.amount, 3400)
+        XCTAssertEqual(result.reduce(0) { $0 + $1.amount }, 10000, "Total must be preserved")
+    }
+
+    func testHolistic_allZeroDays_oddAmountRemainder() {
+        let projectA = UUID()
+        let projectB = UUID()
+        let projectC = UUID()
+        let result = calculateHolisticProRata(
+            totalAmount: 10001,
+            totalDays: 31,
+            inputs: [
+                HolisticProRataInput(projectId: projectA, ratio: 33, activeDays: 0),
+                HolisticProRataInput(projectId: projectB, ratio: 33, activeDays: 0),
+                HolisticProRataInput(projectId: projectC, ratio: 34, activeDays: 0),
+            ]
+        )
+        XCTAssertEqual(result.first { $0.projectId == projectA }!.amount, 3300)
+        XCTAssertEqual(result.first { $0.projectId == projectB }!.amount, 3300)
+        XCTAssertEqual(result.first { $0.projectId == projectC }!.amount, 3401)
+        XCTAssertEqual(result.reduce(0) { $0 + $1.amount }, 10001, "Total must be exactly preserved")
+    }
+
 }

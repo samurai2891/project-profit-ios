@@ -52,13 +52,13 @@ final class TransactionsViewModel {
     var incomeTotal: Int {
         filteredTransactions
             .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
+            .reduce(0) { $0 + effectiveAmount(for: $1) }
     }
 
     var expenseTotal: Int {
         filteredTransactions
             .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
+            .reduce(0) { $0 + effectiveAmount(for: $1) }
     }
 
     var netTotal: Int {
@@ -132,6 +132,14 @@ final class TransactionsViewModel {
     private func totalByType(_ type: TransactionType, from transactions: [PPTransaction]) -> Int {
         transactions
             .filter { $0.type == type }
-            .reduce(0) { $0 + $1.amount }
+            .reduce(0) { $0 + effectiveAmount(for: $1) }
+    }
+
+    /// プロジェクトフィルタ適用時は配分額、未適用時は取引全額を返す
+    private func effectiveAmount(for transaction: PPTransaction) -> Int {
+        guard let projectId = filter.projectId else {
+            return transaction.amount
+        }
+        return transaction.allocations.first { $0.projectId == projectId }?.amount ?? transaction.amount
     }
 }

@@ -88,6 +88,11 @@ class DataStore {
             try modelContext.save()
         } catch {
             AppLogger.dataStore.error("Save failed: \(error.localizedDescription)")
+            modelContext.rollback()
+            refreshProjects()
+            refreshTransactions()
+            refreshCategories()
+            refreshRecurring()
             lastError = .saveFailed(underlying: error)
         }
     }
@@ -360,9 +365,53 @@ class DataStore {
         if let imagePath = transaction.receiptImagePath {
             ReceiptImageStore.deleteImage(fileName: imagePath)
         }
+
+        // Capture recurring info before deletion
+        let recurringId = transaction.recurringId
+        let deletedDate = transaction.date
+
         modelContext.delete(transaction)
         save()
         refreshTransactions()
+
+        // Roll back recurring generation tracking so the deleted period can be regenerated
+        if let recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
+            rollBackRecurringGenerationState(recurring: recurring, deletedTransactionDate: deletedDate)
+        }
+    }
+
+    /// Roll back recurring generation tracking after a linked transaction is deleted.
+    /// Allows processRecurringTransactions() to regenerate the deleted period on next run.
+    private func rollBackRecurringGenerationState(
+        recurring: PPRecurringTransaction,
+        deletedTransactionDate: Date
+    ) {
+        let calendar = Calendar.current
+
+        // Find remaining transactions still linked to this recurring template
+        let remainingTransactions = transactions
+            .filter { $0.recurringId == recurring.id }
+            .sorted { $0.date < $1.date }
+
+        if recurring.frequency == .yearly,
+           (recurring.yearlyAmortizationMode ?? .lumpSum) == .monthlySpread {
+            // Monthly spread mode: remove the deleted month key from lastGeneratedMonths
+            let deletedComps = calendar.dateComponents([.year, .month], from: deletedTransactionDate)
+            if let year = deletedComps.year, let month = deletedComps.month {
+                let monthKey = String(format: "%d-%02d", year, month)
+                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths.filter { $0 != monthKey }
+            }
+            // Also update lastGeneratedDate to the latest remaining transaction date, or nil
+            recurring.lastGeneratedDate = remainingTransactions.last?.date
+        } else {
+            // Monthly or Yearly (lumpSum): set lastGeneratedDate to the latest
+            // remaining linked transaction's date, or nil if none remain.
+            recurring.lastGeneratedDate = remainingTransactions.last?.date
+        }
+
+        recurring.updatedAt = Date()
+        save()
+        refreshRecurring()
     }
 
     func removeReceiptImage(transactionId: UUID) {
@@ -506,14 +555,24 @@ class DataStore {
         if let memo { recurring.memo = memo }
         if let allocationMode { recurring.allocationMode = allocationMode }
         if let frequency {
+            let frequencyChanged = recurring.frequency != frequency
             recurring.frequency = frequency
             if frequency == .monthly {
                 recurring.monthOfYear = nil
                 // monthlyに変更した場合、月次分割モードをクリア
                 recurring.yearlyAmortizationMode = nil
                 recurring.lastGeneratedMonths = []
-            } else if let monthOfYear {
-                recurring.monthOfYear = monthOfYear
+                if frequencyChanged {
+                    recurring.lastGeneratedDate = nil
+                }
+            } else {
+                if let monthOfYear {
+                    recurring.monthOfYear = monthOfYear
+                }
+                if frequencyChanged {
+                    recurring.lastGeneratedDate = nil
+                    recurring.lastGeneratedMonths = []
+                }
             }
         } else if let monthOfYear {
             recurring.monthOfYear = monthOfYear

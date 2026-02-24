@@ -1122,4 +1122,68 @@ final class RecurringProcessingTests: XCTestCase {
         let updated = fetchRecurring(id: recurring.id)
         XCTAssertEqual(updated?.isActive, false, "Should be deactivated after endDate")
     }
+
+    // MARK: - C9: Delete Recurring Transaction Regeneration
+
+    func testDeleteMonthlyRecurringTransaction_allowsRegeneration() {
+        let project = makeProject()
+        let useDayOfMonth = pastDayOfMonth
+
+        let recurring = dataStore.addRecurring(
+            name: "Monthly Regen Test",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: useDayOfMonth
+        )
+
+        // Verify transaction was auto-generated
+        let generatedTxs = dataStore.transactions.filter { $0.recurringId == recurring.id }
+        guard let generatedTx = generatedTxs.first else {
+            return // dayOfMonth hasn't passed, skip
+        }
+
+        // Delete the generated transaction
+        dataStore.deleteTransaction(id: generatedTx.id)
+
+        // Verify transaction is deleted
+        let afterDelete = fetchAllTransactions().filter { $0.recurringId == recurring.id }
+        XCTAssertTrue(afterDelete.isEmpty, "Transaction should be deleted")
+
+        // Verify lastGeneratedDate was rolled back
+        let updatedRecurring = fetchRecurring(id: recurring.id)
+        XCTAssertNil(updatedRecurring?.lastGeneratedDate, "lastGeneratedDate should be nil after deleting the only linked transaction")
+
+        // Process recurring again - should regenerate
+        let count = dataStore.processRecurringTransactions()
+        XCTAssertGreaterThanOrEqual(count, 1, "Should regenerate the deleted transaction")
+
+        // Note: processRecurringTransactions inserts into modelContext but doesn't refresh
+        // dataStore.transactions, so use fetchAllTransactions() to check context directly
+        let afterRegen = fetchAllTransactions().filter { $0.recurringId == recurring.id }
+        XCTAssertFalse(afterRegen.isEmpty, "Should have regenerated transaction")
+    }
+
+    func testDeleteNonRecurringTransaction_noRecurringStateChange() {
+        let project = makeProject()
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 5000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "manual entry",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        XCTAssertEqual(dataStore.transactions.count, 1)
+
+        // Delete it - should not crash or affect any recurring state
+        dataStore.deleteTransaction(id: tx.id)
+
+        XCTAssertTrue(dataStore.transactions.filter { $0.id == tx.id }.isEmpty, "Transaction should be deleted")
+    }
 }
