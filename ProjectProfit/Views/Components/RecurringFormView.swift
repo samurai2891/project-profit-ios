@@ -407,7 +407,7 @@ struct RecurringFormView: View {
                     .foregroundStyle(totalRatio == 100 ? AppColors.success : AppColors.error)
             }
 
-            if dataStore.projects.isEmpty {
+            if dataStore.projects.filter({ $0.isArchived != true }).isEmpty {
                 Text("プロジェクトがありません")
                     .font(.subheadline)
                     .foregroundStyle(AppColors.muted)
@@ -416,7 +416,7 @@ struct RecurringFormView: View {
                     let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                     HStack {
                         Menu {
-                            ForEach(dataStore.projects, id: \.id) { project in
+                            ForEach(dataStore.projects.filter { $0.isArchived != true }, id: \.id) { project in
                                 Button(project.name) {
                                     var updated = allocations
                                     updated[index] = (id: alloc.id, projectId: project.id, ratio: alloc.ratio)
@@ -472,10 +472,10 @@ struct RecurringFormView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
-                if dataStore.projects.count > allocations.count {
+                if dataStore.projects.filter({ $0.isArchived != true }).count > allocations.count {
                     Button {
                         let usedIds = Set(allocations.map(\.projectId))
-                        if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) }) {
+                        if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) && $0.isArchived != true }) {
                             allocations = allocations + [(id: UUID(), projectId: available.id, ratio: 0)]
                         }
                     } label: {

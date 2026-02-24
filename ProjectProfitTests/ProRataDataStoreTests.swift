@@ -853,7 +853,51 @@ final class ProRataDataStoreTests: XCTestCase {
         XCTAssertTrue(fetchAllTransactions().isEmpty, "No transaction should be generated for deactivated recurring")
     }
 
-    // MARK: - Test 23: reverseCompletionAllocations recalculates remaining partials
+    // MARK: - Test 23: reverseCompletionAllocations rounding remainder
+
+    func testReverseCompletionAllocations_roundingRemainder() {
+        // 10,000円を33%/33%/34%の3プロジェクト配分 → 完了 → 再活性化 → 合計=10,000を検証
+        let projectA = makeProject(name: "Project A")
+        let projectB = makeProject(name: "Project B")
+        let projectC = makeProject(name: "Project C")
+
+        let transactionDate = makeDate(year: 2024, month: 6, day: 15)
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "rounding test",
+            allocations: [
+                (projectId: projectA.id, ratio: 33),
+                (projectId: projectB.id, ratio: 33),
+                (projectId: projectC.id, ratio: 34)
+            ]
+        )
+
+        // 完了 → 日割り適用
+        let completedDate = makeDate(year: 2024, month: 6, day: 20)
+        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+
+        // 再活性化 → reverseCompletionAllocations が呼ばれ比率ベースに復元
+        dataStore.updateProject(id: projectA.id, status: .active)
+
+        let transactions = fetchAllTransactions()
+        let tx = transactions.first { $0.memo == "rounding test" }!
+        let allocA = tx.allocations.first { $0.projectId == projectA.id }!
+        let allocB = tx.allocations.first { $0.projectId == projectB.id }!
+        let allocC = tx.allocations.first { $0.projectId == projectC.id }!
+
+        // 33% of 10000 = 3300, 33% = 3300, 34% = 3400 → sum = 10000
+        // recalculateAllocationAmounts applies remainder to last allocation
+        let total = allocA.amount + allocB.amount + allocC.amount
+        XCTAssertEqual(total, 10000, "端数処理後も合計=10,000円であるべき")
+        XCTAssertEqual(allocA.ratio, 33)
+        XCTAssertEqual(allocB.ratio, 33)
+        XCTAssertEqual(allocC.ratio, 34)
+    }
+
+    // MARK: - Test 24: reverseCompletionAllocations recalculates remaining partials
 
     func testReverseCompletion_recalculatesRemainingPartialProjects() {
         let projectA = makeProject(name: "Project A")

@@ -14,6 +14,9 @@ class DataStore {
     var isLoading = true
     var lastError: AppError?
 
+    /// H2: 定期取引の追加/更新/削除時に通知スケジュールを再構成するためのコールバック
+    var onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)?
+
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
     }
@@ -217,29 +220,82 @@ class DataStore {
         }
     }
 
-    func deleteProject(id: UUID) {
+    // MARK: - Archive / Unarchive
+
+    /// H9: トランザクション参照がある場合はアーカイブ（ソフトデリート）
+    func archiveProject(id: UUID) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
+        project.isArchived = true
+        project.updatedAt = Date()
 
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        // Remove allocations referencing this project from transactions
+        // H10+H9: アーカイブ対象プロジェクトを参照する equalAll トランザクションの手動編集フラグをクリア
+        // → reprocessEqualAllCurrentPeriodTransactions で正しく再計算されるようにする
         for transaction in transactions {
-            let filtered = transaction.allocations.filter { $0.projectId != id }
-            if filtered.count != transaction.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = transaction.receiptImagePath {
-                        imagesToDelete.append(imagePath)
+            guard transaction.isManuallyEdited == true,
+                  transaction.allocations.contains(where: { $0.projectId == id }),
+                  let recurringId = transaction.recurringId,
+                  let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
+                  (recurring.allocationMode ?? .manual) == .equalAll
+            else { continue }
+            transaction.isManuallyEdited = nil
+        }
+
+        // アーカイブ済みプロジェクトを定期取引から除外
+        let now = Date()
+        for recurring in recurringTransactions {
+            let filtered = recurring.allocations.filter { $0.projectId != id }
+            if filtered.count != recurring.allocations.count {
+                if filtered.isEmpty && (recurring.allocationMode ?? .manual) == .manual {
+                    // ダングリング recurringId 参照をクリア（deleteRecurring と同様）
+                    for transaction in transactions where transaction.recurringId == recurring.id {
+                        transaction.recurringId = nil
+                        transaction.updatedAt = now
                     }
-                    modelContext.delete(transaction)
-                } else {
-                    transaction.allocations = redistributeAllocations(
-                        totalAmount: transaction.amount,
+                    modelContext.delete(recurring)
+                } else if !filtered.isEmpty {
+                    recurring.allocations = redistributeAllocations(
+                        totalAmount: recurring.amount,
                         remainingAllocations: filtered
                     )
                 }
             }
         }
+
+        save()
+        refreshProjects()
+        refreshRecurring()
+        reprocessEqualAllCurrentPeriodTransactions()
+        refreshTransactions()
+    }
+
+    func unarchiveProject(id: UUID) {
+        guard let project = projects.first(where: { $0.id == id }) else { return }
+        project.isArchived = nil
+        project.updatedAt = Date()
+        save()
+        refreshProjects()
+        reprocessEqualAllCurrentPeriodTransactions()
+        refreshTransactions()
+    }
+
+    /// H9: トランザクション参照ありならアーカイブ、なしならハードデリート
+    func deleteProject(id: UUID) {
+        guard let project = projects.first(where: { $0.id == id }) else { return }
+
+        // トランザクション参照があるか確認
+        let hasTransactionReferences = transactions.contains { tx in
+            tx.allocations.contains { $0.projectId == id }
+        }
+
+        // 参照がある場合はアーカイブに委譲
+        if hasTransactionReferences {
+            archiveProject(id: id)
+            return
+        }
+
+        // 参照なし: 従来通りハードデリート
+        // C4: save成功後に削除するため画像パスを収集
+        var imagesToDelete: [String] = []
 
         // Remove allocations from recurring
         for recurring in recurringTransactions {
@@ -276,29 +332,69 @@ class DataStore {
     func deleteProjects(ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
 
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        // 全削除対象を一括でフィルタリング（再分配は1回のみ）
-        for transaction in transactions {
-            let filtered = transaction.allocations.filter { !ids.contains($0.projectId) }
-            if filtered.count != transaction.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = transaction.receiptImagePath {
-                        imagesToDelete.append(imagePath)
-                    }
-                    modelContext.delete(transaction)
-                } else {
-                    transaction.allocations = redistributeAllocations(
-                        totalAmount: transaction.amount,
-                        remainingAllocations: filtered
-                    )
-                }
+        // H9: トランザクション参照があるプロジェクトはアーカイブ、ないものはハードデリート
+        var idsToArchive = Set<UUID>()
+        var idsToHardDelete = Set<UUID>()
+        for id in ids {
+            let hasReferences = transactions.contains { tx in
+                tx.allocations.contains { $0.projectId == id }
+            }
+            if hasReferences {
+                idsToArchive.insert(id)
+            } else {
+                idsToHardDelete.insert(id)
             }
         }
 
+        // バッチアーカイブ（save/refreshを1回にまとめる）
+        if !idsToArchive.isEmpty {
+            let now = Date()
+            for id in idsToArchive {
+                guard let project = projects.first(where: { $0.id == id }) else { continue }
+                project.isArchived = true
+                project.updatedAt = now
+            }
+            // H10+H9: アーカイブ対象を参照する equalAll トランザクションの手動編集フラグをクリア
+            for transaction in transactions {
+                guard transaction.isManuallyEdited == true,
+                      transaction.allocations.contains(where: { idsToArchive.contains($0.projectId) }),
+                      let recurringId = transaction.recurringId,
+                      let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
+                      (recurring.allocationMode ?? .manual) == .equalAll
+                else { continue }
+                transaction.isManuallyEdited = nil
+            }
+            for recurring in recurringTransactions {
+                let filtered = recurring.allocations.filter { !idsToArchive.contains($0.projectId) }
+                if filtered.count != recurring.allocations.count {
+                    if filtered.isEmpty && (recurring.allocationMode ?? .manual) == .manual {
+                        for transaction in transactions where transaction.recurringId == recurring.id {
+                            transaction.recurringId = nil
+                            transaction.updatedAt = now
+                        }
+                        modelContext.delete(recurring)
+                    } else if !filtered.isEmpty {
+                        recurring.allocations = redistributeAllocations(
+                            totalAmount: recurring.amount,
+                            remainingAllocations: filtered
+                        )
+                    }
+                }
+            }
+            save()
+            refreshProjects()
+            refreshRecurring()
+            reprocessEqualAllCurrentPeriodTransactions()
+            refreshTransactions()
+        }
+
+        guard !idsToHardDelete.isEmpty else { return }
+
+        // C4: save成功後に削除するため画像パスを収集
+        var imagesToDelete: [String] = []
+
         for recurring in recurringTransactions {
-            let filtered = recurring.allocations.filter { !ids.contains($0.projectId) }
+            let filtered = recurring.allocations.filter { !idsToHardDelete.contains($0.projectId) }
             if filtered.count != recurring.allocations.count {
                 if filtered.isEmpty {
                     if let imagePath = recurring.receiptImagePath {
@@ -314,7 +410,7 @@ class DataStore {
             }
         }
 
-        for id in ids {
+        for id in idsToHardDelete {
             if let project = projects.first(where: { $0.id == id }) {
                 modelContext.delete(project)
             }
@@ -393,6 +489,12 @@ class DataStore {
 
         if let allocations {
             transaction.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
+            // H10: equalAll定期取引の配分をユーザーが手動変更した場合にフラグを立てる
+            if let recurringId = transaction.recurringId,
+               let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
+               (recurring.allocationMode ?? .manual) == .equalAll {
+                transaction.isManuallyEdited = true
+            }
         } else if amount != nil {
             transaction.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: transaction.allocations)
             // H8: 金額変更時、pro-rata調整を再適用（ユーザー指定allocationsの場合は意図を尊重し適用しない）
@@ -577,6 +679,7 @@ class DataStore {
         refreshRecurring()
         processRecurringTransactions()
         refreshTransactions()
+        onRecurringScheduleChanged?(recurringTransactions)
         return recurring
     }
 
@@ -667,6 +770,7 @@ class DataStore {
         refreshRecurring()
         processRecurringTransactions()
         refreshTransactions()
+        onRecurringScheduleChanged?(recurringTransactions)
     }
 
     func deleteRecurring(id: UUID) {
@@ -689,6 +793,7 @@ class DataStore {
         }
         refreshRecurring()
         refreshTransactions()
+        onRecurringScheduleChanged?(recurringTransactions)
     }
 
     func getRecurring(id: UUID) -> PPRecurringTransaction? {
@@ -715,6 +820,9 @@ class DataStore {
                 .first
             else { continue }
 
+            // H10: ユーザーが手動編集済みのトランザクションはスキップ
+            guard latestTx.isManuallyEdited != true else { continue }
+
             let txComps = calendar.dateComponents([.year, .month], from: latestTx.date)
             let isCurrentPeriod: Bool
             if recurring.frequency == .monthly {
@@ -724,10 +832,10 @@ class DataStore {
             }
             guard isCurrentPeriod else { continue }
 
-            // 現在のアクティブプロジェクト一覧でアロケーションを再計算
-            let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
+            // 現在のアクティブプロジェクト一覧でアロケーションを再計算（H9: アーカイブ済み除外）
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
             let completedThisPeriod = projects.filter { p in
-                guard p.status == .completed, let completedAt = p.completedAt else { return false }
+                guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
                 let compComps = calendar.dateComponents([.year, .month], from: completedAt)
                 return compComps.year == txComps.year && compComps.month == txComps.month
             }
@@ -905,9 +1013,10 @@ class DataStore {
         var txAllocations: [Allocation]
         switch recurring.allocationMode ?? .manual {
         case .equalAll:
-            let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
+            // H9: アーカイブ済みプロジェクトを除外
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
             let completedThisMonth = projects.filter { p in
-                guard p.status == .completed, let completedAt = p.completedAt else { return false }
+                guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
                 let compComps = calendar.dateComponents([.year, .month], from: completedAt)
                 let txComps = calendar.dateComponents([.year, .month], from: txDate)
                 return compComps.year == txComps.year && compComps.month == txComps.month
@@ -1196,9 +1305,10 @@ class DataStore {
             var txAllocations: [Allocation]
             switch recurring.allocationMode ?? .manual {
             case .equalAll:
-                let activeProjectIds = projects.filter { $0.status == .active }.map(\.id)
+                // H9: アーカイブ済みプロジェクトを除外
+                let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
                 let completedThisMonth = projects.filter { p in
-                    guard p.status == .completed, let completedAt = p.completedAt else { return false }
+                    guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
                     let compComps = calendar.dateComponents([.year, .month], from: completedAt)
                     return compComps.year == currentYear && compComps.month == month
                 }

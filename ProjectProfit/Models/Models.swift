@@ -133,6 +133,7 @@ final class PPProject {
     var startDate: Date?
     var completedAt: Date?
     var plannedEndDate: Date?
+    var isArchived: Bool?
     var createdAt: Date
     var updatedAt: Date
 
@@ -144,6 +145,7 @@ final class PPProject {
         startDate: Date? = nil,
         completedAt: Date? = nil,
         plannedEndDate: Date? = nil,
+        isArchived: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -154,6 +156,7 @@ final class PPProject {
         self.startDate = startDate
         self.completedAt = completedAt
         self.plannedEndDate = plannedEndDate
+        self.isArchived = isArchived
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -178,6 +181,7 @@ final class PPTransaction {
     var recurringId: UUID?
     var receiptImagePath: String?
     var lineItems: [ReceiptLineItem]
+    var isManuallyEdited: Bool?
     var createdAt: Date
     var updatedAt: Date
 
@@ -192,6 +196,7 @@ final class PPTransaction {
         recurringId: UUID? = nil,
         receiptImagePath: String? = nil,
         lineItems: [ReceiptLineItem] = [],
+        isManuallyEdited: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -205,6 +210,7 @@ final class PPTransaction {
         self.recurringId = recurringId
         self.receiptImagePath = receiptImagePath
         self.lineItems = lineItems
+        self.isManuallyEdited = isManuallyEdited
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -14,16 +14,28 @@ final class ProjectsViewModel {
 
     // MARK: - Computed Properties
 
+    /// アーカイブ済み以外のプロジェクト
+    private var activeProjects: [PPProject] {
+        dataStore.projects.filter { $0.isArchived != true }
+    }
+
+    /// アーカイブ済みプロジェクト
+    private var archivedProjects: [PPProject] {
+        dataStore.projects.filter { $0.isArchived == true }
+    }
+
     var filteredProjects: [PPProject] {
         switch filterStatus {
         case .all:
-            return dataStore.projects
+            return activeProjects
         case .active:
-            return dataStore.projects.filter { $0.status == .active }
+            return activeProjects.filter { $0.status == .active }
         case .completed:
-            return dataStore.projects.filter { $0.status == .completed }
+            return activeProjects.filter { $0.status == .completed }
         case .paused:
-            return dataStore.projects.filter { $0.status == .paused }
+            return activeProjects.filter { $0.status == .paused }
+        case .archived:
+            return archivedProjects
         }
     }
 
@@ -32,7 +44,7 @@ final class ProjectsViewModel {
     }
 
     var hasProjects: Bool {
-        !dataStore.projects.isEmpty
+        !activeProjects.isEmpty || !archivedProjects.isEmpty
     }
 
     // MARK: - Actions

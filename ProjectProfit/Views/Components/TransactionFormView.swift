@@ -371,7 +371,7 @@ struct TransactionFormView: View {
                 let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                 HStack {
                     Menu {
-                        ForEach(dataStore.projects, id: \.id) { project in
+                        ForEach(dataStore.projects.filter { $0.isArchived != true }, id: \.id) { project in
                             Button(project.name) {
                                 allocations[index].projectId = project.id
                             }
@@ -427,10 +427,10 @@ struct TransactionFormView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            if dataStore.projects.count > allocations.count {
+            if dataStore.projects.filter({ $0.isArchived != true }).count > allocations.count {
                 Button {
                     let usedIds = Set(allocations.map(\.projectId))
-                    if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) }) {
+                    if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) && $0.isArchived != true }) {
                         allocations.append((id: UUID(), projectId: available.id, ratio: 0))
                     }
                 } label: {
@@ -481,7 +481,7 @@ struct TransactionFormView: View {
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
-            } else if let first = dataStore.projects.first {
+            } else if let first = dataStore.projects.first(where: { $0.isArchived != true }) {
                 allocations = [(id: UUID(), projectId: first.id, ratio: 100)]
             }
             autoSelectCategory()

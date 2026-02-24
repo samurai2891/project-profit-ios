@@ -1186,4 +1186,77 @@ final class RecurringProcessingTests: XCTestCase {
 
         XCTAssertTrue(dataStore.transactions.filter { $0.id == tx.id }.isEmpty, "Transaction should be deleted")
     }
+
+    // MARK: - H2: onRecurringScheduleChanged callback tests
+
+    func testAddRecurring_triggersScheduleChangedCallback() {
+        let project = makeProject()
+        var callbackInvoked = false
+        var receivedRecurrings: [PPRecurringTransaction] = []
+
+        dataStore.onRecurringScheduleChanged = { recurrings in
+            callbackInvoked = true
+            receivedRecurrings = recurrings
+        }
+
+        dataStore.addRecurring(
+            name: "Test Recurring",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        XCTAssertTrue(callbackInvoked, "addRecurringでコールバックが発火すべき")
+        XCTAssertFalse(receivedRecurrings.isEmpty, "定期取引リストが渡されるべき")
+    }
+
+    func testUpdateRecurring_triggersScheduleChangedCallback() {
+        let project = makeProject()
+        let recurring = dataStore.addRecurring(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        var callbackInvoked = false
+        dataStore.onRecurringScheduleChanged = { _ in
+            callbackInvoked = true
+        }
+
+        dataStore.updateRecurring(id: recurring.id, name: "Updated")
+
+        XCTAssertTrue(callbackInvoked, "updateRecurringでコールバックが発火すべき")
+    }
+
+    func testDeleteRecurring_triggersScheduleChangedCallback() {
+        let project = makeProject()
+        let recurring = dataStore.addRecurring(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        var callbackInvoked = false
+        dataStore.onRecurringScheduleChanged = { _ in
+            callbackInvoked = true
+        }
+
+        dataStore.deleteRecurring(id: recurring.id)
+
+        XCTAssertTrue(callbackInvoked, "deleteRecurringでコールバックが発火すべき")
+    }
 }

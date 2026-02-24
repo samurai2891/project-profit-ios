@@ -8,6 +8,7 @@ enum FilterStatus: String, CaseIterable, Identifiable {
     case active = "進行中"
     case completed = "完了"
     case paused = "保留"
+    case archived = "アーカイブ"
 
     var id: String { rawValue }
 }
@@ -71,12 +72,12 @@ struct ProjectsView: View {
         .alert("プロジェクトを削除", isPresented: $showDeleteConfirmation) {
             deleteAlertActions
         } message: {
-            Text("「\(projectToDelete?.name ?? "")」を削除しますか？関連する取引も削除されます。この操作は取り消せません。")
+            Text("「\(projectToDelete?.name ?? "")」を削除しますか？取引履歴がある場合はアーカイブされます。")
         }
         .alert("プロジェクトを削除", isPresented: $showBatchDeleteConfirmation) {
             batchDeleteAlertActions
         } message: {
-            Text("\(selectedProjectIds.count)件のプロジェクトを削除しますか？関連する取引も削除されます。この操作は取り消せません。")
+            Text("\(selectedProjectIds.count)件のプロジェクトを削除しますか？取引履歴がある場合はアーカイブされます。")
         }
         .task {
             if viewModel == nil {

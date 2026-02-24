@@ -3,6 +3,7 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(NotificationService.self) private var notificationService
     @State private var dataStore: DataStore?
 
     var body: some View {
@@ -16,9 +17,14 @@ struct ContentView: View {
         }
         .task {
             let store = DataStore(modelContext: modelContext)
+            let notifService = notificationService
+            store.onRecurringScheduleChanged = { recurrings in
+                Task { @MainActor in await notifService.rescheduleAll(recurringTransactions: recurrings) }
+            }
             store.loadData()
             store.recalculateAllPartialPeriodProjects()
             _ = store.processRecurringTransactions()
+            await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store
         }
     }

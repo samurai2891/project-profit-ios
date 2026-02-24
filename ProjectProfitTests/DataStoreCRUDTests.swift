@@ -1096,7 +1096,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     // MARK: - Delete Project Cascade
 
-    func testDeleteProjectRemovesAllocationsFromTransactions() {
+    func testDeleteProjectArchivesWhenTransactionReferencesExist() {
         let project1 = dataStore.addProject(name: "A", description: "")
         let project2 = dataStore.addProject(name: "B", description: "")
 
@@ -1114,14 +1114,20 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: project1.id)
 
-        // Transaction should still exist with only project2's allocation
+        // Project should be archived, not deleted
+        let archivedProject = dataStore.getProject(id: project1.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
+
+        // Transaction allocations should be preserved unchanged
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertNotNil(fetched)
-        XCTAssertEqual(fetched?.allocations.count, 1)
-        XCTAssertEqual(fetched?.allocations.first?.projectId, project2.id)
+        XCTAssertEqual(fetched?.allocations.count, 2)
+        XCTAssertNotNil(fetched?.allocations.first(where: { $0.projectId == project1.id }))
+        XCTAssertNotNil(fetched?.allocations.first(where: { $0.projectId == project2.id }))
     }
 
-    func testDeleteProjectDeletesTransactionWhenSoleAllocation() {
+    func testDeleteProjectArchivesWhenSoleAllocation() {
         let project = dataStore.addProject(name: "Solo", description: "")
         let transaction = dataStore.addTransaction(
             type: .income,
@@ -1134,9 +1140,17 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: project.id)
 
-        // Transaction with no remaining allocations should be deleted
-        XCTAssertNil(dataStore.getTransaction(id: transaction.id))
-        XCTAssertEqual(dataStore.transactions.count, 0)
+        // Project should be archived, not deleted
+        let archivedProject = dataStore.getProject(id: project.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
+
+        // Transaction should be preserved with allocations unchanged
+        let fetched = dataStore.getTransaction(id: transaction.id)
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(fetched?.allocations.count, 1)
+        XCTAssertEqual(fetched?.allocations.first?.projectId, project.id)
+        XCTAssertEqual(fetched?.allocations.first?.amount, 5000)
     }
 
     func testDeleteProjectRemovesAllocationsFromRecurring() {
@@ -1157,8 +1171,15 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
+        // dayOfMonth: 1 auto-generates transactions → project1 has tx refs → archived
         dataStore.deleteProject(id: project1.id)
 
+        // Project should be archived (has transaction references)
+        let archivedProject = dataStore.getProject(id: project1.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
+
+        // Recurring allocations are still removed during archive
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertNotNil(fetched)
         XCTAssertEqual(fetched?.allocations.count, 1)
@@ -1178,8 +1199,15 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 15
         )
 
+        // dayOfMonth: 15 auto-generates transactions → project has tx refs → archived
         dataStore.deleteProject(id: project.id)
 
+        // Project should be archived (has transaction references)
+        let archivedProject = dataStore.getProject(id: project.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
+
+        // Recurring with sole allocation is still deleted during archive
         XCTAssertNil(dataStore.getRecurring(id: recurring.id))
         XCTAssertEqual(dataStore.recurringTransactions.count, 0)
     }
@@ -1188,7 +1216,7 @@ final class DataStoreCRUDTests: XCTestCase {
         let project1 = dataStore.addProject(name: "A", description: "")
         let project2 = dataStore.addProject(name: "B", description: "")
 
-        dataStore.addTransaction(
+        let relatedTx = dataStore.addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -1206,6 +1234,17 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         dataStore.deleteProject(id: project1.id)
+
+        // Project1 should be archived (has transaction references)
+        let archivedProject = dataStore.getProject(id: project1.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
+
+        // Related transaction should be preserved with allocations unchanged
+        let fetchedRelated = dataStore.getTransaction(id: relatedTx.id)
+        XCTAssertNotNil(fetchedRelated)
+        XCTAssertEqual(fetchedRelated?.allocations.count, 1)
+        XCTAssertEqual(fetchedRelated?.allocations.first?.projectId, project1.id)
 
         // Unrelated transaction should remain intact
         let fetched = dataStore.getTransaction(id: unrelated.id)
@@ -1270,27 +1309,37 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: projectToDelete.id)
 
-        // Solo transaction should be deleted
-        XCTAssertNil(dataStore.getTransaction(id: txSolo.id))
+        // Project should be archived (has transaction references)
+        let archivedProject = dataStore.getProject(id: projectToDelete.id)
+        XCTAssertNotNil(archivedProject)
+        XCTAssertEqual(archivedProject?.isArchived, true)
 
-        // Shared transaction should remain with one allocation
+        // Solo transaction should be preserved with allocations unchanged
+        let fetchedSolo = dataStore.getTransaction(id: txSolo.id)
+        XCTAssertNotNil(fetchedSolo)
+        XCTAssertEqual(fetchedSolo?.allocations.count, 1)
+        XCTAssertEqual(fetchedSolo?.allocations.first?.projectId, projectToDelete.id)
+
+        // Shared transaction should be preserved with both allocations unchanged
         let fetchedTx = dataStore.getTransaction(id: txShared.id)
         XCTAssertNotNil(fetchedTx)
-        XCTAssertEqual(fetchedTx?.allocations.count, 1)
-        XCTAssertEqual(fetchedTx?.allocations.first?.projectId, projectToKeep.id)
+        XCTAssertEqual(fetchedTx?.allocations.count, 2)
+        XCTAssertNotNil(fetchedTx?.allocations.first(where: { $0.projectId == projectToDelete.id }))
+        XCTAssertNotNil(fetchedTx?.allocations.first(where: { $0.projectId == projectToKeep.id }))
 
-        // Solo recurring should be deleted
+        // Solo recurring should be deleted (archive removes recurring allocations)
         XCTAssertNil(dataStore.getRecurring(id: recSolo.id))
 
-        // Shared recurring should remain with one allocation
+        // Shared recurring should remain with one allocation (archive removes archived project's alloc)
         let fetchedRec = dataStore.getRecurring(id: recShared.id)
         XCTAssertNotNil(fetchedRec)
         XCTAssertEqual(fetchedRec?.allocations.count, 1)
         XCTAssertEqual(fetchedRec?.allocations.first?.projectId, projectToKeep.id)
 
-        // The kept project should still exist
+        // The kept project should still exist and not be archived
         XCTAssertNotNil(dataStore.getProject(id: projectToKeep.id))
-        XCTAssertEqual(dataStore.projects.count, 1)
+        // Both projects still exist (one archived, one active)
+        XCTAssertEqual(dataStore.projects.count, 2)
     }
 
     // MARK: - Delete All Data
@@ -1481,8 +1530,8 @@ final class DataStoreCRUDTests: XCTestCase {
 
     // MARK: - Delete Project Redistribution
 
-    func testDeleteProject_redistributesRemainingAllocations() {
-        // 3プロジェクト(50/30/20)のうち1つ削除→残り2つが再分配
+    func testDeleteProject_archivesAndPreservesAllocations() {
+        // 3プロジェクト(50/30/20)のうち1つ削除→tx参照あり→アーカイブ、アロケーション保持
         let projectA = dataStore.addProject(name: "A", description: "")
         let projectB = dataStore.addProject(name: "B", description: "")
         let projectC = dataStore.addProject(name: "C", description: "")
@@ -1502,22 +1551,27 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: projectA.id)
 
-        let fetched = dataStore.getTransaction(id: tx.id)!
-        XCTAssertEqual(fetched.allocations.count, 2)
+        // Project A should be archived
+        let archivedA = dataStore.getProject(id: projectA.id)
+        XCTAssertNotNil(archivedA)
+        XCTAssertEqual(archivedA?.isArchived, true)
 
-        // B: 30/(30+20) × 100 = 60%, C: 20/(30+20) × 100 = 40%
+        // Transaction allocations should be preserved unchanged
+        let fetched = dataStore.getTransaction(id: tx.id)!
+        XCTAssertEqual(fetched.allocations.count, 3)
+
+        let allocA = fetched.allocations.first { $0.projectId == projectA.id }!
         let allocB = fetched.allocations.first { $0.projectId == projectB.id }!
         let allocC = fetched.allocations.first { $0.projectId == projectC.id }!
 
-        XCTAssertEqual(allocB.ratio, 60, "Bのratioが60%になるべき")
-        XCTAssertEqual(allocC.ratio, 40, "Cのratioが40%になるべき")
-        XCTAssertEqual(allocB.amount, 6000, "Bのamountが¥6,000になるべき")
-        XCTAssertEqual(allocC.amount, 4000, "Cのamountが¥4,000になるべき")
-        XCTAssertEqual(allocB.amount + allocC.amount, 10000, "合計が元のamountと一致すべき")
+        XCTAssertEqual(allocA.ratio, 50, "Aのratioが保持されるべき")
+        XCTAssertEqual(allocB.ratio, 30, "Bのratioが保持されるべき")
+        XCTAssertEqual(allocC.ratio, 20, "Cのratioが保持されるべき")
+        XCTAssertEqual(allocA.amount + allocB.amount + allocC.amount, 10000, "合計が元のamountと一致すべき")
     }
 
-    func testDeleteProject_redistributes_twoProjects() {
-        // 2プロジェクト(60/40)のうち1つ削除→残り1つが100%
+    func testDeleteProject_archivesAndPreserves_twoProjects() {
+        // 2プロジェクト(60/40)のうち1つ削除→tx参照あり→アーカイブ、アロケーション保持
         let projectA = dataStore.addProject(name: "A", description: "")
         let projectB = dataStore.addProject(name: "B", description: "")
 
@@ -1535,11 +1589,21 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: projectA.id)
 
+        // Project A should be archived
+        let archivedA = dataStore.getProject(id: projectA.id)
+        XCTAssertNotNil(archivedA)
+        XCTAssertEqual(archivedA?.isArchived, true)
+
+        // Transaction allocations should be preserved unchanged
         let fetched = dataStore.getTransaction(id: tx.id)!
-        XCTAssertEqual(fetched.allocations.count, 1)
-        XCTAssertEqual(fetched.allocations[0].projectId, projectB.id)
-        XCTAssertEqual(fetched.allocations[0].ratio, 100, "残り1つなのでratioは100%")
-        XCTAssertEqual(fetched.allocations[0].amount, 5000, "残り1つなのでamountは全額")
+        XCTAssertEqual(fetched.allocations.count, 2)
+
+        let allocA = fetched.allocations.first { $0.projectId == projectA.id }!
+        let allocB = fetched.allocations.first { $0.projectId == projectB.id }!
+
+        XCTAssertEqual(allocA.ratio, 60, "Aのratioが保持されるべき")
+        XCTAssertEqual(allocB.ratio, 40, "Bのratioが保持されるべき")
+        XCTAssertEqual(allocA.amount + allocB.amount, 5000, "合計が元のamountと一致すべき")
     }
 
     func testDeleteProject_redistributes_preservesTotal() {
@@ -1570,8 +1634,8 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(totalRatio, 100, "再分配後のratio合計が100になるべき")
     }
 
-    func testDeleteProject_redistributes_recurringManual() {
-        // 定期取引(manual)のアロケーション再分配
+    func testDeleteProject_archivesAndRedistributesRecurringManual() {
+        // 定期取引(manual)のアロケーション再分配 (定期取引は除外、トランザクションは保持)
         let projectA = dataStore.addProject(name: "A", description: "")
         let projectB = dataStore.addProject(name: "B", description: "")
         let projectC = dataStore.addProject(name: "C", description: "")
@@ -1592,8 +1656,15 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
+        // dayOfMonth: 1 auto-generates transactions → projectA has tx refs → archived
         dataStore.deleteProject(id: projectA.id)
 
+        // Project A should be archived
+        let archivedA = dataStore.getProject(id: projectA.id)
+        XCTAssertNotNil(archivedA)
+        XCTAssertEqual(archivedA?.isArchived, true)
+
+        // Recurring allocations ARE still redistributed during archive
         let fetched = dataStore.getRecurring(id: rec.id)!
         XCTAssertEqual(fetched.allocations.count, 2)
 
@@ -1605,8 +1676,8 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(allocB.amount + allocC.amount, 12000, "定期取引の合計金額が保持されるべき")
     }
 
-    func testDeleteProjects_batch_redistributes() {
-        // バッチ削除での再分配
+    func testDeleteProjects_batch_archivesWithTransactionRefs() {
+        // バッチ削除: tx参照ありのプロジェクトはアーカイブ
         let projectA = dataStore.addProject(name: "A", description: "")
         let projectB = dataStore.addProject(name: "B", description: "")
         let projectC = dataStore.addProject(name: "C", description: "")
@@ -1624,23 +1695,34 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        // AとBを一括削除
+        // AとBを一括削除 → 両方tx参照あり → アーカイブ
         dataStore.deleteProjects(ids: [projectA.id, projectB.id])
 
+        // A and B should be archived
+        let archivedA = dataStore.getProject(id: projectA.id)
+        XCTAssertNotNil(archivedA)
+        XCTAssertEqual(archivedA?.isArchived, true)
+        let archivedB = dataStore.getProject(id: projectB.id)
+        XCTAssertNotNil(archivedB)
+        XCTAssertEqual(archivedB?.isArchived, true)
+
+        // Transaction allocations should be preserved unchanged
         let fetched = dataStore.getTransaction(id: tx.id)!
-        XCTAssertEqual(fetched.allocations.count, 1)
-        XCTAssertEqual(fetched.allocations[0].projectId, projectC.id)
-        XCTAssertEqual(fetched.allocations[0].ratio, 100)
-        XCTAssertEqual(fetched.allocations[0].amount, 9000, "残り1プロジェクトが全額を受け取るべき")
+        XCTAssertEqual(fetched.allocations.count, 3)
+        XCTAssertNotNil(fetched.allocations.first { $0.projectId == projectA.id })
+        XCTAssertNotNil(fetched.allocations.first { $0.projectId == projectB.id })
+        XCTAssertNotNil(fetched.allocations.first { $0.projectId == projectC.id })
+        let totalAmount = fetched.allocations.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(totalAmount, 9000, "合計が元のamountと一致すべき")
     }
 
-    func testDeleteProject_redistributes_withRoundingRemainder() {
-        // 端数処理の正確性: 3等分できないケース
+    func testDeleteProject_archivesPreservesRoundingCase() {
+        // 端数処理のケース: tx参照ありのプロジェクトはアーカイブ、アロケーション保持
         let projectA = dataStore.addProject(name: "A", description: "")
         let projectB = dataStore.addProject(name: "B", description: "")
         let projectC = dataStore.addProject(name: "C", description: "")
 
-        // 各プロジェクト: ratio=25, 25, 50 → amount=2500, 2500, 5000
+        // 各プロジェクト: ratio=25, 25, 50 → amount=2500, 2500, 5001
         let tx = dataStore.addTransaction(
             type: .expense,
             amount: 10001,
@@ -1656,13 +1738,20 @@ final class DataStoreCRUDTests: XCTestCase {
 
         dataStore.deleteProject(id: projectC.id)
 
+        // Project C should be archived
+        let archivedC = dataStore.getProject(id: projectC.id)
+        XCTAssertNotNil(archivedC)
+        XCTAssertEqual(archivedC?.isArchived, true)
+
+        // Transaction allocations should be preserved unchanged
         let fetched = dataStore.getTransaction(id: tx.id)!
+        XCTAssertEqual(fetched.allocations.count, 3)
+
         let totalAmount = fetched.allocations.reduce(0) { $0 + $1.amount }
         let totalRatio = fetched.allocations.reduce(0) { $0 + $1.ratio }
 
-        XCTAssertEqual(totalAmount, 10001, "端数があっても合計金額が正確に保持されるべき")
-        XCTAssertEqual(totalRatio, 100, "ratio合計が100になるべき")
-        XCTAssertEqual(fetched.allocations.count, 2)
+        XCTAssertEqual(totalAmount, 10001, "合計金額が保持されるべき")
+        XCTAssertEqual(totalRatio, 100, "ratio合計が100のまま保持されるべき")
     }
 
     // MARK: - Recurring Receipt Image
@@ -2154,6 +2243,171 @@ final class DataStoreCRUDTests: XCTestCase {
         // Each project should get approximately 45000
         for alloc in recalculated.allocations {
             XCTAssertTrue(alloc.amount >= 44999 && alloc.amount <= 45001, "Each project should get ~45000, got \(alloc.amount)")
+        }
+    }
+
+    // MARK: - H10: equalAll reprocess user edit protection
+
+    func testReprocessEqualAll_skipsManuallyEditedTransaction() {
+        let projectA = dataStore.addProject(name: "A", description: "")
+
+        // equalAll定期取引を作成（dayOfMonth=1で今月分が自動生成される）
+        let recurring = dataStore.addRecurring(
+            name: "EqualAll Monthly",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // 生成されたトランザクションを取得
+        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
+        XCTAssertNotNil(generatedTx, "equalAllトランザクションが生成されるべき")
+
+        // ユーザーがアロケーションを手動編集
+        dataStore.updateTransaction(
+            id: generatedTx!.id,
+            allocations: [(projectId: projectA.id, ratio: 100)]
+        )
+
+        // 手動編集フラグを確認
+        let edited = dataStore.getTransaction(id: generatedTx!.id)
+        XCTAssertEqual(edited?.isManuallyEdited, true, "equalAll配分の手動編集でフラグが立つべき")
+
+        // 新プロジェクト追加 → reprocessEqualAll が呼ばれる
+        _ = dataStore.addProject(name: "B", description: "")
+
+        // 手動編集済みトランザクションは上書きされないべき
+        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
+        XCTAssertEqual(afterReprocess?.allocations.count, 1, "手動編集済みトランザクションはスキップされるべき")
+        XCTAssertEqual(afterReprocess?.allocations.first?.projectId, projectA.id, "元の配分が保持されるべき")
+    }
+
+    func testReprocessEqualAll_updatesNonEditedTransaction() {
+        let projectA = dataStore.addProject(name: "A", description: "")
+
+        // equalAll定期取引を作成
+        let recurring = dataStore.addRecurring(
+            name: "EqualAll Monthly",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // 生成されたトランザクションを取得
+        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
+        XCTAssertNotNil(generatedTx)
+        XCTAssertEqual(generatedTx?.allocations.count, 1, "1プロジェクトのみに配分")
+        XCTAssertNil(generatedTx?.isManuallyEdited, "手動編集フラグは未設定")
+
+        // 新プロジェクト追加 → reprocessEqualAll で再計算される
+        let projectB = dataStore.addProject(name: "B", description: "")
+
+        // 未編集トランザクションは再処理されるべき
+        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
+        XCTAssertEqual(afterReprocess?.allocations.count, 2, "2プロジェクトに再分配されるべき")
+        let hasA = afterReprocess?.allocations.contains { $0.projectId == projectA.id } ?? false
+        let hasB = afterReprocess?.allocations.contains { $0.projectId == projectB.id } ?? false
+        XCTAssertTrue(hasA, "プロジェクトAが含まれるべき")
+        XCTAssertTrue(hasB, "プロジェクトBが含まれるべき")
+        let total = afterReprocess?.allocations.reduce(0) { $0 + $1.amount } ?? 0
+        XCTAssertEqual(total, 10000, "合計金額が保持されるべき")
+    }
+
+    // MARK: - H9: Archive / Soft Delete
+
+    func testArchiveProject_preservesHistoricalTransactions() {
+        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectB = dataStore.addProject(name: "B", description: "")
+
+        // プロジェクトAに紐づくトランザクションを作成
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 10000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "historical",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50),
+            ]
+        )
+
+        // deleteProject → トランザクション参照ありのためアーカイブされるべき
+        dataStore.deleteProject(id: projectA.id)
+
+        // プロジェクトは削除されずアーカイブされる
+        let archivedProject = dataStore.getProject(id: projectA.id)
+        XCTAssertNotNil(archivedProject, "トランザクション参照ありのプロジェクトはアーカイブされるべき")
+        XCTAssertEqual(archivedProject?.isArchived, true, "isArchivedフラグが立つべき")
+
+        // トランザクションのアロケーションは変更されない（履歴保護）
+        let fetchedTx = dataStore.getTransaction(id: tx.id)
+        XCTAssertNotNil(fetchedTx)
+        XCTAssertEqual(fetchedTx?.allocations.count, 2, "アロケーションが保持されるべき")
+        let hasA = fetchedTx?.allocations.contains { $0.projectId == projectA.id } ?? false
+        XCTAssertTrue(hasA, "プロジェクトAのアロケーションが保持されるべき")
+    }
+
+    func testDeleteProject_noTransactions_actuallyDeletes() {
+        let projectA = dataStore.addProject(name: "A", description: "")
+        _ = dataStore.addProject(name: "B", description: "")
+
+        // トランザクションなしで削除 → ハードデリートされるべき
+        dataStore.deleteProject(id: projectA.id)
+
+        XCTAssertNil(dataStore.getProject(id: projectA.id), "トランザクション参照なしのプロジェクトは完全に削除されるべき")
+        XCTAssertEqual(dataStore.projects.count, 1)
+    }
+
+    func testArchivedProject_excludedFromEqualAllReprocess() {
+        let projectA = dataStore.addProject(name: "A", description: "")
+
+        // equalAll定期取引を作成
+        let recurring = dataStore.addRecurring(
+            name: "EqualAll",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // プロジェクトAにトランザクション参照を作成してアーカイブ可能にする
+        dataStore.addTransaction(
+            type: .expense,
+            amount: 5000,
+            date: Date(),
+            categoryId: "cat-hosting",
+            memo: "ref",
+            allocations: [(projectId: projectA.id, ratio: 100)]
+        )
+
+        // プロジェクトAをアーカイブ
+        dataStore.archiveProject(id: projectA.id)
+
+        // 新プロジェクト追加
+        let projectB = dataStore.addProject(name: "B", description: "")
+
+        // equalAllの定期取引で生成されたトランザクションを確認
+        let recurringTxs = fetchAllTransactions().filter { $0.recurringId == recurring.id }
+        if let latestTx = recurringTxs.sorted(by: { $0.date > $1.date }).first {
+            let hasArchived = latestTx.allocations.contains { $0.projectId == projectA.id }
+            XCTAssertFalse(hasArchived, "アーカイブ済みプロジェクトはequalAll再処理から除外されるべき")
+            let hasB = latestTx.allocations.contains { $0.projectId == projectB.id }
+            XCTAssertTrue(hasB, "新プロジェクトBが含まれるべき")
         }
     }
 
