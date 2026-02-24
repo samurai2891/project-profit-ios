@@ -57,7 +57,7 @@ struct CategoryManageView: View {
                 }
             } message: {
                 if let category = categoryToDelete {
-                    Text("「\(category.name)」を削除しますか？この操作は取り消せません。")
+                    Text("「\(category.name)」を削除しますか？このカテゴリを使用している取引は「その他」カテゴリに移行されます。")
                 }
             }
         }

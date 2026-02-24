@@ -37,10 +37,25 @@ enum ReceiptImageStore {
         return fileName
     }
 
+    // MARK: - Sanitization
+
+    /// パストラバーサルを防止。ファイル名のみを抽出し、パス区切り文字を拒否。
+    static func sanitizedFileName(_ fileName: String) -> String? {
+        let lastComponent = (fileName as NSString).lastPathComponent
+        guard !lastComponent.isEmpty,
+              lastComponent != ".",
+              lastComponent != "..",
+              !fileName.contains("/"),
+              !fileName.contains("\\")
+        else { return nil }
+        return lastComponent
+    }
+
     // MARK: - Load
 
     static func loadImage(fileName: String) -> UIImage? {
-        let fileURL = directoryURL.appendingPathComponent(fileName)
+        guard let safeName = sanitizedFileName(fileName) else { return nil }
+        let fileURL = directoryURL.appendingPathComponent(safeName)
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let data = try? Data(contentsOf: fileURL) else {
             return nil
@@ -51,14 +66,16 @@ enum ReceiptImageStore {
     // MARK: - Delete
 
     static func deleteImage(fileName: String) {
-        let fileURL = directoryURL.appendingPathComponent(fileName)
+        guard let safeName = sanitizedFileName(fileName) else { return }
+        let fileURL = directoryURL.appendingPathComponent(safeName)
         try? FileManager.default.removeItem(at: fileURL)
     }
 
     // MARK: - Exists
 
     static func imageExists(fileName: String) -> Bool {
-        let fileURL = directoryURL.appendingPathComponent(fileName)
+        guard let safeName = sanitizedFileName(fileName) else { return false }
+        let fileURL = directoryURL.appendingPathComponent(safeName)
         return FileManager.default.fileExists(atPath: fileURL.path)
     }
 }

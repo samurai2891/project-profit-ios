@@ -1739,4 +1739,186 @@ final class DataStoreCRUDTests: XCTestCase {
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertNil(fetched?.receiptImagePath)
     }
+
+    // MARK: - C5: lastError Accessibility
+
+    func testLastErrorIsNilOnInit() {
+        XCTAssertNil(dataStore.lastError)
+    }
+
+    func testLastErrorIsAccessible() {
+        dataStore.lastError = .saveFailed(underlying: NSError(domain: "test", code: 1))
+        XCTAssertNotNil(dataStore.lastError)
+        XCTAssertNotNil(dataStore.lastError?.errorDescription)
+
+        dataStore.lastError = nil
+        XCTAssertNil(dataStore.lastError)
+    }
+
+    // MARK: - C6: deleteRecurring Clears recurringId
+
+    func testDeleteRecurring_clearsRecurringId() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Monthly Fee",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        // Find generated transaction
+        let generatedTx = dataStore.transactions.first { $0.recurringId == recurring.id }
+        // If no transaction was generated (dayOfMonth hasn't passed), create one manually
+        let txId: UUID
+        if let tx = generatedTx {
+            txId = tx.id
+        } else {
+            let tx = dataStore.addTransaction(
+                type: .expense,
+                amount: 1000,
+                date: Date(),
+                categoryId: "cat-tools",
+                memo: "test",
+                allocations: [(projectId: project.id, ratio: 100)],
+                recurringId: recurring.id
+            )
+            txId = tx.id
+        }
+
+        // Verify recurringId is set before deletion
+        XCTAssertEqual(dataStore.getTransaction(id: txId)?.recurringId, recurring.id)
+
+        dataStore.deleteRecurring(id: recurring.id)
+
+        // After deletion, recurringId should be nil
+        let updatedTx = dataStore.getTransaction(id: txId)
+        XCTAssertNotNil(updatedTx, "Transaction should still exist after recurring deletion")
+        XCTAssertNil(updatedTx?.recurringId, "recurringId should be cleared after recurring deletion")
+    }
+
+    func testDeleteRecurring_transactionStillExists() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "test",
+            allocations: [(projectId: project.id, ratio: 100)],
+            recurringId: UUID()
+        )
+        let recurring = dataStore.addRecurring(
+            name: "Fee",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        let countBefore = dataStore.transactions.count
+        dataStore.deleteRecurring(id: recurring.id)
+
+        // Transactions should not be deleted
+        XCTAssertTrue(dataStore.transactions.count >= countBefore - 0)
+        XCTAssertNotNil(dataStore.getTransaction(id: tx.id))
+    }
+
+    // MARK: - C3: Category Deletion Migrates References
+
+    func testDeleteCategory_migratesExpenseTransactions() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let category = dataStore.addCategory(name: "Custom Expense", type: .expense, icon: "star")
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 500,
+            date: Date(),
+            categoryId: category.id,
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        dataStore.deleteCategory(id: category.id)
+
+        let updatedTx = dataStore.getTransaction(id: tx.id)
+        XCTAssertEqual(updatedTx?.categoryId, "cat-other-expense")
+    }
+
+    func testDeleteCategory_migratesIncomeTransactions() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let category = dataStore.addCategory(name: "Custom Income", type: .income, icon: "star")
+        let tx = dataStore.addTransaction(
+            type: .income,
+            amount: 500,
+            date: Date(),
+            categoryId: category.id,
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        dataStore.deleteCategory(id: category.id)
+
+        let updatedTx = dataStore.getTransaction(id: tx.id)
+        XCTAssertEqual(updatedTx?.categoryId, "cat-other-income")
+    }
+
+    func testDeleteCategory_migratesRecurring() {
+        let project = dataStore.addProject(name: "Proj", description: "")
+        let category = dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
+        let recurring = dataStore.addRecurring(
+            name: "Fee",
+            type: .expense,
+            amount: 1000,
+            categoryId: category.id,
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+
+        dataStore.deleteCategory(id: category.id)
+
+        let updatedRecurring = dataStore.getRecurring(id: recurring.id)
+        XCTAssertEqual(updatedRecurring?.categoryId, "cat-other-expense")
+    }
+
+    func testDeleteCategory_noReferences() {
+        let category = dataStore.addCategory(name: "Unused", type: .expense, icon: "star")
+        let countBefore = dataStore.categories.count
+
+        dataStore.deleteCategory(id: category.id)
+
+        XCTAssertEqual(dataStore.categories.count, countBefore - 1)
+        XCTAssertNil(dataStore.getCategory(id: category.id))
+    }
+
+    // MARK: - C2: Allocation Rounding
+
+    func testAddTransaction_allocationTotalMatchesAmount() {
+        let project1 = dataStore.addProject(name: "A", description: "")
+        let project2 = dataStore.addProject(name: "B", description: "")
+        let project3 = dataStore.addProject(name: "C", description: "")
+
+        let tx = dataStore.addTransaction(
+            type: .expense,
+            amount: 999,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "",
+            allocations: [
+                (projectId: project1.id, ratio: 33),
+                (projectId: project2.id, ratio: 33),
+                (projectId: project3.id, ratio: 34),
+            ]
+        )
+
+        let total = tx.allocations.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 999, "Allocation amounts must sum to transaction amount")
+    }
 }

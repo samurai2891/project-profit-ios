@@ -880,4 +880,88 @@ final class UtilitiesTests: XCTestCase {
         fields.append(current)
         return fields
     }
+
+    // MARK: - calculateRatioAllocations
+
+    func testCalculateRatioAllocations_evenSplit() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let result = calculateRatioAllocations(amount: 1000, allocations: [
+            (projectId: id1, ratio: 50),
+            (projectId: id2, ratio: 50),
+        ])
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result[0].amount + result[1].amount, 1000)
+        XCTAssertEqual(result[0].amount, 500)
+        XCTAssertEqual(result[1].amount, 500)
+    }
+
+    func testCalculateRatioAllocations_oddAmount() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let result = calculateRatioAllocations(amount: 999, allocations: [
+            (projectId: id1, ratio: 50),
+            (projectId: id2, ratio: 50),
+        ])
+        XCTAssertEqual(result[0].amount + result[1].amount, 999)
+        // 999 * 50 / 100 = 499, remainder = 1 → last gets 500
+        XCTAssertEqual(result[0].amount, 499)
+        XCTAssertEqual(result[1].amount, 500)
+    }
+
+    func testCalculateRatioAllocations_threeWay() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let id3 = UUID()
+        let result = calculateRatioAllocations(amount: 10000, allocations: [
+            (projectId: id1, ratio: 33),
+            (projectId: id2, ratio: 33),
+            (projectId: id3, ratio: 34),
+        ])
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 10000, "Total must match original amount exactly")
+    }
+
+    func testCalculateRatioAllocations_smallAmount() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let id3 = UUID()
+        let result = calculateRatioAllocations(amount: 1, allocations: [
+            (projectId: id1, ratio: 33),
+            (projectId: id2, ratio: 33),
+            (projectId: id3, ratio: 34),
+        ])
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 1)
+        // 1 * 33 / 100 = 0, 1 * 33 / 100 = 0, 1 * 34 / 100 = 0 → remainder = 1 → last gets 1
+        XCTAssertEqual(result[0].amount, 0)
+        XCTAssertEqual(result[1].amount, 0)
+        XCTAssertEqual(result[2].amount, 1)
+    }
+
+    func testCalculateRatioAllocations_empty() {
+        let result = calculateRatioAllocations(amount: 1000, allocations: [])
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    // MARK: - recalculateAllocationAmounts
+
+    func testRecalculateAllocationAmounts_preservesTotal() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let existing = [
+            Allocation(projectId: id1, ratio: 50, amount: 500),
+            Allocation(projectId: id2, ratio: 50, amount: 500),
+        ]
+        let result = recalculateAllocationAmounts(amount: 999, existingAllocations: existing)
+        let total = result.reduce(0) { $0 + $1.amount }
+        XCTAssertEqual(total, 999)
+        XCTAssertEqual(result[0].projectId, id1)
+        XCTAssertEqual(result[1].projectId, id2)
+    }
+
+    func testRecalculateAllocationAmounts_empty() {
+        let result = recalculateAllocationAmounts(amount: 1000, existingAllocations: [])
+        XCTAssertTrue(result.isEmpty)
+    }
 }

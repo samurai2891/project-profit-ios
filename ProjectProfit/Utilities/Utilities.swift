@@ -485,6 +485,38 @@ func calculateHolisticProRata(
     }
 }
 
+// MARK: - Ratio-Based Allocation with Remainder Handling
+
+/// ratio(%)ベースのタプル配列からAllocationを生成。端数は最後に加算。
+func calculateRatioAllocations(
+    amount: Int,
+    allocations: [(projectId: UUID, ratio: Int)]
+) -> [Allocation] {
+    guard !allocations.isEmpty else { return [] }
+    let base = allocations.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: amount * $0.ratio / 100) }
+    let total = base.reduce(0) { $0 + $1.amount }
+    let remainder = amount - total
+    guard remainder != 0 else { return base }
+    return base.enumerated().map { i, a in
+        i == base.count - 1 ? Allocation(projectId: a.projectId, ratio: a.ratio, amount: a.amount + remainder) : a
+    }
+}
+
+/// 既存Allocation配列のamountをtotalAmountで再計算。端数は最後に加算。
+func recalculateAllocationAmounts(
+    amount: Int,
+    existingAllocations: [Allocation]
+) -> [Allocation] {
+    guard !existingAllocations.isEmpty else { return [] }
+    let base = existingAllocations.map { Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: amount * $0.ratio / 100) }
+    let total = base.reduce(0) { $0 + $1.amount }
+    let remainder = amount - total
+    guard remainder != 0 else { return base }
+    return base.enumerated().map { i, a in
+        i == base.count - 1 ? Allocation(projectId: a.projectId, ratio: a.ratio, amount: a.amount + remainder) : a
+    }
+}
+
 // MARK: - Equal Split Allocation
 
 func calculateEqualSplitAllocations(amount: Int, projectIds: [UUID]) -> [Allocation] {

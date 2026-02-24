@@ -83,6 +83,52 @@ final class ReceiptImageStoreTests: XCTestCase {
         XCTAssertFalse(ReceiptImageStore.imageExists(fileName: "definitely-not-here.jpg"))
     }
 
+    // MARK: - Path Traversal Prevention
+
+    func testLoadImage_rejectsPathTraversal() {
+        let result = ReceiptImageStore.loadImage(fileName: "../../etc/passwd")
+        XCTAssertNil(result)
+    }
+
+    func testDeleteImage_rejectsPathTraversal() {
+        // Should not crash or delete anything outside the directory
+        ReceiptImageStore.deleteImage(fileName: "../../../important.txt")
+    }
+
+    func testImageExists_rejectsBackslash() {
+        let result = ReceiptImageStore.imageExists(fileName: "..\\..\\etc")
+        XCTAssertFalse(result)
+    }
+
+    func testImageExists_rejectsEmpty() {
+        let result = ReceiptImageStore.imageExists(fileName: "")
+        XCTAssertFalse(result)
+    }
+
+    func testSaveAndLoad_worksWithSanitization() throws {
+        let image = createTestImage()
+        let fileName = try ReceiptImageStore.saveImage(image)
+        savedFileNames.append(fileName)
+
+        // UUID-based filename should pass sanitization
+        XCTAssertNotNil(ReceiptImageStore.sanitizedFileName(fileName))
+        XCTAssertNotNil(ReceiptImageStore.loadImage(fileName: fileName))
+        XCTAssertTrue(ReceiptImageStore.imageExists(fileName: fileName))
+    }
+
+    func testSanitizedFileName_rejectsDotDot() {
+        XCTAssertNil(ReceiptImageStore.sanitizedFileName(".."))
+    }
+
+    func testSanitizedFileName_rejectsDot() {
+        XCTAssertNil(ReceiptImageStore.sanitizedFileName("."))
+    }
+
+    func testSanitizedFileName_acceptsValidUUID() {
+        let validName = "\(UUID().uuidString).jpg"
+        XCTAssertEqual(ReceiptImageStore.sanitizedFileName(validName), validName)
+    }
+
     // MARK: - Helpers
 
     private func createTestImage() -> UIImage {

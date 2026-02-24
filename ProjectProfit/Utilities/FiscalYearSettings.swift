@@ -1,7 +1,7 @@
 import Foundation
 
 enum FiscalYearSettings {
-    static let defaultStartMonth = 4
+    static let defaultStartMonth = 1
     static let userDefaultsKey = "fiscalYearStartMonth"
 
     static var startMonth: Int {

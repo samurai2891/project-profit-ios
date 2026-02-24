@@ -881,4 +881,245 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertFalse(vm.isNextDateSkipped(recurring))
     }
 
+    // MARK: - Monthly Catch-Up Loop
+
+    func testMonthlyCatchUp_threeMonthGap() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        // 3ヶ月前を lastGeneratedDate に設定
+        var threeMonthsAgoMonth = currentMonth - 3
+        var threeMonthsAgoYear = currentYear
+        while threeMonthsAgoMonth <= 0 {
+            threeMonthsAgoMonth += 12
+            threeMonthsAgoYear -= 1
+        }
+
+        let recurring = PPRecurringTransaction(
+            name: "Catch-Up Test",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: threeMonthsAgoYear, month: threeMonthsAgoMonth, day: dayOfMonth
+            ))
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let generated = dataStore.processRecurringTransactions()
+
+        // 3ヶ月のギャップ → 3件生成（gap月、gap+1月、gap+2月＝今月）
+        XCTAssertEqual(generated, 3, "Should generate 3 transactions to catch up 3 months")
+
+        let allTx = fetchAllTransactions().filter { $0.recurringId == recurring.id }
+        XCTAssertEqual(allTx.count, 3)
+
+        // 各月の日付が正しいことを確認
+        let months = allTx.map { calendar.component(.month, from: $0.date) }.sorted()
+        var expectedMonths: [Int] = []
+        var m = threeMonthsAgoMonth + 1
+        var y = threeMonthsAgoYear
+        for _ in 0..<3 {
+            if m > 12 { m -= 12; y += 1 }
+            expectedMonths.append(m)
+            m += 1
+        }
+        XCTAssertEqual(months, expectedMonths.sorted())
+    }
+
+    func testMonthlyCatchUp_withSkipDate() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        // 2ヶ月前を lastGeneratedDate に設定
+        var twoMonthsAgoMonth = currentMonth - 2
+        var twoMonthsAgoYear = currentYear
+        while twoMonthsAgoMonth <= 0 {
+            twoMonthsAgoMonth += 12
+            twoMonthsAgoYear -= 1
+        }
+
+        // 1ヶ月前をスキップ日に設定
+        var oneMonthAgoMonth = currentMonth - 1
+        var oneMonthAgoYear = currentYear
+        if oneMonthAgoMonth <= 0 {
+            oneMonthAgoMonth += 12
+            oneMonthAgoYear -= 1
+        }
+        let skipDate = calendar.date(from: DateComponents(
+            year: oneMonthAgoYear, month: oneMonthAgoMonth, day: dayOfMonth
+        ))!
+
+        let recurring = PPRecurringTransaction(
+            name: "Skip Catch-Up",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: twoMonthsAgoYear, month: twoMonthsAgoMonth, day: dayOfMonth
+            )),
+            skipDates: [skipDate]
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let generated = dataStore.processRecurringTransactions()
+
+        // 2ヶ月ギャップ、1ヶ月スキップ → 1件のみ生成
+        XCTAssertEqual(generated, 1, "Should generate only 1 transaction (1 month skipped)")
+    }
+
+    func testMonthlyCatchUp_endDateStopsMidGap() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        // 3ヶ月前を lastGeneratedDate に設定
+        var threeMonthsAgoMonth = currentMonth - 3
+        var threeMonthsAgoYear = currentYear
+        while threeMonthsAgoMonth <= 0 {
+            threeMonthsAgoMonth += 12
+            threeMonthsAgoYear -= 1
+        }
+
+        // endDate を 1ヶ月前に設定（ギャップの途中で止まる）
+        var oneMonthAgoMonth = currentMonth - 1
+        var oneMonthAgoYear = currentYear
+        if oneMonthAgoMonth <= 0 {
+            oneMonthAgoMonth += 12
+            oneMonthAgoYear -= 1
+        }
+        let endDate = calendar.date(from: DateComponents(
+            year: oneMonthAgoYear, month: oneMonthAgoMonth, day: dayOfMonth
+        ))!
+
+        let recurring = PPRecurringTransaction(
+            name: "EndDate Stop",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 5000)],
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: true,
+            endDate: endDate,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: threeMonthsAgoYear, month: threeMonthsAgoMonth, day: dayOfMonth
+            ))
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let generated = dataStore.processRecurringTransactions()
+
+        // endDateまでの分のみ生成（3ヶ月ギャップだが、endDateで2ヶ月まで）
+        XCTAssertEqual(generated, 2, "Should generate only 2 transactions (endDate stops before current month)")
+
+        // endDate後なので isActive = false になっているはず
+        let updated = fetchRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.isActive, false)
+    }
+
+    // MARK: - Yearly Catch-Up Loop
+
+    func testYearlyCatchUp_twoYearGap() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+        let currentMonth = todayComponents.month!
+
+        // 過去の月が必要（年次取引の targetMonth）
+        guard let pm = pastMonth else { return } // 1月にはテスト不可
+
+        let recurring = PPRecurringTransaction(
+            name: "Yearly Catch-Up",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 120000)],
+            frequency: .yearly,
+            dayOfMonth: dayOfMonth,
+            monthOfYear: pm,
+            isActive: true,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: currentYear - 3, month: pm, day: dayOfMonth
+            ))
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let generated = dataStore.processRecurringTransactions()
+
+        // lastGenerated = currentYear-3 → currentYear-2, currentYear-1, currentYear = 3件
+        // ただし今月 > targetMonth の場合のみ currentYear 分も生成
+        if currentMonth > pm || (currentMonth == pm && todayComponents.day! >= dayOfMonth) {
+            XCTAssertGreaterThanOrEqual(generated, 2, "Should generate at least 2 year catch-up transactions")
+        } else {
+            XCTAssertGreaterThanOrEqual(generated, 1, "Should generate at least 1 year catch-up transaction")
+        }
+    }
+
+    func testYearlyCatchUp_endDateStops() {
+        let project = makeProject()
+        let dayOfMonth = pastDayOfMonth
+        let currentYear = todayComponents.year!
+
+        guard let pm = pastMonth else { return }
+
+        // endDate を前年末に設定
+        let endDate = calendar.date(from: DateComponents(
+            year: currentYear - 1, month: 12, day: 31
+        ))!
+
+        let recurring = PPRecurringTransaction(
+            name: "Yearly EndDate",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 120000)],
+            frequency: .yearly,
+            dayOfMonth: dayOfMonth,
+            monthOfYear: pm,
+            isActive: true,
+            endDate: endDate,
+            lastGeneratedDate: calendar.date(from: DateComponents(
+                year: currentYear - 4, month: pm, day: dayOfMonth
+            ))
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+
+        let generated = dataStore.processRecurringTransactions()
+
+        // lastGenerated = currentYear-4, endDate = currentYear-1/12/31
+        // → currentYear-3, currentYear-2, currentYear-1 の3件（currentYear は endDate 超過）
+        XCTAssertEqual(generated, 3, "Should generate 3 yearly transactions before endDate")
+
+        let updated = fetchRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.isActive, false, "Should be deactivated after endDate")
+    }
 }

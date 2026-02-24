@@ -186,7 +186,7 @@ final class FiscalYearUtilitiesTests: XCTestCase {
     // MARK: - FiscalYearSettings
 
     func testFiscalYearSettings_defaultStartMonth() {
-        XCTAssertEqual(FiscalYearSettings.defaultStartMonth, 4)
+        XCTAssertEqual(FiscalYearSettings.defaultStartMonth, 1)
     }
 
     func testFiscalYearSettings_readsFromUserDefaults() {

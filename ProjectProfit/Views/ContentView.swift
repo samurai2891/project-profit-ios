@@ -25,6 +25,15 @@ struct ContentView: View {
 }
 
 struct MainTabView: View {
+    @Environment(DataStore.self) private var dataStore
+
+    private var showErrorBinding: Binding<Bool> {
+        Binding(
+            get: { dataStore.lastError != nil },
+            set: { if !$0 { dataStore.lastError = nil } }
+        )
+    }
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -63,5 +72,12 @@ struct MainTabView: View {
             }
         }
         .tint(AppColors.primary)
+        .alert("エラー", isPresented: showErrorBinding) {
+            Button("OK", role: .cancel) {
+                dataStore.lastError = nil
+            }
+        } message: {
+            Text(dataStore.lastError?.errorDescription ?? "不明なエラーが発生しました")
+        }
     }
 }
