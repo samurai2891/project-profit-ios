@@ -2526,4 +2526,34 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(recurring.categoryId, "cat-other-expense", "空の経費categoryIdはcat-other-expenseにフォールバックすべき")
     }
+
+    // MARK: - M6: monthOfYear Range Validation
+
+    func testUpdateRecurring_invalidMonthOfYear_ignored() {
+        let project = dataStore.addProject(name: "M6 Test", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "Yearly Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-hosting",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: 6
+        )
+        XCTAssertEqual(recurring.monthOfYear, 6)
+
+        dataStore.updateRecurring(id: recurring.id, monthOfYear: 13)
+        let fetched = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
+        XCTAssertEqual(fetched?.monthOfYear, 6, "Invalid monthOfYear (13) should be ignored")
+
+        dataStore.updateRecurring(id: recurring.id, monthOfYear: 0)
+        let fetched2 = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
+        XCTAssertEqual(fetched2?.monthOfYear, 6, "Invalid monthOfYear (0) should be ignored")
+
+        dataStore.updateRecurring(id: recurring.id, monthOfYear: -1)
+        let fetched3 = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
+        XCTAssertEqual(fetched3?.monthOfYear, 6, "Invalid monthOfYear (-1) should be ignored")
+    }
 }

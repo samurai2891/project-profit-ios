@@ -607,6 +607,35 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(recurring.monthOfYear, 12)
     }
 
+    func testRecurringTransaction_monthOfYear_validRange() {
+        for month in 1...12 {
+            let recurring = PPRecurringTransaction(
+                name: "Month \(month)",
+                type: .expense,
+                amount: 1000,
+                categoryId: "cat-tools",
+                frequency: .yearly,
+                monthOfYear: month
+            )
+            XCTAssertEqual(recurring.monthOfYear, month, "Month \(month) should be valid")
+        }
+    }
+
+    func testRecurringTransaction_monthOfYear_invalidRange_becomesNil() {
+        let invalidValues = [0, -1, 13, 100, -100]
+        for value in invalidValues {
+            let recurring = PPRecurringTransaction(
+                name: "Invalid Month \(value)",
+                type: .expense,
+                amount: 1000,
+                categoryId: "cat-tools",
+                frequency: .yearly,
+                monthOfYear: value
+            )
+            XCTAssertNil(recurring.monthOfYear, "Month \(value) should become nil")
+        }
+    }
+
     func testPPRecurringTransactionDefaultFrequencyIsMonthly() {
         let recurring = PPRecurringTransaction(
             name: "Default Frequency",
