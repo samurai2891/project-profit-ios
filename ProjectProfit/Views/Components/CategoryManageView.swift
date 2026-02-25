@@ -255,6 +255,12 @@ struct CategoryManageView: View {
             return
         }
 
+        let sameTypeCategories = dataStore.categories.filter { $0.type == category.type }
+        if sameTypeCategories.contains(where: { $0.id != category.id && $0.name == trimmedName }) {
+            errorMessage = "同じ名前のカテゴリが既に存在します"
+            return
+        }
+
         dataStore.updateCategory(id: category.id, name: trimmedName)
         cancelEditing()
     }
@@ -264,6 +270,12 @@ struct CategoryManageView: View {
 
         guard !trimmedName.isEmpty else {
             errorMessage = "カテゴリ名を入力してください。"
+            return
+        }
+
+        let sameTypeCategories = dataStore.categories.filter { $0.type == type }
+        if sameTypeCategories.contains(where: { $0.name == trimmedName }) {
+            errorMessage = "同じ名前のカテゴリが既に存在します"
             return
         }
 

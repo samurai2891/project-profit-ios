@@ -605,7 +605,10 @@ class DataStore {
     // MARK: - Category CRUD
 
     @discardableResult
-    func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
+    func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory? {
+        if categories.contains(where: { $0.type == type && $0.name == name }) {
+            return nil
+        }
         let category = PPCategory(id: UUID().uuidString, name: name, type: type, icon: icon)
         modelContext.insert(category)
         save()
@@ -615,7 +618,13 @@ class DataStore {
 
     func updateCategory(id: String, name: String? = nil, type: CategoryType? = nil, icon: String? = nil) {
         guard let category = categories.first(where: { $0.id == id }) else { return }
-        if let name { category.name = name }
+        if let name {
+            let targetType = type ?? category.type
+            if categories.contains(where: { $0.id != id && $0.type == targetType && $0.name == name }) {
+                return
+            }
+            category.name = name
+        }
         if let type { category.type = type }
         if let icon { category.icon = icon }
         save()
