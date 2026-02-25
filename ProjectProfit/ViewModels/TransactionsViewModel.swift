@@ -79,9 +79,10 @@ final class TransactionsViewModel {
         dataStore.deleteTransaction(id: id)
     }
 
-    func generateCSVText() -> String {
-        generateCSV(
-            transactions: filteredTransactions,
+    func generateCSVText(exportAll: Bool = false) -> String {
+        let target = exportAll ? dataStore.transactions : filteredTransactions
+        return generateCSV(
+            transactions: target,
             getCategory: { self.dataStore.getCategory(id: $0) },
             getProject: { self.dataStore.getProject(id: $0) }
         )
