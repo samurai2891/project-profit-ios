@@ -928,8 +928,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 | サブフェーズ | 概要 | タスク数 | 依存関係 | T項目カバー |
 |-------------|------|---------|----------|------------|
-| 4A | データ基盤（SwiftData models） | 8 | Phase 1-3 完了 | T1(部分), T2(部分) |
-| 4B | 会計エンジン + ブートストラップ | 7 | 4A | T1, T2 |
+| 4A | データ基盤（SwiftData models） | 8 | Phase 1-3 完了 | T1(部分), T2(部分) | ✅ 完了 (246650b) |
+| 4B | 会計エンジン + ブートストラップ | 7 | 4A | T1, T2 | ✅ 完了 (1a93e1e) |
 | 4C | 既存コード改修（transfer 対応） | 9 | 4A | — |
 | 4D | 会計 UI（帳簿タブ） | 7 | 4B, 4C | — |
 | 4E | 会計レポート（試算表/P&L/B/S） | 6 | 4B | T1(部分), T7 |
@@ -939,22 +939,22 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ---
 
-#### Phase 4A: データ基盤（SwiftData models）
+#### Phase 4A: データ基盤（SwiftData models） — ✅ 8/8 完了 (246650b)
 
 **目的**: 複式簿記に必要な勘定科目・仕訳モデルを SwiftData に追加する。既存モデルに振替取引・経費按分率・仕訳連携のフィールドを追加する。
 
 **対応する T 項目**: T2（勘定科目マッピング — データモデル部分）、T1（期首残高 — データモデル部分）
 
-| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク |
-|------|------|--------|------------------|----------|-----------|--------|--------|
-| 36 | 4A-1 | AccountType 等の enum 追加 | `Models/AccountingEnums.swift` (新規) | なし | ModelsTests に enum テスト追加 | 低 | 低 |
-| 37 | 4A-2 | PPAccount モデル作成 | `Models/PPAccount.swift` (新規) | 4A-1 | PPAccountTests (新規) | 中 | 低 |
-| 38 | 4A-3 | PPJournalEntry + PPJournalLine モデル作成 | `Models/PPJournalEntry.swift` (新規) | 4A-1 | PPJournalEntryTests (新規) | 中 | 低 |
-| 39 | 4A-4 | PPAccountingProfile モデル作成 | `Models/PPAccountingProfile.swift` (新規) | 4A-1 | PPAccountingProfileTests (新規) | 低 | 低 |
-| 40 | 4A-5 | TransactionType に .transfer 追加 | `Models/Models.swift` | なし | 既存テスト修正 (全テストクラス) | 中 | **高** |
-| 41 | 4A-6 | PPTransaction に新フィールド追加 | `Models/Models.swift` | 4A-2, 4A-3 | 既存テスト修正 | 中 | **高** |
-| 42 | 4A-7 | PPCategory に linkedAccountId 追加 | `Models/Models.swift` | 4A-2 | 既存テスト修正 | 低 | 中 |
-| 43 | 4A-8 | modelContainer 更新 + マイグレーション計画 | `ProjectProfitApp.swift` | 4A-2, 4A-3, 4A-4 | 起動テスト | **高** | **高** |
+| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク | 状態 |
+|------|------|--------|------------------|----------|-----------|--------|--------|------|
+| 36 | 4A-1 | AccountType 等の enum 追加 | `Models/AccountingEnums.swift` (新規) | なし | ModelsTests に enum テスト追加 | 低 | 低 | ✅ 246650b |
+| 37 | 4A-2 | PPAccount モデル作成 | `Models/PPAccount.swift` (新規) | 4A-1 | PPAccountTests (新規) | 中 | 低 | ✅ 246650b |
+| 38 | 4A-3 | PPJournalEntry + PPJournalLine モデル作成 | `Models/PPJournalEntry.swift` (新規) | 4A-1 | PPJournalEntryTests (新規) | 中 | 低 | ✅ 246650b |
+| 39 | 4A-4 | PPAccountingProfile モデル作成 | `Models/PPAccountingProfile.swift` (新規) | 4A-1 | PPAccountingProfileTests (新規) | 低 | 低 | ✅ 246650b |
+| 40 | 4A-5 | TransactionType に .transfer 追加 | `Models/Models.swift` | なし | 既存テスト修正 (全テストクラス) | 中 | **高** | ✅ 246650b |
+| 41 | 4A-6 | PPTransaction に新フィールド追加 | `Models/Models.swift` | 4A-2, 4A-3 | 既存テスト修正 | 中 | **高** | ✅ 246650b |
+| 42 | 4A-7 | PPCategory に linkedAccountId 追加 | `Models/Models.swift` | 4A-2 | 既存テスト修正 | 低 | 中 | ✅ 246650b |
+| 43 | 4A-8 | modelContainer 更新 + マイグレーション計画 | `ProjectProfitApp.swift` | 4A-2, 4A-3, 4A-4 | 起動テスト | **高** | **高** | ✅ 246650b |
 
 **4A-1: AccountType 等の enum 追加**
 
@@ -1152,21 +1152,21 @@ var linkedAccountId: UUID?  // 紐づく勘定科目の ID（T2 対応）
 
 ---
 
-#### Phase 4B: 会計エンジン + ブートストラップ
+#### Phase 4B: 会計エンジン + ブートストラップ — ✅ 7/7 完了 (1a93e1e)
 
 **目的**: デフォルト勘定科目の初期設定、既存カテゴリ→勘定科目のマッピング移行、トランザクション→仕訳の自動変換エンジンを実装する。
 
 **対応する T 項目**: T2（勘定科目マッピング — ロジック部分）、T1（期首残高 — 期首仕訳生成）
 
-| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク |
-|------|------|--------|------------------|----------|-----------|--------|--------|
-| 44 | 4B-1 | デフォルト勘定科目定義 | `Services/AccountingConstants.swift` (新規) | 4A-2 | 定義値テスト | 低 | 低 |
-| 45 | 4B-2 | カテゴリ→勘定科目マッピング定義 | `Services/AccountingConstants.swift` | 4B-1 | マッピングテスト | 低 | 低 |
-| 46 | 4B-3 | AccountingBootstrapService 実装 | `Services/AccountingBootstrapService.swift` (新規) | 4B-1, 4B-2 | AccountingBootstrapTests (新規) | **高** | **高** |
-| 47 | 4B-4 | AccountingEngine 実装 | `Services/AccountingEngine.swift` (新規) | 4A-3, 4B-1 | AccountingEngineTests (新規) | **高** | **高** |
-| 48 | 4B-5 | DataStore への会計データ統合 | `Services/DataStore.swift` | 4B-3, 4B-4 | 既存テスト修正 + 統合テスト | **高** | **高** |
-| 49 | 4B-6 | 仕訳バリデーションサービス | `Services/JournalValidationService.swift` (新規) | 4A-3 | JournalValidationTests (新規) | 中 | 中 |
-| 50 | 4B-7 | 期首残高仕訳生成 | `Services/AccountingEngine.swift` | 4B-4 | 期首残高テスト | 中 | 中 |
+| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク | 状態 |
+|------|------|--------|------------------|----------|-----------|--------|--------|------|
+| 44 | 4B-1 | デフォルト勘定科目定義 | `Services/AccountingConstants.swift` (新規) | 4A-2 | 定義値テスト | 低 | 低 | ✅ 1a93e1e |
+| 45 | 4B-2 | カテゴリ→勘定科目マッピング定義 | `Services/AccountingConstants.swift` | 4B-1 | マッピングテスト | 低 | 低 | ✅ 1a93e1e |
+| 46 | 4B-3 | AccountingBootstrapService 実装 | `Services/AccountingBootstrapService.swift` (新規) | 4B-1, 4B-2 | AccountingBootstrapTests (新規) | **高** | **高** | ✅ 1a93e1e |
+| 47 | 4B-4 | AccountingEngine 実装 | `Services/AccountingEngine.swift` (新規) | 4A-3, 4B-1 | AccountingEngineTests (新規) | **高** | **高** | ✅ 1a93e1e |
+| 48 | 4B-5 | DataStore への会計データ統合 | `Services/DataStore.swift` | 4B-3, 4B-4 | 既存テスト修正 + 統合テスト | **高** | **高** | ✅ 1a93e1e |
+| 49 | 4B-6 | 仕訳バリデーションサービス | `Services/JournalValidationService.swift` (新規) | 4A-3 | JournalValidationTests (新規) | 中 | 中 | ✅ 1a93e1e |
+| 50 | 4B-7 | 期首残高仕訳生成 | `Services/AccountingEngine.swift` | 4B-4 | 期首残高テスト | 中 | 中 | ✅ 1a93e1e |
 
 **4B-1: デフォルト勘定科目定義（29勘定科目）**
 
@@ -1791,3 +1791,5 @@ Phase 4H: テスト + 検証
 | 2026-02-24 | 初版作成。3ラウンド・27 Agent 調査結果を統合 |
 | 2026-02-24 | Phase 4 を詳細実装計画に拡充。12 Agent チーム調査結果 (4A-4H, 93タスク) を統合。T1-T7 カバレッジ分析・依存関係グラフ・監査所見を追加 |
 | 2026-02-24 | 7 Agent チーム検証: (1) 白色申告（収支内訳書）スコープを Phase 4G 全体に追加, (2) 4B-3 ブートストラップを6→8ステップに拡充（フィールド補完+整合性チェック）, (3) 4G-2 CAB抽出ワークフローを仕様書準拠に修正, (4) 4B-1 勘定科目にクレジットカード追加・仕様書準拠に整理 |
+| 2026-02-25 | Phase 4A 実装完了 (246650b): AccountingEnums, PPAccount, PPJournalEntry/Line, PPAccountingProfile, .transfer対応, modelContainer更新。31ファイル変更、テスト3件新規追加 |
+| 2026-02-25 | Phase 4B 実装完了 (1a93e1e): AccountingConstants(25勘定科目/13マッピング), AccountingBootstrapService(8ステップ), AccountingEngine(自動仕訳変換+期首残高), JournalValidationService, DataStore統合。テスト61件新規追加（合計770テスト全パス）。コードレビューでCRITICAL2件+HIGH4件修正済み |
