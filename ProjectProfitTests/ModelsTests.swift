@@ -70,22 +70,39 @@ final class ModelsTests: XCTestCase {
     func testTransactionTypeRawValues() {
         XCTAssertEqual(TransactionType.income.rawValue, "income")
         XCTAssertEqual(TransactionType.expense.rawValue, "expense")
+        XCTAssertEqual(TransactionType.transfer.rawValue, "transfer")
     }
 
     func testTransactionTypeLabels() {
         XCTAssertEqual(TransactionType.income.label, "収益")
         XCTAssertEqual(TransactionType.expense.label, "経費")
+        XCTAssertEqual(TransactionType.transfer.label, "振替")
+    }
+
+    func testTransactionTypeAllCases() {
+        let allCases = TransactionType.allCases
+        XCTAssertEqual(allCases.count, 3)
+        XCTAssertTrue(allCases.contains(.income))
+        XCTAssertTrue(allCases.contains(.expense))
+        XCTAssertTrue(allCases.contains(.transfer))
     }
 
     func testTransactionTypeCodable() throws {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
 
-        for type in [TransactionType.income, .expense] {
+        for type in TransactionType.allCases {
             let data = try encoder.encode(type)
             let decoded = try decoder.decode(TransactionType.self, from: data)
             XCTAssertEqual(decoded, type)
         }
+    }
+
+    func testTransactionTypeTransferDecodingFromRawString() throws {
+        let decoder = JSONDecoder()
+        let data = Data("\"transfer\"".utf8)
+        let decoded = try decoder.decode(TransactionType.self, from: data)
+        XCTAssertEqual(decoded, .transfer)
     }
 
     // MARK: - CategoryType Tests
@@ -322,6 +339,11 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(transaction.memo, "")
         XCTAssertTrue(transaction.allocations.isEmpty)
         XCTAssertNil(transaction.recurringId)
+        XCTAssertNil(transaction.paymentAccountId)
+        XCTAssertNil(transaction.transferToAccountId)
+        XCTAssertNil(transaction.taxDeductibleRate)
+        XCTAssertNil(transaction.bookkeepingMode)
+        XCTAssertNil(transaction.journalEntryId)
         XCTAssertNotNil(transaction.id)
         XCTAssertNotNil(transaction.createdAt)
         XCTAssertNotNil(transaction.updatedAt)
@@ -394,6 +416,74 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(transaction.recurringId)
     }
 
+    func testPPTransactionWithAccountingFields() {
+        let journalId = UUID()
+        let transaction = PPTransaction(
+            type: .expense,
+            amount: 10000,
+            date: Date(),
+            categoryId: "cat-communication",
+            paymentAccountId: "acct-bank",
+            transferToAccountId: nil,
+            taxDeductibleRate: 60,
+            bookkeepingMode: .doubleEntry,
+            journalEntryId: journalId
+        )
+
+        XCTAssertEqual(transaction.paymentAccountId, "acct-bank")
+        XCTAssertNil(transaction.transferToAccountId)
+        XCTAssertEqual(transaction.taxDeductibleRate, 60)
+        XCTAssertEqual(transaction.bookkeepingMode, .doubleEntry)
+        XCTAssertEqual(transaction.journalEntryId, journalId)
+    }
+
+    func testPPTransactionTransferWithBothAccounts() {
+        let transaction = PPTransaction(
+            type: .transfer,
+            amount: 50000,
+            date: Date(),
+            categoryId: "cat-other-expense",
+            paymentAccountId: "acct-bank",
+            transferToAccountId: "acct-cash"
+        )
+
+        XCTAssertEqual(transaction.type, .transfer)
+        XCTAssertEqual(transaction.paymentAccountId, "acct-bank")
+        XCTAssertEqual(transaction.transferToAccountId, "acct-cash")
+    }
+
+    func testPPTransactionEffectiveTaxDeductibleRate() {
+        let full = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-communication")
+        XCTAssertEqual(full.effectiveTaxDeductibleRate, 100)
+
+        let partial = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-communication", taxDeductibleRate: 60)
+        XCTAssertEqual(partial.effectiveTaxDeductibleRate, 60)
+    }
+
+    func testPPTransactionDeductibleAmount() {
+        let full = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-communication")
+        XCTAssertEqual(full.deductibleAmount, 10000)
+
+        let partial = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-communication", taxDeductibleRate: 60)
+        XCTAssertEqual(partial.deductibleAmount, 6000)
+
+        let zero = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-communication", taxDeductibleRate: 0)
+        XCTAssertEqual(zero.deductibleAmount, 0)
+    }
+
+    func testPPTransactionTaxDeductibleRateClamped() {
+        let over = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-food", taxDeductibleRate: 150)
+        XCTAssertEqual(over.taxDeductibleRate, 100)
+
+        let under = PPTransaction(type: .expense, amount: 10000, date: Date(), categoryId: "cat-food", taxDeductibleRate: -10)
+        XCTAssertEqual(under.taxDeductibleRate, 0)
+    }
+
+    func testPPTransactionDeductibleAmountTruncation() {
+        let transaction = PPTransaction(type: .expense, amount: 999, date: Date(), categoryId: "cat-food", taxDeductibleRate: 50)
+        XCTAssertEqual(transaction.deductibleAmount, 499)
+    }
+
     // MARK: - PPCategory Tests
 
     func testPPCategoryInitialization() {
@@ -409,6 +499,19 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(category.type, .expense)
         XCTAssertEqual(category.icon, "server.rack")
         XCTAssertFalse(category.isDefault)
+        XCTAssertNil(category.linkedAccountId)
+    }
+
+    func testPPCategoryWithLinkedAccountId() {
+        let category = PPCategory(
+            id: "cat-sales",
+            name: "売上",
+            type: .income,
+            icon: "yensign.circle",
+            linkedAccountId: "acct-sales"
+        )
+
+        XCTAssertEqual(category.linkedAccountId, "acct-sales")
     }
 
     func testPPCategoryInitWithDefaultFlag() {
@@ -882,5 +985,242 @@ final class ModelsTests: XCTestCase {
         let project = PPProject(name: "Test", startDate: start, completedAt: end)
         XCTAssertEqual(project.startDate, start)
         XCTAssertEqual(project.completedAt, end)
+    }
+
+    // MARK: - AccountType Tests
+
+    func testAccountTypeAllCases() {
+        let allCases = AccountType.allCases
+        XCTAssertEqual(allCases.count, 5)
+        XCTAssertTrue(allCases.contains(.asset))
+        XCTAssertTrue(allCases.contains(.liability))
+        XCTAssertTrue(allCases.contains(.equity))
+        XCTAssertTrue(allCases.contains(.revenue))
+        XCTAssertTrue(allCases.contains(.expense))
+    }
+
+    func testAccountTypeRawValues() {
+        XCTAssertEqual(AccountType.asset.rawValue, "asset")
+        XCTAssertEqual(AccountType.liability.rawValue, "liability")
+        XCTAssertEqual(AccountType.equity.rawValue, "equity")
+        XCTAssertEqual(AccountType.revenue.rawValue, "revenue")
+        XCTAssertEqual(AccountType.expense.rawValue, "expense")
+    }
+
+    func testAccountTypeLabels() {
+        XCTAssertEqual(AccountType.asset.label, "資産")
+        XCTAssertEqual(AccountType.liability.label, "負債")
+        XCTAssertEqual(AccountType.equity.label, "資本")
+        XCTAssertEqual(AccountType.revenue.label, "収益")
+        XCTAssertEqual(AccountType.expense.label, "費用")
+    }
+
+    func testAccountTypeNormalBalance() {
+        XCTAssertEqual(AccountType.asset.normalBalance, .debit)
+        XCTAssertEqual(AccountType.liability.normalBalance, .credit)
+        XCTAssertEqual(AccountType.equity.normalBalance, .credit)
+        XCTAssertEqual(AccountType.revenue.normalBalance, .credit)
+        XCTAssertEqual(AccountType.expense.normalBalance, .debit)
+    }
+
+    func testAccountTypeCodable() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        for accountType in AccountType.allCases {
+            let data = try encoder.encode(accountType)
+            let decoded = try decoder.decode(AccountType.self, from: data)
+            XCTAssertEqual(decoded, accountType)
+        }
+    }
+
+    func testAccountTypeDecodingInvalidValueFails() {
+        let decoder = JSONDecoder()
+        let invalidData = Data("\"unknown\"".utf8)
+        XCTAssertThrowsError(try decoder.decode(AccountType.self, from: invalidData))
+    }
+
+    // MARK: - NormalBalance Tests
+
+    func testNormalBalanceRawValues() {
+        XCTAssertEqual(NormalBalance.debit.rawValue, "debit")
+        XCTAssertEqual(NormalBalance.credit.rawValue, "credit")
+    }
+
+    func testNormalBalanceLabels() {
+        XCTAssertEqual(NormalBalance.debit.label, "借方")
+        XCTAssertEqual(NormalBalance.credit.label, "貸方")
+    }
+
+    func testNormalBalanceCodable() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let debitData = try encoder.encode(NormalBalance.debit)
+        XCTAssertEqual(try decoder.decode(NormalBalance.self, from: debitData), .debit)
+
+        let creditData = try encoder.encode(NormalBalance.credit)
+        XCTAssertEqual(try decoder.decode(NormalBalance.self, from: creditData), .credit)
+    }
+
+    func testNormalBalanceDecodingInvalidValueFails() {
+        let decoder = JSONDecoder()
+        let invalidData = Data("\"unknown\"".utf8)
+        XCTAssertThrowsError(try decoder.decode(NormalBalance.self, from: invalidData))
+    }
+
+    // MARK: - AccountSubtype Tests
+
+    func testAccountSubtypeAllCases() {
+        let allCases = AccountSubtype.allCases
+        // 4B-1: prepaidExpenses, accruedExpenses, ownerCapital を追加 (23 + 3 = 26)
+        XCTAssertEqual(allCases.count, 26)
+    }
+
+    func testAccountSubtypeRawValues() {
+        XCTAssertEqual(AccountSubtype.cash.rawValue, "cash")
+        XCTAssertEqual(AccountSubtype.ordinaryDeposit.rawValue, "ordinaryDeposit")
+        XCTAssertEqual(AccountSubtype.accountsReceivable.rawValue, "accountsReceivable")
+        XCTAssertEqual(AccountSubtype.creditCard.rawValue, "creditCard")
+        XCTAssertEqual(AccountSubtype.accountsPayable.rawValue, "accountsPayable")
+        XCTAssertEqual(AccountSubtype.ownerContributions.rawValue, "ownerContributions")
+        XCTAssertEqual(AccountSubtype.ownerDrawings.rawValue, "ownerDrawings")
+        XCTAssertEqual(AccountSubtype.suspense.rawValue, "suspense")
+        XCTAssertEqual(AccountSubtype.openingBalance.rawValue, "openingBalance")
+        XCTAssertEqual(AccountSubtype.salesRevenue.rawValue, "salesRevenue")
+        XCTAssertEqual(AccountSubtype.otherIncome.rawValue, "otherIncome")
+        XCTAssertEqual(AccountSubtype.rentExpense.rawValue, "rentExpense")
+        XCTAssertEqual(AccountSubtype.utilitiesExpense.rawValue, "utilitiesExpense")
+        XCTAssertEqual(AccountSubtype.travelExpense.rawValue, "travelExpense")
+        XCTAssertEqual(AccountSubtype.communicationExpense.rawValue, "communicationExpense")
+        XCTAssertEqual(AccountSubtype.advertisingExpense.rawValue, "advertisingExpense")
+        XCTAssertEqual(AccountSubtype.entertainmentExpense.rawValue, "entertainmentExpense")
+        XCTAssertEqual(AccountSubtype.depreciationExpense.rawValue, "depreciationExpense")
+        XCTAssertEqual(AccountSubtype.repairExpense.rawValue, "repairExpense")
+        XCTAssertEqual(AccountSubtype.suppliesExpense.rawValue, "suppliesExpense")
+        XCTAssertEqual(AccountSubtype.welfareExpense.rawValue, "welfareExpense")
+        XCTAssertEqual(AccountSubtype.outsourcingExpense.rawValue, "outsourcingExpense")
+        XCTAssertEqual(AccountSubtype.miscExpense.rawValue, "miscExpense")
+    }
+
+    func testAccountSubtypeLabels() {
+        XCTAssertEqual(AccountSubtype.cash.label, "現金")
+        XCTAssertEqual(AccountSubtype.ordinaryDeposit.label, "普通預金")
+        XCTAssertEqual(AccountSubtype.accountsReceivable.label, "売掛金")
+        XCTAssertEqual(AccountSubtype.creditCard.label, "クレジットカード")
+        XCTAssertEqual(AccountSubtype.accountsPayable.label, "買掛金")
+        XCTAssertEqual(AccountSubtype.ownerContributions.label, "事業主借")
+        XCTAssertEqual(AccountSubtype.ownerDrawings.label, "事業主貸")
+        XCTAssertEqual(AccountSubtype.suspense.label, "仮勘定")
+        XCTAssertEqual(AccountSubtype.openingBalance.label, "期首残高")
+        XCTAssertEqual(AccountSubtype.salesRevenue.label, "売上（収入）金額")
+        XCTAssertEqual(AccountSubtype.otherIncome.label, "雑収入")
+        XCTAssertEqual(AccountSubtype.rentExpense.label, "地代家賃")
+        XCTAssertEqual(AccountSubtype.utilitiesExpense.label, "水道光熱費")
+        XCTAssertEqual(AccountSubtype.travelExpense.label, "旅費交通費")
+        XCTAssertEqual(AccountSubtype.communicationExpense.label, "通信費")
+        XCTAssertEqual(AccountSubtype.advertisingExpense.label, "広告宣伝費")
+        XCTAssertEqual(AccountSubtype.entertainmentExpense.label, "接待交際費")
+        XCTAssertEqual(AccountSubtype.depreciationExpense.label, "減価償却費")
+        XCTAssertEqual(AccountSubtype.repairExpense.label, "修繕費")
+        XCTAssertEqual(AccountSubtype.suppliesExpense.label, "消耗品費")
+        XCTAssertEqual(AccountSubtype.welfareExpense.label, "福利厚生費")
+        XCTAssertEqual(AccountSubtype.outsourcingExpense.label, "外注工賃")
+        XCTAssertEqual(AccountSubtype.miscExpense.label, "雑費")
+    }
+
+    func testAccountSubtypeCodable() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        for subtype in AccountSubtype.allCases {
+            let data = try encoder.encode(subtype)
+            let decoded = try decoder.decode(AccountSubtype.self, from: data)
+            XCTAssertEqual(decoded, subtype)
+        }
+    }
+
+    func testAccountSubtypeDecodingInvalidValueFails() {
+        let decoder = JSONDecoder()
+        let invalidData = Data("\"unknown\"".utf8)
+        XCTAssertThrowsError(try decoder.decode(AccountSubtype.self, from: invalidData))
+    }
+
+    // MARK: - JournalEntryType Tests
+
+    func testJournalEntryTypeAllCases() {
+        let allCases = JournalEntryType.allCases
+        XCTAssertEqual(allCases.count, 4)
+        XCTAssertTrue(allCases.contains(.auto))
+        XCTAssertTrue(allCases.contains(.manual))
+        XCTAssertTrue(allCases.contains(.opening))
+        XCTAssertTrue(allCases.contains(.closing))
+    }
+
+    func testJournalEntryTypeRawValues() {
+        XCTAssertEqual(JournalEntryType.auto.rawValue, "auto")
+        XCTAssertEqual(JournalEntryType.manual.rawValue, "manual")
+        XCTAssertEqual(JournalEntryType.opening.rawValue, "opening")
+        XCTAssertEqual(JournalEntryType.closing.rawValue, "closing")
+    }
+
+    func testJournalEntryTypeLabels() {
+        XCTAssertEqual(JournalEntryType.auto.label, "自動仕訳")
+        XCTAssertEqual(JournalEntryType.manual.label, "手動仕訳")
+        XCTAssertEqual(JournalEntryType.opening.label, "期首残高仕訳")
+        XCTAssertEqual(JournalEntryType.closing.label, "決算仕訳")
+    }
+
+    func testJournalEntryTypeCodable() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        for entryType in JournalEntryType.allCases {
+            let data = try encoder.encode(entryType)
+            let decoded = try decoder.decode(JournalEntryType.self, from: data)
+            XCTAssertEqual(decoded, entryType)
+        }
+    }
+
+    func testJournalEntryTypeDecodingInvalidValueFails() {
+        let decoder = JSONDecoder()
+        let invalidData = Data("\"unknown\"".utf8)
+        XCTAssertThrowsError(try decoder.decode(JournalEntryType.self, from: invalidData))
+    }
+
+    // MARK: - BookkeepingMode Tests
+
+    func testBookkeepingModeAllCases() {
+        let allCases = BookkeepingMode.allCases
+        XCTAssertEqual(allCases.count, 2)
+        XCTAssertTrue(allCases.contains(.singleEntry))
+        XCTAssertTrue(allCases.contains(.doubleEntry))
+    }
+
+    func testBookkeepingModeRawValues() {
+        XCTAssertEqual(BookkeepingMode.singleEntry.rawValue, "singleEntry")
+        XCTAssertEqual(BookkeepingMode.doubleEntry.rawValue, "doubleEntry")
+    }
+
+    func testBookkeepingModeLabels() {
+        XCTAssertEqual(BookkeepingMode.singleEntry.label, "簡易簿記")
+        XCTAssertEqual(BookkeepingMode.doubleEntry.label, "複式簿記")
+    }
+
+    func testBookkeepingModeCodable() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        for mode in BookkeepingMode.allCases {
+            let data = try encoder.encode(mode)
+            let decoded = try decoder.decode(BookkeepingMode.self, from: data)
+            XCTAssertEqual(decoded, mode)
+        }
+    }
+
+    func testBookkeepingModeDecodingInvalidValueFails() {
+        let decoder = JSONDecoder()
+        let invalidData = Data("\"unknown\"".utf8)
+        XCTAssertThrowsError(try decoder.decode(BookkeepingMode.self, from: invalidData))
     }
 }

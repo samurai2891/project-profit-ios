@@ -11,6 +11,10 @@ class DataStore {
     var transactions: [PPTransaction] = []
     var categories: [PPCategory] = []
     var recurringTransactions: [PPRecurringTransaction] = []
+    var accounts: [PPAccount] = []
+    var journalEntries: [PPJournalEntry] = []
+    var journalLines: [PPJournalLine] = []
+    var accountingProfile: PPAccountingProfile?
     var isLoading = true
     var lastError: AppError?
 
@@ -43,6 +47,40 @@ class DataStore {
                 seedMissingCategories()
             }
             migrateNilOptionalFields()
+
+            // Phase 4B: 会計データの読み込み
+            let accountDescriptor = FetchDescriptor<PPAccount>(sortBy: [SortDescriptor(\.displayOrder)])
+            accounts = try modelContext.fetch(accountDescriptor)
+
+            let entryDescriptor = FetchDescriptor<PPJournalEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+            journalEntries = try modelContext.fetch(entryDescriptor)
+
+            let lineDescriptor = FetchDescriptor<PPJournalLine>(sortBy: [SortDescriptor(\.displayOrder)])
+            journalLines = try modelContext.fetch(lineDescriptor)
+
+            let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
+            accountingProfile = try modelContext.fetch(profileDescriptor).first
+
+            // Phase 4B: 会計ブートストラップ（初回のみ実行）
+            let bootstrap = AccountingBootstrapService(modelContext: modelContext)
+            if bootstrap.needsBootstrap() {
+                let result = bootstrap.execute(categories: categories, transactions: transactions)
+                save()
+                refreshAccounts()
+                refreshJournalEntries()
+                refreshJournalLines()
+                refreshCategories()
+                refreshTransactions()
+                let profileDesc = FetchDescriptor<PPAccountingProfile>()
+                accountingProfile = try? modelContext.fetch(profileDesc).first
+                AppLogger.dataStore.info("Bootstrap完了: accounts=\(result.accountsCreated), journals=\(result.journalEntriesGenerated)")
+                if !result.integrityIssues.isEmpty {
+                    AppLogger.dataStore.warning("Bootstrap整合性チェック: \(result.integrityIssues.count)件の問題あり")
+                    for issue in result.integrityIssues {
+                        AppLogger.dataStore.warning("  - \(issue)")
+                    }
+                }
+            }
         } catch {
             AppLogger.dataStore.error("Failed to load data: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
@@ -107,6 +145,9 @@ class DataStore {
             refreshTransactions()
             refreshCategories()
             refreshRecurring()
+            refreshAccounts()
+            refreshJournalEntries()
+            refreshJournalLines()
             return false
         }
     }
@@ -147,6 +188,36 @@ class DataStore {
             recurringTransactions = try modelContext.fetch(descriptor)
         } catch {
             AppLogger.dataStore.error("Failed to refresh recurring: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
+    }
+
+    private func refreshAccounts() {
+        do {
+            let descriptor = FetchDescriptor<PPAccount>(sortBy: [SortDescriptor(\.displayOrder)])
+            accounts = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh accounts: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
+    }
+
+    private func refreshJournalEntries() {
+        do {
+            let descriptor = FetchDescriptor<PPJournalEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+            journalEntries = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh journal entries: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
+    }
+
+    private func refreshJournalLines() {
+        do {
+            let descriptor = FetchDescriptor<PPJournalLine>(sortBy: [SortDescriptor(\.displayOrder)])
+            journalLines = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh journal lines: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
         }
     }
@@ -490,8 +561,17 @@ class DataStore {
             lineItems: lineItems
         )
         modelContext.insert(transaction)
+
+        // Phase 4B: 仕訳を自動生成
+        let engine = AccountingEngine(modelContext: modelContext)
+        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
+            transaction.journalEntryId = entry.id
+        }
+
         save()
         refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
         return transaction
     }
 
@@ -532,8 +612,17 @@ class DataStore {
         }
 
         transaction.updatedAt = Date()
+
+        // Phase 4B: 仕訳を再生成（bookkeepingMode が locked でない場合）
+        let engine = AccountingEngine(modelContext: modelContext)
+        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
+            transaction.journalEntryId = entry.id
+        }
+
         save()
         refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
     }
 
     func deleteTransaction(id: UUID) {
@@ -546,6 +635,10 @@ class DataStore {
         let recurringId = transaction.recurringId
         let deletedDate = transaction.date
 
+        // Phase 4B: 対応する仕訳を削除
+        let engine = AccountingEngine(modelContext: modelContext)
+        engine.deleteJournalEntry(for: transaction.id)
+
         modelContext.delete(transaction)
         if save() {
             if let imagePath = imageToDelete {
@@ -553,6 +646,8 @@ class DataStore {
             }
         }
         refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
 
         // Roll back recurring generation tracking so the deleted period can be regenerated
         if let recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
@@ -676,7 +771,7 @@ class DataStore {
 
     static func defaultCategoryId(for type: TransactionType) -> String {
         switch type {
-        case .expense: "cat-other-expense"
+        case .expense, .transfer: "cat-other-expense"
         case .income: "cat-other-income"
         }
     }
@@ -1443,10 +1538,10 @@ class DataStore {
             if let start = startDate, t.date < start { continue }
             if let end = endDate, t.date > end { continue }
             if let alloc = t.allocations.first(where: { $0.projectId == projectId }) {
-                if t.type == .income {
-                    totalIncome += alloc.amount
-                } else {
-                    totalExpense += alloc.amount
+                switch t.type {
+                case .income: totalIncome += alloc.amount
+                case .expense: totalExpense += alloc.amount
+                case .transfer: break
                 }
             }
         }
@@ -1476,10 +1571,10 @@ class DataStore {
         for t in transactions {
             if let start = startDate, t.date < start { continue }
             if let end = endDate, t.date > end { continue }
-            if t.type == .income {
-                totalIncome += t.amount
-            } else {
-                totalExpense += t.amount
+            switch t.type {
+            case .income: totalIncome += t.amount
+            case .expense: totalExpense += t.amount
+            case .transfer: break
             }
         }
 
@@ -1489,7 +1584,10 @@ class DataStore {
         return OverallSummary(totalIncome: totalIncome, totalExpense: totalExpense, netProfit: netProfit, profitMargin: profitMargin)
     }
 
+    /// `.transfer` は P&L カテゴリ集計の対象外。渡された場合は空配列を返す。
     func getCategorySummaries(type: TransactionType, startDate: Date? = nil, endDate: Date? = nil) -> [CategorySummary] {
+        guard type != .transfer else { return [] }
+
         var totals: [String: Int] = [:]
         var grandTotal = 0
 
@@ -1522,10 +1620,10 @@ class DataStore {
             let month = formatter.string(from: t.date)
             guard month.hasPrefix(String(year)), monthlyData[month] != nil else { continue }
             guard var data = monthlyData[month] else { continue }
-            if t.type == .income {
-                data.income += t.amount
-            } else {
-                data.expense += t.amount
+            switch t.type {
+            case .income: data.income += t.amount
+            case .expense: data.expense += t.amount
+            case .transfer: break
             }
             monthlyData[month] = data
         }
@@ -1553,10 +1651,10 @@ class DataStore {
             let month = formatter.string(from: t.date)
             guard keySet.contains(month) else { continue }
             guard let idx = monthlyData.firstIndex(where: { $0.key == month }) else { continue }
-            if t.type == .income {
-                monthlyData[idx].income += t.amount
-            } else {
-                monthlyData[idx].expense += t.amount
+            switch t.type {
+            case .income: monthlyData[idx].income += t.amount
+            case .expense: monthlyData[idx].expense += t.amount
+            case .transfer: break
             }
         }
 
@@ -1588,10 +1686,10 @@ class DataStore {
             for t in transactions {
                 guard t.date >= start, t.date <= end else { continue }
                 if let alloc = t.allocations.first(where: { $0.projectId == projectId }) {
-                    if t.type == .income {
-                        income += alloc.amount
-                    } else {
-                        expense += alloc.amount
+                    switch t.type {
+                    case .income: income += alloc.amount
+                    case .expense: expense += alloc.amount
+                    case .transfer: break
                     }
                 }
             }
@@ -1650,7 +1748,10 @@ class DataStore {
                 return newProject.id
             },
             getCategoryId: { [self] name, type in
-                let categoryType: CategoryType = type == .income ? .income : .expense
+                let categoryType: CategoryType = switch type {
+                case .income: .income
+                case .expense, .transfer: .expense
+                }
                 if let existing = categories.first(where: { $0.name == name && $0.type == categoryType }) {
                     return existing.id
                 }
@@ -1708,6 +1809,11 @@ class DataStore {
         for t in transactions { modelContext.delete(t) }
         for c in categories { modelContext.delete(c) }
         for r in recurringTransactions { modelContext.delete(r) }
+        // Phase 4B: 会計データも削除
+        for a in accounts { modelContext.delete(a) }
+        for je in journalEntries { modelContext.delete(je) }
+        for jl in journalLines { modelContext.delete(jl) }
+        if let profile = accountingProfile { modelContext.delete(profile) }
         if save() {
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
@@ -1717,6 +1823,29 @@ class DataStore {
         transactions = []
         categories = []
         recurringTransactions = []
+        accounts = []
+        journalEntries = []
+        journalLines = []
+        accountingProfile = nil
         seedDefaultCategories()
+    }
+
+    // MARK: - Accounting CRUD
+
+    func getAccount(id: String) -> PPAccount? {
+        accounts.first { $0.id == id }
+    }
+
+    func getJournalEntry(id: UUID) -> PPJournalEntry? {
+        journalEntries.first { $0.id == id }
+    }
+
+    func getJournalLines(for entryId: UUID) -> [PPJournalLine] {
+        journalLines.filter { $0.entryId == entryId }.sorted { $0.displayOrder < $1.displayOrder }
+    }
+
+    func getJournalEntry(for transactionId: UUID) -> PPJournalEntry? {
+        let sourceKey = PPJournalEntry.transactionSourceKey(transactionId)
+        return journalEntries.first { $0.sourceKey == sourceKey }
     }
 }
