@@ -14,7 +14,8 @@ enum AccountingReportService {
     ) -> TrialBalanceReport {
         let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
         let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate
+            entries: journalEntries, start: startDate, end: endDate,
+            excludeTypes: [.closing]
         )
 
         let rows = accounts.filter(\.isActive).compactMap { account -> TrialBalanceRow? in
@@ -60,7 +61,8 @@ enum AccountingReportService {
     ) -> ProfitLossReport {
         let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
         let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate
+            entries: journalEntries, start: startDate, end: endDate,
+            excludeTypes: [.closing]
         )
 
         let revenueAccounts = accounts.filter { $0.accountType == .revenue && $0.isActive }
@@ -107,7 +109,8 @@ enum AccountingReportService {
     ) -> BalanceSheetReport {
         let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
         let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate
+            entries: journalEntries, start: startDate, end: endDate,
+            excludeTypes: [.closing]
         )
 
         func buildItems(type: AccountType) -> [BalanceSheetItem] {
@@ -187,11 +190,15 @@ enum AccountingReportService {
     private static func postedEntryIdsInRange(
         entries: [PPJournalEntry],
         start: Date,
-        end: Date
+        end: Date,
+        excludeTypes: Set<JournalEntryType> = []
     ) -> Set<UUID> {
         Set(
             entries
-                .filter { $0.isPosted && $0.date >= start && $0.date <= end }
+                .filter {
+                    $0.isPosted && $0.date >= start && $0.date <= end
+                        && !excludeTypes.contains($0.entryType)
+                }
                 .map(\.id)
         )
     }

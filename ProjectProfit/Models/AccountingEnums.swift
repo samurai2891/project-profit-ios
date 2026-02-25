@@ -67,6 +67,7 @@ enum AccountSubtype: String, Codable, CaseIterable {
     // 特殊 (Special)
     case suspense                // 仮勘定
     case openingBalance          // 期首残高用
+    case accumulatedDepreciation // 減価償却累計額
 
     // 収益 (Revenue)
     case salesRevenue            // 売上（収入）金額
@@ -100,6 +101,7 @@ enum AccountSubtype: String, Codable, CaseIterable {
         case .ownerDrawings: "事業主貸"
         case .suspense: "仮勘定"
         case .openingBalance: "期首残高"
+        case .accumulatedDepreciation: "減価償却累計額"
         case .salesRevenue: "売上（収入）金額"
         case .otherIncome: "雑収入"
         case .rentExpense: "地代家賃"
@@ -133,6 +135,46 @@ enum JournalEntryType: String, Codable, CaseIterable {
         case .manual: "手動仕訳"
         case .opening: "期首残高仕訳"
         case .closing: "決算仕訳"
+        }
+    }
+}
+
+// MARK: - DepreciationMethod
+
+/// 減価償却方法
+enum DepreciationMethod: String, Codable, CaseIterable {
+    case straightLine      // 定額法（個人事業主デフォルト）
+    case decliningBalance  // 定率法（届出が必要）
+    case immediateExpense  // 少額一括（10万円未満）
+    case threeYearEqual    // 一括償却資産（3年均等、10万～20万円未満）
+    case smallBusiness     // 少額減価償却資産特例（30万円未満、青色申告者）
+
+    var label: String {
+        switch self {
+        case .straightLine: "定額法"
+        case .decliningBalance: "定率法"
+        case .immediateExpense: "少額一括"
+        case .threeYearEqual: "一括償却（3年均等）"
+        case .smallBusiness: "少額減価償却資産特例"
+        }
+    }
+}
+
+// MARK: - AssetStatus
+
+/// 固定資産のステータス
+enum AssetStatus: String, Codable, CaseIterable {
+    case active            // 使用中（償却中）
+    case fullyDepreciated  // 償却完了
+    case disposed          // 除却済み
+    case sold              // 売却済み
+
+    var label: String {
+        switch self {
+        case .active: "使用中"
+        case .fullyDepreciated: "償却完了"
+        case .disposed: "除却済み"
+        case .sold: "売却済み"
         }
     }
 }

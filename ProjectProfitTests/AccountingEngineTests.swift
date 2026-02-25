@@ -17,6 +17,7 @@ final class AccountingEngineTests: XCTestCase {
             for: PPProject.self, PPTransaction.self, PPCategory.self,
             PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self,
             PPJournalLine.self, PPAccountingProfile.self,
+            PPFixedAsset.self,
             configurations: config
         )
         context = container.mainContext

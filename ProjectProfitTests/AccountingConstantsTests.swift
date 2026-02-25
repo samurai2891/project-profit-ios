@@ -6,7 +6,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Default Accounts Tests
 
     func testDefaultAccountsCount() {
-        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 25)
+        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 26)
     }
 
     func testAllAccountIdsAreUnique() {
@@ -20,9 +20,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testAssetAccountsCount() {
-        // 現金, 普通預金, 売掛金, 前払費用, クレジットカード + 仮勘定(B/S表示のためasset) = 6
+        // 現金, 普通預金, 売掛金, 前払費用, クレジットカード + 減価償却累計額(contra-asset) + 仮勘定(B/S表示のためasset) = 7
         let assets = AccountingConstants.defaultAccounts.filter { $0.accountType == .asset }
-        XCTAssertEqual(assets.count, 6)
+        XCTAssertEqual(assets.count, 7)
     }
 
     func testEquityAccountsCount() {

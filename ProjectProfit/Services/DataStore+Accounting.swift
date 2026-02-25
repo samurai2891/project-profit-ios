@@ -72,6 +72,67 @@ extension DataStore {
         refreshJournalLines()
     }
 
+    // MARK: - Closing Entry (決算仕訳)
+
+    /// 指定年度の決算仕訳を生成する
+    @discardableResult
+    func generateClosingEntry(for year: Int) -> PPJournalEntry? {
+        guard !isYearLocked(year) else { return nil }
+
+        let engine = AccountingEngine(modelContext: modelContext)
+        let entry = engine.generateClosingBalanceEntry(
+            for: year,
+            accounts: accounts,
+            journalEntries: journalEntries,
+            journalLines: journalLines
+        )
+
+        if entry != nil {
+            save()
+            refreshJournalEntries()
+            refreshJournalLines()
+        }
+        return entry
+    }
+
+    /// 指定年度の決算仕訳を削除する
+    func deleteClosingEntry(for year: Int) {
+        guard !isYearLocked(year) else { return }
+
+        let engine = AccountingEngine(modelContext: modelContext)
+        engine.deleteClosingBalanceEntry(for: year)
+
+        save()
+        refreshJournalEntries()
+        refreshJournalLines()
+    }
+
+    /// 指定年度の決算仕訳を再生成する（削除→生成）
+    @discardableResult
+    func regenerateClosingEntry(for year: Int) -> PPJournalEntry? {
+        guard !isYearLocked(year) else { return nil }
+
+        let engine = AccountingEngine(modelContext: modelContext)
+        engine.deleteClosingBalanceEntry(for: year)
+        save()
+        refreshJournalEntries()
+        refreshJournalLines()
+
+        let entry = engine.generateClosingBalanceEntry(
+            for: year,
+            accounts: accounts,
+            journalEntries: journalEntries,
+            journalLines: journalLines
+        )
+
+        if entry != nil {
+            save()
+            refreshJournalEntries()
+            refreshJournalLines()
+        }
+        return entry
+    }
+
     // MARK: - Account Balance
 
     func getAccountBalance(accountId: String, upTo date: Date? = nil) -> (debit: Int, credit: Int, balance: Int) {

@@ -14,6 +14,7 @@ final class AccountingBootstrapTests: XCTestCase {
             for: PPProject.self, PPTransaction.self, PPCategory.self,
             PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self,
             PPJournalLine.self, PPAccountingProfile.self,
+            PPFixedAsset.self,
             configurations: config
         )
         context = container.mainContext
@@ -66,11 +67,11 @@ final class AccountingBootstrapTests: XCTestCase {
 
         let result = service.execute(categories: categories, transactions: transactions)
 
-        XCTAssertEqual(result.accountsCreated, 25)
+        XCTAssertEqual(result.accountsCreated, 26)
 
         let descriptor = FetchDescriptor<PPAccount>()
         let accounts = try! context.fetch(descriptor)
-        XCTAssertEqual(accounts.count, 25)
+        XCTAssertEqual(accounts.count, 26)
     }
 
     func testStep2_IdempotentOnSecondRun() {
@@ -222,7 +223,7 @@ final class AccountingBootstrapTests: XCTestCase {
         let service = AccountingBootstrapService(modelContext: context)
         let result = service.execute(categories: categories, transactions: [tx])
 
-        XCTAssertEqual(result.accountsCreated, 25)
+        XCTAssertEqual(result.accountsCreated, 26)
         XCTAssertGreaterThan(result.categoriesLinked, 0)
         XCTAssertEqual(result.transactionsBackfilled, 1)
         XCTAssertEqual(result.journalEntriesGenerated, 1)

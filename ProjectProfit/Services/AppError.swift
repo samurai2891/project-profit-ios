@@ -10,6 +10,7 @@ enum AppError: LocalizedError {
     case cannotDeleteDefaultCategory
     case invalidInput(message: String)
     case yearLocked(year: Int)
+    case fixedAssetNotFound(id: UUID)
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +32,8 @@ enum AppError: LocalizedError {
             return message
         case .yearLocked(let year):
             return "\(year)年度はロックされています。変更するにはロックを解除してください"
+        case .fixedAssetNotFound:
+            return "固定資産が見つかりません"
         }
     }
 }

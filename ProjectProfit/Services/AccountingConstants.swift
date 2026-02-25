@@ -55,6 +55,9 @@ enum AccountingConstants {
         DefaultAccountDefinition(id: "acct-outsourcing", code: "511", name: "外注工賃", accountType: .expense, normalBalance: .debit, subtype: .outsourcingExpense, displayOrder: 50),
         DefaultAccountDefinition(id: "acct-misc", code: "512", name: "雑費", accountType: .expense, normalBalance: .debit, subtype: .miscExpense, displayOrder: 51),
 
+        // 減価償却累計額 (Contra-Asset) — 1xx
+        DefaultAccountDefinition(id: "acct-accumulated-depreciation", code: "106", name: "減価償却累計額", accountType: .asset, normalBalance: .credit, subtype: .accumulatedDepreciation, displayOrder: 55),
+
         // 特殊 (Special) — 9xx（仮勘定は B/S に表示されるため asset 区分）
         DefaultAccountDefinition(id: "acct-suspense", code: "900", name: "仮勘定", accountType: .asset, normalBalance: .debit, subtype: .suspense, displayOrder: 99),
     ]
@@ -103,6 +106,10 @@ enum AccountingConstants {
     static let otherIncomeAccountId = "acct-other-income"
     /// 雑費
     static let miscExpenseAccountId = "acct-misc"
+    /// 減価償却累計額
+    static let accumulatedDepreciationAccountId = "acct-accumulated-depreciation"
+    /// 減価償却費
+    static let depreciationExpenseAccountId = "acct-depreciation"
     /// 仮勘定
     static let suspenseAccountId = "acct-suspense"
 

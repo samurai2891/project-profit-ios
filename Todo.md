@@ -1,7 +1,7 @@
 # ProjectProfit 技術的負債・会計バグ管理台帳
 
 > **作成日**: 2026-02-24
-> **最終更新**: 2026-02-25 (全CRITICAL/HIGH/MEDIUM修正完了: 35/35件, Batch 9-11実装完了: T5+4F-5+4G-1+4G-2+4G-7+9A)
+> **最終更新**: 2026-02-25 (全CRITICAL/HIGH/MEDIUM修正完了: 35/35件, 構造的欠落6/7修正済み: T1+T2+T3+T5+T6+T7, 残りT4のみ)
 > **調査方法**: 3ラウンド・計27 Agentによるコード検証済み
 > **目的**: 確定申告機能実装前に修正必須の問題を漏れなく管理する
 > **重要**: この台帳の問題は全てコード実態から検証済み。推測ではない。
@@ -15,7 +15,7 @@
 | CRITICAL | 9 | 9 | 0 |
 | HIGH | 11 | 11 | 0 |
 | MEDIUM | 15 | 15 | 0 |
-| 構造的欠落 | 7 | 1 | 6 |
+| 構造的欠落 | 7 | 6 | 1 |
 
 ---
 
@@ -773,7 +773,9 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T1: 期首残高・期末残高の概念がない
 
-- **検証**: "残高", "balance", "期首", "期末" — ソースコード内で0件
+- **状態**: [x] 修正済み (2026-02-25, Phase 4B + Batch 12B)
+- **修正内容**: AccountingEngine.generateOpeningBalanceEntry() で期首残高仕訳を自動生成（前年度の資産・負債・資本残高を繰越）。generateClosingBalanceEntry() で決算仕訳を生成（収益・費用勘定を0にし当期純利益を元入金に振替）。deleteClosingBalanceEntry() で削除。DataStore+Accounting に generateClosingEntry/deleteClosingEntry/regenerateClosingEntry。ClosingEntryView で決算仕訳の生成・確認・削除UI。AccountingReportService.postedEntryIdsInRange に excludeTypes 追加でレポート二重計上防止。
+- ~~**検証**: "残高", "balance", "期首", "期末" — ソースコード内で0件~~
 - **必要性**: 貸借対照表の作成、前期からの繰越金の管理
 - **影響範囲**: 新規モデル追加、サマリーロジックの拡張
 
@@ -781,8 +783,10 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T2: 標準勘定科目マッピングがない
 
-- **検証**: "勘定科目", "chart of accounts", "accountCode" — 0件
-- **現状**: PPCategory は `name`, `type`, `icon` のみ。デフォルトカテゴリは「ホスティング」「ツール」等の独自名称
+- **状態**: [x] 修正済み (2026-02-25, Phase 4A-4B)
+- **修正内容**: AccountingConstants に25勘定科目定義（資産6/負債2/資本3/収益2/費用12/特殊1）。PPAccount モデル新規作成。ChartOfAccountsView で勘定科目一覧表示。CategoryAccountMappingView でカテゴリ⇔勘定科目の紐付け設定。AccountingBootstrapService で13マッピング自動適用。
+- ~~**検証**: "勘定科目", "chart of accounts", "accountCode" — 0件~~
+- ~~**現状**: PPCategory は `name`, `type`, `icon` のみ。デフォルトカテゴリは「ホスティング」「ツール」等の独自名称~~
 - **必要性**: 旅費交通費、通信費、消耗品費等の標準勘定科目への紐づけ。確定申告書類の経費区分に直接マッピング
 - **影響範囲**: PPCategory にフィールド追加、マッピングテーブル、確定申告エクスポートロジック
 
@@ -790,8 +794,10 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T3: 減価償却の概念がない
 
-- **検証**: "減価償却", "depreciation", "固定資産" — ソースコード内で0件（Xcode Assets のみ）
-- **現状**: `yearlyAmortizationMode` は年額の月次按分機能であり、会計上の減価償却ではない
+- **状態**: [x] 修正済み (2026-02-25, Batch 13-14)
+- **修正内容**: DepreciationMethod enum（定額法/200%定率法/少額一括/3年均等/少額減価償却資産特例）、AssetStatus enum。PPFixedAsset SwiftData モデル（取得日/取得価額/耐用年数/償却方法/残存価額/事業使用割合等）。DepreciationEngine で5種類の日本税法準拠償却計算＋仕訳生成（事業/家事按分対応）。減価償却累計額アカウント追加。DataStore+FixedAsset.swift で CRUD＋一括計上＋スケジュールプレビュー。FixedAssetFormView（自動償却方法提案付き）、FixedAssetListView、FixedAssetDetailView。
+- ~~**検証**: "減価償却", "depreciation", "固定資産" — ソースコード内で0件（Xcode Assets のみ）~~
+- ~~**現状**: `yearlyAmortizationMode` は年額の月次按分機能であり、会計上の減価償却ではない~~
 - **必要性**: PC、設備等の固定資産の定額法/定率法による年次償却。固定資産台帳の作成
 - **影響範囲**: 新規モデル (FixedAsset)、償却計算エンジン、固定資産台帳ビュー
 
@@ -819,8 +825,10 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T6: 確定申告用エクスポートフォーマットがない
 
-- **検証**: "青色申告", "収支内訳書", "決算書", "e-Tax" — 0件
-- **現状**: CSV 6列のみ (Utilities.swift L669-697)
+- **状態**: [x] 修正済み (2026-02-25, Phase 4G)
+- **修正内容**: EtaxXtxExporter で .xtx 形式（e-Tax 互換 XML）出力。EtaxFieldPopulator で青色申告決算書フィールド自動入力。ShushiNaiyakushoBuilder で白色申告（収支内訳書）対応。EtaxExportView でプレビュー＋エクスポート UI。EtaxCharacterValidator で JIS X 0208 文字検証。
+- ~~**検証**: "青色申告", "収支内訳書", "決算書", "e-Tax" — 0件~~
+- ~~**現状**: CSV 6列のみ (Utilities.swift L669-697)~~
 - **必要性**: 青色申告決算書（一般用/不動産用）、収支内訳書、e-Tax XML フォーマットへの対応
 - **影響範囲**: エクスポートエンジン新規作成、勘定科目マッピング (T2) 前提
 
@@ -828,8 +836,10 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T7: 損益計算書の概念がない
 
-- **検証**: "損益計算書", "P&L", "income statement" — ViewModelに `yearlyProfitLoss` があるが単純集計のみ
-- **現状**: `OverallSummary` (Models.swift L339-344) は `totalIncome/totalExpense/netProfit/profitMargin` の1段階集計。売上原価、販管費、営業利益等の階層構造なし
+- **状態**: [x] 修正済み (2026-02-25, Phase 4E)
+- **修正内容**: AccountingReportService に generateProfitLoss（収益・費用区分別集計）、generateTrialBalance（試算表）、generateBalanceSheet（B/S、当期純利益の資本組入れ含む）を実装。ProfitLossView、TrialBalanceView、BalanceSheetView で各レポートを表示。
+- ~~**検証**: "損益計算書", "P&L", "income statement" — ViewModelに `yearlyProfitLoss` があるが単純集計のみ~~
+- ~~**現状**: `OverallSummary` (Models.swift L339-344) は `totalIncome/totalExpense/netProfit/profitMargin` の1段階集計~~
 - **必要性**: 確定申告書類の基礎となる標準的な損益計算書。多段階利益の計算
 - **影響範囲**: カテゴリの階層化 (T2 と連動)、レポートロジックの大幅拡張
 
@@ -1809,3 +1819,4 @@ Phase 4H: テスト + 検証
 | 2026-02-25 | Phase 4A 実装完了 (246650b): AccountingEnums, PPAccount, PPJournalEntry/Line, PPAccountingProfile, .transfer対応, modelContainer更新。31ファイル変更、テスト3件新規追加 |
 | 2026-02-25 | Phase 4B 実装完了 (1a93e1e): AccountingConstants(25勘定科目/13マッピング), AccountingBootstrapService(8ステップ), AccountingEngine(自動仕訳変換+期首残高), JournalValidationService, DataStore統合。テスト61件新規追加（合計770テスト全パス）。コードレビューでCRITICAL2件+HIGH4件修正済み |
 | 2026-02-25 | Batch 9-11 実装完了: (9A) PPRecurringTransactionに会計フィールド3つ追加+DataStore/RecurringFormView対応, (9B) ClassificationLearningService新規+学習フィードバックUI, (10A) TaxYear2025.json+TaxYearDefinitionLoader, (10B) ClassificationDictionary.json+ClassificationDictionaryLoader, (11A) 年度ロック — lockedYears+CRUD全ガード+DataStore+YearLock.swift, (11B) EtaxFormPreviewView抽出。テスト26件新規追加（合計868テスト全パス）。コードレビューでHIGH2件+MEDIUM2件修正済み |
+| 2026-02-25 | Batch 12-14 実装完了 (T1+T3 修正): (12A) Todo.md T2/T6/T7ステータス更新, (12B) 決算仕訳(T1) — AccountingEngine.generateClosingBalanceEntry+deleteClosingBalanceEntry, AccountingReportService.postedEntryIdsInRange excludeTypes追加, DataStore+Accounting closing entry CRUD, ClosingEntryView新規, (13A-F) 減価償却Backend(T3) — DepreciationMethod/AssetStatus enum, PPFixedAsset モデル, DepreciationEngine（定額法/200%定率法/少額一括/3年均等/少額特例）, 減価償却累計額アカウント追加, ModelContainer登録, seedMissingDefaultAccounts, (14A-E) 減価償却UI(T3) — DataStore+FixedAsset CRUD, FixedAssetFormView/ListView/DetailView新規, AccountingHomeViewにナビ追加。テスト31件新規追加（合計899テスト全GREEN）。コードレビューでHIGH2件修正済み（3年均等端数処理、除却年月割計算） |

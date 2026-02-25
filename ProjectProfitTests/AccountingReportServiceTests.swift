@@ -14,6 +14,7 @@ final class AccountingReportServiceTests: XCTestCase {
         container = try! ModelContainer(
             for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self,
             PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
+            PPFixedAsset.self,
             configurations: config
         )
         context = ModelContext(container)

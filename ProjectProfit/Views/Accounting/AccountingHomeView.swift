@@ -114,6 +114,18 @@ struct AccountingHomeView: View {
                 destination: BalanceSheetView()
             )
             navigationRow(
+                icon: "shippingbox",
+                title: "固定資産台帳",
+                subtitle: "固定資産の管理と減価償却",
+                destination: FixedAssetListView()
+            )
+            navigationRow(
+                icon: "doc.badge.gearshape",
+                title: "決算仕訳",
+                subtitle: "年度末の収益・費用勘定の振替",
+                destination: ClosingEntryView()
+            )
+            navigationRow(
                 icon: "square.and.arrow.up",
                 title: "e-Tax出力",
                 subtitle: "確定申告データの出力",

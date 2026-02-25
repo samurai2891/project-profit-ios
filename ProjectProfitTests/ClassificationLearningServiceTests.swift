@@ -14,6 +14,7 @@ final class ClassificationLearningServiceTests: XCTestCase {
             for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self,
             PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
             PPUserRule.self,
+            PPFixedAsset.self,
             configurations: config
         )
         context = ModelContext(container)

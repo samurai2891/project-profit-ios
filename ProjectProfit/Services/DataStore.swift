@@ -15,6 +15,7 @@ class DataStore {
     var journalEntries: [PPJournalEntry] = []
     var journalLines: [PPJournalLine] = []
     var accountingProfile: PPAccountingProfile?
+    var fixedAssets: [PPFixedAsset] = []
     var isLoading = true
     var lastError: AppError?
 
@@ -61,6 +62,9 @@ class DataStore {
             let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
             accountingProfile = try modelContext.fetch(profileDescriptor).first
 
+            let fixedAssetDescriptor = FetchDescriptor<PPFixedAsset>(sortBy: [SortDescriptor(\.acquisitionDate, order: .reverse)])
+            fixedAssets = try modelContext.fetch(fixedAssetDescriptor)
+
             // Phase 4B: 会計ブートストラップ（初回のみ実行）
             let bootstrap = AccountingBootstrapService(modelContext: modelContext)
             if bootstrap.needsBootstrap() {
@@ -81,6 +85,9 @@ class DataStore {
                     }
                 }
             }
+
+            // 既存ユーザーに新しいデフォルト勘定科目を追加（減価償却累計額等）
+            seedMissingDefaultAccounts()
         } catch {
             AppLogger.dataStore.error("Failed to load data: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
@@ -148,6 +155,7 @@ class DataStore {
             refreshAccounts()
             refreshJournalEntries()
             refreshJournalLines()
+            refreshFixedAssets()
             return false
         }
     }
@@ -219,6 +227,35 @@ class DataStore {
         } catch {
             AppLogger.dataStore.error("Failed to refresh journal lines: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
+        }
+    }
+
+    func refreshFixedAssets() {
+        do {
+            let descriptor = FetchDescriptor<PPFixedAsset>(sortBy: [SortDescriptor(\.acquisitionDate, order: .reverse)])
+            fixedAssets = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.dataStore.error("Failed to refresh fixed assets: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+        }
+    }
+
+    /// 既存ユーザーに新しいデフォルト勘定科目を追加する（冪等）
+    func seedMissingDefaultAccounts() {
+        let existingIds = Set(accounts.map(\.id))
+        var added = false
+        for def in AccountingConstants.defaultAccounts where !existingIds.contains(def.id) {
+            let account = PPAccount(
+                id: def.id, code: def.code, name: def.name,
+                accountType: def.accountType, normalBalance: def.normalBalance,
+                subtype: def.subtype, isSystem: true, displayOrder: def.displayOrder
+            )
+            modelContext.insert(account)
+            added = true
+        }
+        if added {
+            save()
+            refreshAccounts()
         }
     }
 
@@ -1857,6 +1894,7 @@ class DataStore {
         for je in journalEntries { modelContext.delete(je) }
         for jl in journalLines { modelContext.delete(jl) }
         if let profile = accountingProfile { modelContext.delete(profile) }
+        for fa in fixedAssets { modelContext.delete(fa) }
         if save() {
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
@@ -1870,6 +1908,7 @@ class DataStore {
         journalEntries = []
         journalLines = []
         accountingProfile = nil
+        fixedAssets = []
         seedDefaultCategories()
     }
 
