@@ -606,9 +606,10 @@ class DataStore {
     // MARK: - Category CRUD
 
     @discardableResult
-    func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory? {
-        if categories.contains(where: { $0.type == type && $0.name == name }) {
-            return nil
+    func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
+        // 同名・同タイプの重複チェック: 既存があればそれを返す
+        if let existing = categories.first(where: { $0.type == type && $0.name == name }) {
+            return existing
         }
         let category = PPCategory(id: UUID().uuidString, name: name, type: type, icon: icon)
         modelContext.insert(category)
