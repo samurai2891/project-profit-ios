@@ -36,9 +36,11 @@ final class RecurringViewModel {
                 let normalised = recurring.frequency == .monthly
                     ? recurring.amount
                     : recurring.amount / 12
-                return recurring.type == .income
-                    ? total + normalised
-                    : total - normalised
+                switch recurring.type {
+                case .income: return total + normalised
+                case .expense: return total - normalised
+                case .transfer: return total
+                }
             }
     }
 

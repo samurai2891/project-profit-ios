@@ -55,7 +55,8 @@ final class TransactionHistoryTests: XCTestCase {
             displayLabel: "2026年2月",
             transactions: [],
             income: 5000,
-            expense: 3000
+            expense: 3000,
+            transfer: 0
         )
         XCTAssertEqual(group.id, "2026-02")
     }
@@ -175,12 +176,17 @@ final class TransactionHistoryTests: XCTestCase {
                 .reduce(0) { $0 + $1.amount }
             let displayLabel = formatYearMonth(txns.first?.date ?? Date())
 
+            let transfer = txns
+                .filter { $0.type == .transfer }
+                .reduce(0) { $0 + $1.amount }
+
             return TransactionGroup(
                 yearMonth: yearMonth,
                 displayLabel: displayLabel,
                 transactions: txns,
                 income: income,
-                expense: expense
+                expense: expense,
+                transfer: transfer
             )
         }
         .sorted { $0.yearMonth > $1.yearMonth }

@@ -25,14 +25,16 @@ enum ProjectStatus: String, Codable, CaseIterable {
     }
 }
 
-enum TransactionType: String, Codable {
+enum TransactionType: String, Codable, CaseIterable {
     case income
     case expense
+    case transfer
 
     var label: String {
         switch self {
         case .income: "収益"
         case .expense: "経費"
+        case .transfer: "振替"
         }
     }
 }
@@ -182,6 +184,12 @@ final class PPTransaction {
     var receiptImagePath: String?
     var lineItems: [ReceiptLineItem]
     var isManuallyEdited: Bool?
+    // Phase 4: 複式簿記対応フィールド
+    var paymentAccountId: String?       // 支払元/入金先口座（FK → PPAccount.id）
+    var transferToAccountId: String?    // 振替先口座（type == .transfer 時のみ、FK → PPAccount.id）
+    var taxDeductibleRate: Int?         // 必要経費算入率（0-100、家事按分対応。nil = 100%）
+    var bookkeepingMode: BookkeepingMode?  // この取引の記帳方式（nil = プロファイル設定に従う）
+    var journalEntryId: UUID?           // 対応する仕訳の ID（FK → PPJournalEntry.id）
     var createdAt: Date
     var updatedAt: Date
 
@@ -197,6 +205,11 @@ final class PPTransaction {
         receiptImagePath: String? = nil,
         lineItems: [ReceiptLineItem] = [],
         isManuallyEdited: Bool? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        bookkeepingMode: BookkeepingMode? = nil,
+        journalEntryId: UUID? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -211,8 +224,26 @@ final class PPTransaction {
         self.receiptImagePath = receiptImagePath
         self.lineItems = lineItems
         self.isManuallyEdited = isManuallyEdited
+        self.paymentAccountId = paymentAccountId
+        self.transferToAccountId = transferToAccountId
+        self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
+        self.bookkeepingMode = bookkeepingMode
+        self.journalEntryId = journalEntryId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - PPTransaction Computed Properties
+
+extension PPTransaction {
+    /// 実効経費算入率（nil の場合は 100% = 全額経費）
+    var effectiveTaxDeductibleRate: Int { taxDeductibleRate ?? 100 }
+
+    /// 経費算入後の金額（家事按分適用後）
+    /// 整数除算のため端数切り捨て。例: 999円 × 50% = 499円
+    var deductibleAmount: Int {
+        amount * effectiveTaxDeductibleRate / 100
     }
 }
 
@@ -223,19 +254,22 @@ final class PPCategory {
     var type: CategoryType
     var icon: String
     var isDefault: Bool
+    var linkedAccountId: String?  // 紐づく勘定科目の ID（FK → PPAccount.id、T2 対応）
 
     init(
         id: String,
         name: String,
         type: CategoryType,
         icon: String,
-        isDefault: Bool = false
+        isDefault: Bool = false,
+        linkedAccountId: String? = nil
     ) {
         self.id = id
         self.name = name
         self.type = type
         self.icon = icon
         self.isDefault = isDefault
+        self.linkedAccountId = linkedAccountId
     }
 }
 

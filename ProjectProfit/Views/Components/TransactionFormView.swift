@@ -30,7 +30,11 @@ struct TransactionFormView: View {
     }
 
     private var categories: [PPCategory] {
-        dataStore.categories.filter { $0.type == (type == .income ? .income : .expense) }
+        let categoryType: CategoryType = switch type {
+        case .income: .income
+        case .expense, .transfer: .expense
+        }
+        return dataStore.categories.filter { $0.type == categoryType }
     }
 
     private var totalRatio: Int {
@@ -254,6 +258,7 @@ struct TransactionFormView: View {
             HStack(spacing: 12) {
                 typeButton(for: .expense, label: "経費", icon: "arrow.down.circle.fill", activeColor: AppColors.error)
                 typeButton(for: .income, label: "収益", icon: "arrow.up.circle.fill", activeColor: AppColors.success)
+                typeButton(for: .transfer, label: "振替", icon: "arrow.left.arrow.right.circle.fill", activeColor: AppColors.warning)
             }
         }
     }

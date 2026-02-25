@@ -162,6 +162,7 @@ struct TransactionsView: View {
             Text("全て").tag(TransactionType?.none)
             Text("収益").tag(TransactionType?.some(.income))
             Text("経費").tag(TransactionType?.some(.expense))
+            Text("振替").tag(TransactionType?.some(.transfer))
         }
         .pickerStyle(.segmented)
         .accessibilityLabel("取引種別フィルター")
@@ -169,24 +170,40 @@ struct TransactionsView: View {
 
     // MARK: - Summary Bar
 
+    @ViewBuilder
     private func summaryBar(viewModel: TransactionsViewModel) -> some View {
-        let netColor = netColor(for: viewModel.netTotal)
-        return HStack(spacing: 0) {
-            summaryItem(label: "収益", amount: viewModel.incomeTotal, color: AppColors.success)
-            Divider().frame(height: 36)
-            summaryItem(label: "経費", amount: viewModel.expenseTotal, color: AppColors.error)
-            Divider().frame(height: 36)
-            summaryItem(label: "差引", amount: viewModel.netTotal, color: netColor)
+        if viewModel.isTransferFilter {
+            HStack(spacing: 0) {
+                summaryItem(label: "振替合計", amount: viewModel.transferTotal, color: AppColors.warning)
+            }
+            .padding(.vertical, 12)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppColors.border, lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("振替合計 \(formatCurrency(viewModel.transferTotal))")
+        } else {
+            let netColor = netColor(for: viewModel.netTotal)
+            HStack(spacing: 0) {
+                summaryItem(label: "収益", amount: viewModel.incomeTotal, color: AppColors.success)
+                Divider().frame(height: 36)
+                summaryItem(label: "経費", amount: viewModel.expenseTotal, color: AppColors.error)
+                Divider().frame(height: 36)
+                summaryItem(label: "差引", amount: viewModel.netTotal, color: netColor)
+            }
+            .padding(.vertical, 12)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppColors.border, lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("収益 \(formatCurrency(viewModel.incomeTotal)) 経費 \(formatCurrency(viewModel.expenseTotal)) 差引 \(formatCurrency(viewModel.netTotal))")
         }
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(AppColors.border, lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("収益 \(formatCurrency(viewModel.incomeTotal)) 経費 \(formatCurrency(viewModel.expenseTotal)) 差引 \(formatCurrency(viewModel.netTotal))")
     }
 
     private func summaryItem(label: String, amount: Int, color: Color) -> some View {
@@ -317,7 +334,7 @@ struct TransactionsView: View {
         LazyVStack(spacing: 16) {
             ForEach(viewModel.groupedTransactions) { group in
                 VStack(spacing: 8) {
-                    sectionHeader(group: group)
+                    sectionHeader(group: group, isTransferFilter: viewModel.isTransferFilter)
 
                     ForEach(group.transactions) { transaction in
                         TransactionCardView(
@@ -331,7 +348,7 @@ struct TransactionsView: View {
         }
     }
 
-    private func sectionHeader(group: TransactionGroup) -> some View {
+    private func sectionHeader(group: TransactionGroup, isTransferFilter: Bool) -> some View {
         HStack {
             Text(group.displayLabel)
                 .font(.subheadline)
@@ -340,13 +357,19 @@ struct TransactionsView: View {
 
             Spacer()
 
-            HStack(spacing: 12) {
-                Text("収益: \(formatCurrency(group.income))")
+            if isTransferFilter {
+                Text("振替: \(formatCurrency(group.transfer))")
                     .font(.caption)
-                    .foregroundStyle(AppColors.success)
-                Text("経費: \(formatCurrency(group.expense))")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error)
+                    .foregroundStyle(AppColors.warning)
+            } else {
+                HStack(spacing: 12) {
+                    Text("収益: \(formatCurrency(group.income))")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.success)
+                    Text("経費: \(formatCurrency(group.expense))")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.error)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -420,8 +443,12 @@ private struct TransactionCardView: View {
 
     @Environment(DataStore.self) private var dataStore
 
-    private var isIncome: Bool {
-        transaction.type == .income
+    private var typeColor: Color {
+        switch transaction.type {
+        case .income: AppColors.success
+        case .expense: AppColors.error
+        case .transfer: AppColors.warning
+        }
     }
 
     private var categoryName: String {
@@ -439,12 +466,15 @@ private struct TransactionCardView: View {
     }
 
     private var formattedAmount: String {
-        let prefix = isIncome ? "+" : "-"
-        return "\(prefix)\(formatCurrency(transaction.amount))"
+        switch transaction.type {
+        case .income: return "+\(formatCurrency(transaction.amount))"
+        case .expense: return "-\(formatCurrency(transaction.amount))"
+        case .transfer: return formatCurrency(transaction.amount)
+        }
     }
 
     private var accessibilityDescription: String {
-        let typeLabel = isIncome ? "収益" : "経費"
+        let typeLabel = transaction.type.label
         let receiptInfo = hasReceipt ? " 添付画像あり" : ""
         let projectInfo = projectNames.isEmpty ? "" : " \(projectNames.joined(separator: ", "))"
         let memoInfo = transaction.memo.isEmpty ? "" : " \(transaction.memo)"
@@ -475,15 +505,23 @@ private struct TransactionCardView: View {
 
     // MARK: - Card Subviews
 
+    private var typeIcon: String {
+        switch transaction.type {
+        case .income: "arrow.up"
+        case .expense: "arrow.down"
+        case .transfer: "arrow.left.arrow.right"
+        }
+    }
+
     private var typeIndicator: some View {
         Circle()
-            .fill(isIncome ? AppColors.success.opacity(0.15) : AppColors.error.opacity(0.15))
+            .fill(typeColor.opacity(0.15))
             .frame(width: 36, height: 36)
             .overlay(
-                Image(systemName: isIncome ? "arrow.up" : "arrow.down")
+                Image(systemName: typeIcon)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                    .foregroundStyle(typeColor)
             )
             .accessibilityHidden(true)
     }
@@ -564,7 +602,7 @@ private struct TransactionCardView: View {
             Text(formattedAmount)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                .foregroundStyle(typeColor)
                 .accessibilityHidden(true)
 
             Button(action: onDelete) {

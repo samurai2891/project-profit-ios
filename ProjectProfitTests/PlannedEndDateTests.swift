@@ -16,7 +16,7 @@ final class PlannedEndDateTests: XCTestCase {
         super.setUp()
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try! ModelContainer(
-            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self,
+            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
             configurations: config
         )
         context = ModelContext(container)

@@ -192,7 +192,7 @@ struct RecurringView: View {
             HStack(spacing: 10) {
                 // Type indicator bar
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(recurring.type == .expense ? AppColors.error : AppColors.success)
+                    .fill(recurring.type == .expense ? AppColors.error : recurring.type == .transfer ? AppColors.warning : AppColors.success)
                     .frame(width: 4, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -225,8 +225,8 @@ struct RecurringView: View {
                         Text(formatCurrency(recurring.amount))
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(
-                                recurring.type == .expense
-                                    ? AppColors.error
+                                recurring.type == .expense ? AppColors.error
+                                    : recurring.type == .transfer ? AppColors.warning
                                     : AppColors.success
                             )
                     }
@@ -285,7 +285,7 @@ struct RecurringView: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(recurring.type == .expense ? "経費" : "収益") \(recurring.name) \(formatCurrency(recurring.amount)) \(vm.frequencyLabel(recurring))\(recurring.isActive ? "" : " 停止中")")
+        .accessibilityLabel("\(recurring.type.label) \(recurring.name) \(formatCurrency(recurring.amount)) \(vm.frequencyLabel(recurring))\(recurring.isActive ? "" : " 停止中")")
         .accessibilityHint("タップして編集")
         .onTapGesture {
             editingRecurring = recurring

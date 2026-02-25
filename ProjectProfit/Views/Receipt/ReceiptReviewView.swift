@@ -28,12 +28,19 @@ struct ReceiptReviewView: View {
     }
 
     private var categories: [PPCategory] {
-        let categoryType: CategoryType = type == .income ? .income : .expense
+        let categoryType: CategoryType = switch type {
+        case .income: .income
+        case .expense, .transfer: .expense
+        }
         return dataStore.categories.filter { $0.type == categoryType }
     }
 
     private var typeBadgeColor: Color {
-        type == .income ? AppColors.success : AppColors.error
+        switch type {
+        case .income: AppColors.success
+        case .expense: AppColors.error
+        case .transfer: AppColors.warning
+        }
     }
 
     private var totalRatio: Int {
@@ -146,6 +153,7 @@ struct ReceiptReviewView: View {
             HStack(spacing: 12) {
                 typeButton(for: .expense, label: "経費", icon: "arrow.down.circle.fill", activeColor: AppColors.error)
                 typeButton(for: .income, label: "収益", icon: "arrow.up.circle.fill", activeColor: AppColors.success)
+                typeButton(for: .transfer, label: "振替", icon: "arrow.left.arrow.right.circle.fill", activeColor: AppColors.warning)
             }
         }
     }
@@ -498,6 +506,9 @@ struct ReceiptReviewView: View {
     }
 
     private func fallbackCategoryId(for transactionType: TransactionType) -> String {
-        transactionType == .income ? "cat-other-income" : "cat-other-expense"
+        switch transactionType {
+        case .income: "cat-other-income"
+        case .expense, .transfer: "cat-other-expense"
+        }
     }
 }

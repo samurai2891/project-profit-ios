@@ -8,6 +8,7 @@ struct TransactionGroup: Identifiable {
     let transactions: [PPTransaction]
     let income: Int
     let expense: Int
+    let transfer: Int
 
     var id: String { yearMonth }
 }
@@ -61,8 +62,18 @@ final class TransactionsViewModel {
             .reduce(0) { $0 + effectiveAmount(for: $1) }
     }
 
+    var transferTotal: Int {
+        filteredTransactions
+            .filter { $0.type == .transfer }
+            .reduce(0) { $0 + effectiveAmount(for: $1) }
+    }
+
     var netTotal: Int {
         incomeTotal - expenseTotal
+    }
+
+    var isTransferFilter: Bool {
+        selectedType == .transfer
     }
 
     var hasActiveFilter: Bool {
@@ -101,7 +112,8 @@ final class TransactionsViewModel {
             displayLabel: displayLabel(from: yearMonth),
             transactions: sortTransactions(transactions),
             income: totalByType(.income, from: transactions),
-            expense: totalByType(.expense, from: transactions)
+            expense: totalByType(.expense, from: transactions),
+            transfer: totalByType(.transfer, from: transactions)
         )
     }
 

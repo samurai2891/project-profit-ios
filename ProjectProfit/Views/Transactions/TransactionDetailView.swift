@@ -11,7 +11,29 @@ struct TransactionDetailView: View {
     @State private var showDeleteAlert = false
     @State private var showRecurringHistory = false
 
-    private var isIncome: Bool { transaction.type == .income }
+    private var typeColor: Color {
+        switch transaction.type {
+        case .income: AppColors.success
+        case .expense: AppColors.error
+        case .transfer: AppColors.warning
+        }
+    }
+
+    private var typeIcon: String {
+        switch transaction.type {
+        case .income: "arrow.up.circle.fill"
+        case .expense: "arrow.down.circle.fill"
+        case .transfer: "arrow.left.arrow.right.circle.fill"
+        }
+    }
+
+    private var amountPrefix: String {
+        switch transaction.type {
+        case .income: "+"
+        case .expense: "-"
+        case .transfer: ""
+        }
+    }
 
     private var categoryName: String {
         dataStore.getCategory(id: transaction.categoryId)?.name ?? "未分類"
@@ -98,17 +120,17 @@ struct TransactionDetailView: View {
     private var amountHeader: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: isIncome ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                Image(systemName: typeIcon)
                     .font(.title3)
-                    .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
-                Text(isIncome ? "収益" : "経費")
+                    .foregroundStyle(typeColor)
+                Text(transaction.type.label)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                    .foregroundStyle(typeColor)
             }
 
-            Text("\(isIncome ? "+" : "-")\(formatCurrency(transaction.amount))")
+            Text("\(amountPrefix)\(formatCurrency(transaction.amount))")
                 .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                .foregroundStyle(typeColor)
 
             Text(formatDate(transaction.date))
                 .font(.subheadline)

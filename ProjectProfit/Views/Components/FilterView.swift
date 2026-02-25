@@ -53,6 +53,7 @@ struct FilterView: View {
                         Text("すべて").tag(TransactionType?.none)
                         Text("収益").tag(TransactionType?.some(.income))
                         Text("経費").tag(TransactionType?.some(.expense))
+                        Text("振替").tag(TransactionType?.some(.transfer))
                     }
                     .pickerStyle(.segmented)
                 }

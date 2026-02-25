@@ -62,7 +62,7 @@ struct RecurringFormView: View {
 
     private var filteredCategories: [PPCategory] {
         switch type {
-        case .expense:
+        case .expense, .transfer:
             return dataStore.categories.filter { $0.type == .expense }
         case .income:
             return dataStore.categories.filter { $0.type == .income }
@@ -190,6 +190,7 @@ struct RecurringFormView: View {
             Picker("種類", selection: $type) {
                 Text("経費").tag(TransactionType.expense)
                 Text("収益").tag(TransactionType.income)
+                Text("振替").tag(TransactionType.transfer)
             }
             .pickerStyle(.segmented)
         }

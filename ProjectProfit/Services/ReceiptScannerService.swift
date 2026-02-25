@@ -377,6 +377,8 @@ final class ReceiptScannerService {
             return .income
         case "expense":
             return .expense
+        case "transfer":
+            return .transfer
         default:
             return nil
         }
@@ -632,6 +634,8 @@ enum RegexReceiptParser {
             transactionScore = keywordScore(in: normalized, keywords: incomeHintKeywords)
         case .expense:
             transactionScore = keywordScore(in: normalized, keywords: expenseHintKeywords)
+        case .transfer:
+            transactionScore = 0
         }
         let base = documentType == .unknown ? 0.45 : 0.58
         let bonus = Double(documentScore + transactionScore) * 0.06

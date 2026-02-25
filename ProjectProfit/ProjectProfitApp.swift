@@ -22,7 +22,11 @@ struct ProjectProfitApp: App {
             PPProject.self,
             PPTransaction.self,
             PPCategory.self,
-            PPRecurringTransaction.self
+            PPRecurringTransaction.self,
+            PPAccount.self,
+            PPJournalEntry.self,
+            PPJournalLine.self,
+            PPAccountingProfile.self
         ])
     }
 }

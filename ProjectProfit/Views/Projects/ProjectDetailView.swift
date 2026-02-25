@@ -470,8 +470,20 @@ private struct TransactionRow: View {
     let viewModel: ProjectDetailViewModel
     let onDelete: () -> Void
 
-    private var isIncome: Bool {
-        transaction.type == .income
+    private var typeColor: Color {
+        switch transaction.type {
+        case .income: AppColors.success
+        case .expense: AppColors.error
+        case .transfer: AppColors.warning
+        }
+    }
+
+    private var typeIcon: String {
+        switch transaction.type {
+        case .income: "arrow.down.left"
+        case .expense: "arrow.up.right"
+        case .transfer: "arrow.left.arrow.right"
+        }
     }
 
     private var allocationRatio: Int? {
@@ -502,7 +514,7 @@ private struct TransactionRow: View {
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(isIncome ? "収益" : "経費") \(categoryName) \(formatCurrency(allocationAmount ?? transaction.amount)) \(formatDate(transaction.date))")
+        .accessibilityLabel("\(transaction.type.label) \(categoryName) \(formatCurrency(allocationAmount ?? transaction.amount)) \(formatDate(transaction.date))")
     }
 }
 
@@ -511,11 +523,11 @@ private struct TransactionRow: View {
 private extension TransactionRow {
 
     var typeIndicator: some View {
-        Image(systemName: isIncome ? "arrow.down.left" : "arrow.up.right")
+        Image(systemName: typeIcon)
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
-            .background(isIncome ? AppColors.success : AppColors.error)
+            .background(typeColor)
             .clipShape(Circle())
             .accessibilityHidden(true)
     }
@@ -564,7 +576,7 @@ private extension TransactionRow {
                 Text(formatCurrency(allocationAmount ?? transaction.amount))
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundStyle(isIncome ? AppColors.success : AppColors.error)
+                    .foregroundStyle(typeColor)
 
                 if let ratio = allocationRatio {
                     Text("\(ratio)%配分")

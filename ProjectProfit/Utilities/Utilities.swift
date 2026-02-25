@@ -614,7 +614,12 @@ func parseCSV(
 
         guard let date = dateFormatter.date(from: dateStr) else { continue }
 
-        let type: TransactionType = typeStr == "収益" ? .income : .expense
+        let type: TransactionType
+        switch typeStr {
+        case "収益": type = .income
+        case "振替": type = .transfer
+        default: type = .expense
+        }
 
         guard let amount = Int(amountStr), amount > 0 else { continue }
 
@@ -721,7 +726,12 @@ func generateCSV(
 
     let rows = transactions.map { t -> String in
         let dateStr = dateFormatter.string(from: t.date)
-        let typeStr = t.type == .income ? "収益" : "経費"
+        let typeStr: String
+        switch t.type {
+        case .income: typeStr = "収益"
+        case .expense: typeStr = "経費"
+        case .transfer: typeStr = "振替"
+        }
         let category = getCategory(t.categoryId)?.name ?? ""
         let projectNames = t.allocations
             .compactMap { a -> String? in
