@@ -2555,4 +2555,89 @@ final class DataStoreCRUDTests: XCTestCase {
         let fetched3 = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(fetched3?.monthOfYear, 6, "Invalid monthOfYear (-1) should be ignored")
     }
+
+    // MARK: - Phase 4C: Accounting Parameters in CRUD
+
+    func testAddTransactionWithPaymentAccountId() {
+        let project = dataStore.addProject(name: "P1", description: "")
+        let tx = dataStore.addTransaction(
+            type: .expense, amount: 5000, date: Date(),
+            categoryId: "cat-tools", memo: "Test",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-bank"
+        )
+        XCTAssertEqual(tx.paymentAccountId, "acct-bank")
+    }
+
+    func testAddTransactionWithTransferToAccountId() {
+        let project = dataStore.addProject(name: "P1", description: "")
+        let tx = dataStore.addTransaction(
+            type: .transfer, amount: 10000, date: Date(),
+            categoryId: "cat-tools", memo: "Transfer test",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: "acct-bank"
+        )
+        XCTAssertEqual(tx.paymentAccountId, "acct-cash")
+        XCTAssertEqual(tx.transferToAccountId, "acct-bank")
+    }
+
+    func testAddTransactionWithTaxDeductibleRate() {
+        let project = dataStore.addProject(name: "P1", description: "")
+        let tx = dataStore.addTransaction(
+            type: .expense, amount: 20000, date: Date(),
+            categoryId: "cat-hosting", memo: "Server",
+            allocations: [(projectId: project.id, ratio: 100)],
+            taxDeductibleRate: 60
+        )
+        XCTAssertEqual(tx.taxDeductibleRate, 60)
+        XCTAssertEqual(tx.effectiveTaxDeductibleRate, 60)
+        XCTAssertEqual(tx.deductibleAmount, 12000)
+    }
+
+    func testUpdateTransactionAccountingFields() {
+        let project = dataStore.addProject(name: "P1", description: "")
+        let tx = dataStore.addTransaction(
+            type: .expense, amount: 10000, date: Date(),
+            categoryId: "cat-tools", memo: "Before",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertNil(tx.paymentAccountId)
+        XCTAssertNil(tx.taxDeductibleRate)
+
+        dataStore.updateTransaction(
+            id: tx.id,
+            paymentAccountId: "acct-cc",
+            taxDeductibleRate: 50
+        )
+
+        let updated = dataStore.transactions.first(where: { $0.id == tx.id })!
+        XCTAssertEqual(updated.paymentAccountId, "acct-cc")
+        XCTAssertEqual(updated.taxDeductibleRate, 50)
+        XCTAssertEqual(updated.effectiveTaxDeductibleRate, 50)
+    }
+
+    func testUpdateTransactionClearAccountingFields() {
+        let project = dataStore.addProject(name: "P1", description: "")
+        let tx = dataStore.addTransaction(
+            type: .expense, amount: 8000, date: Date(),
+            categoryId: "cat-tools", memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-bank",
+            taxDeductibleRate: 70
+        )
+        XCTAssertEqual(tx.paymentAccountId, "acct-bank")
+
+        // Clear paymentAccountId by setting to nil
+        dataStore.updateTransaction(
+            id: tx.id,
+            paymentAccountId: .some(nil),
+            taxDeductibleRate: .some(nil)
+        )
+
+        let updated = dataStore.transactions.first(where: { $0.id == tx.id })!
+        XCTAssertNil(updated.paymentAccountId)
+        XCTAssertNil(updated.taxDeductibleRate)
+        XCTAssertEqual(updated.effectiveTaxDeductibleRate, 100)
+    }
 }

@@ -25,6 +25,11 @@ struct RecurringFormView: View {
     @State private var endDate: Date
     @State private var yearlyAmortizationMode: YearlyAmortizationMode
 
+    // Phase 4C: 会計フィールド
+    @State private var paymentAccountId: String?
+    @State private var transferToAccountId: String?
+    @State private var taxDeductibleRate: Int
+
     @State private var showValidationError = false
     @State private var validationMessage = ""
     @State private var selectedImage: UIImage?
@@ -56,6 +61,10 @@ struct RecurringFormView: View {
         self._hasEndDate = State(initialValue: recurring?.endDate != nil)
         self._endDate = State(initialValue: recurring?.endDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date())!)
         self._yearlyAmortizationMode = State(initialValue: recurring?.yearlyAmortizationMode ?? .lumpSum)
+        // Phase 9A: 会計フィールドの初期化（定期取引モデルから読込）
+        self._paymentAccountId = State(initialValue: recurring?.paymentAccountId)
+        self._transferToAccountId = State(initialValue: recurring?.transferToAccountId)
+        self._taxDeductibleRate = State(initialValue: recurring?.taxDeductibleRate ?? 100)
     }
 
     // MARK: - Computed Properties
@@ -100,14 +109,26 @@ struct RecurringFormView: View {
                             yearlyAmortizationSection
                         }
                         categorySection
+                        accountingSection
                         allocationModeSection
                         if allocationMode == .manual {
-                            projectAllocationSection
+                            RecurringProjectAllocationSection(
+                                dataStore: dataStore,
+                                allocations: $allocations
+                            )
                         } else {
                             equalAllInfoSection
                         }
                         memoField
-                        receiptImageSection
+                        RecurringReceiptImageSection(
+                            recurring: recurring,
+                            selectedImage: $selectedImage,
+                            photoPickerItem: $photoPickerItem,
+                            showCamera: $showCamera,
+                            showReceiptPreview: $showReceiptPreview,
+                            showRemoveImageAlert: $showRemoveImageAlert,
+                            imageRemoved: imageRemoved
+                        )
                         endDateSection
 
                         if isEditMode {
@@ -352,6 +373,35 @@ struct RecurringFormView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Accounting Section
+
+    private var accountingSection: some View {
+        VStack(spacing: 12) {
+            AccountPickerView(
+                label: type == .income ? "入金先口座" : "支払元口座",
+                accounts: dataStore.accounts,
+                selectedAccountId: $paymentAccountId,
+                filterPredicate: { $0.isPaymentAccount && $0.isActive }
+            )
+
+            if type == .transfer {
+                AccountPickerView(
+                    label: "振替先口座",
+                    accounts: dataStore.accounts,
+                    selectedAccountId: $transferToAccountId,
+                    filterPredicate: { $0.isPaymentAccount && $0.isActive }
+                )
+            }
+
+            if type == .expense {
+                TaxDeductibleRateView(rate: $taxDeductibleRate)
+            }
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Allocation Mode Section
 
     private var allocationModeSection: some View {
@@ -390,120 +440,6 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Project Allocation Section
-
-    private var totalRatio: Int {
-        allocations.reduce(0) { $0 + $1.ratio }
-    }
-
-    private var projectAllocationSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("プロジェクト配分")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("合計: \(totalRatio)%")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(totalRatio == 100 ? AppColors.success : AppColors.error)
-            }
-
-            if dataStore.projects.filter({ $0.isArchived != true }).isEmpty {
-                Text("プロジェクトがありません")
-                    .font(.subheadline)
-                    .foregroundStyle(AppColors.muted)
-            } else {
-                ForEach(Array(allocations.enumerated()), id: \.element.id) { index, alloc in
-                    let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
-                    HStack {
-                        Menu {
-                            let usedIds = Set(allocations.map(\.projectId))
-                            ForEach(dataStore.projects.filter { p in
-                                p.isArchived != true && (!usedIds.contains(p.id) || p.id == alloc.projectId)
-                            }, id: \.id) { project in
-                                Button(project.name) {
-                                    var updated = allocations
-                                    updated[index] = (id: alloc.id, projectId: project.id, ratio: alloc.ratio)
-                                    allocations = updated
-                                }
-                            }
-                        } label: {
-                            Text(projectName)
-                                .font(.subheadline)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(AppColors.primary.opacity(0.1))
-                                .foregroundStyle(AppColors.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-
-                        Spacer()
-
-                        HStack(spacing: 4) {
-                            TextField("0", text: Binding(
-                                get: { String(allocations[index].ratio) },
-                                set: { newValue in
-                                    let clamped = min(100, max(0, Int(newValue) ?? 0))
-                                    var updated = allocations
-                                    updated[index] = (id: alloc.id, projectId: alloc.projectId, ratio: clamped)
-                                    allocations = updated
-                                }
-                            ))
-                            .keyboardType(.numberPad)
-                            .frame(width: 50)
-                            .multilineTextAlignment(.center)
-                            .padding(6)
-                            .background(Color(.systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.border))
-
-                            Text("%")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if allocations.count > 1 {
-                            Button {
-                                allocations = allocations.filter { $0.id != alloc.id }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(AppColors.error)
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(AppColors.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-
-                if dataStore.projects.filter({ $0.isArchived != true }).count > allocations.count {
-                    Button {
-                        let usedIds = Set(allocations.map(\.projectId))
-                        if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) && $0.isArchived != true }) {
-                            allocations = allocations + [(id: UUID(), projectId: available.id, ratio: 0)]
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                            Text("プロジェクトを追加（按分）")
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(AppColors.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(AppColors.border, style: StrokeStyle(lineWidth: 1, dash: [6]))
-                        )
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
     // MARK: - Memo Field
 
     private var memoField: some View {
@@ -519,118 +455,6 @@ struct RecurringFormView: View {
         .padding(16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Receipt Image Section
-
-    private var receiptImageSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("添付画像")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let image = selectedImage {
-                receiptImagePreviewRow(image: image)
-            } else if !imageRemoved, let r = recurring, let imagePath = r.receiptImagePath,
-                      let existingImage = ReceiptImageStore.loadImage(fileName: imagePath) {
-                receiptImagePreviewRow(image: existingImage)
-            } else {
-                recurringImagePickerButtons
-            }
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func receiptImagePreviewRow(image: UIImage) -> some View {
-        VStack(spacing: 8) {
-            Button {
-                showReceiptPreview = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    Text("添付画像を表示")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.primary)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(12)
-                .background(AppColors.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("添付画像を表示")
-
-            HStack(spacing: 12) {
-                Button {
-                    showRemoveImageAlert = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "trash")
-                        Text("削除")
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(AppColors.error)
-                }
-                .accessibilityLabel("添付画像を削除")
-
-                Spacer()
-
-                recurringImagePickerButtons
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var recurringImagePickerButtons: some View {
-        HStack(spacing: 12) {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button {
-                    showCamera = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "camera.fill")
-                        Text("撮影")
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(AppColors.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(AppColors.primary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("カメラで撮影")
-            }
-
-            PhotosPicker(
-                selection: $photoPickerItem,
-                matching: .images
-            ) {
-                HStack(spacing: 4) {
-                    Image(systemName: "photo.on.rectangle")
-                    Text("選択")
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(AppColors.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(AppColors.primary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .accessibilityLabel("フォトライブラリから選択")
-        }
     }
 
     // MARK: - End Date Section
@@ -747,6 +571,11 @@ struct RecurringFormView: View {
             }
         }
 
+        // Phase 9A: 会計フィールド解決
+        let resolvedPaymentAccountId: String? = paymentAccountId
+        let resolvedTransferToAccountId: String? = transferToAccountId
+        let resolvedTaxDeductibleRate: Int? = taxDeductibleRate == 100 ? nil : taxDeductibleRate
+
         if let existing = recurring {
             if selectedImage != nil {
                 if let oldPath = existing.receiptImagePath {
@@ -767,7 +596,10 @@ struct RecurringFormView: View {
                     isActive: isActive,
                     endDate: resolvedEndDate,
                     yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: imagePath
+                    receiptImagePath: imagePath,
+                    paymentAccountId: resolvedPaymentAccountId,
+                    transferToAccountId: resolvedTransferToAccountId,
+                    taxDeductibleRate: resolvedTaxDeductibleRate
                 )
             } else if imageRemoved {
                 if let oldPath = existing.receiptImagePath {
@@ -788,7 +620,10 @@ struct RecurringFormView: View {
                     isActive: isActive,
                     endDate: resolvedEndDate,
                     yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: .some(nil)
+                    receiptImagePath: .some(nil),
+                    paymentAccountId: resolvedPaymentAccountId,
+                    transferToAccountId: resolvedTransferToAccountId,
+                    taxDeductibleRate: resolvedTaxDeductibleRate
                 )
             } else {
                 dataStore.updateRecurring(
@@ -805,7 +640,10 @@ struct RecurringFormView: View {
                     monthOfYear: resolvedMonthOfYear,
                     isActive: isActive,
                     endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode
+                    yearlyAmortizationMode: resolvedAmortizationMode,
+                    paymentAccountId: resolvedPaymentAccountId,
+                    transferToAccountId: resolvedTransferToAccountId,
+                    taxDeductibleRate: resolvedTaxDeductibleRate
                 )
             }
         } else {
@@ -822,7 +660,10 @@ struct RecurringFormView: View {
                 monthOfYear: resolvedMonthOfYear,
                 endDate: resolvedEndDate,
                 yearlyAmortizationMode: resolvedAmortizationMode,
-                receiptImagePath: imagePath
+                receiptImagePath: imagePath,
+                paymentAccountId: resolvedPaymentAccountId,
+                transferToAccountId: resolvedTransferToAccountId,
+                taxDeductibleRate: resolvedTaxDeductibleRate
             )
         }
 

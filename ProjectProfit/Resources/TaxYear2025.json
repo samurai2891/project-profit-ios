@@ -1,0 +1,89 @@
+{
+  "fiscalYear": 2025,
+  "fields": [
+    {
+      "internalKey": "revenue_sales_revenue",
+      "fieldLabel": "ア 売上（収入）金額",
+      "taxLineRawValue": "sales_revenue",
+      "section": "revenue"
+    },
+    {
+      "internalKey": "revenue_other_income",
+      "fieldLabel": "カ 雑収入",
+      "taxLineRawValue": "other_income",
+      "section": "revenue"
+    },
+    {
+      "internalKey": "expense_rent",
+      "fieldLabel": "地代家賃",
+      "taxLineRawValue": "rent",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_utilities",
+      "fieldLabel": "水道光熱費",
+      "taxLineRawValue": "utilities",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_travel",
+      "fieldLabel": "旅費交通費",
+      "taxLineRawValue": "travel",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_communication",
+      "fieldLabel": "通信費",
+      "taxLineRawValue": "communication",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_advertising",
+      "fieldLabel": "広告宣伝費",
+      "taxLineRawValue": "advertising",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_entertainment",
+      "fieldLabel": "接待交際費",
+      "taxLineRawValue": "entertainment",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_depreciation",
+      "fieldLabel": "減価償却費",
+      "taxLineRawValue": "depreciation",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_repair",
+      "fieldLabel": "修繕費",
+      "taxLineRawValue": "repair",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_supplies",
+      "fieldLabel": "消耗品費",
+      "taxLineRawValue": "supplies",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_welfare",
+      "fieldLabel": "福利厚生費",
+      "taxLineRawValue": "welfare",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_outsourcing",
+      "fieldLabel": "外注工賃",
+      "taxLineRawValue": "outsourcing",
+      "section": "expenses"
+    },
+    {
+      "internalKey": "expense_misc",
+      "fieldLabel": "雑費",
+      "taxLineRawValue": "misc",
+      "section": "expenses"
+    }
+  ]
+}

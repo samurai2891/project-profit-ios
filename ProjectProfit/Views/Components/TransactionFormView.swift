@@ -21,8 +21,16 @@ struct TransactionFormView: View {
     @State private var showCamera = false
     @State private var showRemoveImageAlert = false
     @State private var imageRemoved = false
+    // Phase 4C: 会計フィールド
+    @State private var paymentAccountId: String?
+    @State private var transferToAccountId: String?
+    @State private var taxDeductibleRate: Int = 100
 
     private var isEditMode: Bool { transaction != nil }
+
+    private var paymentAccounts: [PPAccount] {
+        dataStore.accounts.filter { $0.isPaymentAccount && $0.isActive }
+    }
 
     init(transaction: PPTransaction? = nil, defaultProjectId: UUID? = nil) {
         self.transaction = transaction
@@ -55,6 +63,7 @@ struct TransactionFormView: View {
                     amountSection
                     dateSection
                     categorySection
+                    accountingSection
                     lineItemsSection
                     allocationSection
                     memoSection
@@ -358,6 +367,34 @@ struct TransactionFormView: View {
         }
     }
 
+    // MARK: - Accounting Fields
+    private var accountingSection: some View {
+        VStack(spacing: 12) {
+            AccountPickerView(
+                label: type == .income ? "入金先口座" : "支払元口座",
+                accounts: dataStore.accounts,
+                selectedAccountId: $paymentAccountId,
+                filterPredicate: { $0.isPaymentAccount && $0.isActive }
+            )
+
+            if type == .transfer {
+                AccountPickerView(
+                    label: "振替先口座",
+                    accounts: dataStore.accounts,
+                    selectedAccountId: $transferToAccountId,
+                    filterPredicate: { $0.isPaymentAccount && $0.isActive }
+                )
+            }
+
+            if type == .expense {
+                TaxDeductibleRateView(rate: $taxDeductibleRate)
+            }
+        }
+        .padding(16)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Allocation
     private var allocationSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -486,6 +523,9 @@ struct TransactionFormView: View {
             categoryId = t.categoryId
             memo = t.memo
             allocations = t.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+            paymentAccountId = t.paymentAccountId
+            transferToAccountId = t.transferToAccountId
+            taxDeductibleRate = t.effectiveTaxDeductibleRate
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -529,6 +569,9 @@ struct TransactionFormView: View {
             }
         }
 
+        let resolvedTaxRate: Int? = type == .expense ? taxDeductibleRate : nil
+        let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
+
         if let t = transaction {
             if selectedImage != nil {
                 if let oldPath = t.receiptImagePath {
@@ -537,7 +580,10 @@ struct TransactionFormView: View {
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
                     categoryId: categoryId, memo: memo, allocations: allocs,
-                    receiptImagePath: imagePath
+                    receiptImagePath: imagePath,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: resolvedTransferTo,
+                    taxDeductibleRate: resolvedTaxRate
                 )
             } else if imageRemoved {
                 if let oldPath = t.receiptImagePath {
@@ -546,19 +592,28 @@ struct TransactionFormView: View {
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
                     categoryId: categoryId, memo: memo, allocations: allocs,
-                    receiptImagePath: .some(nil)
+                    receiptImagePath: .some(nil),
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: resolvedTransferTo,
+                    taxDeductibleRate: resolvedTaxRate
                 )
             } else {
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
-                    categoryId: categoryId, memo: memo, allocations: allocs
+                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: resolvedTransferTo,
+                    taxDeductibleRate: resolvedTaxRate
                 )
             }
         } else {
             dataStore.addTransaction(
                 type: type, amount: amount, date: date,
                 categoryId: categoryId, memo: memo, allocations: allocs,
-                receiptImagePath: imagePath
+                receiptImagePath: imagePath,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: resolvedTransferTo,
+                taxDeductibleRate: resolvedTaxRate
             )
         }
         dismiss()

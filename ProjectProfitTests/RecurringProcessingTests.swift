@@ -1259,4 +1259,62 @@ final class RecurringProcessingTests: XCTestCase {
 
         XCTAssertTrue(callbackInvoked, "deleteRecurringでコールバックが発火すべき")
     }
+
+    // MARK: - Phase 9A: Recurring Accounting Fields
+
+    func testRecurringAccountingFields_inheritedByTransaction() {
+        let project = makeProject()
+        let recurring = dataStore.addRecurring(
+            name: "サーバー代",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-expense",
+            memo: "AWS月額",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth,
+            paymentAccountId: "acct-bank1",
+            transferToAccountId: nil,
+            taxDeductibleRate: 80
+        )
+
+        // processRecurringTransactionsはaddRecurring内で自動呼出されるので
+        // 生成されたトランザクションを確認
+        let generated = dataStore.transactions.filter { $0.recurringId == recurring.id }
+        guard let tx = generated.first else {
+            XCTFail("定期取引からトランザクションが生成されるべき")
+            return
+        }
+
+        XCTAssertEqual(tx.paymentAccountId, "acct-bank1", "paymentAccountIdが引き継がれるべき")
+        XCTAssertEqual(tx.taxDeductibleRate, 80, "taxDeductibleRateが引き継がれるべき")
+        XCTAssertNil(tx.transferToAccountId, "transferToAccountIdはnilのまま")
+    }
+
+    func testRecurringAccountingFields_updateRoundTrip() {
+        let project = makeProject()
+        let recurring = dataStore.addRecurring(
+            name: "家賃",
+            type: .expense,
+            amount: 100000,
+            categoryId: "cat-expense",
+            memo: "オフィス賃料",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth,
+            paymentAccountId: "acct-bank1",
+            taxDeductibleRate: 50
+        )
+
+        // 会計フィールドを更新
+        dataStore.updateRecurring(
+            id: recurring.id,
+            paymentAccountId: "acct-bank2",
+            taxDeductibleRate: 70
+        )
+
+        let updated = dataStore.getRecurring(id: recurring.id)
+        XCTAssertEqual(updated?.paymentAccountId, "acct-bank2")
+        XCTAssertEqual(updated?.taxDeductibleRate, 70)
+    }
 }

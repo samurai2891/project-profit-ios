@@ -18,6 +18,7 @@ final class PPAccountingProfile {
     var defaultPaymentAccountId: String        // デフォルト入出金口座（"acct-cash" 等）
     var openingDate: Date?                     // 開業日
     var lockedAt: Date?                        // 年度ロック日時（nil = 未ロック、T5対応基盤）
+    var lockedYears: [Int]?                    // ロック済み年度リスト（T5: 複数年度対応）
     var createdAt: Date
     var updatedAt: Date
 
@@ -32,6 +33,7 @@ final class PPAccountingProfile {
         defaultPaymentAccountId: String = "acct-cash",
         openingDate: Date? = nil,
         lockedAt: Date? = nil,
+        lockedYears: [Int]? = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -45,6 +47,7 @@ final class PPAccountingProfile {
         self.defaultPaymentAccountId = defaultPaymentAccountId
         self.openingDate = openingDate
         self.lockedAt = lockedAt
+        self.lockedYears = lockedYears
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -53,6 +56,27 @@ final class PPAccountingProfile {
 // MARK: - Computed Properties
 
 extension PPAccountingProfile {
-    /// 年度がロック済みかどうか
+    /// 年度がロック済みかどうか（レガシー: lockedAt基盤）
     var isLocked: Bool { lockedAt != nil }
+
+    /// 解決済みロック年度リスト
+    private var resolvedLockedYears: [Int] { lockedYears ?? [] }
+
+    /// 指定年度がロック済みかどうか
+    func isYearLocked(_ year: Int) -> Bool {
+        resolvedLockedYears.contains(year)
+    }
+
+    /// 年度をロックする
+    func lockYear(_ year: Int) {
+        guard !isYearLocked(year) else { return }
+        lockedYears = resolvedLockedYears + [year]
+        updatedAt = Date()
+    }
+
+    /// 年度のロックを解除する
+    func unlockYear(_ year: Int) {
+        lockedYears = resolvedLockedYears.filter { $0 != year }
+        updatedAt = Date()
+    }
 }

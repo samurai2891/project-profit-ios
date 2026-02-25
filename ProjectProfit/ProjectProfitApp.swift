@@ -26,7 +26,8 @@ struct ProjectProfitApp: App {
             PPAccount.self,
             PPJournalEntry.self,
             PPJournalLine.self,
-            PPAccountingProfile.self
+            PPAccountingProfile.self,
+            PPUserRule.self
         ])
     }
 }

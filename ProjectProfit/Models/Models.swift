@@ -294,6 +294,10 @@ final class PPRecurringTransaction {
     var lastGeneratedMonths: [String]  // ["2026-01", "2026-02", ...] 月次分割の生成追跡用
     var notificationTiming: NotificationTiming
     var receiptImagePath: String?
+    // Phase 9A: 会計フィールド（定期→生成トランザクションへ引き継ぎ）
+    var paymentAccountId: String?
+    var transferToAccountId: String?
+    var taxDeductibleRate: Int?
     var createdAt: Date
     var updatedAt: Date
 
@@ -317,6 +321,9 @@ final class PPRecurringTransaction {
         lastGeneratedMonths: [String] = [],
         notificationTiming: NotificationTiming = .none,
         receiptImagePath: String? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -339,6 +346,9 @@ final class PPRecurringTransaction {
         self.lastGeneratedMonths = lastGeneratedMonths
         self.notificationTiming = notificationTiming
         self.receiptImagePath = receiptImagePath
+        self.paymentAccountId = paymentAccountId
+        self.transferToAccountId = transferToAccountId
+        self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

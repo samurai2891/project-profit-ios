@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 @Observable
 class DataStore {
-    private var modelContext: ModelContext
+    var modelContext: ModelContext
 
     var projects: [PPProject] = []
     var transactions: [PPTransaction] = []
@@ -133,7 +133,7 @@ class DataStore {
     }
 
     @discardableResult
-    private func save() -> Bool {
+    func save() -> Bool {
         do {
             try modelContext.save()
             return true
@@ -202,7 +202,7 @@ class DataStore {
         }
     }
 
-    private func refreshJournalEntries() {
+    func refreshJournalEntries() {
         do {
             let descriptor = FetchDescriptor<PPJournalEntry>(sortBy: [SortDescriptor(\.date, order: .reverse)])
             journalEntries = try modelContext.fetch(descriptor)
@@ -212,7 +212,7 @@ class DataStore {
         }
     }
 
-    private func refreshJournalLines() {
+    func refreshJournalLines() {
         do {
             let descriptor = FetchDescriptor<PPJournalLine>(sortBy: [SortDescriptor(\.displayOrder)])
             journalLines = try modelContext.fetch(descriptor)
@@ -545,8 +545,15 @@ class DataStore {
         allocations: [(projectId: UUID, ratio: Int)],
         recurringId: UUID? = nil,
         receiptImagePath: String? = nil,
-        lineItems: [ReceiptLineItem] = []
+        lineItems: [ReceiptLineItem] = [],
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil
     ) -> PPTransaction {
+        // T5: 年度ロックガード
+        guard !isYearLocked(for: date) else {
+            return PPTransaction(type: type, amount: amount, date: date, categoryId: categoryId, memo: memo)
+        }
         let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         let allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
         let transaction = PPTransaction(
@@ -558,7 +565,10 @@ class DataStore {
             allocations: allocs,
             recurringId: recurringId,
             receiptImagePath: receiptImagePath,
-            lineItems: lineItems
+            lineItems: lineItems,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate
         )
         modelContext.insert(transaction)
 
@@ -584,15 +594,24 @@ class DataStore {
         memo: String? = nil,
         allocations: [(projectId: UUID, ratio: Int)]? = nil,
         receiptImagePath: String?? = nil,
-        lineItems: [ReceiptLineItem]? = nil
+        lineItems: [ReceiptLineItem]? = nil,
+        paymentAccountId: String?? = nil,
+        transferToAccountId: String?? = nil,
+        taxDeductibleRate: Int?? = nil
     ) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
+        // T5: 年度ロックガード（変更先の日付と現在の日付の両方をチェック）
+        if isYearLocked(for: transaction.date) { return }
+        if let date, isYearLocked(for: date) { return }
         if let type { transaction.type = type }
         if let date { transaction.date = date }
         if let categoryId { transaction.categoryId = categoryId }
         if let memo { transaction.memo = memo }
         if let receiptImagePath { transaction.receiptImagePath = receiptImagePath }
         if let lineItems { transaction.lineItems = lineItems }
+        if let paymentAccountId { transaction.paymentAccountId = paymentAccountId }
+        if let transferToAccountId { transaction.transferToAccountId = transferToAccountId }
+        if let taxDeductibleRate { transaction.taxDeductibleRate = taxDeductibleRate }
 
         let finalAmount = amount ?? transaction.amount
         if let amount { transaction.amount = amount }
@@ -627,6 +646,8 @@ class DataStore {
 
     func deleteTransaction(id: UUID) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
+        // T5: 年度ロックガード
+        if isYearLocked(for: transaction.date) { return }
 
         // C4: save成功後に削除するため画像パスを保持
         let imageToDelete = transaction.receiptImagePath
@@ -737,6 +758,13 @@ class DataStore {
         refreshCategories()
     }
 
+    func updateCategoryLinkedAccount(categoryId: String, accountId: String?) {
+        guard let category = categories.first(where: { $0.id == categoryId }) else { return }
+        category.linkedAccountId = accountId
+        save()
+        refreshCategories()
+    }
+
     func deleteCategory(id: String) {
         guard let category = categories.first(where: { $0.id == id }) else { return }
         guard !category.isDefault else { return }
@@ -792,7 +820,10 @@ class DataStore {
         monthOfYear: Int? = nil,
         endDate: Date? = nil,
         yearlyAmortizationMode: YearlyAmortizationMode = .lumpSum,
-        receiptImagePath: String? = nil
+        receiptImagePath: String? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil
     ) -> PPRecurringTransaction {
         let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         let allocs: [Allocation]
@@ -815,7 +846,10 @@ class DataStore {
             monthOfYear: monthOfYear,
             endDate: endDate,
             yearlyAmortizationMode: yearlyAmortizationMode,
-            receiptImagePath: receiptImagePath
+            receiptImagePath: receiptImagePath,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate
         )
         modelContext.insert(recurring)
         save()
@@ -843,7 +877,10 @@ class DataStore {
         yearlyAmortizationMode: YearlyAmortizationMode? = nil,
         notificationTiming: NotificationTiming? = nil,
         skipDates: [Date]? = nil,
-        receiptImagePath: String?? = nil
+        receiptImagePath: String?? = nil,
+        paymentAccountId: String?? = nil,
+        transferToAccountId: String?? = nil,
+        taxDeductibleRate: Int?? = nil
     ) {
         guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
         if let name { recurring.name = name }
@@ -892,6 +929,9 @@ class DataStore {
         if let notificationTiming { recurring.notificationTiming = notificationTiming }
         if let skipDates { recurring.skipDates = skipDates }
         if let receiptImagePath { recurring.receiptImagePath = receiptImagePath }
+        if let paymentAccountId { recurring.paymentAccountId = paymentAccountId }
+        if let transferToAccountId { recurring.transferToAccountId = transferToAccountId }
+        if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
 
         let resolvedMode = allocationMode ?? recurring.allocationMode
         let finalAmount = amount ?? recurring.amount
@@ -1225,7 +1265,10 @@ class DataStore {
             categoryId: recurring.categoryId,
             memo: memo,
             allocations: txAllocations,
-            recurringId: recurring.id
+            recurringId: recurring.id,
+            paymentAccountId: recurring.paymentAccountId,
+            transferToAccountId: recurring.transferToAccountId,
+            taxDeductibleRate: recurring.taxDeductibleRate
         )
         modelContext.insert(transaction)
         return transaction

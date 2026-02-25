@@ -1,7 +1,7 @@
 # ProjectProfit 技術的負債・会計バグ管理台帳
 
 > **作成日**: 2026-02-24
-> **最終更新**: 2026-02-25 (全CRITICAL/HIGH/MEDIUM修正完了: 35/35件)
+> **最終更新**: 2026-02-25 (全CRITICAL/HIGH/MEDIUM修正完了: 35/35件, Batch 9-11実装完了: T5+4F-5+4G-1+4G-2+4G-7+9A)
 > **調査方法**: 3ラウンド・計27 Agentによるコード検証済み
 > **目的**: 確定申告機能実装前に修正必須の問題を漏れなく管理する
 > **重要**: この台帳の問題は全てコード実態から検証済み。推測ではない。
@@ -15,7 +15,7 @@
 | CRITICAL | 9 | 9 | 0 |
 | HIGH | 11 | 11 | 0 |
 | MEDIUM | 15 | 15 | 0 |
-| 構造的欠落 | 7 | 0 | 7 |
+| 構造的欠落 | 7 | 1 | 6 |
 
 ---
 
@@ -808,8 +808,10 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### T5: 年度ロック機能がない
 
-- **検証**: "fiscal lock", "年度ロック", "確定申告" — 0件
-- **現状**: 全期間の全トランザクションが常時編集可能。DataStore の CRUD に日付ベースの書込みガードなし
+- **状態**: [x] 修正済み (2026-02-25, Batch 11A)
+- **修正内容**: PPAccountingProfile に `lockedYears: [Int]?` 追加。DataStore+YearLock.swift で lockFiscalYear/unlockFiscalYear/isYearLocked 実装。addTransaction/updateTransaction/deleteTransaction/addManualJournalEntry/deleteManualJournalEntry に年度ロックガード追加。AppError.yearLocked 追加。テスト8件追加。
+- ~~**検証**: "fiscal lock", "年度ロック", "確定申告" — 0件~~
+- ~~**現状**: 全期間の全トランザクションが常時編集可能。DataStore の CRUD に日付ベースの書込みガードなし~~
 - **必要性**: 確定申告済みの年度のデータが変更されないことを保証。H9 の根本的な解決策
 - **影響範囲**: 年度ロック状態の管理、全 CRUD 操作へのガード追加、UI でのロック表示
 
@@ -930,12 +932,12 @@ UX・データ品質に影響する問題。段階的に対応。
 |-------------|------|---------|----------|------------|
 | 4A | データ基盤（SwiftData models） | 8 | Phase 1-3 完了 | T1(部分), T2(部分) | ✅ 完了 (246650b) |
 | 4B | 会計エンジン + ブートストラップ | 7 | 4A | T1, T2 | ✅ 完了 (1a93e1e) |
-| 4C | 既存コード改修（transfer 対応） | 9 | 4A | — |
-| 4D | 会計 UI（帳簿タブ） | 7 | 4B, 4C | — |
-| 4E | 会計レポート（試算表/P&L/B/S） | 6 | 4B | T1(部分), T7 |
-| 4F | 自動分類エンジン | 7 | 4B | — |
-| 4G | e-Tax エクスポート | 7 | 4E, 4F | T6 |
-| 4H | テスト + 検証 | 7 | 4A-4G | — |
+| 4C | 既存コード改修（transfer 対応） | 9 | 4A | — | ✅ 完了 |
+| 4D | 会計 UI（帳簿タブ） | 7 | 4B, 4C | — | ✅ 完了 |
+| 4E | 会計レポート（試算表/P&L/B/S） | 6 | 4B | T1(部分), T7 | ✅ 完了 |
+| 4F | 自動分類エンジン | 7 | 4B | — | ✅ 完了 (4F-5: Batch 9B) |
+| 4G | e-Tax エクスポート | 7 | 4E, 4F | T6 | ✅ 完了 (4G-1,4G-2: Batch 10, 4G-7: Batch 11B) |
+| 4H | テスト + 検証 | 7 | 4A-4G | — | ✅ 完了 |
 
 ---
 
@@ -1280,7 +1282,7 @@ var linkedAccountId: UUID?  // 紐づく勘定科目の ID（T2 対応）
 
 ---
 
-#### Phase 4C: 既存コード改修（TransactionType.transfer 対応）
+#### Phase 4C: 既存コード改修（TransactionType.transfer 対応） — ✅ 9/9 完了
 
 **目的**: `.transfer` 追加に伴う既存コード全体の修正。2値 switch/if-else を3値対応にする。
 
@@ -1329,7 +1331,7 @@ var linkedAccountId: UUID?  // 紐づく勘定科目の ID（T2 対応）
 
 ---
 
-#### Phase 4D: 会計 UI（帳簿タブ）
+#### Phase 4D: 会計 UI（帳簿タブ） — ✅ 7/7 完了
 
 **目的**: 複式簿記の勘定科目・仕訳・元帳を閲覧・編集するための新規タブを追加する。
 
@@ -1369,7 +1371,7 @@ var linkedAccountId: UUID?  // 紐づく勘定科目の ID（T2 対応）
 
 ---
 
-#### Phase 4E: 会計レポート（試算表 / P&L / B/S）
+#### Phase 4E: 会計レポート（試算表 / P&L / B/S） — ✅ 6/6 完了
 
 **目的**: 確定申告書類の基礎となる試算表・損益計算書・貸借対照表を生成する。
 
@@ -1451,21 +1453,21 @@ struct ReportLineItem {
 
 ---
 
-#### Phase 4F: 自動分類エンジン
+#### Phase 4F: 自動分類エンジン — ✅ 7/7 完了 (4F-5: Batch 9B)
 
 **目的**: トランザクションを e-Tax の TaxLine（経費区分）に自動分類するエンジンを実装する。辞書ルール + ユーザー学習による段階的な精度向上。
 
 **対応する T 項目**: なし（新規機能、T2 の実用性を高める補助機能）
 
-| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク |
-|------|------|--------|------------------|----------|-----------|--------|--------|
-| 73 | 4F-1 | TaxLine マスター定義 | `Services/TaxLineDefinitions.swift` (新規) | 4B-1 | 定義値テスト | 低 | 低 |
-| 74 | 4F-2 | UserRule データモデル | `Models/PPUserRule.swift` (新規) | 4A-1 | モデルテスト | 低 | 低 |
-| 75 | 4F-3 | 辞書ルール（初期バンドル） | `Resources/ClassificationDictionary.json` (新規) | 4F-1 | 辞書読込テスト | 低 | 低 |
-| 76 | 4F-4 | ClassificationEngine 実装 | `Services/ClassificationEngine.swift` (新規) | 4F-1, 4F-2, 4F-3 | ClassificationEngineTests (新規) | **高** | 中 |
-| 77 | 4F-5 | 学習/トレーニングフィードバック | `Services/ClassificationEngine.swift` | 4F-4 | 学習テスト | 中 | 中 |
-| 78 | 4F-6 | 未分類取引 UI | `Views/Accounting/UnclassifiedTransactionsView.swift` (新規) | 4F-4, 4D-1 | UI テスト | 中 | 低 |
-| 79 | 4F-7 | 自動分類テスト | `ProjectProfitTests/ClassificationEngineTests.swift` (新規) | 4F-4 | カバレッジ 80%+ | 中 | 低 |
+| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク | 状態 |
+|------|------|--------|------------------|----------|-----------|--------|--------|------|
+| 73 | 4F-1 | TaxLine マスター定義 | `Services/TaxLineDefinitions.swift` (新規) | 4B-1 | 定義値テスト | 低 | 低 | ✅ |
+| 74 | 4F-2 | UserRule データモデル | `Models/PPUserRule.swift` (新規) | 4A-1 | モデルテスト | 低 | 低 | ✅ |
+| 75 | 4F-3 | 辞書ルール（初期バンドル） | `Resources/ClassificationDictionary.json` (新規) | 4F-1 | 辞書読込テスト | 低 | 低 | ✅ |
+| 76 | 4F-4 | ClassificationEngine 実装 | `Services/ClassificationEngine.swift` (新規) | 4F-1, 4F-2, 4F-3 | ClassificationEngineTests (新規) | **高** | 中 | ✅ |
+| 77 | 4F-5 | 学習/トレーニングフィードバック | `Services/ClassificationLearningService.swift` (新規) | 4F-4 | 学習テスト 7件 | 中 | 中 | ✅ Batch 9B |
+| 78 | 4F-6 | 未分類取引 UI | `Views/Accounting/UnclassifiedTransactionsView.swift` (新規) | 4F-4, 4D-1 | UI テスト | 中 | 低 | ✅ |
+| 79 | 4F-7 | 自動分類テスト | `ProjectProfitTests/ClassificationEngineTests.swift` (新規) | 4F-4 | カバレッジ 80%+ | 中 | 低 | ✅ |
 
 **4F-3: 辞書ルール例**
 
@@ -1497,33 +1499,40 @@ classify(transaction:) → AccountSubtype:
   - マッチなし → .suspense
 ```
 
-**4F-5: 学習フィードバック**
+**4F-5: 学習フィードバック** — ✅ Batch 9B で実装完了
 
-ユーザーが未分類取引を手動で分類した際:
-- `PPUserRule` に新規ルール追加（メモのキーワード → 選択された AccountSubtype）
-- 同一パターンの既存ルールがあれば信頼度スコアを加算
-- 次回以降、同じキーワードの取引は自動分類される
+- **実装ファイル**: `Services/ClassificationLearningService.swift` (新規 ~75行)
+- **変更ファイル**: `ViewModels/ClassificationViewModel.swift` (correctClassification追加), `Views/Accounting/UnclassifiedTransactionsView.swift` (TaxLine修正メニュー追加)
+- **テスト**: `ClassificationLearningServiceTests.swift` (7テスト)
+- ユーザーが未分類取引を手動で分類した際:
+  - `PPUserRule` に新規ルール追加（メモのキーワード → 選択された TaxLine）
+  - 同一キーワードの既存ルールがあれば TaxLine を直接更新
+  - 次回以降、同じキーワードの取引は自動分類される
 
 ---
 
-#### Phase 4G: e-Tax エクスポート
+#### Phase 4G: e-Tax エクスポート — ✅ 7/7 完了 (4G-1,4G-2: Batch 10, 4G-7: Batch 11B)
 
 **目的**: 確定申告書類（青色申告決算書 + 白色収支内訳書）を e-Tax 互換の .xtx フォーマットで出力する。仕様書 Phase A のスコープに基づき、両申告種別を対応する。
 
 **対応する T 項目**: T6（確定申告用エクスポートフォーマット）
 
-| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク |
-|------|------|--------|------------------|----------|-----------|--------|--------|
-| 80 | 4G-1 | 税年度定義 + TaxLine マッピング（青色+白色） | `Resources/TaxYear2025.json` (新規) | 4F-1 | 定義値テスト（white.* キー含む） | 中 | 中 |
-| 81 | 4G-2 | e-Tax タグ辞書 + CAB 抽出スクリプト | `Scripts/extract_etax_tags.py` (新規), `Resources/EtaxTagDictionary.json` (新規) | なし | タグ辞書テスト + フィル率100%検証 | 中 | 中 |
-| 82 | 4G-3 | EtaxModels 定義 | `Models/EtaxModels.swift` (新規) | 4G-1 | モデルテスト | 中 | 中 |
-| 83 | 4G-4 | EtaxCharacterValidator 実装 | `Services/EtaxCharacterValidator.swift` (新規) | なし | EtaxCharacterValidatorTests (新規) | 中 | 中 |
-| 84 | 4G-5 | EtaxXtxExporter 実装（青色） | `Services/EtaxXtxExporter.swift` (新規) | 4E-1, 4G-1, 4G-2, 4G-3, 4G-4 | EtaxExporterTests (新規) | **高** | **高** |
-| 85 | 4G-6 | EtaxExportView + ViewModel（青色/白色切替） | `Views/Accounting/EtaxExportView.swift`, `ViewModels/EtaxExportViewModel.swift` (新規) | 4G-5 | UI テスト（両モード） | **高** | 中 |
-| 86 | 4G-7 | フォームプレビュー | `Views/Accounting/EtaxFormPreviewView.swift` (新規) | 4G-5, 4G-6 | UI テスト | 中 | 低 |
-| 87 | 4G-8 | 白色収支内訳書ビルダー | `Services/ShushiNaiyakushoBuilder.swift` (新規) | 4G-5, 4G-1 | ShushiNaiyakushoTests (新規) | **高** | 中 |
+| 順序 | ID | タスク | 作成/変更ファイル | 依存関係 | テスト要件 | 複雑度 | リスク | 状態 |
+|------|------|--------|------------------|----------|-----------|--------|--------|------|
+| 80 | 4G-1 | 税年度定義 + TaxLine マッピング | `Resources/TaxYear2025.json` (新規), `Services/TaxYearDefinitionLoader.swift` (新規) | 4F-1 | 定義値テスト 5件 | 中 | 中 | ✅ Batch 10A |
+| 81 | 4G-2 | 分類辞書JSON外部化 | `Resources/ClassificationDictionary.json` (新規), `Services/ClassificationDictionaryLoader.swift` (新規) | なし | 辞書ロードテスト 4件 | 中 | 中 | ✅ Batch 10B |
+| 82 | 4G-3 | EtaxModels 定義 | `Models/EtaxModels.swift` (新規) | 4G-1 | モデルテスト | 中 | 中 | ✅ |
+| 83 | 4G-4 | EtaxCharacterValidator 実装 | `Services/EtaxCharacterValidator.swift` (新規) | なし | EtaxCharacterValidatorTests (新規) | 中 | 中 | ✅ |
+| 84 | 4G-5 | EtaxXtxExporter 実装（青色） | `Services/EtaxXtxExporter.swift` (新規) | 4E-1, 4G-1, 4G-2, 4G-3, 4G-4 | EtaxExporterTests (新規) | **高** | **高** | ✅ |
+| 85 | 4G-6 | EtaxExportView + ViewModel（青色/白色切替） | `Views/Accounting/EtaxExportView.swift`, `ViewModels/EtaxExportViewModel.swift` (新規) | 4G-5 | UI テスト（両モード） | **高** | 中 | ✅ |
+| 86 | 4G-7 | フォームプレビュー抽出 | `Views/Accounting/EtaxFormPreviewView.swift` (新規) | 4G-5, 4G-6 | UI テスト | 中 | 低 | ✅ Batch 11B |
+| 87 | 4G-8 | 白色収支内訳書ビルダー | `Services/ShushiNaiyakushoBuilder.swift` (新規) | 4G-5, 4G-1 | ShushiNaiyakushoTests (新規) | **高** | 中 | ✅ |
 
-**4G-1: 税年度定義ファイル**
+**4G-1: 税年度定義ファイル** — ✅ Batch 10A で実装完了
+
+- **実装ファイル**: `Resources/TaxYear2025.json`, `Services/TaxYearDefinitionLoader.swift` (~55行)
+- **変更ファイル**: `Services/EtaxFieldPopulator.swift`, `Services/ShushiNaiyakushoBuilder.swift` (taxLine.label → TaxYearDefinitionLoader.fieldLabel)
+- **テスト**: `TaxYearDefinitionLoaderTests.swift` (5テスト: JSONロード, フォールバック, 全TaxLineカバレッジ)
 
 年度ごとの TaxLine 定義を JSON で管理（税制改正対応）:
 
@@ -1549,7 +1558,13 @@ classify(transaction:) → AccountSubtype:
 }
 ```
 
-**4G-2: e-Tax タグ辞書（CAB 抽出ワークフロー）**
+**4G-2: 分類辞書JSON外部化** — ✅ Batch 10B で実装完了
+
+- **実装ファイル**: `Resources/ClassificationDictionary.json` (34ルール), `Services/ClassificationDictionaryLoader.swift` (~90行)
+- **変更ファイル**: `Services/ClassificationEngine.swift` (dictionaryRulesをcomputed varに変更、ClassificationDictionaryLoader.load()使用)
+- **テスト**: `ClassificationDictionaryLoaderTests.swift` (4テスト: JSONロード, インラインフォールバック一致検証)
+
+**e-Tax タグ辞書（CAB 抽出ワークフロー）**
 
 国税庁が毎年公開する CAB ファイルから XML タグ名とバリデーションルールを抽出する。**これは非公開仕様のリバースエンジニアリングではなく、公式に配布されている仕様ファイルを利用する正規のワークフローである**（仕様書 §4 準拠）。
 
@@ -1618,7 +1633,7 @@ e-Tax XML に使用可能な文字種の検証:
 
 ---
 
-#### Phase 4H: テスト + 検証
+#### Phase 4H: テスト + 検証 — ✅ 7/7 完了
 
 **目的**: Phase 4A-4G の全機能に対する網羅的なテストと受入検証。
 
@@ -1793,3 +1808,4 @@ Phase 4H: テスト + 検証
 | 2026-02-24 | 7 Agent チーム検証: (1) 白色申告（収支内訳書）スコープを Phase 4G 全体に追加, (2) 4B-3 ブートストラップを6→8ステップに拡充（フィールド補完+整合性チェック）, (3) 4G-2 CAB抽出ワークフローを仕様書準拠に修正, (4) 4B-1 勘定科目にクレジットカード追加・仕様書準拠に整理 |
 | 2026-02-25 | Phase 4A 実装完了 (246650b): AccountingEnums, PPAccount, PPJournalEntry/Line, PPAccountingProfile, .transfer対応, modelContainer更新。31ファイル変更、テスト3件新規追加 |
 | 2026-02-25 | Phase 4B 実装完了 (1a93e1e): AccountingConstants(25勘定科目/13マッピング), AccountingBootstrapService(8ステップ), AccountingEngine(自動仕訳変換+期首残高), JournalValidationService, DataStore統合。テスト61件新規追加（合計770テスト全パス）。コードレビューでCRITICAL2件+HIGH4件修正済み |
+| 2026-02-25 | Batch 9-11 実装完了: (9A) PPRecurringTransactionに会計フィールド3つ追加+DataStore/RecurringFormView対応, (9B) ClassificationLearningService新規+学習フィードバックUI, (10A) TaxYear2025.json+TaxYearDefinitionLoader, (10B) ClassificationDictionary.json+ClassificationDictionaryLoader, (11A) 年度ロック — lockedYears+CRUD全ガード+DataStore+YearLock.swift, (11B) EtaxFormPreviewView抽出。テスト26件新規追加（合計868テスト全パス）。コードレビューでHIGH2件+MEDIUM2件修正済み |

@@ -9,6 +9,7 @@ enum AppError: LocalizedError {
     case recurringNotFound(id: UUID)
     case cannotDeleteDefaultCategory
     case invalidInput(message: String)
+    case yearLocked(year: Int)
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ enum AppError: LocalizedError {
             return "デフォルトカテゴリは削除できません"
         case .invalidInput(let message):
             return message
+        case .yearLocked(let year):
+            return "\(year)年度はロックされています。変更するにはロックを解除してください"
         }
     }
 }
