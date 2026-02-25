@@ -721,7 +721,7 @@ class DataStore {
                 }
             } else {
                 if let monthOfYear {
-                    recurring.monthOfYear = monthOfYear
+                    recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
                 }
                 if frequencyChanged {
                     recurring.lastGeneratedDate = nil
@@ -729,7 +729,7 @@ class DataStore {
                 }
             }
         } else if let monthOfYear {
-            recurring.monthOfYear = monthOfYear
+            recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
         }
         if let dayOfMonth { recurring.dayOfMonth = min(28, max(1, dayOfMonth)) }
         if let isActive { recurring.isActive = isActive }

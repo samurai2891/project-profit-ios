@@ -296,7 +296,7 @@ final class PPRecurringTransaction {
         self.allocations = allocations
         self.frequency = frequency
         self.dayOfMonth = min(28, max(1, dayOfMonth))
-        self.monthOfYear = frequency == .yearly ? monthOfYear : nil
+        self.monthOfYear = frequency == .yearly ? monthOfYear.flatMap { (1...12).contains($0) ? $0 : nil } : nil
         self.isActive = isActive
         self.endDate = endDate
         self.lastGeneratedDate = lastGeneratedDate
