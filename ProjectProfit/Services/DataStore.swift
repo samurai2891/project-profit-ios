@@ -146,7 +146,12 @@ class DataStore {
 
     @discardableResult
     func addProject(name: String, description: String, startDate: Date? = nil, plannedEndDate: Date? = nil) -> PPProject {
-        let project = PPProject(name: name, projectDescription: description, startDate: startDate, plannedEndDate: plannedEndDate)
+        let safePlannedEndDate: Date? = {
+            guard let start = startDate, let planned = plannedEndDate else { return plannedEndDate }
+            let calendar = Calendar.current
+            return calendar.startOfDay(for: start) > calendar.startOfDay(for: planned) ? nil : plannedEndDate
+        }()
+        let project = PPProject(name: name, projectDescription: description, startDate: startDate, plannedEndDate: safePlannedEndDate)
         modelContext.insert(project)
         save()
         refreshProjects()
@@ -190,6 +195,21 @@ class DataStore {
         // plannedEndDateの処理
         if let plannedEndDate {
             project.plannedEndDate = plannedEndDate
+        }
+
+        // 防御的ガード: startDate > completedAt の場合は completedAt をクリア
+        if let currentStart = project.startDate, let currentCompleted = project.completedAt {
+            let calendar = Calendar.current
+            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentCompleted) {
+                project.completedAt = nil
+            }
+        }
+        // 防御的ガード: startDate > plannedEndDate の場合は plannedEndDate をクリア
+        if let currentStart = project.startDate, let currentPlanned = project.plannedEndDate {
+            let calendar = Calendar.current
+            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentPlanned) {
+                project.plannedEndDate = nil
+            }
         }
 
         project.updatedAt = Date()

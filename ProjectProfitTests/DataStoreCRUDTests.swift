@@ -2417,4 +2417,41 @@ final class DataStoreCRUDTests: XCTestCase {
         let descriptor = FetchDescriptor<PPTransaction>()
         return (try? context.fetch(descriptor)) ?? []
     }
+
+    // MARK: - M15: Date Validation
+
+    func testAddProject_startDateAfterPlannedEndDate_clearsPlannedEndDate() {
+        let calendar = Calendar.current
+        let futureDate = calendar.date(byAdding: .month, value: 2, to: Date())!
+        let pastDate = calendar.date(byAdding: .month, value: -1, to: Date())!
+
+        let project = dataStore.addProject(
+            name: "M15 Test",
+            description: "",
+            startDate: futureDate,
+            plannedEndDate: pastDate
+        )
+
+        XCTAssertNil(project.plannedEndDate, "plannedEndDate should be nil when startDate > plannedEndDate")
+        XCTAssertNotNil(project.startDate)
+    }
+
+    func testUpdateProject_startDateAfterCompletedAt_clearsCompletedAt() {
+        let calendar = Calendar.current
+        let pastDate = calendar.date(byAdding: .month, value: -2, to: Date())!
+        let project = dataStore.addProject(name: "M15 Update Test", description: "", startDate: pastDate)
+
+        let lateDate = calendar.date(byAdding: .month, value: 1, to: Date())!
+        let earlyDate = calendar.date(byAdding: .month, value: -3, to: Date())!
+
+        dataStore.updateProject(
+            id: project.id,
+            status: .completed,
+            startDate: .some(lateDate),
+            completedAt: .some(earlyDate)
+        )
+
+        let fetched = dataStore.projects.first(where: { $0.id == project.id })
+        XCTAssertNil(fetched?.completedAt, "completedAt should be nil when startDate > completedAt")
+    }
 }

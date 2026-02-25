@@ -15,6 +15,8 @@ struct ProjectFormView: View {
     @State private var hasCompletedAt: Bool = false
     @State private var hasPlannedEndDate: Bool = false
     @State private var plannedEndDate: Date = Date()
+    @State private var showingDateError: Bool = false
+    @State private var dateErrorMessage: String = ""
 
     private var isEditMode: Bool { project != nil }
 
@@ -160,6 +162,11 @@ struct ProjectFormView: View {
                     }
                 }
             }
+            .alert("入力エラー", isPresented: $showingDateError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(dateErrorMessage)
+            }
             .onChange(of: status) { _, newStatus in
                 if newStatus == .completed && !hasCompletedAt {
                     hasCompletedAt = true
@@ -172,6 +179,24 @@ struct ProjectFormView: View {
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
+
+        let calendar = Calendar.current
+
+        if hasStartDate && status == .completed && hasCompletedAt {
+            if calendar.startOfDay(for: startDate) > calendar.startOfDay(for: completedAt) {
+                dateErrorMessage = "開始日は完了日より前にしてください"
+                showingDateError = true
+                return
+            }
+        }
+
+        if hasStartDate && hasPlannedEndDate {
+            if calendar.startOfDay(for: startDate) > calendar.startOfDay(for: plannedEndDate) {
+                dateErrorMessage = "開始日は終了予定日より前にしてください"
+                showingDateError = true
+                return
+            }
+        }
 
         let resolvedStartDate: Date?? = hasStartDate ? .some(startDate) : .some(nil)
         let resolvedPlannedEndDate: Date?? = hasPlannedEndDate ? .some(plannedEndDate) : .some(nil)
