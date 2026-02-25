@@ -447,12 +447,13 @@ class DataStore {
         receiptImagePath: String? = nil,
         lineItems: [ReceiptLineItem] = []
     ) -> PPTransaction {
+        let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         let allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
         let transaction = PPTransaction(
             type: type,
             amount: amount,
             date: date,
-            categoryId: categoryId,
+            categoryId: safeCategoryId,
             memo: memo,
             allocations: allocs,
             recurringId: recurringId,
@@ -634,6 +635,13 @@ class DataStore {
         categories.first { $0.id == id }
     }
 
+    static func defaultCategoryId(for type: TransactionType) -> String {
+        switch type {
+        case .expense: "cat-other-expense"
+        case .income: "cat-other-income"
+        }
+    }
+
     // MARK: - Recurring CRUD
 
     @discardableResult
@@ -652,6 +660,7 @@ class DataStore {
         yearlyAmortizationMode: YearlyAmortizationMode? = nil,
         receiptImagePath: String? = nil
     ) -> PPRecurringTransaction {
+        let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         let allocs: [Allocation]
         switch allocationMode {
         case .equalAll:
@@ -663,7 +672,7 @@ class DataStore {
             name: name,
             type: type,
             amount: amount,
-            categoryId: categoryId,
+            categoryId: safeCategoryId,
             memo: memo,
             allocationMode: allocationMode,
             allocations: allocs,

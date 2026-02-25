@@ -726,7 +726,11 @@ struct RecurringFormView: View {
             }
         }
 
-        let categoryId = selectedCategoryId ?? ""
+        guard let categoryId = selectedCategoryId, !categoryId.isEmpty else {
+            validationMessage = "カテゴリを選択してください"
+            showValidationError = true
+            return
+        }
         let resolvedMonthOfYear = frequency == .yearly ? monthOfYear : nil
         let resolvedEndDate: Date? = hasEndDate ? endDate : nil
         let resolvedAmortizationMode: YearlyAmortizationMode? = frequency == .yearly ? yearlyAmortizationMode : nil
