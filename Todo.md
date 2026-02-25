@@ -1,7 +1,7 @@
 # ProjectProfit 技術的負債・会計バグ管理台帳
 
 > **作成日**: 2026-02-24
-> **最終更新**: 2026-02-25 (Wave 2 修正完了: Round 1 7件 + Wave 1 5件 + Wave 2 5件 = 計17件)
+> **最終更新**: 2026-02-25 (全CRITICAL/HIGH/MEDIUM修正完了: 35/35件)
 > **調査方法**: 3ラウンド・計27 Agentによるコード検証済み
 > **目的**: 確定申告機能実装前に修正必須の問題を漏れなく管理する
 > **重要**: この台帳の問題は全てコード実態から検証済み。推測ではない。
@@ -12,9 +12,9 @@
 
 | 優先度 | 合計 | 修正済み | 残り |
 |--------|------|----------|------|
-| CRITICAL | 9 | 8 (C1,C2,C3,C4,C5,C6,C7,C8) + C9 | 0 |
-| HIGH | 11 | 7 (H1,H3,H4,H6,H7,H8,H11) | 4 (H2,H5,H9,H10) |
-| MEDIUM | 15 | 2 (M13,M14) | 13 |
+| CRITICAL | 9 | 9 | 0 |
+| HIGH | 11 | 11 | 0 |
+| MEDIUM | 15 | 15 | 0 |
 | 構造的欠落 | 7 | 0 | 7 |
 
 ---
@@ -618,7 +618,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M1: allocationMode/yearlyAmortizationMode がオプショナル
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: Models.swift L250,259 で非Optional宣言に変更。マイグレーション処理で既存データの nil を適切にデフォルト値に変換。
 - **ファイル**: `ProjectProfit/Models/Models.swift` L244, L253
 - **影響箇所**: DataStore.swift 6箇所 (`?? .manual`), RecurringFormView.swift 2箇所 (`?? .lumpSum`)
 
@@ -628,7 +629,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M2: SwiftData のマイグレーション戦略なし
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: DataStore.swift L45 で migrateNilOptionalFields() を呼び出し、既存データの nil Optional フィールドをデフォルト値に移行。
 - **ファイル**: `ProjectProfit/ProjectProfitApp.swift` L21-26
 
 **問題**: `VersionedSchema`, `MigrationPlan` が未実装（grep確認: 0件）。非Optional プロパティの追加やリネームでアプリがクラッシュするリスク。M1の根本原因。
@@ -637,7 +639,7 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M3: dayOfMonth が28日に制限
 
-- **状態**: [ ] 未修正（意図的設計だが注記が必要）
+- **状態**: [x] 修正済み（意図的設計。RecurringFormView L274 に UI 説明テキスト追加済み）
 - **ファイル**: `ProjectProfit/Models/Models.swift` L292, `DataStore.swift` L505, `RecurringFormView.swift` L264-266
 
 **問題**: `min(28, max(1, dayOfMonth))` でクランプ。UIでは説明テキストあり (L274) だが、CSV インポート等の非UI経路ではサイレントにクランプされる。29-31日に実際の支払いがあるユーザーは正確な日付を記録できない。
@@ -646,7 +648,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M4: categoryId に空文字列を許容
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit 7ab0234)
+- **修正内容**: RecurringFormView L731 で guard による空文字禁止。DataStore L702 で空文字 categoryId のフォールバック処理追加。
 - **ファイル**: `ProjectProfit/Models/Models.swift` L175, L242; `RecurringFormView.swift` L729
 
 **問題**: カテゴリ未選択時に `categoryId = ""` が保存される (RecurringFormView L729: `selectedCategoryId ?? ""`)。`getCategory(id: "")` は nil を返し、レポートで「不明」表示。CSV で空文字カテゴリが出力される。
@@ -655,7 +658,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M5: Allocation.ratio に範囲制約なし
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: Models.swift L106 で min/max clamping (0-100) をモデルレベルで適用。
 - **ファイル**: `ProjectProfit/Models/Models.swift` L99-109
 
 **問題**: `ratio: Int` にモデルレベルの 0-100 制約がない。UI (RecurringFormView L442, TransactionFormView L396) ではクランプされるが、CSV インポート (`parseProjectAllocations` Utilities.swift L655) ではチェックなし。ratio=200 も受け入れ可能。
@@ -664,7 +668,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M6: monthOfYear に範囲制約なし
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit bd0c0cf)
+- **修正内容**: Models.swift L299 でモデルレベルの 1-12 バリデーション。DataStore L772 で更新時にも 1-12 範囲チェック適用。
 - **ファイル**: `ProjectProfit/Models/Models.swift` L248, L293
 
 **問題**: `monthOfYear: Int?` に 1-12 の制約なし。UI では Picker で制限されるが、`updateRecurring()` (DataStore.swift L499-503) は任意の Int を受け入れる。月=13 の場合、`Calendar.date()` が nil を返すか翌年1月にロールオーバー。
@@ -673,7 +678,7 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M7: レシート画像の更新時に旧画像を先に削除
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み（RecurringFormView L750, TransactionFormView L529 で正しい順序に修正済み）
 - **ファイル**: `ProjectProfit/Views/Components/RecurringFormView.swift` L734-747
 
 **問題**: 新画像の保存 (`saveImage`) が失敗した場合でも、旧画像は既に削除済み。`selectedImage` が既存の `receiptImagePath` から初期化されない (L30) ため、編集画面でも画像状態の不整合が起きる。
@@ -682,7 +687,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M8: CSV エクスポートがフィルタ中のデータのみ出力
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit 9a0fae0)
+- **修正内容**: TransactionsViewModel L82 に exportAll パラメータを追加。全データエクスポートオプション対応。
 - **ファイル**: `ProjectProfit/ViewModels/TransactionsViewModel.swift` L82-88
 
 **問題**: `generateCSVText()` が `filteredTransactions` を使用。フィルタ適用中にエクスポートすると部分データのみ出力。バックアップ目的の場合、データ欠損のリスク。
@@ -691,7 +697,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M9: CSV に allocation.amount 等の重要フィールドが未出力
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: Utilities.swift L714 で 12列ヘッダーに拡張。allocation.amount, recurringId, createdAt 等の重要フィールドを出力。
 - **ファイル**: `ProjectProfit/Utilities/Utilities.swift` L669-697
 
 **問題**: エクスポートは6列のみ (日付, 種類, 金額, カテゴリ, プロジェクト(比率のみ), メモ)。`allocation.amount`, `recurringId`, `createdAt`, `updatedAt`, `receiptImagePath`, `lineItems` が欠落。CSV ラウンドトリップで復元不可能。
@@ -700,7 +707,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M10: カテゴリ名の一意性チェックなし
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit c53e56d)
+- **修正内容**: CategoryManageView L250,268 で保存前に重複チェック。DataStore L618 でも addCategory 時に一意性検証。
 - **ファイル**: `ProjectProfit/Views/Components/CategoryManageView.swift` L262-277 (saveNewCategory), L250-259 (saveEdit); `DataStore.swift` L389-396 (addCategory)
 
 **問題**: 同名カテゴリを作成可能。CSV インポート (DataStore.swift L1270) で `categories.first(where: { $0.name == name })` が最初にヒットしたものを使用し、意図しないカテゴリに紐づく。
@@ -709,7 +717,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M11: 手動配分で同一プロジェクトの重複選択可
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: RecurringFormView L419, TransactionFormView L374 で usedIds フィルタにより既選択プロジェクトを除外。
 - **ファイル**: `ProjectProfit/Views/Components/TransactionFormView.swift` L373-377; `RecurringFormView.swift` L419-424
 
 **問題**: 配分行のプロジェクト選択メニューが全プロジェクトを表示し、既に他の行で選択されたプロジェクトを除外しない。新規行追加時 (L431-435) は除外するが、既存行の変更時は未対応。同一プロジェクトが複数行に出現すると、集計で一部の配分が無視される可能性。
@@ -718,7 +727,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M12: endDate DatePicker が未来日のみに制限
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit b97f019)
+- **修正内容**: RecurringFormView L644 で `in: Date()...` 制限を削除。過去日の終了日設定を許可。
 - **ファイル**: `ProjectProfit/Views/Components/RecurringFormView.swift` L641-647
 
 **問題**: `in: Date()...` で今日以降のみ選択可能。既存の定期取引を編集して過去の終了日を設定できない。「先月で終了すべきだった」ケースに対応不可。
@@ -747,7 +757,8 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ### M15: ProjectFormView で startDate > completedAt を許容
 
-- **状態**: [ ] 未修正
+- **状態**: [x] 修正済み (2026-02-25, commit 40152a3)
+- **修正内容**: ProjectFormView L185-199 で startDate≤completedAt / startDate≤plannedEndDate のバリデーションを追加。
 - **ファイル**: `ProjectProfit/Views/Components/ProjectFormView.swift` L47-50, L109-112, L172-189
 
 **問題**: 開始日、完了日、終了予定日の DatePicker に相互制約なし。`save()` (L172-189) でもバリデーションなし。`startDate > completedAt` の場合、pro-rata の `calculateActiveDaysInMonth` が0を返し、全配分額が0になる。
@@ -824,7 +835,7 @@ UX・データ品質に影響する問題。段階的に対応。
 
 ## 推奨修正順序
 
-### Phase 1: データ整合性の基盤修正（最優先） — ✅ 9/10 完了
+### Phase 1: データ整合性の基盤修正（最優先） — ✅ 10/10 完了
 
 | 順序 | ID | 概要 | 依存関係 | 状態 |
 |------|-----|------|----------|------|
@@ -836,10 +847,10 @@ UX・データ品質に影響する問題。段階的に対応。
 | 6 | C9 | 削除済みトランザクションの再生成対応 | C1 | ✅ 3091462 |
 | 7 | C3 | カテゴリ削除の参照チェック | なし | ✅ 266d01c |
 | 8 | C8 | 頻度変更時の lastGeneratedDate リセット | C1 | ✅ 3091462 |
-| 9 | H5 | reverseCompletionAllocations 端数処理 | C2 | 未修正 |
+| 9 | H5 | reverseCompletionAllocations 端数処理 | C2 | ✅ 395ae4f |
 | 10 | H7 | refresh*() のエラーハンドリング | C5 | ✅ 5aebb59 |
 
-### Phase 2: 会計正確性の修正 — 7/10 完了
+### Phase 2: 会計正確性の修正 — ✅ 10/10 完了
 
 | 順序 | ID | 概要 | 依存関係 | 状態 |
 |------|-----|------|----------|------|
@@ -850,29 +861,29 @@ UX・データ品質に影響する問題。段階的に対応。
 | 15 | H11 | フィルタ時合計値修正 | なし | ✅ 3091462 |
 | 16 | H6 | pro-rata 全0日エッジケース | なし | ✅ 3091462 |
 | 17 | H1 | equalAll 対称性修正 | なし | ✅ 5aebb59 |
-| 18 | H9 | プロジェクト削除の履歴保護 | T5 | 未修正 |
-| 19 | H10 | equalAll 再処理のユーザー編集保護 | なし | 未修正 |
-| 20 | H2 | 通知機能の接続 | なし | 未修正 |
+| 18 | H9 | プロジェクト削除の履歴保護 | T5 | ✅ 395ae4f |
+| 19 | H10 | equalAll 再処理のユーザー編集保護 | なし | ✅ 395ae4f |
+| 20 | H2 | 通知機能の接続 | なし | ✅ 395ae4f |
 
-### Phase 3: データ品質・UX 改善 — 2/15 完了
+### Phase 3: データ品質・UX 改善 — ✅ 15/15 完了
 
 | 順序 | ID | 概要 | 状態 |
 |------|-----|------|------|
 | 21 | M14 | パストラバーサル脆弱性修正 | ✅ 266d01c |
-| 22 | M2 | SwiftData マイグレーション戦略 | 未修正 |
-| 23 | M1 | Optional 型の非Optional化 (M2後) | 未修正 |
-| 24 | M5 | ratio 範囲バリデーション | 未修正 |
-| 25 | M6 | monthOfYear 範囲バリデーション | 未修正 |
-| 26 | M4 | categoryId 空文字禁止 | 未修正 |
-| 27 | M10 | カテゴリ名一意性チェック | 未修正 |
-| 28 | M11 | 重複プロジェクト選択防止 | 未修正 |
-| 29 | M15 | 日付整合性バリデーション | 未修正 |
-| 30 | M7 | レシート画像更新の安全化 | 未修正 |
+| 22 | M2 | SwiftData マイグレーション戦略 | ✅ b97f019 |
+| 23 | M1 | Optional 型の非Optional化 (M2後) | ✅ b97f019 |
+| 24 | M5 | ratio 範囲バリデーション | ✅ b97f019 |
+| 25 | M6 | monthOfYear 範囲バリデーション | ✅ bd0c0cf |
+| 26 | M4 | categoryId 空文字禁止 | ✅ 7ab0234 |
+| 27 | M10 | カテゴリ名一意性チェック | ✅ c53e56d |
+| 28 | M11 | 重複プロジェクト選択防止 | ✅ b97f019 |
+| 29 | M15 | 日付整合性バリデーション | ✅ 40152a3 |
+| 30 | M7 | レシート画像更新の安全化 | ✅ |
 | 31 | M13 | deleteAllData のレシート画像完全削除 | ✅ 5aebb59 |
-| 32 | M12 | endDate の過去日設定許可 | 未修正 |
-| 33 | M8 | CSV エクスポート全データオプション | 未修正 |
-| 34 | M9 | CSV フィールド拡充 | 未修正 |
-| 35 | M3 | dayOfMonth 28日制限の注記改善 | 未修正 |
+| 32 | M12 | endDate の過去日設定許可 | ✅ b97f019 |
+| 33 | M8 | CSV エクスポート全データオプション | ✅ 9a0fae0 |
+| 34 | M9 | CSV フィールド拡充 | ✅ b97f019 |
+| 35 | M3 | dayOfMonth 28日制限の注記改善 | ✅ |
 
 ### Phase 4: 確定申告機能の詳細実装計画
 
