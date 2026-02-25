@@ -65,14 +65,24 @@ struct TransactionsView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    csvText = viewModel.generateCSVText()
-                    showShareSheet = true
+                Menu {
+                    Button {
+                        csvText = viewModel.generateCSVText(exportAll: false)
+                        showShareSheet = true
+                    } label: {
+                        Label("フィルタ中のデータ", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    Button {
+                        csvText = viewModel.generateCSVText(exportAll: true)
+                        showShareSheet = true
+                    } label: {
+                        Label("全データ", systemImage: "tray.full")
+                    }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("CSV出力")
-                .accessibilityHint("タップして取引データをCSVで共有")
+                .accessibilityHint("タップしてCSVエクスポートオプションを表示")
             }
         }
         .sheet(isPresented: $showAddSheet) {
