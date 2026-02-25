@@ -2484,4 +2484,46 @@ final class DataStoreCRUDTests: XCTestCase {
         let fetched = dataStore.getCategory(id: beta!.id)
         XCTAssertEqual(fetched?.name, "Beta", "重複する名前への更新は拒否されるべき")
     }
+
+    // MARK: - M4: Empty CategoryId Fallback
+
+    func testAddTransaction_emptyCategoryId_fallsBackToDefault() {
+        let project = dataStore.addProject(name: "M4 Test", description: "")
+
+        let expenseTx = dataStore.addTransaction(
+            type: .expense,
+            amount: 1000,
+            date: Date(),
+            categoryId: "",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertEqual(expenseTx.categoryId, "cat-other-expense", "空の経費categoryIdはcat-other-expenseにフォールバックすべき")
+
+        let incomeTx = dataStore.addTransaction(
+            type: .income,
+            amount: 2000,
+            date: Date(),
+            categoryId: "",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        XCTAssertEqual(incomeTx.categoryId, "cat-other-income", "空の収入categoryIdはcat-other-incomeにフォールバックすべき")
+    }
+
+    func testAddRecurring_emptyCategoryId_fallsBackToDefault() {
+        let project = dataStore.addProject(name: "M4 Recurring Test", description: "")
+
+        let recurring = dataStore.addRecurring(
+            name: "Empty Cat Recurring",
+            type: .expense,
+            amount: 500,
+            categoryId: "",
+            memo: "",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1
+        )
+        XCTAssertEqual(recurring.categoryId, "cat-other-expense", "空の経費categoryIdはcat-other-expenseにフォールバックすべき")
+    }
 }
