@@ -204,6 +204,19 @@ struct SettingsView: View {
                         subtitle: "収益・経費カテゴリの追加・編集"
                     )
                 }
+
+                Divider().padding(.leading, 70)
+
+                NavigationLink {
+                    ProfileSettingsView()
+                } label: {
+                    menuRow(
+                        icon: "person.text.rectangle",
+                        iconColor: AppColors.warning,
+                        title: "申告者情報",
+                        subtitle: "e-Tax用の個人情報を設定"
+                    )
+                }
             }
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))

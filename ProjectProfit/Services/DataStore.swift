@@ -16,6 +16,7 @@ class DataStore {
     var journalLines: [PPJournalLine] = []
     var accountingProfile: PPAccountingProfile?
     var fixedAssets: [PPFixedAsset] = []
+    var inventoryRecords: [PPInventoryRecord] = []
     var isLoading = true
     var lastError: AppError?
 
@@ -64,6 +65,9 @@ class DataStore {
 
             let fixedAssetDescriptor = FetchDescriptor<PPFixedAsset>(sortBy: [SortDescriptor(\.acquisitionDate, order: .reverse)])
             fixedAssets = try modelContext.fetch(fixedAssetDescriptor)
+
+            let inventoryDescriptor = FetchDescriptor<PPInventoryRecord>(sortBy: [SortDescriptor(\.fiscalYear, order: .reverse)])
+            inventoryRecords = try modelContext.fetch(inventoryDescriptor)
 
             // Phase 4B: 会計ブートストラップ（初回のみ実行）
             let bootstrap = AccountingBootstrapService(modelContext: modelContext)
@@ -156,6 +160,7 @@ class DataStore {
             refreshJournalEntries()
             refreshJournalLines()
             refreshFixedAssets()
+            refreshInventoryRecords()
             return false
         }
     }
@@ -585,7 +590,11 @@ class DataStore {
         lineItems: [ReceiptLineItem] = [],
         paymentAccountId: String? = nil,
         transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil
     ) -> PPTransaction {
         // T5: 年度ロックガード
         guard !isYearLocked(for: date) else {
@@ -605,7 +614,11 @@ class DataStore {
             lineItems: lineItems,
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory
         )
         modelContext.insert(transaction)
 
@@ -634,7 +647,11 @@ class DataStore {
         lineItems: [ReceiptLineItem]? = nil,
         paymentAccountId: String?? = nil,
         transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil
+        taxDeductibleRate: Int?? = nil,
+        taxAmount: Int?? = nil,
+        taxRate: Int?? = nil,
+        isTaxIncluded: Bool?? = nil,
+        taxCategory: TaxCategory?? = nil
     ) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
         // T5: 年度ロックガード（変更先の日付と現在の日付の両方をチェック）
@@ -649,6 +666,10 @@ class DataStore {
         if let paymentAccountId { transaction.paymentAccountId = paymentAccountId }
         if let transferToAccountId { transaction.transferToAccountId = transferToAccountId }
         if let taxDeductibleRate { transaction.taxDeductibleRate = taxDeductibleRate }
+        if let taxAmount { transaction.taxAmount = taxAmount }
+        if let taxRate { transaction.taxRate = taxRate }
+        if let isTaxIncluded { transaction.isTaxIncluded = isTaxIncluded }
+        if let taxCategory { transaction.taxCategory = taxCategory }
 
         let finalAmount = amount ?? transaction.amount
         if let amount { transaction.amount = amount }

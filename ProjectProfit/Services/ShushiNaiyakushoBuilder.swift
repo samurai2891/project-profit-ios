@@ -9,7 +9,10 @@ enum ShushiNaiyakushoBuilder {
     static func build(
         fiscalYear: Int,
         profitLoss: ProfitLossReport,
-        accounts: [PPAccount]
+        accounts: [PPAccount],
+        fixedAssets: [PPFixedAsset] = [],
+        journalLines: [PPJournalLine] = [],
+        journalEntries: [PPJournalEntry] = []
     ) -> EtaxForm {
         var fields: [EtaxField] = []
 
@@ -61,6 +64,41 @@ enum ShushiNaiyakushoBuilder {
             value: totalRevenue - totalExpenses,
             section: .income
         ))
+
+        // 付表: 減価償却明細
+        if !fixedAssets.isEmpty {
+            let scheduleRows = DepreciationScheduleBuilder.build(assets: fixedAssets, fiscalYear: fiscalYear)
+            for (index, row) in scheduleRows.enumerated() {
+                fields.append(EtaxField(
+                    id: "shushi_depreciation_\(index)",
+                    fieldLabel: "\(row.assetName)（\(row.depreciationMethod.label)）",
+                    taxLine: .depreciationExpense,
+                    value: row.currentYearAmount,
+                    section: .fixedAssetSchedule
+                ))
+            }
+        }
+
+        // 付表: 地代家賃内訳
+        let rentAccountId = AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"
+        let postedEntryIds = Set(
+            journalEntries
+                .filter { $0.isPosted }
+                .map(\.id)
+        )
+        let rentLines = journalLines.filter { line in
+            line.accountId == rentAccountId && postedEntryIds.contains(line.entryId)
+        }
+        let rentTotal = rentLines.reduce(0) { $0 + $1.debit } - rentLines.reduce(0) { $0 + $1.credit }
+        if rentTotal > 0 {
+            fields.append(EtaxField(
+                id: "shushi_rent_breakdown",
+                fieldLabel: "地代家賃合計",
+                taxLine: .rentExpense,
+                value: rentTotal,
+                section: .deductions
+            ))
+        }
 
         return EtaxForm(
             fiscalYear: fiscalYear,

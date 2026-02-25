@@ -19,6 +19,14 @@ final class PPAccountingProfile {
     var openingDate: Date?                     // 開業日
     var lockedAt: Date?                        // 年度ロック日時（nil = 未ロック、T5対応基盤）
     var lockedYears: [Int]?                    // ロック済み年度リスト（T5: 複数年度対応）
+    // e-Tax 申告者情報フィールド
+    var ownerNameKana: String?               // 氏名カナ
+    var postalCode: String?                  // 郵便番号（ハイフンなし7桁）
+    var address: String?                     // 住所
+    var phoneNumber: String?                 // 電話番号
+    var dateOfBirth: Date?                   // 生年月日
+    var businessCategory: String?            // 事業種類（例: "ソフトウェア開発"）
+    var myNumberFlag: Bool?                  // マイナンバー提出フラグ
     var createdAt: Date
     var updatedAt: Date
 
@@ -34,6 +42,13 @@ final class PPAccountingProfile {
         openingDate: Date? = nil,
         lockedAt: Date? = nil,
         lockedYears: [Int]? = [],
+        ownerNameKana: String? = nil,
+        postalCode: String? = nil,
+        address: String? = nil,
+        phoneNumber: String? = nil,
+        dateOfBirth: Date? = nil,
+        businessCategory: String? = nil,
+        myNumberFlag: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -48,6 +63,13 @@ final class PPAccountingProfile {
         self.openingDate = openingDate
         self.lockedAt = lockedAt
         self.lockedYears = lockedYears
+        self.ownerNameKana = ownerNameKana
+        self.postalCode = postalCode
+        self.address = address
+        self.phoneNumber = phoneNumber
+        self.dateOfBirth = dateOfBirth
+        self.businessCategory = businessCategory
+        self.myNumberFlag = myNumberFlag
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

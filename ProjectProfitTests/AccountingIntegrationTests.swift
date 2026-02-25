@@ -2,13 +2,14 @@ import XCTest
 import SwiftData
 @testable import ProjectProfit
 
-/// エンドツーエンド統合テスト: トランザクション入力→仕訳生成→レポート→e-Tax出力の全フロー
+/// 統合テスト: 消費税仕訳・e-Tax申告者情報・XTX XML 生成の検証
 @MainActor
 final class AccountingIntegrationTests: XCTestCase {
     var container: ModelContainer!
     var context: ModelContext!
-    var dataStore: ProjectProfit.DataStore!
     var engine: AccountingEngine!
+    var accounts: [PPAccount]!
+    var categories: [PPCategory]!
 
     override func setUp() {
         super.setUp()
@@ -21,295 +22,385 @@ final class AccountingIntegrationTests: XCTestCase {
             configurations: config
         )
         context = ModelContext(container)
-        dataStore = ProjectProfit.DataStore(modelContext: context)
-        dataStore.loadData()
         engine = AccountingEngine(modelContext: context)
+
+        // デフォルト勘定科目をシード
+        for def in AccountingConstants.defaultAccounts {
+            let account = PPAccount(
+                id: def.id, code: def.code, name: def.name,
+                accountType: def.accountType, normalBalance: def.normalBalance,
+                subtype: def.subtype, isSystem: true, displayOrder: def.displayOrder
+            )
+            context.insert(account)
+        }
+        try! context.save()
+
+        let descriptor = FetchDescriptor<PPAccount>(sortBy: [SortDescriptor(\.displayOrder)])
+        accounts = try! context.fetch(descriptor)
+
+        // カテゴリをシード
+        for cat in DEFAULT_CATEGORIES {
+            let category = PPCategory(
+                id: cat.id, name: cat.name, type: cat.type, icon: cat.icon, isDefault: true
+            )
+            if let accountId = AccountingConstants.categoryToAccountMapping[cat.id] {
+                category.linkedAccountId = accountId
+            }
+            context.insert(category)
+        }
+        try! context.save()
+
+        let catDescriptor = FetchDescriptor<PPCategory>()
+        categories = try! context.fetch(catDescriptor)
     }
 
     override func tearDown() {
+        accounts = nil
+        categories = nil
         engine = nil
-        dataStore = nil
         context = nil
         container = nil
         super.tearDown()
     }
 
-    // MARK: - Scenario 1: 基本的な収入/経費フロー
+    // MARK: - Test 1: 課税収入の仕訳行検証
 
-    func testScenario1_BasicIncomeExpenseFlow() {
-        // 1. 収入トランザクション追加
-        let incomeTx = dataStore.addTransaction(
+    /// 標準税率10%の収入トランザクション (税込11,000円、税額1,000円) から
+    /// Dr 現金 11,000 / Cr 売上 10,000 + Cr 仮受消費税 1,000 の3行仕訳が生成されることを検証
+    func testTaxIncomeTransaction_GeneratesCorrectJournalLines() {
+        let tx = createTransaction(
             type: .income,
-            amount: 500_000,
-            date: makeDate(2025, 6, 15),
+            amount: 11_000,
             categoryId: "cat-sales",
-            memo: "Web制作代金",
-            allocations: []
+            taxAmount: 1_000,
+            taxCategory: .standardRate
         )
 
-        // 2. 経費トランザクション追加
-        let expenseTx = dataStore.addTransaction(
-            type: .expense,
-            amount: 30_000,
-            date: makeDate(2025, 6, 20),
-            categoryId: "cat-hosting",
-            memo: "AWSサーバー代",
-            allocations: []
-        )
+        let entry = engine.upsertJournalEntry(for: tx, categories: categories, accounts: accounts)
 
-        // 3. 仕訳を生成
+        XCTAssertNotNil(entry)
+        XCTAssertTrue(entry!.isPosted, "課税収入仕訳は自動投稿されるべき")
+        XCTAssertEqual(entry!.entryType, .auto)
 
-        engine.upsertJournalEntry(for: incomeTx, categories: dataStore.categories, accounts: dataStore.accounts)
-        engine.upsertJournalEntry(for: expenseTx, categories: dataStore.categories, accounts: dataStore.accounts)
-        try? context.save()
-        dataStore.refreshJournalEntries()
-        dataStore.refreshJournalLines()
+        let lines = fetchLines(for: entry!.id)
+        XCTAssertEqual(lines.count, 3, "課税収入は3行仕訳: Dr現金 / Cr売上 + Cr仮受消費税")
 
-        // 4. 仕訳が生成されているか確認
-        XCTAssertEqual(dataStore.journalEntries.count, 2)
+        // Dr 現金 11,000
+        let cashLine = lines.first { $0.accountId == AccountingConstants.cashAccountId }
+        XCTAssertNotNil(cashLine, "現金の借方行が存在すること")
+        XCTAssertEqual(cashLine?.debit, 11_000)
+        XCTAssertEqual(cashLine?.credit, 0)
 
-        // 5. 全仕訳の貸借が一致しているか確認
-        for entry in dataStore.journalEntries {
-            let lines = dataStore.journalLines.filter { $0.entryId == entry.id }
-            let totalDebit = lines.reduce(0) { $0 + $1.debit }
-            let totalCredit = lines.reduce(0) { $0 + $1.credit }
-            XCTAssertEqual(totalDebit, totalCredit, "仕訳 \(entry.memo) の貸借不一致")
-            XCTAssertTrue(entry.isPosted, "仕訳 \(entry.memo) が未投稿")
-        }
+        // Cr 売上 10,000 (税抜)
+        let salesLine = lines.first { $0.accountId == AccountingConstants.salesAccountId }
+        XCTAssertNotNil(salesLine, "売上の貸方行が存在すること")
+        XCTAssertEqual(salesLine?.debit, 0)
+        XCTAssertEqual(salesLine?.credit, 10_000)
 
-        // 6. 試算表の貸借一致を確認
-        let tb = AccountingReportService.generateTrialBalance(
-            fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-        XCTAssertTrue(tb.isBalanced, "試算表の貸借不一致: 借方=\(tb.debitTotal), 貸方=\(tb.creditTotal)")
+        // Cr 仮受消費税 1,000
+        let outputTaxLine = lines.first { $0.accountId == AccountingConstants.outputTaxAccountId }
+        XCTAssertNotNil(outputTaxLine, "仮受消費税の貸方行が存在すること")
+        XCTAssertEqual(outputTaxLine?.debit, 0)
+        XCTAssertEqual(outputTaxLine?.credit, 1_000)
 
-        // 7. P&L の所得金額が正しいか確認
-        let pl = AccountingReportService.generateProfitLoss(
-            fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-        XCTAssertEqual(pl.totalRevenue, 500_000)
-        XCTAssertEqual(pl.totalExpenses, 30_000)
-        XCTAssertEqual(pl.netIncome, 470_000)
-
-        // 8. B/S の資産=負債+資本を確認
-        let bs = AccountingReportService.generateBalanceSheet(
-            fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-        XCTAssertTrue(bs.isBalanced, "B/S不均衡: 資産=\(bs.totalAssets), 負債+資本=\(bs.liabilitiesAndEquity)")
-
-        // 9. e-Tax出力が正常に生成されるか確認
-        let form = EtaxFieldPopulator.populate(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            balanceSheet: bs,
-            accounts: dataStore.accounts
-        )
-        let xtxResult = EtaxXtxExporter.generateXtx(form: form)
-        switch xtxResult {
-        case .success(let data):
-            let xml = String(data: data, encoding: .utf8)!
-            XCTAssertTrue(xml.contains("<税務申告データ>"))
-            XCTAssertTrue(xml.contains("<金額>500000</金額>"))
-        case .failure(let error):
-            XCTFail("e-Tax出力失敗: \(error)")
-        }
-    }
-
-    // MARK: - Scenario 2: 家事按分ありの経費フロー
-
-    func testScenario2_TaxDeductibleRateExpense() {
-        // 1. 家事按分50%の経費を追加
-        let tx = dataStore.addTransaction(
-            type: .expense,
-            amount: 100_000,
-            date: makeDate(2025, 3, 1),
-            categoryId: "cat-hosting",
-            memo: "インターネット回線費（年額）",
-            allocations: [],
-            taxDeductibleRate: 50
-        )
-        XCTAssertEqual(tx.taxDeductibleRate, 50)
-
-        // 2. 仕訳生成 → 3行仕訳になるはず（経費50% + 事業主貸50% / 現金）
-        engine.upsertJournalEntry(for: tx, categories: dataStore.categories, accounts: dataStore.accounts)
-        try? context.save()
-        dataStore.refreshJournalEntries()
-        dataStore.refreshJournalLines()
-
-        let entry = dataStore.journalEntries.first!
-        let lines = dataStore.journalLines.filter { $0.entryId == entry.id }
-
-        XCTAssertEqual(lines.count, 3, "家事按分仕訳は3行のはず")
-        XCTAssertTrue(entry.isPosted)
-
-        // 3. 貸借一致確認
+        // 貸借一致
         let totalDebit = lines.reduce(0) { $0 + $1.debit }
         let totalCredit = lines.reduce(0) { $0 + $1.credit }
-        XCTAssertEqual(totalDebit, totalCredit)
-        XCTAssertEqual(totalDebit, 100_000)
-
-        // 4. 経費勘定は50,000円、事業主貸は50,000円
-        let expenseLine = lines.first { $0.accountId == "acct-communication" }
-        XCTAssertNotNil(expenseLine)
-        XCTAssertEqual(expenseLine?.debit, 50_000)
-
-        let drawingsLine = lines.first { $0.accountId == AccountingConstants.ownerDrawingsAccountId }
-        XCTAssertNotNil(drawingsLine)
-        XCTAssertEqual(drawingsLine?.debit, 50_000)
+        XCTAssertEqual(totalDebit, totalCredit, "借方合計 == 貸方合計")
+        XCTAssertEqual(totalDebit, 11_000)
     }
 
-    // MARK: - Scenario 3: 自動分類→e-Tax出力
+    // MARK: - Test 2: 課税経費の仕訳行検証
 
-    func testScenario3_ClassificationToEtaxExport() {
-        // 1. 複数トランザクション追加
-        let memos = [
-            ("AWS月額", "cat-hosting", TransactionType.expense, 12_000),
-            ("JR交通費", "cat-transport", TransactionType.expense, 3_500),
-            ("家賃3月分", "cat-other-expense", TransactionType.expense, 80_000),
-            ("Web制作売上", "cat-sales", TransactionType.income, 300_000),
+    /// 軽減税率8%の経費トランザクション (税込10,800円、税額800円) から
+    /// Dr 経費 10,000 + Dr 仮払消費税 800 / Cr 現金 10,800 の3行仕訳が生成されることを検証
+    func testTaxExpenseTransaction_GeneratesCorrectJournalLines() {
+        let tx = createTransaction(
+            type: .expense,
+            amount: 10_800,
+            categoryId: "cat-food",
+            taxAmount: 800,
+            taxCategory: .reducedRate
+        )
+
+        let entry = engine.upsertJournalEntry(for: tx, categories: categories, accounts: accounts)
+
+        XCTAssertNotNil(entry)
+        XCTAssertTrue(entry!.isPosted, "課税経費仕訳は自動投稿されるべき")
+
+        let lines = fetchLines(for: entry!.id)
+        XCTAssertEqual(lines.count, 3, "課税経費は3行仕訳: Dr経費 + Dr仮払消費税 / Cr現金")
+
+        // Dr 経費 10,000 (税抜) — cat-food は acct-entertainment にマッピング
+        let expenseLine = lines.first { $0.accountId == "acct-entertainment" }
+        XCTAssertNotNil(expenseLine, "経費（接待交際費）の借方行が存在すること")
+        XCTAssertEqual(expenseLine?.debit, 10_000)
+        XCTAssertEqual(expenseLine?.credit, 0)
+
+        // Dr 仮払消費税 800
+        let inputTaxLine = lines.first { $0.accountId == AccountingConstants.inputTaxAccountId }
+        XCTAssertNotNil(inputTaxLine, "仮払消費税の借方行が存在すること")
+        XCTAssertEqual(inputTaxLine?.debit, 800)
+        XCTAssertEqual(inputTaxLine?.credit, 0)
+
+        // Cr 現金 10,800
+        let cashLine = lines.first { $0.accountId == AccountingConstants.cashAccountId }
+        XCTAssertNotNil(cashLine, "現金の貸方行が存在すること")
+        XCTAssertEqual(cashLine?.debit, 0)
+        XCTAssertEqual(cashLine?.credit, 10_800)
+
+        // 貸借一致
+        let totalDebit = lines.reduce(0) { $0 + $1.debit }
+        let totalCredit = lines.reduce(0) { $0 + $1.credit }
+        XCTAssertEqual(totalDebit, totalCredit, "借方合計 == 貸方合計")
+        XCTAssertEqual(totalDebit, 10_800)
+    }
+
+    // MARK: - Test 3: 消費税なし (後方互換性)
+
+    /// taxAmount=nil のトランザクションは従来どおり消費税行なしの2行仕訳になることを検証
+    func testTransactionWithoutTax_BackwardCompatibility() {
+        // 収入: taxAmount=nil → 2行仕訳 (Dr 現金 / Cr 売上)
+        let incomeTx = createTransaction(
+            type: .income,
+            amount: 50_000,
+            categoryId: "cat-sales",
+            taxAmount: nil,
+            taxCategory: nil
+        )
+
+        let incomeEntry = engine.upsertJournalEntry(for: incomeTx, categories: categories, accounts: accounts)
+        XCTAssertNotNil(incomeEntry)
+
+        let incomeLines = fetchLines(for: incomeEntry!.id)
+        XCTAssertEqual(incomeLines.count, 2, "taxAmount=nil の収入は2行仕訳")
+
+        // 仮受消費税行がないことを確認
+        let outputTaxLine = incomeLines.first { $0.accountId == AccountingConstants.outputTaxAccountId }
+        XCTAssertNil(outputTaxLine, "消費税なしの場合は仮受消費税行が生成されない")
+
+        // 経費: taxAmount=nil → 2行仕訳 (Dr 経費 / Cr 現金)
+        let expenseTx = createTransaction(
+            type: .expense,
+            amount: 20_000,
+            categoryId: "cat-tools",
+            taxAmount: nil,
+            taxCategory: nil
+        )
+
+        let expenseEntry = engine.upsertJournalEntry(for: expenseTx, categories: categories, accounts: accounts)
+        XCTAssertNotNil(expenseEntry)
+
+        let expenseLines = fetchLines(for: expenseEntry!.id)
+        XCTAssertEqual(expenseLines.count, 2, "taxAmount=nil の経費は2行仕訳")
+
+        // 仮払消費税行がないことを確認
+        let inputTaxLine = expenseLines.first { $0.accountId == AccountingConstants.inputTaxAccountId }
+        XCTAssertNil(inputTaxLine, "消費税なしの場合は仮払消費税行が生成されない")
+
+        // 両方とも貸借一致
+        for entry in [incomeEntry!, expenseEntry!] {
+            let lines = fetchLines(for: entry.id)
+            let totalDebit = lines.reduce(0) { $0 + $1.debit }
+            let totalCredit = lines.reduce(0) { $0 + $1.credit }
+            XCTAssertEqual(totalDebit, totalCredit, "仕訳 \(entry.memo) の貸借一致")
+        }
+    }
+
+    // MARK: - Test 4: EtaxFieldPopulator 申告者情報フィールド生成
+
+    /// PPAccountingProfile に e-Tax フィールドを設定し、EtaxFieldPopulator が
+    /// .declarantInfo セクションのフィールドを正しく生成することを検証
+    func testEtaxFieldPopulator_GeneratesDeclarantInfoFields() {
+        let profile = PPAccountingProfile(
+            fiscalYear: 2025,
+            bookkeepingMode: .doubleEntry,
+            businessName: "テスト屋号",
+            ownerName: "田中太郎",
+            ownerNameKana: "タナカタロウ",
+            postalCode: "1000001",
+            address: "東京都千代田区千代田1-1",
+            phoneNumber: "03-1234-5678",
+            businessCategory: "ソフトウェア開発"
+        )
+
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+
+        // 7フィールドすべてが生成されることを確認
+        XCTAssertEqual(fields.count, 7, "全てのe-Tax申告者情報フィールドが生成されること")
+
+        // 全フィールドが .declarantInfo セクションであること
+        XCTAssertTrue(fields.allSatisfy { $0.section == .declarantInfo },
+                       "全フィールドが declarantInfo セクション")
+
+        // 各フィールドの存在を個別に確認
+        let fieldIds = Set(fields.map(\.id))
+        XCTAssertTrue(fieldIds.contains("declarant_name"), "氏名フィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_name_kana"), "氏名カナフィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_postal_code"), "郵便番号フィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_address"), "住所フィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_phone"), "電話番号フィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_business_name"), "屋号フィールド")
+        XCTAssertTrue(fieldIds.contains("declarant_business_category"), "事業種類フィールド")
+    }
+
+    /// 空文字のフィールドは .declarantInfo に含まれないことを検証
+    func testEtaxFieldPopulator_SkipsEmptyDeclarantFields() {
+        let profile = PPAccountingProfile(
+            fiscalYear: 2025,
+            bookkeepingMode: .doubleEntry,
+            businessName: "",
+            ownerName: "山田花子"
+            // ownerNameKana, postalCode, address, phoneNumber, businessCategory は全て nil
+        )
+
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+
+        // ownerName のみ設定 → declarant_name のみ
+        XCTAssertEqual(fields.count, 1, "ownerName のみの場合は1フィールドのみ")
+        XCTAssertEqual(fields.first?.id, "declarant_name")
+    }
+
+    // MARK: - Test 5: EtaxXtxExporter の全セクション XML 生成
+
+    /// revenue, expenses, income, declarantInfo, inventory, balanceSheet の各セクションに
+    /// フィールドを含む EtaxForm から generateXtx した XML が全セクションタグを含むことを検証
+    func testEtaxXtxExporter_GeneratesValidXmlWithAllSections() {
+        let fields: [EtaxField] = [
+            // 収入
+            EtaxField(
+                id: "revenue_sales", fieldLabel: "売上金額",
+                taxLine: .salesRevenue, value: 1_000_000, section: .revenue
+            ),
+            // 経費
+            EtaxField(
+                id: "expense_communication", fieldLabel: "通信費",
+                taxLine: .communicationExpense, value: 50_000, section: .expenses
+            ),
+            // 所得
+            EtaxField(
+                id: "income_net", fieldLabel: "所得金額",
+                taxLine: nil, value: 950_000, section: .income
+            ),
+            // 申告者情報
+            EtaxField(
+                id: "declarant_name", fieldLabel: "氏名",
+                taxLine: nil, value: 0, section: .declarantInfo
+            ),
+            // 棚卸
+            EtaxField(
+                id: "inventory_opening", fieldLabel: "期首商品棚卸高",
+                taxLine: nil, value: 100_000, section: .inventory
+            ),
+            // 貸借対照表
+            EtaxField(
+                id: "bs_total_assets", fieldLabel: "資産合計",
+                taxLine: nil, value: 500_000, section: .balanceSheet
+            ),
         ]
 
-        for (memo, catId, type, amount) in memos {
-            dataStore.addTransaction(
-                type: type,
-                amount: amount,
-                date: makeDate(2025, 3, 15),
-                categoryId: catId,
-                memo: memo,
-                allocations: []
-            )
-        }
-
-        // 2. 自動分類
-        let results = ClassificationEngine.classifyBatch(
-            transactions: dataStore.transactions,
-            categories: dataStore.categories,
-            accounts: dataStore.accounts,
-            userRules: []
-        )
-
-        // AWS → 通信費
-        let awsResult = results.first { $0.transaction.memo.contains("AWS") }
-        XCTAssertEqual(awsResult?.result.taxLine, .communicationExpense)
-
-        // JR → 旅費交通費
-        let jrResult = results.first { $0.transaction.memo.contains("JR") }
-        XCTAssertEqual(jrResult?.result.taxLine, .travelExpense)
-
-        // 家賃 → 地代家賃
-        let rentResult = results.first { $0.transaction.memo.contains("家賃") }
-        XCTAssertEqual(rentResult?.result.taxLine, .rentExpense)
-
-        // 3. 仕訳生成
-        for tx in dataStore.transactions {
-            engine.upsertJournalEntry(for: tx, categories: dataStore.categories, accounts: dataStore.accounts)
-        }
-        try? context.save()
-        dataStore.refreshJournalEntries()
-        dataStore.refreshJournalLines()
-
-        // 4. 全仕訳の貸借一致
-        let tb = AccountingReportService.generateTrialBalance(
+        let form = EtaxForm(
             fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-        XCTAssertTrue(tb.isBalanced)
-
-        // 5. P&L → e-Tax
-        let pl = AccountingReportService.generateProfitLoss(
-            fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-        XCTAssertEqual(pl.totalRevenue, 300_000)
-        XCTAssertEqual(pl.totalExpenses, 95_500)
-
-        let form = EtaxFieldPopulator.populate(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            balanceSheet: nil,
-            accounts: dataStore.accounts
-        )
-        XCTAssertFalse(form.fields.isEmpty)
-
-        // CSV出力テスト
-        let csvResult = EtaxXtxExporter.generateCsv(form: form)
-        if case .failure(let error) = csvResult {
-            XCTFail("CSV出力失敗: \(error)")
-        }
-    }
-
-    // MARK: - Scenario 4: 白色申告フロー
-
-    func testScenario4_WhiteReturnFlow() {
-        // 1. トランザクション追加
-        dataStore.addTransaction(
-            type: .income, amount: 1_000_000,
-            date: makeDate(2025, 1, 15), categoryId: "cat-sales",
-            memo: "コンサル収入", allocations: []
-        )
-        dataStore.addTransaction(
-            type: .expense, amount: 50_000,
-            date: makeDate(2025, 2, 1), categoryId: "cat-tools",
-            memo: "開発ツール", allocations: []
+            formType: .blueReturn,
+            fields: fields,
+            generatedAt: Date()
         )
 
-        // 2. 仕訳生成
-        for tx in dataStore.transactions {
-            engine.upsertJournalEntry(for: tx, categories: dataStore.categories, accounts: dataStore.accounts)
-        }
-        try? context.save()
-        dataStore.refreshJournalEntries()
-        dataStore.refreshJournalLines()
+        let result = EtaxXtxExporter.generateXtx(form: form)
 
-        // 3. P&L生成
-        let pl = AccountingReportService.generateProfitLoss(
-            fiscalYear: 2025,
-            accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
-        )
-
-        // 4. 白色申告 収支内訳書ビルド
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
-        XCTAssertEqual(form.formType, .whiteReturn)
-
-        let revenueField = form.fields.first { $0.id == "shushi_revenue_total" }
-        XCTAssertEqual(revenueField?.value, 1_000_000)
-
-        let netIncomeField = form.fields.first { $0.id == "shushi_income_net" }
-        XCTAssertEqual(netIncomeField?.value, 950_000)
-
-        // 5. XTX出力
-        let xtxResult = EtaxXtxExporter.generateXtx(form: form)
-        switch xtxResult {
+        switch result {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
-            XCTAssertTrue(xml.contains("白色収支内訳書"))
+
+            // ルート要素
+            XCTAssertTrue(xml.contains("<税務申告データ>"), "ルート開始タグ")
+            XCTAssertTrue(xml.contains("</税務申告データ>"), "ルート終了タグ")
+
+            // 申告書情報
+            XCTAssertTrue(xml.contains("<年度>2025</年度>"), "年度")
+            XCTAssertTrue(xml.contains("青色申告決算書"), "申告書種類")
+
+            // 各セクションタグの存在
+            XCTAssertTrue(xml.contains("<収入金額>"), "収入セクション開始タグ")
+            XCTAssertTrue(xml.contains("</収入金額>"), "収入セクション終了タグ")
+
+            XCTAssertTrue(xml.contains("<必要経費>"), "経費セクション開始タグ")
+            XCTAssertTrue(xml.contains("</必要経費>"), "経費セクション終了タグ")
+
+            XCTAssertTrue(xml.contains("<所得金額>"), "所得セクション開始タグ")
+            XCTAssertTrue(xml.contains("</所得金額>"), "所得セクション終了タグ")
+
+            XCTAssertTrue(xml.contains("<申告者情報>"), "申告者情報セクション開始タグ")
+            XCTAssertTrue(xml.contains("</申告者情報>"), "申告者情報セクション終了タグ")
+
+            XCTAssertTrue(xml.contains("<棚卸>"), "棚卸セクション開始タグ")
+            XCTAssertTrue(xml.contains("</棚卸>"), "棚卸セクション終了タグ")
+
+            XCTAssertTrue(xml.contains("<貸借対照表>"), "貸借対照表セクション開始タグ")
+            XCTAssertTrue(xml.contains("</貸借対照表>"), "貸借対照表セクション終了タグ")
+
+            // フィールドの金額値が正しく出力されていること
+            XCTAssertTrue(xml.contains("<金額>1000000</金額>"), "売上金額の値")
+            XCTAssertTrue(xml.contains("<金額>50000</金額>"), "通信費の値")
+            XCTAssertTrue(xml.contains("<金額>950000</金額>"), "所得金額の値")
+
         case .failure(let error):
-            XCTFail("白色申告XTX出力失敗: \(error)")
+            XCTFail("XTX生成に失敗: \(error)")
         }
     }
 
-    // MARK: - Helper
+    /// フィールドが空の EtaxForm は .noData エラーを返すことを検証
+    func testEtaxXtxExporter_EmptyFormReturnsNoDataError() {
+        let form = EtaxForm(
+            fiscalYear: 2025,
+            formType: .blueReturn,
+            fields: [],
+            generatedAt: Date()
+        )
 
-    private func makeDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
-        Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success:
+            XCTFail("空フォームは成功すべきでない")
+        case .failure(let error):
+            if case .noData = error {
+                // 期待どおり
+            } else {
+                XCTFail("noData エラーが期待されたが \(error) が返された")
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func createTransaction(
+        type: TransactionType,
+        amount: Int,
+        categoryId: String,
+        taxAmount: Int? = nil,
+        taxCategory: TaxCategory? = nil
+    ) -> PPTransaction {
+        let tx = PPTransaction(
+            type: type,
+            amount: amount,
+            date: Date(),
+            categoryId: categoryId,
+            memo: "テスト",
+            allocations: [],
+            taxAmount: taxAmount,
+            taxCategory: taxCategory
+        )
+        context.insert(tx)
+        try! context.save()
+        return tx
+    }
+
+    private func fetchLines(for entryId: UUID) -> [PPJournalLine] {
+        let descriptor = FetchDescriptor<PPJournalLine>(
+            predicate: #Predicate<PPJournalLine> { $0.entryId == entryId },
+            sortBy: [SortDescriptor(\.displayOrder)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
     }
 }

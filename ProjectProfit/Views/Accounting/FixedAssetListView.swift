@@ -5,6 +5,7 @@ struct FixedAssetListView: View {
 
     @State private var showAddForm = false
     @State private var showBulkPostConfirmation = false
+    @State private var showSchedule = false
 
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
@@ -23,6 +24,9 @@ struct FixedAssetListView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
                     if !dataStore.fixedAssets.isEmpty {
+                        NavigationLink(destination: FixedAssetScheduleView()) {
+                            Image(systemName: "tablecells")
+                        }
                         Button {
                             showBulkPostConfirmation = true
                         } label: {

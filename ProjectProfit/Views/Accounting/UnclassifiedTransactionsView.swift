@@ -86,6 +86,25 @@ struct UnclassifiedTransactionsView: View {
         }
     }
 
+    private func confidenceBadge(confidence: Double) -> some View {
+        let color: Color
+        if confidence >= ClassificationEngine.highConfidenceThreshold {
+            color = AppColors.success
+        } else if confidence >= ClassificationEngine.lowConfidenceThreshold {
+            color = AppColors.warning
+        } else {
+            color = AppColors.error
+        }
+        let percent = Int(confidence * 100)
+        return Text("\(percent)%")
+            .font(.caption2.monospacedDigit().weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15))
+            .clipShape(Capsule())
+    }
+
     private func unclassifiedRow(
         transaction: PPTransaction,
         result: ClassificationEngine.ClassificationResult,
@@ -113,6 +132,19 @@ struct UnclassifiedTransactionsView: View {
                     .padding(.vertical, 2)
                     .background(AppColors.warning)
                     .clipShape(Capsule())
+
+                // Confidence badge
+                confidenceBadge(confidence: result.confidence)
+
+                if result.needsReview {
+                    Text("要確認")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppColors.error)
+                        .clipShape(Capsule())
+                }
 
                 Spacer()
 

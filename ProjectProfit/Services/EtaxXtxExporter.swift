@@ -98,6 +98,46 @@ enum EtaxXtxExporter {
             xml += "\n  </所得金額>"
         }
 
+        // 申告者情報セクション
+        let declarantFields = form.fields.filter { $0.section == .declarantInfo }
+        if !declarantFields.isEmpty {
+            xml += "\n  <申告者情報>"
+            for field in declarantFields {
+                xml += buildFieldXml(field: field)
+            }
+            xml += "\n  </申告者情報>"
+        }
+
+        // 棚卸セクション
+        let inventoryFields = form.fields.filter { $0.section == .inventory }
+        if !inventoryFields.isEmpty {
+            xml += "\n  <棚卸>"
+            for field in inventoryFields {
+                xml += buildFieldXml(field: field)
+            }
+            xml += "\n  </棚卸>"
+        }
+
+        // 固定資産明細セクション
+        let assetFields = form.fields.filter { $0.section == .fixedAssetSchedule }
+        if !assetFields.isEmpty {
+            xml += "\n  <固定資産明細>"
+            for field in assetFields {
+                xml += buildFieldXml(field: field)
+            }
+            xml += "\n  </固定資産明細>"
+        }
+
+        // 貸借対照表セクション
+        let bsFields = form.fields.filter { $0.section == .balanceSheet }
+        if !bsFields.isEmpty {
+            xml += "\n  <貸借対照表>"
+            for field in bsFields {
+                xml += buildFieldXml(field: field)
+            }
+            xml += "\n  </貸借対照表>"
+        }
+
         xml += "\n</税務申告データ>"
         return xml
     }

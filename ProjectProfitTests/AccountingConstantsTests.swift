@@ -6,7 +6,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Default Accounts Tests
 
     func testDefaultAccountsCount() {
-        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 26)
+        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 33)
     }
 
     func testAllAccountIdsAreUnique() {
@@ -20,9 +20,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testAssetAccountsCount() {
-        // 現金, 普通預金, 売掛金, 前払費用, クレジットカード + 減価償却累計額(contra-asset) + 仮勘定(B/S表示のためasset) = 7
+        // 現金, 普通預金, 売掛金, 前払費用, クレジットカード + 減価償却累計額(contra-asset) + 仮払消費税 + 期末商品棚卸高 + 仮勘定(B/S表示のためasset) = 9
         let assets = AccountingConstants.defaultAccounts.filter { $0.accountType == .asset }
-        XCTAssertEqual(assets.count, 7)
+        XCTAssertEqual(assets.count, 9)
     }
 
     func testEquityAccountsCount() {
@@ -32,8 +32,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testLiabilityAccountsCount() {
+        // 未払費用, 借入金 + 仮受消費税, 未払消費税 = 4
         let liabilities = AccountingConstants.defaultAccounts.filter { $0.accountType == .liability }
-        XCTAssertEqual(liabilities.count, 2)
+        XCTAssertEqual(liabilities.count, 4)
     }
 
     func testRevenueAccountsCount() {
@@ -42,9 +43,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testExpenseAccountsCount() {
-        // 12 e-Tax 経費区分のみ（仮勘定は asset に移動）
+        // 12 e-Tax 経費区分 + 期首商品棚卸高, 仕入高, 売上原価 = 15
         let expenses = AccountingConstants.defaultAccounts.filter { $0.accountType == .expense }
-        XCTAssertEqual(expenses.count, 12)
+        XCTAssertEqual(expenses.count, 15)
     }
 
     func testCashAccountDefinition() {

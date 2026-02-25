@@ -55,6 +55,17 @@ enum AccountingConstants {
         DefaultAccountDefinition(id: "acct-outsourcing", code: "511", name: "外注工賃", accountType: .expense, normalBalance: .debit, subtype: .outsourcingExpense, displayOrder: 50),
         DefaultAccountDefinition(id: "acct-misc", code: "512", name: "雑費", accountType: .expense, normalBalance: .debit, subtype: .miscExpense, displayOrder: 51),
 
+        // 消費税 (Consumption Tax)
+        DefaultAccountDefinition(id: "acct-input-tax", code: "107", name: "仮払消費税", accountType: .asset, normalBalance: .debit, subtype: .inputTax, displayOrder: 56),
+        DefaultAccountDefinition(id: "acct-output-tax", code: "203", name: "仮受消費税", accountType: .liability, normalBalance: .credit, subtype: .outputTax, displayOrder: 57),
+        DefaultAccountDefinition(id: "acct-tax-payable", code: "204", name: "未払消費税", accountType: .liability, normalBalance: .credit, subtype: .taxPayable, displayOrder: 58),
+
+        // 在庫・売上原価 (Inventory / COGS)
+        DefaultAccountDefinition(id: "acct-opening-inventory", code: "515", name: "期首商品棚卸高", accountType: .expense, normalBalance: .debit, subtype: .openingInventory, displayOrder: 59),
+        DefaultAccountDefinition(id: "acct-purchases", code: "513", name: "仕入高", accountType: .expense, normalBalance: .debit, subtype: .purchases, displayOrder: 60),
+        DefaultAccountDefinition(id: "acct-closing-inventory", code: "109", name: "期末商品棚卸高", accountType: .asset, normalBalance: .debit, subtype: .closingInventory, displayOrder: 61),
+        DefaultAccountDefinition(id: "acct-cogs", code: "514", name: "売上原価", accountType: .expense, normalBalance: .debit, subtype: .costOfGoodsSold, displayOrder: 62),
+
         // 減価償却累計額 (Contra-Asset) — 1xx
         DefaultAccountDefinition(id: "acct-accumulated-depreciation", code: "106", name: "減価償却累計額", accountType: .asset, normalBalance: .credit, subtype: .accumulatedDepreciation, displayOrder: 55),
 
@@ -112,6 +123,20 @@ enum AccountingConstants {
     static let depreciationExpenseAccountId = "acct-depreciation"
     /// 仮勘定
     static let suspenseAccountId = "acct-suspense"
+    /// 仮払消費税
+    static let inputTaxAccountId = "acct-input-tax"
+    /// 仮受消費税
+    static let outputTaxAccountId = "acct-output-tax"
+    /// 未払消費税
+    static let taxPayableAccountId = "acct-tax-payable"
+    /// 期首商品棚卸高
+    static let openingInventoryAccountId = "acct-opening-inventory"
+    /// 仕入高
+    static let purchasesAccountId = "acct-purchases"
+    /// 期末商品棚卸高
+    static let closingInventoryAccountId = "acct-closing-inventory"
+    /// 売上原価
+    static let cogsAccountId = "acct-cogs"
 
     // MARK: - Default Profile ID
 

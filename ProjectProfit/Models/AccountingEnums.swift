@@ -73,6 +73,17 @@ enum AccountSubtype: String, Codable, CaseIterable {
     case salesRevenue            // 売上（収入）金額
     case otherIncome             // 雑収入
 
+    // 消費税 (Consumption Tax)
+    case inputTax                // 仮払消費税
+    case outputTax               // 仮受消費税
+    case taxPayable              // 未払消費税
+
+    // 在庫・売上原価 (Inventory / COGS)
+    case openingInventory        // 期首商品棚卸高
+    case purchases               // 仕入高
+    case closingInventory        // 期末商品棚卸高
+    case costOfGoodsSold         // 売上原価
+
     // 費用 — e-Tax 12経費区分 (Expenses)
     case rentExpense             // 地代家賃
     case utilitiesExpense        // 水道光熱費
@@ -104,6 +115,13 @@ enum AccountSubtype: String, Codable, CaseIterable {
         case .accumulatedDepreciation: "減価償却累計額"
         case .salesRevenue: "売上（収入）金額"
         case .otherIncome: "雑収入"
+        case .inputTax: "仮払消費税"
+        case .outputTax: "仮受消費税"
+        case .taxPayable: "未払消費税"
+        case .openingInventory: "期首商品棚卸高"
+        case .purchases: "仕入高"
+        case .closingInventory: "期末商品棚卸高"
+        case .costOfGoodsSold: "売上原価"
         case .rentExpense: "地代家賃"
         case .utilitiesExpense: "水道光熱費"
         case .travelExpense: "旅費交通費"
@@ -175,6 +193,42 @@ enum AssetStatus: String, Codable, CaseIterable {
         case .fullyDepreciated: "償却完了"
         case .disposed: "除却済み"
         case .sold: "売却済み"
+        }
+    }
+}
+
+// MARK: - TaxCategory
+
+/// 消費税区分
+enum TaxCategory: String, Codable, CaseIterable {
+    case standardRate   // 標準税率（10%）
+    case reducedRate    // 軽減税率（8%）
+    case exempt         // 非課税
+    case nonTaxable     // 不課税
+
+    var label: String {
+        switch self {
+        case .standardRate: "課税（10%）"
+        case .reducedRate: "軽減税率（8%）"
+        case .exempt: "非課税"
+        case .nonTaxable: "不課税"
+        }
+    }
+
+    /// 税率（%）
+    var rate: Int {
+        switch self {
+        case .standardRate: 10
+        case .reducedRate: 8
+        case .exempt, .nonTaxable: 0
+        }
+    }
+
+    /// 課税取引かどうか
+    var isTaxable: Bool {
+        switch self {
+        case .standardRate, .reducedRate: true
+        case .exempt, .nonTaxable: false
         }
     }
 }

@@ -12,6 +12,10 @@ struct EtaxFormPreviewView: View {
             previewSection(title: "収入金額", fields: form.fields.filter { $0.section == .revenue })
             previewSection(title: "必要経費", fields: form.fields.filter { $0.section == .expenses })
             previewSection(title: "所得金額", fields: form.fields.filter { $0.section == .income })
+            previewSection(title: "申告者情報", fields: form.fields.filter { $0.section == .declarantInfo })
+            previewSection(title: "棚卸", fields: form.fields.filter { $0.section == .inventory })
+            previewSection(title: "固定資産明細", fields: form.fields.filter { $0.section == .fixedAssetSchedule })
+            previewSection(title: "貸借対照表", fields: form.fields.filter { $0.section == .balanceSheet })
 
             summaryRows
         }

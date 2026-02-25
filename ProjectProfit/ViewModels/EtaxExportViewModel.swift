@@ -47,6 +47,9 @@ final class EtaxExportViewModel {
             journalLines: dataStore.journalLines
         )
 
+        let inventoryRecord = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
+        let profile = dataStore.accountingProfile
+
         let form: EtaxForm
         switch formType {
         case .blueReturn:
@@ -55,13 +58,18 @@ final class EtaxExportViewModel {
                 profitLoss: pl,
                 balanceSheet: bs,
                 formType: .blueReturn,
-                accounts: dataStore.accounts
+                accounts: dataStore.accounts,
+                profile: profile,
+                inventoryRecord: inventoryRecord
             )
         case .whiteReturn:
             form = ShushiNaiyakushoBuilder.build(
                 fiscalYear: fiscalYear,
                 profitLoss: pl,
-                accounts: dataStore.accounts
+                accounts: dataStore.accounts,
+                fixedAssets: dataStore.fixedAssets,
+                journalLines: dataStore.journalLines,
+                journalEntries: dataStore.journalEntries
             )
         }
 

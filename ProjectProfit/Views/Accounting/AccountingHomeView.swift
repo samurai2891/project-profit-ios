@@ -120,6 +120,18 @@ struct AccountingHomeView: View {
                 destination: FixedAssetListView()
             )
             navigationRow(
+                icon: "tablecells.badge.ellipsis",
+                title: "減価償却明細表",
+                subtitle: "全固定資産の減価償却スケジュール",
+                destination: FixedAssetScheduleView()
+            )
+            navigationRow(
+                icon: "cart",
+                title: "棚卸入力",
+                subtitle: "在庫・仕入高・売上原価の管理",
+                destination: InventoryInputView()
+            )
+            navigationRow(
                 icon: "doc.badge.gearshape",
                 title: "決算仕訳",
                 subtitle: "年度末の収益・費用勘定の振替",

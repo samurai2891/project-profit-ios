@@ -1075,7 +1075,8 @@ final class ModelsTests: XCTestCase {
         let allCases = AccountSubtype.allCases
         // 4B-1: prepaidExpenses, accruedExpenses, ownerCapital を追加 (23 + 3 = 26)
         // Batch 13: accumulatedDepreciation 追加 (26 + 1 = 27)
-        XCTAssertEqual(allCases.count, 27)
+        // 消費税3 + 在庫/COGS4 = 7 追加 (27 + 7 = 34)
+        XCTAssertEqual(allCases.count, 34)
     }
 
     func testAccountSubtypeRawValues() {

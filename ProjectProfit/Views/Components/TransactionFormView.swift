@@ -25,6 +25,11 @@ struct TransactionFormView: View {
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
     @State private var taxDeductibleRate: Int = 100
+    // Phase 5: 消費税フィールド
+    @State private var taxCategory: TaxCategory?
+    @State private var taxRate: Int = 10
+    @State private var isTaxIncluded: Bool = true
+    @State private var taxAmountText: String = ""
 
     private var isEditMode: Bool { transaction != nil }
 
@@ -64,6 +69,7 @@ struct TransactionFormView: View {
                     dateSection
                     categorySection
                     accountingSection
+                    consumptionTaxSection
                     lineItemsSection
                     allocationSection
                     memoSection
@@ -395,6 +401,92 @@ struct TransactionFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - Consumption Tax
+    @ViewBuilder
+    private var consumptionTaxSection: some View {
+        if type != .transfer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("消費税")
+                    .font(.subheadline.weight(.medium))
+
+                VStack(spacing: 12) {
+                    // 税区分Picker
+                    HStack {
+                        Text("税区分")
+                            .font(.subheadline)
+                        Spacer()
+                        Picker("税区分", selection: $taxCategory) {
+                            Text("未設定").tag(TaxCategory?.none)
+                            ForEach(TaxCategory.allCases, id: \.self) { cat in
+                                Text(cat.label).tag(TaxCategory?.some(cat))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    if let tc = taxCategory, tc.isTaxable {
+                        // 税率トグル
+                        HStack {
+                            Text("税率")
+                                .font(.subheadline)
+                            Spacer()
+                            HStack(spacing: 8) {
+                                taxRateButton(rate: 10, label: "10%")
+                                taxRateButton(rate: 8, label: "8%")
+                            }
+                        }
+
+                        // 税込/税抜トグル
+                        Toggle("税込金額", isOn: $isTaxIncluded)
+                            .font(.subheadline)
+
+                        // 税額表示
+                        HStack {
+                            Text("消費税額")
+                                .font(.subheadline)
+                            Spacer()
+                            if isTaxIncluded, let amount = Int(amountText), amount > 0 {
+                                let computed = amount * taxRate / (100 + taxRate)
+                                Text(formatCurrency(computed))
+                                    .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                TextField("0", text: $taxAmountText)
+                                    .keyboardType(.numberPad)
+                                    .frame(width: 100)
+                                    .multilineTextAlignment(.trailing)
+                                    .font(.subheadline.monospacedDigit())
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    private func taxRateButton(rate: Int, label: String) -> some View {
+        let isSelected = taxRate == rate
+        return Button {
+            taxRate = rate
+        } label: {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? AppColors.primary : AppColors.surface)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? AppColors.primary : AppColors.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Allocation
     private var allocationSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -526,6 +618,10 @@ struct TransactionFormView: View {
             paymentAccountId = t.paymentAccountId
             transferToAccountId = t.transferToAccountId
             taxDeductibleRate = t.effectiveTaxDeductibleRate
+            taxCategory = t.taxCategory
+            taxRate = t.taxRate ?? 10
+            isTaxIncluded = t.isTaxIncluded ?? true
+            if let ta = t.taxAmount { taxAmountText = String(ta) }
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -572,6 +668,21 @@ struct TransactionFormView: View {
         let resolvedTaxRate: Int? = type == .expense ? taxDeductibleRate : nil
         let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
 
+        // 消費税フィールドの解決
+        let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
+        let resolvedConsumptionTaxRate: Int? = resolvedTaxCategory?.isTaxable == true ? taxRate : nil
+        let resolvedIsTaxIncluded: Bool? = resolvedTaxCategory?.isTaxable == true ? isTaxIncluded : nil
+        let resolvedTaxAmount: Int?
+        if let tc = resolvedTaxCategory, tc.isTaxable {
+            if isTaxIncluded {
+                resolvedTaxAmount = amount * taxRate / (100 + taxRate)
+            } else {
+                resolvedTaxAmount = Int(taxAmountText)
+            }
+        } else {
+            resolvedTaxAmount = nil
+        }
+
         if let t = transaction {
             if selectedImage != nil {
                 if let oldPath = t.receiptImagePath {
@@ -613,7 +724,11 @@ struct TransactionFormView: View {
                 receiptImagePath: imagePath,
                 paymentAccountId: paymentAccountId,
                 transferToAccountId: resolvedTransferTo,
-                taxDeductibleRate: resolvedTaxRate
+                taxDeductibleRate: resolvedTaxRate,
+                taxAmount: resolvedTaxAmount,
+                taxRate: resolvedConsumptionTaxRate,
+                isTaxIncluded: resolvedIsTaxIncluded,
+                taxCategory: resolvedTaxCategory
             )
         }
         dismiss()

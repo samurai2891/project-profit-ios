@@ -9,10 +9,20 @@ import Foundation
 @MainActor
 enum ClassificationEngine {
 
+    // MARK: - Confidence Thresholds
+
+    /// 高信頼度閾値: この値以上なら自動分類として確定扱い
+    static let highConfidenceThreshold = 0.90
+    /// 低信頼度閾値: この値未満は要レビュー
+    static let lowConfidenceThreshold = 0.60
+
     struct ClassificationResult {
         let taxLine: TaxLine
         let source: ClassificationSource
         let confidence: Double  // 0.0 ~ 1.0
+
+        /// 信頼度が高信頼度閾値未満の場合 true（ユーザー確認が必要）
+        var needsReview: Bool { confidence < ClassificationEngine.highConfidenceThreshold }
     }
 
     enum ClassificationSource: String {

@@ -16,6 +16,10 @@ enum EtaxSection: String, CaseIterable {
     case expenses = "必要経費"
     case income = "所得金額"
     case deductions = "各種控除"
+    case declarantInfo = "申告者情報"
+    case inventory = "棚卸"
+    case fixedAssetSchedule = "固定資産明細"
+    case balanceSheet = "貸借対照表"
 }
 
 // MARK: - e-Tax Form

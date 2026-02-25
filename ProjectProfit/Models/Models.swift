@@ -190,6 +190,11 @@ final class PPTransaction {
     var taxDeductibleRate: Int?         // 必要経費算入率（0-100、家事按分対応。nil = 100%）
     var bookkeepingMode: BookkeepingMode?  // この取引の記帳方式（nil = プロファイル設定に従う）
     var journalEntryId: UUID?           // 対応する仕訳の ID（FK → PPJournalEntry.id）
+    // Phase 5: 消費税対応フィールド
+    var taxAmount: Int?                 // 消費税額（円）
+    var taxRate: Int?                   // 税率（%: 8 or 10）
+    var isTaxIncluded: Bool?            // 税込金額かどうか（true = amount は税込）
+    var taxCategory: TaxCategory?       // 消費税区分
     var createdAt: Date
     var updatedAt: Date
 
@@ -210,6 +215,10 @@ final class PPTransaction {
         taxDeductibleRate: Int? = nil,
         bookkeepingMode: BookkeepingMode? = nil,
         journalEntryId: UUID? = nil,
+        taxAmount: Int? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -229,6 +238,10 @@ final class PPTransaction {
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
         self.bookkeepingMode = bookkeepingMode
         self.journalEntryId = journalEntryId
+        self.taxAmount = taxAmount
+        self.taxRate = taxRate
+        self.isTaxIncluded = isTaxIncluded
+        self.taxCategory = taxCategory
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -244,6 +257,20 @@ extension PPTransaction {
     /// 整数除算のため端数切り捨て。例: 999円 × 50% = 499円
     var deductibleAmount: Int {
         amount * effectiveTaxDeductibleRate / 100
+    }
+
+    /// 実効税率（taxCategory の rate を優先、なければ taxRate、なければ 0）
+    var effectiveTaxRate: Int {
+        taxCategory?.rate ?? taxRate ?? 0
+    }
+
+    /// 税抜金額（税込の場合は逆算、税抜の場合はそのまま）
+    var netAmount: Int {
+        guard let taxAmt = taxAmount, taxAmt > 0 else { return amount }
+        if isTaxIncluded == true {
+            return amount - taxAmt
+        }
+        return amount
     }
 }
 

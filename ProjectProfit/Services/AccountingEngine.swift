@@ -430,6 +430,7 @@ final class AccountingEngine {
     }
 
     /// 収入: 借方=paymentAccount, 貸方=カテゴリ連動勘定科目(売上高等)
+    /// 消費税あり: Dr 現金(税込) / Cr 売上(税抜) + Cr 仮受消費税(税額)
     private func buildIncomeLines(
         for transaction: PPTransaction,
         entryId: UUID,
@@ -443,22 +444,34 @@ final class AccountingEngine {
             fallback: AccountingConstants.salesAccountId
         )
 
+        // 消費税対応: taxAmount > 0 かつ課税取引の場合
+        if let taxAmount = transaction.taxAmount, taxAmount > 0,
+           let taxCategory = transaction.taxCategory, taxCategory.isTaxable {
+            let netAmount = transaction.amount - taxAmount
+            var lines: [PPJournalLine] = []
+            lines.append(PPJournalLine(
+                entryId: entryId, accountId: paymentAccountId,
+                debit: transaction.amount, credit: 0, memo: "", displayOrder: 0
+            ))
+            lines.append(PPJournalLine(
+                entryId: entryId, accountId: revenueAccountId,
+                debit: 0, credit: netAmount, memo: "", displayOrder: 1
+            ))
+            lines.append(PPJournalLine(
+                entryId: entryId, accountId: AccountingConstants.outputTaxAccountId,
+                debit: 0, credit: taxAmount, memo: "仮受消費税", displayOrder: 2
+            ))
+            return lines
+        }
+
         return [
             PPJournalLine(
-                entryId: entryId,
-                accountId: paymentAccountId,
-                debit: transaction.amount,
-                credit: 0,
-                memo: "",
-                displayOrder: 0
+                entryId: entryId, accountId: paymentAccountId,
+                debit: transaction.amount, credit: 0, memo: "", displayOrder: 0
             ),
             PPJournalLine(
-                entryId: entryId,
-                accountId: revenueAccountId,
-                debit: 0,
-                credit: transaction.amount,
-                memo: "",
-                displayOrder: 1
+                entryId: entryId, accountId: revenueAccountId,
+                debit: 0, credit: transaction.amount, memo: "", displayOrder: 1
             ),
         ]
     }
@@ -466,6 +479,7 @@ final class AccountingEngine {
     /// 経費: taxDeductibleRate に応じて2行 or 3行仕訳
     /// 100%: 借方=経費勘定, 貸方=paymentAccount
     /// 按分あり: 借方=経費勘定×rate% + 事業主貸×(100-rate)%, 貸方=paymentAccount
+    /// 消費税あり: Dr 経費(税抜) + Dr 仮払消費税(税額) / Cr 現金(税込)
     private func buildExpenseLines(
         for transaction: PPTransaction,
         entryId: UUID,
@@ -482,32 +496,55 @@ final class AccountingEngine {
         let rate = transaction.effectiveTaxDeductibleRate
         let amount = transaction.amount
 
+        // 消費税対応: taxAmount > 0 かつ課税取引の場合
+        let hasTax = transaction.taxAmount.map { $0 > 0 } ?? false
+            && transaction.taxCategory?.isTaxable == true
+        let taxAmount = hasTax ? (transaction.taxAmount ?? 0) : 0
+        let expenseBase = hasTax ? (amount - taxAmount) : amount
+
         if rate >= 100 {
             // 全額経費
-            return [
-                PPJournalLine(entryId: entryId, accountId: expenseAccountId, debit: amount, credit: 0, displayOrder: 0),
-                PPJournalLine(entryId: entryId, accountId: paymentAccountId, debit: 0, credit: amount, displayOrder: 1),
-            ]
+            var lines: [PPJournalLine] = []
+            lines.append(PPJournalLine(entryId: entryId, accountId: expenseAccountId, debit: expenseBase, credit: 0, displayOrder: 0))
+            if taxAmount > 0 {
+                lines.append(PPJournalLine(entryId: entryId, accountId: AccountingConstants.inputTaxAccountId, debit: taxAmount, credit: 0, memo: "仮払消費税", displayOrder: 1))
+            }
+            lines.append(PPJournalLine(entryId: entryId, accountId: paymentAccountId, debit: 0, credit: amount, displayOrder: lines.count))
+            return lines
         }
 
-        // 家事按分あり: 経費 + 事業主貸
-        let deductibleAmount = amount * rate / 100
-        let personalAmount = amount - deductibleAmount
+        // 家事按分あり: 経費 + 事業主貸（税抜ベースで按分）
+        let deductibleAmount = expenseBase * rate / 100
+        let personalAmount = expenseBase - deductibleAmount
 
         var lines: [PPJournalLine] = []
+        var order = 0
         if deductibleAmount > 0 {
-            lines.append(
-                PPJournalLine(entryId: entryId, accountId: expenseAccountId, debit: deductibleAmount, credit: 0, displayOrder: 0)
-            )
+            lines.append(PPJournalLine(entryId: entryId, accountId: expenseAccountId, debit: deductibleAmount, credit: 0, displayOrder: order))
+            order += 1
         }
-        if personalAmount > 0 {
-            lines.append(
-                PPJournalLine(entryId: entryId, accountId: AccountingConstants.ownerDrawingsAccountId, debit: personalAmount, credit: 0, displayOrder: 1)
-            )
+        if taxAmount > 0 {
+            // 仮払消費税も経費率で按分
+            let deductibleTax = taxAmount * rate / 100
+            let personalTax = taxAmount - deductibleTax
+            if deductibleTax > 0 {
+                lines.append(PPJournalLine(entryId: entryId, accountId: AccountingConstants.inputTaxAccountId, debit: deductibleTax, credit: 0, memo: "仮払消費税", displayOrder: order))
+                order += 1
+            }
+            if personalTax > 0 {
+                // 家事使用分の消費税は事業主貸に含める
+                let totalPersonal = personalAmount + personalTax
+                lines.append(PPJournalLine(entryId: entryId, accountId: AccountingConstants.ownerDrawingsAccountId, debit: totalPersonal, credit: 0, displayOrder: order))
+                order += 1
+            } else if personalAmount > 0 {
+                lines.append(PPJournalLine(entryId: entryId, accountId: AccountingConstants.ownerDrawingsAccountId, debit: personalAmount, credit: 0, displayOrder: order))
+                order += 1
+            }
+        } else if personalAmount > 0 {
+            lines.append(PPJournalLine(entryId: entryId, accountId: AccountingConstants.ownerDrawingsAccountId, debit: personalAmount, credit: 0, displayOrder: order))
+            order += 1
         }
-        lines.append(
-            PPJournalLine(entryId: entryId, accountId: paymentAccountId, debit: 0, credit: amount, displayOrder: 2)
-        )
+        lines.append(PPJournalLine(entryId: entryId, accountId: paymentAccountId, debit: 0, credit: amount, displayOrder: order))
 
         return lines
     }
