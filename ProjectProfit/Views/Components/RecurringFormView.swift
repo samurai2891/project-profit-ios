@@ -416,7 +416,10 @@ struct RecurringFormView: View {
                     let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                     HStack {
                         Menu {
-                            ForEach(dataStore.projects.filter { $0.isArchived != true }, id: \.id) { project in
+                            let usedIds = Set(allocations.map(\.projectId))
+                            ForEach(dataStore.projects.filter { p in
+                                p.isArchived != true && (!usedIds.contains(p.id) || p.id == alloc.projectId)
+                            }, id: \.id) { project in
                                 Button(project.name) {
                                     var updated = allocations
                                     updated[index] = (id: alloc.id, projectId: project.id, ratio: alloc.ratio)
@@ -641,7 +644,6 @@ struct RecurringFormView: View {
                 DatePicker(
                     "終了日",
                     selection: $endDate,
-                    in: Date()...,
                     displayedComponents: .date
                 )
                 .datePickerStyle(.compact)
@@ -733,7 +735,7 @@ struct RecurringFormView: View {
         }
         let resolvedMonthOfYear = frequency == .yearly ? monthOfYear : nil
         let resolvedEndDate: Date? = hasEndDate ? endDate : nil
-        let resolvedAmortizationMode: YearlyAmortizationMode? = frequency == .yearly ? yearlyAmortizationMode : nil
+        let resolvedAmortizationMode: YearlyAmortizationMode = frequency == .yearly ? yearlyAmortizationMode : .lumpSum
 
         var imagePath: String?
         if let image = selectedImage {

@@ -634,7 +634,7 @@ final class UtilitiesTests: XCTestCase {
         )
 
         let withoutBOM = String(csv.dropFirst())
-        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\"")
+        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\"")
     }
 
     func testGenerateCSVEmptyTransactions() {
@@ -834,7 +834,7 @@ final class UtilitiesTests: XCTestCase {
         // The category field should be empty string within quotes
         // Row format: "date","type","amount","","","memo"
         let fields = parseCSVRow(row)
-        XCTAssertEqual(fields.count, 6)
+        XCTAssertEqual(fields.count, 12)
         XCTAssertEqual(fields[3], "", "Nil category should produce empty string")
     }
 
@@ -963,5 +963,171 @@ final class UtilitiesTests: XCTestCase {
     func testRecalculateAllocationAmounts_empty() {
         let result = recalculateAllocationAmounts(amount: 1000, existingAllocations: [])
         XCTAssertTrue(result.isEmpty)
+    }
+
+    // MARK: - M5: Allocation.ratio clamping
+
+    func testAllocationRatio_clampedToZeroWhenNegative() {
+        let alloc = Allocation(projectId: UUID(), ratio: -10, amount: 100)
+        XCTAssertEqual(alloc.ratio, 0)
+    }
+
+    func testAllocationRatio_clampedTo100WhenExceeds() {
+        let alloc = Allocation(projectId: UUID(), ratio: 150, amount: 100)
+        XCTAssertEqual(alloc.ratio, 100)
+    }
+
+    func testAllocationRatio_boundaryZero() {
+        let alloc = Allocation(projectId: UUID(), ratio: 0, amount: 100)
+        XCTAssertEqual(alloc.ratio, 0)
+    }
+
+    func testAllocationRatio_boundary100() {
+        let alloc = Allocation(projectId: UUID(), ratio: 100, amount: 100)
+        XCTAssertEqual(alloc.ratio, 100)
+    }
+
+    func testAllocationRatio_normalValueUnchanged() {
+        let alloc = Allocation(projectId: UUID(), ratio: 50, amount: 100)
+        XCTAssertEqual(alloc.ratio, 50)
+    }
+
+    // MARK: - M9: CSV expanded fields
+
+    func testGenerateCSVContainsExpandedHeaders() {
+        let csv = generateCSV(
+            transactions: [],
+            getCategory: { _ in nil },
+            getProject: { _ in nil }
+        )
+
+        let withoutBOM = String(csv.dropFirst())
+        XCTAssertTrue(withoutBOM.contains("\"配分額\""), "Header should contain 配分額")
+        XCTAssertTrue(withoutBOM.contains("\"定期取引ID\""), "Header should contain 定期取引ID")
+        XCTAssertTrue(withoutBOM.contains("\"作成日\""), "Header should contain 作成日")
+        XCTAssertTrue(withoutBOM.contains("\"更新日\""), "Header should contain 更新日")
+        XCTAssertTrue(withoutBOM.contains("\"レシート画像\""), "Header should contain レシート画像")
+        XCTAssertTrue(withoutBOM.contains("\"明細\""), "Header should contain 明細")
+    }
+
+    func testGenerateCSVExpandedFieldsOutput() {
+        let projectId = UUID()
+        let recurringId = UUID()
+        let date = makeDate(year: 2026, month: 3, day: 1)
+        let createdAt = makeDate(year: 2026, month: 2, day: 28, hour: 10, minute: 30)
+
+        let allocation = Allocation(projectId: projectId, ratio: 100, amount: 5000)
+        let lineItem = ReceiptLineItem(name: "品目A", quantity: 2, unitPrice: 2500)
+
+        let transaction = PPTransaction(
+            type: .expense,
+            amount: 5000,
+            date: date,
+            categoryId: "cat-tools",
+            allocations: [allocation],
+            recurringId: recurringId,
+            receiptImagePath: "receipt_001.jpg",
+            lineItems: [lineItem],
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+
+        let project = PPProject(id: projectId, name: "TestProject")
+
+        let csv = generateCSV(
+            transactions: [transaction],
+            getCategory: { _ in nil },
+            getProject: { id in id == projectId ? project : nil }
+        )
+
+        let lines = csv.components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 2)
+
+        let row = lines[1]
+        let fields = parseCSVRow(row)
+        XCTAssertEqual(fields.count, 12, "Should have 12 fields")
+        XCTAssertTrue(fields[6].contains("TestProject:5000"), "Allocation amounts field")
+        XCTAssertEqual(fields[7], recurringId.uuidString, "Recurring ID field")
+        XCTAssertTrue(fields[8].contains("2026-02-28"), "Created at field")
+        XCTAssertEqual(fields[10], "receipt_001.jpg", "Receipt image field")
+        XCTAssertTrue(fields[11].contains("品目A×2@2500"), "Line items field")
+    }
+
+    func testGenerateCSVBackwardCompatibleFieldOrder() {
+        let date = makeDate(year: 2026, month: 1, day: 1)
+        let transaction = PPTransaction(
+            type: .income,
+            amount: 10000,
+            date: date,
+            categoryId: "cat-sales",
+            memo: "テスト"
+        )
+
+        let category = PPCategory(
+            id: "cat-sales",
+            name: "売上",
+            type: .income,
+            icon: "yensign.circle"
+        )
+
+        let csv = generateCSV(
+            transactions: [transaction],
+            getCategory: { id in id == "cat-sales" ? category : nil },
+            getProject: { _ in nil }
+        )
+
+        let lines = csv.components(separatedBy: "\n")
+        let fields = parseCSVRow(lines[1])
+
+        // First 6 fields maintain backward compatibility
+        XCTAssertTrue(fields[0].contains("2026-01-01"), "Date field unchanged")
+        XCTAssertEqual(fields[1], "収益", "Type field unchanged")
+        XCTAssertEqual(fields[2], "10000", "Amount field unchanged")
+        XCTAssertEqual(fields[3], "売上", "Category field unchanged")
+        XCTAssertEqual(fields[5], "テスト", "Memo field unchanged")
+    }
+
+    // MARK: - M1: Non-Optional allocationMode/yearlyAmortizationMode
+
+    func testRecurringTransaction_allocationModeNonOptional() {
+        let recurring = PPRecurringTransaction(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools"
+        )
+        XCTAssertEqual(recurring.allocationMode, .manual, "Default allocationMode should be .manual")
+    }
+
+    func testRecurringTransaction_yearlyAmortizationModeNonOptional() {
+        let recurring = PPRecurringTransaction(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools"
+        )
+        XCTAssertEqual(recurring.yearlyAmortizationMode, .lumpSum, "Default yearlyAmortizationMode should be .lumpSum")
+    }
+
+    func testRecurringTransaction_explicitAllocationMode() {
+        let recurring = PPRecurringTransaction(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            allocationMode: .equalAll
+        )
+        XCTAssertEqual(recurring.allocationMode, .equalAll)
+    }
+
+    func testRecurringTransaction_explicitYearlyAmortizationMode() {
+        let recurring = PPRecurringTransaction(
+            name: "Test",
+            type: .expense,
+            amount: 1000,
+            categoryId: "cat-tools",
+            yearlyAmortizationMode: .monthlySpread
+        )
+        XCTAssertEqual(recurring.yearlyAmortizationMode, .monthlySpread)
     }
 }

@@ -692,7 +692,7 @@ private func parseProjectAllocations(_ projectStr: String) -> [ProjectAllocation
             let ratioStart = trimmed.index(after: openParen)
             let ratioStr = String(trimmed[ratioStart..<closeParen]).replacingOccurrences(of: "%", with: "")
             if let ratio = Int(ratioStr), !name.isEmpty {
-                allocations.append(ProjectAllocation(name: name, ratio: ratio))
+                allocations.append(ProjectAllocation(name: name, ratio: min(100, max(0, ratio))))
             }
         } else {
             // No ratio specified, assume 100%
@@ -711,10 +711,13 @@ func generateCSV(
     getProject: (UUID) -> PPProject?
 ) -> String {
     let bom = "\u{FEFF}"
-    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\""
+    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\""
 
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
+
+    let datetimeFormatter = DateFormatter()
+    datetimeFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
 
     let rows = transactions.map { t -> String in
         let dateStr = dateFormatter.string(from: t.date)
@@ -726,10 +729,27 @@ func generateCSV(
                 return "\(project.name)(\(a.ratio)%)"
             }
             .joined(separator: "; ")
-        let escapedCategory = category.replacingOccurrences(of: "\"", with: "\"\"")
-        let escapedProjectNames = projectNames.replacingOccurrences(of: "\"", with: "\"\"")
-        let escapedMemo = t.memo.replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(dateStr)\",\"\(typeStr)\",\"\(t.amount)\",\"\(escapedCategory)\",\"\(escapedProjectNames)\",\"\(escapedMemo)\""
+
+        let allocationAmounts = t.allocations
+            .compactMap { a -> String? in
+                guard let project = getProject(a.projectId) else { return nil }
+                return "\(project.name):\(a.amount)"
+            }
+            .joined(separator: "; ")
+
+        let recurringIdStr = t.recurringId?.uuidString ?? ""
+        let createdAtStr = datetimeFormatter.string(from: t.createdAt)
+        let updatedAtStr = datetimeFormatter.string(from: t.updatedAt)
+        let receiptStr = t.receiptImagePath ?? ""
+        let lineItemsStr = t.lineItems
+            .map { "\($0.name)×\($0.quantity)@\($0.unitPrice)" }
+            .joined(separator: "; ")
+
+        return [dateStr, typeStr, "\(t.amount)", category, projectNames, t.memo,
+                allocationAmounts, recurringIdStr, createdAtStr, updatedAtStr, receiptStr, lineItemsStr]
+            .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
+            .map { "\"\($0)\"" }
+            .joined(separator: ",")
     }
 
     return bom + ([headers] + rows).joined(separator: "\n")

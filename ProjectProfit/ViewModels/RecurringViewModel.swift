@@ -49,7 +49,7 @@ final class RecurringViewModel {
         case .monthly:
             return "毎月\(recurring.dayOfMonth)日"
         case .yearly:
-            if (recurring.yearlyAmortizationMode ?? .lumpSum) == .monthlySpread {
+            if recurring.yearlyAmortizationMode == .monthlySpread {
                 return "毎月\(recurring.dayOfMonth)日（年次分割）"
             }
             if let month = recurring.monthOfYear {

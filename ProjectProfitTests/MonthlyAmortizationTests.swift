@@ -273,7 +273,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             frequency: .yearly,
             dayOfMonth: 1,
             monthOfYear: startMonth
-            // yearlyAmortizationMode not specified, defaults to nil
+            // yearlyAmortizationMode not specified, defaults to .lumpSum
         )
 
         let transactions = fetchAllTransactions()
@@ -376,7 +376,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             amount: 10000,
             categoryId: "cat-tools"
         )
-        XCTAssertNil(recurring.yearlyAmortizationMode, "Default should be nil")
+        XCTAssertEqual(recurring.yearlyAmortizationMode, .lumpSum, "Default should be .lumpSum")
         XCTAssertTrue(recurring.lastGeneratedMonths.isEmpty, "Default should be empty")
     }
 
@@ -433,7 +433,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         dataStore.updateRecurring(id: recurring.id, frequency: .monthly)
 
         let updated = fetchRecurring(id: recurring.id)
-        XCTAssertNil(updated?.yearlyAmortizationMode, "yearlyAmortizationMode should be nil after switch to monthly")
+        XCTAssertEqual(updated?.yearlyAmortizationMode, .lumpSum, "yearlyAmortizationMode should be .lumpSum after switch to monthly")
         XCTAssertTrue(updated?.lastGeneratedMonths.isEmpty ?? false, "lastGeneratedMonths should be cleared")
     }
 

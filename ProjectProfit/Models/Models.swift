@@ -103,7 +103,7 @@ struct Allocation: Codable, Hashable {
 
     init(projectId: UUID, ratio: Int, amount: Int) {
         self.projectId = projectId
-        self.ratio = ratio
+        self.ratio = min(100, max(0, ratio))
         self.amount = amount
     }
 }
@@ -247,7 +247,7 @@ final class PPRecurringTransaction {
     var amount: Int
     var categoryId: String
     var memo: String
-    var allocationMode: AllocationMode?
+    var allocationMode: AllocationMode
     var allocations: [Allocation]
     var frequency: RecurringFrequency
     var dayOfMonth: Int
@@ -256,7 +256,7 @@ final class PPRecurringTransaction {
     var endDate: Date?
     var lastGeneratedDate: Date?
     var skipDates: [Date]
-    var yearlyAmortizationMode: YearlyAmortizationMode?  // nil = .lumpSum
+    var yearlyAmortizationMode: YearlyAmortizationMode
     var lastGeneratedMonths: [String]  // ["2026-01", "2026-02", ...] 月次分割の生成追跡用
     var notificationTiming: NotificationTiming
     var receiptImagePath: String?
@@ -279,7 +279,7 @@ final class PPRecurringTransaction {
         endDate: Date? = nil,
         lastGeneratedDate: Date? = nil,
         skipDates: [Date] = [],
-        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
+        yearlyAmortizationMode: YearlyAmortizationMode = .lumpSum,
         lastGeneratedMonths: [String] = [],
         notificationTiming: NotificationTiming = .none,
         receiptImagePath: String? = nil,

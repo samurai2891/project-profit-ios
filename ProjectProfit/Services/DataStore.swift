@@ -42,11 +42,20 @@ class DataStore {
             } else {
                 seedMissingCategories()
             }
+            migrateNilOptionalFields()
         } catch {
             AppLogger.dataStore.error("Failed to load data: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
         }
         isLoading = false
+    }
+
+    /// マイグレーション: SwiftDataスキーマ変更後の整合性チェック
+    /// allocationMode/yearlyAmortizationMode は非Optionalに変更済み。
+    /// SwiftDataが自動的にデフォルト値を適用するため、現在は追加処理不要。
+    private func migrateNilOptionalFields() {
+        // SwiftData handles schema migration with default values from init.
+        // This method is retained as a hook for future migrations.
     }
 
     private func seedDefaultCategories() {
@@ -255,7 +264,7 @@ class DataStore {
                   transaction.allocations.contains(where: { $0.projectId == id }),
                   let recurringId = transaction.recurringId,
                   let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-                  (recurring.allocationMode ?? .manual) == .equalAll
+                  recurring.allocationMode == .equalAll
             else { continue }
             transaction.isManuallyEdited = nil
         }
@@ -265,7 +274,7 @@ class DataStore {
         for recurring in recurringTransactions {
             let filtered = recurring.allocations.filter { $0.projectId != id }
             if filtered.count != recurring.allocations.count {
-                if filtered.isEmpty && (recurring.allocationMode ?? .manual) == .manual {
+                if filtered.isEmpty && recurring.allocationMode == .manual {
                     // ダングリング recurringId 参照をクリア（deleteRecurring と同様）
                     for transaction in transactions where transaction.recurringId == recurring.id {
                         transaction.recurringId = nil
@@ -380,14 +389,14 @@ class DataStore {
                       transaction.allocations.contains(where: { idsToArchive.contains($0.projectId) }),
                       let recurringId = transaction.recurringId,
                       let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-                      (recurring.allocationMode ?? .manual) == .equalAll
+                      recurring.allocationMode == .equalAll
                 else { continue }
                 transaction.isManuallyEdited = nil
             }
             for recurring in recurringTransactions {
                 let filtered = recurring.allocations.filter { !idsToArchive.contains($0.projectId) }
                 if filtered.count != recurring.allocations.count {
-                    if filtered.isEmpty && (recurring.allocationMode ?? .manual) == .manual {
+                    if filtered.isEmpty && recurring.allocationMode == .manual {
                         for transaction in transactions where transaction.recurringId == recurring.id {
                             transaction.recurringId = nil
                             transaction.updatedAt = now
@@ -513,7 +522,7 @@ class DataStore {
             // H10: equalAll定期取引の配分をユーザーが手動変更した場合にフラグを立てる
             if let recurringId = transaction.recurringId,
                let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-               (recurring.allocationMode ?? .manual) == .equalAll {
+               recurring.allocationMode == .equalAll {
                 transaction.isManuallyEdited = true
             }
         } else if amount != nil {
@@ -565,7 +574,7 @@ class DataStore {
             .sorted { $0.date < $1.date }
 
         if recurring.frequency == .yearly,
-           (recurring.yearlyAmortizationMode ?? .lumpSum) == .monthlySpread {
+           recurring.yearlyAmortizationMode == .monthlySpread {
             // Monthly spread mode: remove the deleted month key from lastGeneratedMonths
             let deletedComps = calendar.dateComponents([.year, .month], from: deletedTransactionDate)
             if let year = deletedComps.year, let month = deletedComps.month {
@@ -687,7 +696,7 @@ class DataStore {
         dayOfMonth: Int,
         monthOfYear: Int? = nil,
         endDate: Date? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
+        yearlyAmortizationMode: YearlyAmortizationMode = .lumpSum,
         receiptImagePath: String? = nil
     ) -> PPRecurringTransaction {
         let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
@@ -753,7 +762,7 @@ class DataStore {
             if frequency == .monthly {
                 recurring.monthOfYear = nil
                 // monthlyに変更した場合、月次分割モードをクリア
-                recurring.yearlyAmortizationMode = nil
+                recurring.yearlyAmortizationMode = .lumpSum
                 recurring.lastGeneratedMonths = []
                 if frequencyChanged {
                     recurring.lastGeneratedDate = nil
@@ -789,7 +798,7 @@ class DataStore {
         if let skipDates { recurring.skipDates = skipDates }
         if let receiptImagePath { recurring.receiptImagePath = receiptImagePath }
 
-        let resolvedMode = allocationMode ?? recurring.allocationMode ?? .manual
+        let resolvedMode = allocationMode ?? recurring.allocationMode
         let finalAmount = amount ?? recurring.amount
         if let amount { recurring.amount = amount }
 
@@ -849,7 +858,7 @@ class DataStore {
 
         for recurring in recurringTransactions {
             guard recurring.isActive,
-                  (recurring.allocationMode ?? .manual) == .equalAll
+                  recurring.allocationMode == .equalAll
             else { continue }
 
             // この定期取引が生成した今期のトランザクションを検索
@@ -1050,7 +1059,7 @@ class DataStore {
     ) -> PPTransaction? {
         let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
         var txAllocations: [Allocation]
-        switch recurring.allocationMode ?? .manual {
+        switch recurring.allocationMode {
         case .equalAll:
             // H9: アーカイブ済みプロジェクトを除外
             let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
@@ -1138,7 +1147,7 @@ class DataStore {
 
         for recurring in recurringTransactions {
             guard recurring.isActive else { continue }
-            if (recurring.allocationMode ?? .manual) == .manual && recurring.allocations.isEmpty { continue }
+            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
 
             if recurring.frequency == .monthly {
                 // 月次キャッチアップループ: lastGeneratedDate の翌月から現在月まで
@@ -1191,7 +1200,7 @@ class DataStore {
                     iterMonth += 1
                     if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
                 }
-            } else if (recurring.yearlyAmortizationMode ?? .lumpSum) == .monthlySpread {
+            } else if recurring.yearlyAmortizationMode == .monthlySpread {
                 // endDateを過ぎた定期取引は月次分割前に停止チェック
                 if let endDate = recurring.endDate, today > endDate {
                     recurring.isActive = false
@@ -1342,7 +1351,7 @@ class DataStore {
             let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
 
             var txAllocations: [Allocation]
-            switch recurring.allocationMode ?? .manual {
+            switch recurring.allocationMode {
             case .equalAll:
                 // H9: アーカイブ済みプロジェクトを除外
                 let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)

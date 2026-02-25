@@ -371,7 +371,10 @@ struct TransactionFormView: View {
                 let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                 HStack {
                     Menu {
-                        ForEach(dataStore.projects.filter { $0.isArchived != true }, id: \.id) { project in
+                        let usedIds = Set(allocations.map(\.projectId))
+                        ForEach(dataStore.projects.filter { p in
+                            p.isArchived != true && (!usedIds.contains(p.id) || p.id == alloc.projectId)
+                        }, id: \.id) { project in
                             Button(project.name) {
                                 allocations[index].projectId = project.id
                             }
