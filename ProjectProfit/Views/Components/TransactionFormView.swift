@@ -21,6 +21,7 @@ struct TransactionFormView: View {
     @State private var showCamera = false
     @State private var showRemoveImageAlert = false
     @State private var imageRemoved = false
+    @State private var saveError: String?
     // Phase 4C: 会計フィールド
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
@@ -56,6 +57,11 @@ struct TransactionFormView: View {
 
     private var isValid: Bool {
         guard let amount = Int(amountText), amount > 0 else { return false }
+        if type == .transfer {
+            guard let from = paymentAccountId, !from.isEmpty,
+                  let to = transferToAccountId, !to.isEmpty else { return false }
+            return from != to
+        }
         return !categoryId.isEmpty && !allocations.isEmpty && totalRatio == 100
     }
 
@@ -67,11 +73,15 @@ struct TransactionFormView: View {
                     receiptSection
                     amountSection
                     dateSection
-                    categorySection
+                    if type != .transfer {
+                        categorySection
+                    }
                     accountingSection
                     consumptionTaxSection
                     lineItemsSection
-                    allocationSection
+                    if type != .transfer {
+                        allocationSection
+                    }
                     memoSection
                 }
                 .padding(20)
@@ -101,6 +111,14 @@ struct TransactionFormView: View {
                 }
             } message: {
                 Text("添付画像を削除しますか？")
+            }
+            .alert("保存エラー", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveError = nil }
+            } message: {
+                Text(saveError ?? "保存に失敗しました")
             }
             .navigationTitle(isEditMode ? "取引を編集" : "新規取引")
             .navigationBarTitleDisplayMode(.inline)
@@ -628,11 +646,16 @@ struct TransactionFormView: View {
             } else if let first = dataStore.projects.first(where: { $0.isArchived != true }) {
                 allocations = [(id: UUID(), projectId: first.id, ratio: 100)]
             }
+            paymentAccountId = dataStore.accountingProfile?.defaultPaymentAccountId ?? paymentAccounts.first?.id
             autoSelectCategory()
         }
     }
 
     private func autoSelectCategory() {
+        if type == .transfer {
+            categoryId = ""
+            return
+        }
         if !categories.contains(where: { $0.id == categoryId }), let first = categories.first {
             categoryId = first.id
         }
@@ -653,8 +676,10 @@ struct TransactionFormView: View {
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
+        defer { isSubmitting = false }
+        saveError = nil
 
-        let allocs = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+        let allocs = type == .transfer ? [] : allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
 
         var imagePath: String?
         if let image = selectedImage {
@@ -665,8 +690,9 @@ struct TransactionFormView: View {
             }
         }
 
-        let resolvedTaxRate: Int? = type == .expense ? taxDeductibleRate : nil
+        let resolvedTaxDeductibleRate: Int? = type == .expense ? taxDeductibleRate : nil
         let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
+        let resolvedCategoryId: String = type == .transfer ? "" : categoryId
 
         // 消費税フィールドの解決
         let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
@@ -690,11 +716,15 @@ struct TransactionFormView: View {
                 }
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
-                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     receiptImagePath: imagePath,
                     paymentAccountId: paymentAccountId,
                     transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    taxAmount: resolvedTaxAmount,
+                    taxRate: resolvedConsumptionTaxRate,
+                    isTaxIncluded: resolvedIsTaxIncluded,
+                    taxCategory: resolvedTaxCategory
                 )
             } else if imageRemoved {
                 if let oldPath = t.receiptImagePath {
@@ -702,35 +732,49 @@ struct TransactionFormView: View {
                 }
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
-                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     receiptImagePath: .some(nil),
                     paymentAccountId: paymentAccountId,
                     transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    taxAmount: resolvedTaxAmount,
+                    taxRate: resolvedConsumptionTaxRate,
+                    isTaxIncluded: resolvedIsTaxIncluded,
+                    taxCategory: resolvedTaxCategory
                 )
             } else {
                 dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
-                    categoryId: categoryId, memo: memo, allocations: allocs,
+                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     paymentAccountId: paymentAccountId,
                     transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    taxAmount: resolvedTaxAmount,
+                    taxRate: resolvedConsumptionTaxRate,
+                    isTaxIncluded: resolvedIsTaxIncluded,
+                    taxCategory: resolvedTaxCategory
                 )
             }
+            dismiss()
         } else {
-            dataStore.addTransaction(
+            let result = dataStore.addTransactionResult(
                 type: type, amount: amount, date: date,
-                categoryId: categoryId, memo: memo, allocations: allocs,
+                categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                 receiptImagePath: imagePath,
                 paymentAccountId: paymentAccountId,
                 transferToAccountId: resolvedTransferTo,
-                taxDeductibleRate: resolvedTaxRate,
+                taxDeductibleRate: resolvedTaxDeductibleRate,
                 taxAmount: resolvedTaxAmount,
                 taxRate: resolvedConsumptionTaxRate,
                 isTaxIncluded: resolvedIsTaxIncluded,
                 taxCategory: resolvedTaxCategory
             )
+            switch result {
+            case .success:
+                dismiss()
+            case .failure(let error):
+                saveError = error.localizedDescription
+            }
         }
-        dismiss()
     }
 }

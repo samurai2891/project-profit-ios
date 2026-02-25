@@ -235,15 +235,19 @@ enum TaxCategory: String, Codable, CaseIterable {
 
 // MARK: - BookkeepingMode
 
-/// 記帳方式
+/// 記帳モード
 enum BookkeepingMode: String, Codable, CaseIterable {
-    case singleEntry  // 簡易簿記（10万円控除）
-    case doubleEntry  // 複式簿記（65万円控除）
+    case singleEntry  // 簡易簿記（プロフィール設定向け）
+    case doubleEntry  // 複式簿記（プロフィール設定向け）
+    case auto         // 仕訳を自動再生成
+    case locked       // 仕訳をロック（自動再生成しない）
 
     var label: String {
         switch self {
         case .singleEntry: "簡易簿記"
         case .doubleEntry: "複式簿記"
+        case .auto: "自動"
+        case .locked: "ロック"
         }
     }
 }

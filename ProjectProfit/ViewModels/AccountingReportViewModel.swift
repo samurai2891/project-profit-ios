@@ -19,29 +19,32 @@ final class AccountingReportViewModel {
 
     init(dataStore: DataStore) {
         self.dataStore = dataStore
-        let calendar = Calendar(identifier: .gregorian)
-        self.fiscalYear = calendar.component(.year, from: Date())
+        self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
         refresh()
     }
 
     func refresh() {
+        let startMonth = FiscalYearSettings.startMonth
         trialBalance = AccountingReportService.generateTrialBalance(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
             journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalLines: dataStore.journalLines,
+            startMonth: startMonth
         )
         profitLoss = AccountingReportService.generateProfitLoss(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
             journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalLines: dataStore.journalLines,
+            startMonth: startMonth
         )
         balanceSheet = AccountingReportService.generateBalanceSheet(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
             journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalLines: dataStore.journalLines,
+            startMonth: startMonth
         )
     }
 
@@ -51,7 +54,7 @@ final class AccountingReportViewModel {
     }
 
     func navigateNextYear() {
-        let currentYear = Calendar(identifier: .gregorian).component(.year, from: Date())
+        let currentYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
         if fiscalYear < currentYear {
             fiscalYear += 1
             refresh()

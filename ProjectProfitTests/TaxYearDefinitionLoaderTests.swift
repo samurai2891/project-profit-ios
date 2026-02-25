@@ -39,6 +39,21 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(label, TaxLine.salesRevenue.label, "Should fall back to TaxLine.label for unknown year")
     }
 
+    func testXmlTag_returnsMappedTag() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "revenue_sales_revenue", fiscalYear: 2025)
+        XCTAssertEqual(xmlTag, "BlueRevenueSales")
+    }
+
+    func testIsSupportedYear() {
+        XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025))
+        XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 1900))
+    }
+
+    func testSupportedYearsContains2025() {
+        let years = TaxYearDefinitionLoader.supportedYears()
+        XCTAssertTrue(years.contains(2025))
+    }
+
     // MARK: - Coverage
 
     func testAllTaxLinesCovered_2025() {

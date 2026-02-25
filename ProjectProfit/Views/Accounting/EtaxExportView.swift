@@ -34,8 +34,11 @@ struct EtaxExportView: View {
                 settingsSection(viewModel: viewModel)
                 previewButton(viewModel: viewModel)
 
-                if let form = viewModel.exportedForm {
+                if !viewModel.validationErrors.isEmpty {
                     validationSection(viewModel: viewModel)
+                }
+
+                if let form = viewModel.exportedForm {
                     EtaxFormPreviewView(form: form)
                     exportButtons(viewModel: viewModel)
                 }
@@ -77,9 +80,13 @@ struct EtaxExportView: View {
                 Spacer()
                 Picker("年度", selection: Binding(
                     get: { viewModel.fiscalYear },
-                    set: { viewModel.fiscalYear = $0; viewModel.exportedForm = nil }
+                    set: {
+                        viewModel.fiscalYear = $0
+                        viewModel.exportedForm = nil
+                        viewModel.validationErrors = []
+                    }
                 )) {
-                    let currentYear = Calendar.current.component(.year, from: Date())
+                    let currentYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
                     ForEach((currentYear - 5)...currentYear, id: \.self) { year in
                         Text("\(year)年").tag(year)
                     }
@@ -92,7 +99,11 @@ struct EtaxExportView: View {
                 Spacer()
                 Picker("種類", selection: Binding(
                     get: { viewModel.formType },
-                    set: { viewModel.formType = $0; viewModel.exportedForm = nil }
+                    set: {
+                        viewModel.formType = $0
+                        viewModel.exportedForm = nil
+                        viewModel.validationErrors = []
+                    }
                 )) {
                     Text("青色申告").tag(EtaxFormType.blueReturn)
                     Text("白色申告").tag(EtaxFormType.whiteReturn)

@@ -9,7 +9,7 @@ extension DataStore {
 
     /// 指定日付の年度がロック済みか確認し、ロック済みならエラーを設定してtrueを返す
     func isYearLocked(for date: Date) -> Bool {
-        let year = Calendar.current.component(.year, from: date)
+        let year = fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)
         return isYearLocked(year)
     }
 

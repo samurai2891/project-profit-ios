@@ -85,9 +85,9 @@ enum EtaxCharacterValidator {
         }
 
         for field in form.fields {
-            let invalid = findInvalidCharacters(in: field.fieldLabel)
+            let invalid = findInvalidCharacters(in: field.value.exportText)
             if let first = invalid.first {
-                errors.append(.invalidCharacter(field: field.fieldLabel, character: first))
+                errors.append(.invalidCharacter(field: field.id, character: first))
             }
         }
 

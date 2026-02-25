@@ -19,6 +19,13 @@ struct ReceiptReviewView: View {
     @State private var isInitialized = false
     @State private var showImagePreview = false
     @State private var saveError: String?
+    @State private var paymentAccountId: String?
+    @State private var transferToAccountId: String?
+    @State private var taxDeductibleRate: Int = 100
+    @State private var taxCategory: TaxCategory?
+    @State private var taxRate: Int = 10
+    @State private var isTaxIncluded: Bool = true
+    @State private var taxAmountText: String = ""
 
     init(receiptData: ReceiptData, receiptImage: UIImage? = nil, defaultProjectId: UUID? = nil, onDismiss: @escaping () -> Void) {
         self.receiptData = receiptData
@@ -49,6 +56,11 @@ struct ReceiptReviewView: View {
 
     private var isValid: Bool {
         guard let amount = Int(amountText), amount > 0 else { return false }
+        if type == .transfer {
+            guard let from = paymentAccountId, !from.isEmpty,
+                  let to = transferToAccountId, !to.isEmpty else { return false }
+            return from != to
+        }
         return !categoryId.isEmpty && !allocations.isEmpty && totalRatio == 100
     }
 
@@ -60,9 +72,15 @@ struct ReceiptReviewView: View {
                 typeSection
                 amountSection
                 dateSection
-                categorySection
+                if type != .transfer {
+                    categorySection
+                }
+                accountingSection
+                consumptionTaxSection
                 LineItemsEditView(items: $editableLineItems)
-                allocationSection
+                if type != .transfer {
+                    allocationSection
+                }
                 memoSection
             }
             .padding(20)
@@ -78,6 +96,14 @@ struct ReceiptReviewView: View {
         .onAppear { setupFromReceiptData() }
         .onChange(of: type) { _, _ in
             ensureValidCategorySelection()
+        }
+        .alert("保存エラー", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "保存に失敗しました")
         }
         .sheet(isPresented: $showImagePreview) {
             if let image = receiptImage {
@@ -306,6 +332,116 @@ struct ReceiptReviewView: View {
         }
     }
 
+    // MARK: - Accounting / Tax
+
+    private var accountingSection: some View {
+        VStack(spacing: 12) {
+            AccountPickerView(
+                label: type == .income ? "入金先口座" : "支払元口座",
+                accounts: dataStore.accounts,
+                selectedAccountId: $paymentAccountId,
+                filterPredicate: { $0.isPaymentAccount && $0.isActive }
+            )
+
+            if type == .transfer {
+                AccountPickerView(
+                    label: "振替先口座",
+                    accounts: dataStore.accounts,
+                    selectedAccountId: $transferToAccountId,
+                    filterPredicate: { $0.isPaymentAccount && $0.isActive }
+                )
+            }
+
+            if type == .expense {
+                TaxDeductibleRateView(rate: $taxDeductibleRate)
+            }
+        }
+        .padding(16)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var consumptionTaxSection: some View {
+        if type != .transfer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("消費税")
+                    .font(.subheadline.weight(.medium))
+
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("税区分")
+                            .font(.subheadline)
+                        Spacer()
+                        Picker("税区分", selection: $taxCategory) {
+                            Text("未設定").tag(TaxCategory?.none)
+                            ForEach(TaxCategory.allCases, id: \.self) { cat in
+                                Text(cat.label).tag(TaxCategory?.some(cat))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    if let tc = taxCategory, tc.isTaxable {
+                        HStack {
+                            Text("税率")
+                                .font(.subheadline)
+                            Spacer()
+                            HStack(spacing: 8) {
+                                taxRateButton(rate: 10, label: "10%")
+                                taxRateButton(rate: 8, label: "8%")
+                            }
+                        }
+
+                        Toggle("税込金額", isOn: $isTaxIncluded)
+                            .font(.subheadline)
+
+                        HStack {
+                            Text("消費税額")
+                                .font(.subheadline)
+                            Spacer()
+                            if isTaxIncluded, let amount = Int(amountText), amount > 0 {
+                                let computed = amount * taxRate / (100 + taxRate)
+                                Text(formatCurrency(computed))
+                                    .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                TextField("0", text: $taxAmountText)
+                                    .keyboardType(.numberPad)
+                                    .frame(width: 100)
+                                    .multilineTextAlignment(.trailing)
+                                    .font(.subheadline.monospacedDigit())
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    private func taxRateButton(rate: Int, label: String) -> some View {
+        let isSelected = taxRate == rate
+        return Button {
+            taxRate = rate
+        } label: {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? AppColors.primary : AppColors.surface)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? AppColors.primary : AppColors.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Allocation
 
     private var allocationSection: some View {
@@ -440,6 +576,12 @@ struct ReceiptReviewView: View {
         categoryId = receiptData.categoryId
         memo = receiptData.formattedMemo
         editableLineItems = receiptData.lineItems.map { EditableLineItem(from: $0) }
+        paymentAccountId = dataStore.accountingProfile?.defaultPaymentAccountId
+            ?? dataStore.accounts.first(where: { $0.isPaymentAccount && $0.isActive })?.id
+        if receiptData.taxAmount > 0 {
+            taxCategory = .standardRate
+            taxAmountText = String(receiptData.taxAmount)
+        }
 
         // Validate category exists for selected transaction type
         ensureValidCategorySelection()
@@ -455,6 +597,7 @@ struct ReceiptReviewView: View {
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
+        defer { isSubmitting = false }
         saveError = nil
 
         // Validate amount is positive
@@ -484,22 +627,54 @@ struct ReceiptReviewView: View {
             .filter { !$0.name.isEmpty && $0.unitPrice > 0 }
             .map { $0.toReceiptLineItem() }
 
-        let allocs = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        dataStore.addTransaction(
+        let allocs = type == .transfer ? [] : allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+        let resolvedCategoryId = type == .transfer ? "" : categoryId
+        let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
+        let resolvedTaxDeductibleRate: Int? = type == .expense ? (taxDeductibleRate == 100 ? nil : taxDeductibleRate) : nil
+        let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
+        let resolvedTaxRate: Int? = resolvedTaxCategory?.isTaxable == true ? taxRate : nil
+        let resolvedIsTaxIncluded: Bool? = resolvedTaxCategory?.isTaxable == true ? isTaxIncluded : nil
+        let resolvedTaxAmount: Int?
+        if let tc = resolvedTaxCategory, tc.isTaxable {
+            if isTaxIncluded {
+                resolvedTaxAmount = amount * taxRate / (100 + taxRate)
+            } else {
+                resolvedTaxAmount = Int(taxAmountText)
+            }
+        } else {
+            resolvedTaxAmount = nil
+        }
+
+        let result = dataStore.addTransactionResult(
             type: type,
             amount: amount,
             date: validDate,
-            categoryId: categoryId,
+            categoryId: resolvedCategoryId,
             memo: memo,
             allocations: allocs,
             receiptImagePath: imagePath,
-            lineItems: lineItems
+            lineItems: lineItems,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: resolvedTransferTo,
+            taxDeductibleRate: resolvedTaxDeductibleRate,
+            taxAmount: resolvedTaxAmount,
+            taxRate: resolvedTaxRate,
+            isTaxIncluded: resolvedIsTaxIncluded,
+            taxCategory: resolvedTaxCategory
         )
-
-        onDismiss()
+        switch result {
+        case .success:
+            onDismiss()
+        case .failure(let error):
+            saveError = error.localizedDescription
+        }
     }
 
     private func ensureValidCategorySelection() {
+        if type == .transfer {
+            categoryId = ""
+            return
+        }
         if !categories.contains(where: { $0.id == categoryId }) {
             categoryId = categories.first?.id ?? fallbackCategoryId(for: type)
         }

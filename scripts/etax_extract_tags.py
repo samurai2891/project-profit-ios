@@ -1,0 +1,461 @@
+#!/usr/bin/env python3
+"""Extract e-Tax xmlTag definitions from source spreadsheets/csv files.
+
+This script is designed to work even before CAB files are available:
+- it supports CSV/TSV fixtures immediately
+- it supports XLSX when `openpyxl` is installed
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import re
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+VALID_DATA_TYPES = {"number", "text", "flag"}
+DATA_TYPE_SYNONYMS = {
+    "number": "number",
+    "numeric": "number",
+    "num": "number",
+    "数値": "number",
+    "金額": "number",
+    "text": "text",
+    "string": "text",
+    "str": "text",
+    "文字": "text",
+    "文字列": "text",
+    "flag": "flag",
+    "bool": "flag",
+    "boolean": "flag",
+    "区分": "flag",
+    "真偽": "flag",
+}
+
+
+@dataclass(frozen=True)
+class SourceRow:
+    source_file: str
+    source_sheet: str
+    source_row: int
+    row: dict[str, str]
+
+
+def normalize_header(value: str | None) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    text = re.sub(r"[\s_\-]+", "", text)
+    return text.lower()
+
+
+def normalize_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value).strip()
+    text = text.replace("　", "")
+    text = re.sub(r"\s+", "", text)
+    return text
+
+
+def normalize_token(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value).strip()
+    return normalize_header(text)
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def resolve_path(base_dir: Path, path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path
+    return (base_dir / path).resolve()
+
+
+def load_required_keys(path: Path) -> set[str]:
+    data = load_json(path)
+    keys: set[str] = set()
+    if isinstance(data, dict):
+        for value in data.values():
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str) and item:
+                        keys.add(item)
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, str) and item:
+                keys.add(item)
+    return keys
+
+
+def parse_csv_like(path: Path) -> list[SourceRow]:
+    delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
+    rows: list[SourceRow] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as fp:
+        reader = csv.DictReader(fp, delimiter=delimiter)
+        if reader.fieldnames is None:
+            return rows
+        for row_index, raw_row in enumerate(reader, start=2):
+            normalized_row: dict[str, str] = {}
+            for key, value in raw_row.items():
+                normalized_row[normalize_header(key)] = str(value).strip() if value is not None else ""
+            rows.append(
+                SourceRow(
+                    source_file=str(path),
+                    source_sheet="csv",
+                    source_row=row_index,
+                    row=normalized_row,
+                )
+            )
+    return rows
+
+
+def parse_xlsx(path: Path) -> list[SourceRow]:
+    try:
+        import openpyxl  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "XLSX入力には openpyxl が必要です。`pip install openpyxl` を実行してください。"
+        ) from exc
+
+    rows: list[SourceRow] = []
+    workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    for sheet in workbook.worksheets:
+        values = sheet.iter_rows(values_only=True)
+        try:
+            headers = next(values)
+        except StopIteration:
+            continue
+        header_keys = [normalize_header(str(h) if h is not None else "") for h in headers]
+        for row_index, value_row in enumerate(values, start=2):
+            if value_row is None:
+                continue
+            normalized_row: dict[str, str] = {}
+            has_any_value = False
+            for key, value in zip(header_keys, value_row):
+                if not key:
+                    continue
+                text = str(value).strip() if value is not None else ""
+                if text:
+                    has_any_value = True
+                normalized_row[key] = text
+            if not has_any_value:
+                continue
+            rows.append(
+                SourceRow(
+                    source_file=str(path),
+                    source_sheet=sheet.title,
+                    source_row=row_index,
+                    row=normalized_row,
+                )
+            )
+    return rows
+
+
+def load_source_rows(input_dir: Path) -> list[SourceRow]:
+    if not input_dir.exists():
+        raise FileNotFoundError(f"入力ディレクトリが見つかりません: {input_dir}")
+    rows: list[SourceRow] = []
+    for path in sorted(input_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        suffix = path.suffix.lower()
+        if suffix in {".csv", ".tsv"}:
+            rows.extend(parse_csv_like(path))
+        elif suffix == ".xlsx":
+            rows.extend(parse_xlsx(path))
+    return rows
+
+
+def alias_key_map(column_aliases: dict[str, list[str]]) -> dict[str, list[str]]:
+    return {
+        field: [normalize_header(alias) for alias in aliases]
+        for field, aliases in column_aliases.items()
+    }
+
+
+def first_value(row: dict[str, str], aliases: list[str]) -> str:
+    for alias in aliases:
+        value = row.get(alias, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def canonical_data_type(value: str, fallback: str | None) -> str:
+    token = normalize_token(value)
+    if token in DATA_TYPE_SYNONYMS:
+        return DATA_TYPE_SYNONYMS[token]
+    if fallback:
+        fb = normalize_token(fallback)
+        if fb in DATA_TYPE_SYNONYMS:
+            return DATA_TYPE_SYNONYMS[fb]
+        if fallback in VALID_DATA_TYPES:
+            return fallback
+    return ""
+
+
+def build_mapping_index(
+    field_mappings: list[dict[str, Any]],
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[tuple[str, str, str], dict[str, Any]],
+    dict[tuple[str, str], dict[str, Any]],
+    dict[str, dict[str, Any]],
+]:
+    by_internal_key: dict[str, dict[str, Any]] = {}
+    by_label_section_form: dict[tuple[str, str, str], dict[str, Any]] = {}
+    by_label_section: dict[tuple[str, str], dict[str, Any]] = {}
+    by_label: dict[str, dict[str, Any]] = {}
+
+    for mapping in field_mappings:
+        internal_key = str(mapping.get("internal_key", "")).strip()
+        if not internal_key:
+            continue
+        by_internal_key[internal_key] = mapping
+        label = normalize_label(str(mapping.get("field_label", "")))
+        section = normalize_token(str(mapping.get("section", "")))
+        form = normalize_token(str(mapping.get("form", "")))
+        if label and section and form:
+            by_label_section_form[(label, section, form)] = mapping
+        if label and section:
+            by_label_section[(label, section)] = mapping
+        if label:
+            by_label[label] = mapping
+    return by_internal_key, by_label_section_form, by_label_section, by_label
+
+
+def resolve_mapping(
+    row: dict[str, str],
+    aliases: dict[str, list[str]],
+    by_internal_key: dict[str, dict[str, Any]],
+    by_label_section_form: dict[tuple[str, str, str], dict[str, Any]],
+    by_label_section: dict[tuple[str, str], dict[str, Any]],
+    by_label: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    row_internal_key = first_value(row, aliases.get("internal_key", []))
+    if row_internal_key and row_internal_key in by_internal_key:
+        return by_internal_key[row_internal_key]
+
+    label = normalize_label(first_value(row, aliases.get("field_label", [])))
+    section = normalize_token(first_value(row, aliases.get("section", [])))
+    form = normalize_token(first_value(row, aliases.get("form", [])))
+    if label and section and form:
+        mapped = by_label_section_form.get((label, section, form))
+        if mapped is not None:
+            return mapped
+    if label and section:
+        mapped = by_label_section.get((label, section))
+        if mapped is not None:
+            return mapped
+    if label:
+        return by_label.get(label)
+    return None
+
+
+def ensure_output_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def apply_tags_to_taxyear(base_taxyear: Path, out_taxyear: Path, items: list[dict[str, Any]]) -> None:
+    base_data = load_json(base_taxyear)
+    fields = base_data.get("fields")
+    if not isinstance(fields, list):
+        raise ValueError(f"`fields` が配列ではありません: {base_taxyear}")
+
+    by_internal_key = {item["internalKey"]: item for item in items}
+    missing_in_tags: list[str] = []
+
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        internal_key = str(field.get("internalKey", "")).strip()
+        if not internal_key:
+            continue
+        item = by_internal_key.get(internal_key)
+        if item is None:
+            missing_in_tags.append(internal_key)
+            continue
+        field["xmlTag"] = item["xmlTag"]
+        field["dataType"] = item["dataType"]
+
+    if missing_in_tags:
+        raise ValueError(
+            "TagDictionaryに存在しないinternalKeyがbase TaxYearにあります: "
+            + ", ".join(sorted(set(missing_in_tags)))
+        )
+
+    ensure_output_parent(out_taxyear)
+    with out_taxyear.open("w", encoding="utf-8") as fp:
+        json.dump(base_data, fp, ensure_ascii=False, indent=2)
+        fp.write("\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Extract e-Tax tags from CAB/Excel/CSV sources.")
+    parser.add_argument("--input-dir", required=True, help="展開済みCAB/Excel/CSVディレクトリ")
+    parser.add_argument("--tax-year", required=True, type=int, help="対象年分")
+    parser.add_argument("--mapping-config", required=True, help="mapping config json")
+    parser.add_argument("--out-tag-dict", required=True, help="出力TagDictionary json")
+    parser.add_argument("--base-taxyear-json", help="反映元TaxYear json")
+    parser.add_argument("--out-taxyear-json", help="反映後TaxYear json")
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="required internal keys の一部欠落を許容する",
+    )
+    args = parser.parse_args()
+
+    mapping_config_path = Path(args.mapping_config).resolve()
+    mapping_config = load_json(mapping_config_path)
+    config_dir = mapping_config_path.parent
+
+    column_aliases = mapping_config.get("column_aliases", {})
+    if not isinstance(column_aliases, dict):
+        raise ValueError("mapping config の `column_aliases` が不正です")
+    aliases = alias_key_map(column_aliases)
+
+    field_mappings = mapping_config.get("field_mappings", [])
+    if not isinstance(field_mappings, list) or not field_mappings:
+        raise ValueError("mapping config の `field_mappings` が空または不正です")
+
+    required_keys_file = mapping_config.get("required_keys_file")
+    if not isinstance(required_keys_file, str) or not required_keys_file.strip():
+        raise ValueError("mapping config に `required_keys_file` が必要です")
+    required_keys_path = resolve_path(config_dir, required_keys_file)
+    required_keys = load_required_keys(required_keys_path)
+
+    (
+        by_internal_key,
+        by_label_section_form,
+        by_label_section,
+        by_label,
+    ) = build_mapping_index(field_mappings)
+
+    source_rows = load_source_rows(Path(args.input_dir).resolve())
+    if not source_rows:
+        raise RuntimeError("入力ディレクトリに解析対象の行データがありません")
+
+    extracted_items: list[dict[str, Any]] = []
+    by_internal_extracted: dict[str, dict[str, Any]] = {}
+    xml_tag_owner: dict[str, str] = {}
+    skipped_rows = 0
+
+    for source in source_rows:
+        mapping = resolve_mapping(
+            source.row,
+            aliases,
+            by_internal_key,
+            by_label_section_form,
+            by_label_section,
+            by_label,
+        )
+        if mapping is None:
+            skipped_rows += 1
+            continue
+
+        internal_key = str(mapping["internal_key"]).strip()
+        xml_tag = first_value(source.row, aliases.get("xml_tag", [])) or str(mapping.get("xml_tag", "")).strip()
+        if not xml_tag:
+            raise ValueError(
+                f"xmlTagが空です: internalKey={internal_key}, file={source.source_file}, row={source.source_row}"
+            )
+
+        row_data_type = first_value(source.row, aliases.get("data_type", []))
+        data_type = canonical_data_type(row_data_type, str(mapping.get("data_type", "")).strip())
+        if data_type not in VALID_DATA_TYPES:
+            raise ValueError(
+                "dataTypeが不正です: "
+                f"internalKey={internal_key}, value={row_data_type or mapping.get('data_type')}"
+            )
+
+        existing = by_internal_extracted.get(internal_key)
+        if existing is not None and existing["xmlTag"] != xml_tag:
+            raise ValueError(
+                "同一internalKeyに複数xmlTagが存在します: "
+                f"{internal_key} -> {existing['xmlTag']} / {xml_tag}"
+            )
+
+        owner = xml_tag_owner.get(xml_tag)
+        if owner is not None and owner != internal_key:
+            raise ValueError(
+                f"xmlTag重複: xmlTag={xml_tag}, internalKey={owner}, {internal_key}"
+            )
+
+        item = {
+            "internalKey": internal_key,
+            "xmlTag": xml_tag,
+            "dataType": data_type,
+            "requiredRule": mapping.get("required_rule"),
+            "sourceFile": source.source_file,
+            "sourceSheet": source.source_sheet,
+            "sourceRow": source.source_row,
+        }
+        by_internal_extracted[internal_key] = item
+        xml_tag_owner[xml_tag] = internal_key
+
+    extracted_items = sorted(by_internal_extracted.values(), key=lambda x: x["internalKey"])
+    missing_required = sorted(required_keys - set(by_internal_extracted.keys()))
+    if missing_required and not args.allow_partial:
+        raise ValueError(
+            "required internalKey が不足しています: " + ", ".join(missing_required)
+        )
+
+    output = {
+        "taxYear": args.tax_year,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "sourceDirectory": str(Path(args.input_dir).resolve()),
+        "itemCount": len(extracted_items),
+        "skippedRowCount": skipped_rows,
+        "missingRequiredKeys": missing_required,
+        "items": extracted_items,
+    }
+
+    out_tag_dict = Path(args.out_tag_dict).resolve()
+    ensure_output_parent(out_tag_dict)
+    with out_tag_dict.open("w", encoding="utf-8") as fp:
+        json.dump(output, fp, ensure_ascii=False, indent=2)
+        fp.write("\n")
+
+    if args.base_taxyear_json or args.out_taxyear_json:
+        if not (args.base_taxyear_json and args.out_taxyear_json):
+            raise ValueError("TaxYear反映には --base-taxyear-json と --out-taxyear-json の両方が必要です")
+        apply_tags_to_taxyear(
+            Path(args.base_taxyear_json).resolve(),
+            Path(args.out_taxyear_json).resolve(),
+            extracted_items,
+        )
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "taxYear": args.tax_year,
+                "itemCount": len(extracted_items),
+                "skippedRowCount": skipped_rows,
+                "missingRequiredKeyCount": len(missing_required),
+                "output": str(out_tag_dict),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[etax_extract_tags] ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)

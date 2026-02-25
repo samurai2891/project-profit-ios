@@ -242,6 +242,11 @@ final class AccountingIntegrationTests: XCTestCase {
         XCTAssertTrue(fieldIds.contains("declarant_phone"), "電話番号フィールド")
         XCTAssertTrue(fieldIds.contains("declarant_business_name"), "屋号フィールド")
         XCTAssertTrue(fieldIds.contains("declarant_business_category"), "事業種類フィールド")
+
+        let valueById = Dictionary(uniqueKeysWithValues: fields.map { ($0.id, $0.value.exportText) })
+        XCTAssertEqual(valueById["declarant_name"], "田中太郎")
+        XCTAssertEqual(valueById["declarant_address"], "東京都千代田区千代田1-1")
+        XCTAssertEqual(valueById["declarant_phone"], "03-1234-5678")
     }
 
     /// 空文字のフィールドは .declarantInfo に含まれないことを検証
@@ -269,7 +274,7 @@ final class AccountingIntegrationTests: XCTestCase {
         let fields: [EtaxField] = [
             // 収入
             EtaxField(
-                id: "revenue_sales", fieldLabel: "売上金額",
+                id: "revenue_sales_revenue", fieldLabel: "売上金額",
                 taxLine: .salesRevenue, value: 1_000_000, section: .revenue
             ),
             // 経費
@@ -285,7 +290,7 @@ final class AccountingIntegrationTests: XCTestCase {
             // 申告者情報
             EtaxField(
                 id: "declarant_name", fieldLabel: "氏名",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: "山田太郎", section: .declarantInfo
             ),
             // 棚卸
             EtaxField(
@@ -313,36 +318,17 @@ final class AccountingIntegrationTests: XCTestCase {
             let xml = String(data: data, encoding: .utf8)!
 
             // ルート要素
-            XCTAssertTrue(xml.contains("<税務申告データ>"), "ルート開始タグ")
-            XCTAssertTrue(xml.contains("</税務申告データ>"), "ルート終了タグ")
+            XCTAssertTrue(xml.contains("<eTaxData year=\"2025\""), "ルート開始タグ")
+            XCTAssertTrue(xml.contains("</eTaxData>"), "ルート終了タグ")
+            XCTAssertTrue(xml.contains("formType=\"青色申告決算書\""), "申告書種類")
 
-            // 申告書情報
-            XCTAssertTrue(xml.contains("<年度>2025</年度>"), "年度")
-            XCTAssertTrue(xml.contains("青色申告決算書"), "申告書種類")
-
-            // 各セクションタグの存在
-            XCTAssertTrue(xml.contains("<収入金額>"), "収入セクション開始タグ")
-            XCTAssertTrue(xml.contains("</収入金額>"), "収入セクション終了タグ")
-
-            XCTAssertTrue(xml.contains("<必要経費>"), "経費セクション開始タグ")
-            XCTAssertTrue(xml.contains("</必要経費>"), "経費セクション終了タグ")
-
-            XCTAssertTrue(xml.contains("<所得金額>"), "所得セクション開始タグ")
-            XCTAssertTrue(xml.contains("</所得金額>"), "所得セクション終了タグ")
-
-            XCTAssertTrue(xml.contains("<申告者情報>"), "申告者情報セクション開始タグ")
-            XCTAssertTrue(xml.contains("</申告者情報>"), "申告者情報セクション終了タグ")
-
-            XCTAssertTrue(xml.contains("<棚卸>"), "棚卸セクション開始タグ")
-            XCTAssertTrue(xml.contains("</棚卸>"), "棚卸セクション終了タグ")
-
-            XCTAssertTrue(xml.contains("<貸借対照表>"), "貸借対照表セクション開始タグ")
-            XCTAssertTrue(xml.contains("</貸借対照表>"), "貸借対照表セクション終了タグ")
-
-            // フィールドの金額値が正しく出力されていること
-            XCTAssertTrue(xml.contains("<金額>1000000</金額>"), "売上金額の値")
-            XCTAssertTrue(xml.contains("<金額>50000</金額>"), "通信費の値")
-            XCTAssertTrue(xml.contains("<金額>950000</金額>"), "所得金額の値")
+            // xmlTag マッピングで出力されること
+            XCTAssertTrue(xml.contains("<BlueRevenueSales>1000000</BlueRevenueSales>"), "売上金額")
+            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>50000</BlueExpenseCommunication>"), "通信費")
+            XCTAssertTrue(xml.contains("<BlueIncomeNet>950000</BlueIncomeNet>"), "所得金額")
+            XCTAssertTrue(xml.contains("<CommonName>山田太郎</CommonName>"), "氏名")
+            XCTAssertTrue(xml.contains("<BlueInventoryOpening>100000</BlueInventoryOpening>"), "棚卸")
+            XCTAssertTrue(xml.contains("<BlueBSTotalAssets>500000</BlueBSTotalAssets>"), "資産合計")
 
         case .failure(let error):
             XCTFail("XTX生成に失敗: \(error)")

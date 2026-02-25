@@ -146,7 +146,7 @@ final class AccountingBootstrapTests: XCTestCase {
         XCTAssertEqual(result.transactionsBackfilled, 1)
         XCTAssertEqual(tx.paymentAccountId, "acct-cash")
         XCTAssertEqual(tx.taxDeductibleRate, 100)
-        XCTAssertEqual(tx.bookkeepingMode, .doubleEntry)
+        XCTAssertEqual(tx.bookkeepingMode, .auto)
     }
 
     // MARK: - Step 5: Unmapped Categories to Suspense

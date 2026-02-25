@@ -28,23 +28,32 @@ final class EtaxExportViewModel {
 
     init(dataStore: DataStore) {
         self.dataStore = dataStore
-        self.fiscalYear = Calendar.current.component(.year, from: Date()) - 1
+        self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
     }
 
     // MARK: - Generate Preview
 
     func generatePreview() {
+        guard TaxYearDefinitionLoader.loadDefinition(for: fiscalYear) != nil else {
+            exportedForm = nil
+            validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
+            return
+        }
+
+        let startMonth = FiscalYearSettings.startMonth
         let pl = AccountingReportService.generateProfitLoss(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
             journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalLines: dataStore.journalLines,
+            startMonth: startMonth
         )
         let bs = AccountingReportService.generateBalanceSheet(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
             journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalLines: dataStore.journalLines,
+            startMonth: startMonth
         )
 
         let inventoryRecord = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
@@ -81,6 +90,14 @@ final class EtaxExportViewModel {
 
     func exportXtx() {
         guard let form = exportedForm else { return }
+        guard form.fiscalYear == fiscalYear else {
+            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
+            return
+        }
+        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear) else {
+            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
+            return
+        }
         isExporting = true
 
         let result = EtaxXtxExporter.generateXtx(form: form)
@@ -100,6 +117,14 @@ final class EtaxExportViewModel {
 
     func exportCsv() {
         guard let form = exportedForm else { return }
+        guard form.fiscalYear == fiscalYear else {
+            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
+            return
+        }
+        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear) else {
+            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
+            return
+        }
         isExporting = true
 
         let result = EtaxXtxExporter.generateCsv(form: form)

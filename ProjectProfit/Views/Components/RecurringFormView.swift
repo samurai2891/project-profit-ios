@@ -545,8 +545,13 @@ struct RecurringFormView: View {
         }
 
         if allocationMode == .manual {
+            guard !allocations.isEmpty else {
+                validationMessage = "プロジェクト配分を1件以上設定してください"
+                showValidationError = true
+                return
+            }
             let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-            if totalRatio > 0 && totalRatio != 100 {
+            if totalRatio != 100 {
                 validationMessage = "プロジェクト配分の合計は100%にしてください"
                 showValidationError = true
                 return

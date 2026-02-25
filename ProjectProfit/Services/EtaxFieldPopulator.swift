@@ -105,43 +105,55 @@ enum EtaxFieldPopulator {
         if !profile.ownerName.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_name", fieldLabel: "氏名",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: profile.ownerName, section: .declarantInfo
             ))
         }
         if let kana = profile.ownerNameKana, !kana.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_name_kana", fieldLabel: "氏名カナ",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: kana, section: .declarantInfo
             ))
         }
         if let postalCode = profile.postalCode, !postalCode.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_postal_code", fieldLabel: "郵便番号",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: postalCode, section: .declarantInfo
             ))
         }
         if let address = profile.address, !address.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_address", fieldLabel: "住所",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: address, section: .declarantInfo
             ))
         }
         if let phone = profile.phoneNumber, !phone.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_phone", fieldLabel: "電話番号",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: phone, section: .declarantInfo
             ))
         }
         if !profile.businessName.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_business_name", fieldLabel: "屋号",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: profile.businessName, section: .declarantInfo
             ))
         }
         if let category = profile.businessCategory, !category.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_business_category", fieldLabel: "事業種類",
-                taxLine: nil, value: 0, section: .declarantInfo
+                taxLine: nil, value: category, section: .declarantInfo
+            ))
+        }
+        if let birthDate = profile.dateOfBirth {
+            fields.append(EtaxField(
+                id: "declarant_birth_date", fieldLabel: "生年月日",
+                taxLine: nil, value: birthDateEtaxString(from: birthDate), section: .declarantInfo
+            ))
+        }
+        if let myNumberFlag = profile.myNumberFlag {
+            fields.append(EtaxField(
+                id: "declarant_my_number_flag", fieldLabel: "マイナンバー提出有無",
+                taxLine: nil, value: myNumberFlag, section: .declarantInfo
             ))
         }
 
@@ -222,5 +234,13 @@ enum EtaxFieldPopulator {
         else { return nil }
 
         return TaxLine.allCases.first { $0.accountSubtype == subtype }
+    }
+
+    private static func birthDateEtaxString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "ja_JP_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }

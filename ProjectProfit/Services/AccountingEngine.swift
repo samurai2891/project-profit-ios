@@ -28,6 +28,11 @@ final class AccountingEngine {
     ) -> PPJournalEntry? {
         let sourceKey = PPJournalEntry.transactionSourceKey(transaction.id)
 
+        // 取引がロックされている場合は自動再生成しない
+        if transaction.bookkeepingMode == .locked {
+            return findEntryBySourceKey(sourceKey)
+        }
+
         // ユーザーが手動編集した仕訳（entryType == .manual）は自動更新をスキップ
         if let existingEntry = findEntryBySourceKey(sourceKey),
            existingEntry.entryType == .manual {

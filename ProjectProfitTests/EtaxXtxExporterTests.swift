@@ -17,8 +17,8 @@ final class EtaxXtxExporterTests: XCTestCase {
 
     private func sampleFields() -> [EtaxField] {
         [
-            EtaxField(id: "revenue_sales", fieldLabel: "売上（収入）金額", taxLine: .salesRevenue, value: 5_000_000, section: .revenue),
-            EtaxField(id: "expense_comm", fieldLabel: "通信費", taxLine: .communicationExpense, value: 120_000, section: .expenses),
+            EtaxField(id: "revenue_sales_revenue", fieldLabel: "売上（収入）金額", taxLine: .salesRevenue, value: 5_000_000, section: .revenue),
+            EtaxField(id: "expense_communication", fieldLabel: "通信費", taxLine: .communicationExpense, value: 120_000, section: .expenses),
             EtaxField(id: "expense_travel", fieldLabel: "旅費交通費", taxLine: .travelExpense, value: 80_000, section: .expenses),
             EtaxField(id: "income_total_revenue", fieldLabel: "収入金額合計", taxLine: nil, value: 5_000_000, section: .income),
             EtaxField(id: "income_total_expenses", fieldLabel: "必要経費合計", taxLine: nil, value: 200_000, section: .income),
@@ -37,13 +37,11 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
-            XCTAssertTrue(xml.contains("<税務申告データ>"))
-            XCTAssertTrue(xml.contains("<年度>2025</年度>"))
-            XCTAssertTrue(xml.contains("<申告書種類>青色申告決算書</申告書種類>"))
-            XCTAssertTrue(xml.contains("<収入金額>"))
-            XCTAssertTrue(xml.contains("<必要経費>"))
-            XCTAssertTrue(xml.contains("<所得金額>"))
-            XCTAssertTrue(xml.contains("<金額>5000000</金額>"))
+            XCTAssertTrue(xml.contains("<eTaxData year=\"2025\""))
+            XCTAssertTrue(xml.contains("formType=\"青色申告決算書\""))
+            XCTAssertTrue(xml.contains("<BlueRevenueSales>5000000</BlueRevenueSales>"))
+            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>120000</BlueExpenseCommunication>"))
+            XCTAssertTrue(xml.contains("<BlueIncomeNet>4800000</BlueIncomeNet>"))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }
@@ -63,14 +61,32 @@ final class EtaxXtxExporterTests: XCTestCase {
     }
 
     @MainActor
+    func testGenerateXtxUnsupportedYearFails() {
+        let form = EtaxForm(
+            fiscalYear: 1900,
+            formType: .blueReturn,
+            fields: sampleFields(),
+            generatedAt: Date()
+        )
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success:
+            XCTFail("Expected failure for unsupported year")
+        case .failure(let error):
+            XCTAssertTrue(error.description.contains("未対応"))
+        }
+    }
+
+    @MainActor
     func testGenerateXtxContainsTaxLineAttribute() {
         let form = makeForm(fields: sampleFields())
         let result = EtaxXtxExporter.generateXtx(form: form)
 
         if case .success(let data) = result {
             let xml = String(data: data, encoding: .utf8)!
-            XCTAssertTrue(xml.contains("taxLine=\"sales_revenue\""))
-            XCTAssertTrue(xml.contains("taxLine=\"communication\""))
+            XCTAssertTrue(xml.contains("<BlueRevenueSales>5000000</BlueRevenueSales>"))
+            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>120000</BlueExpenseCommunication>"))
         } else {
             XCTFail("Expected success")
         }
@@ -79,7 +95,7 @@ final class EtaxXtxExporterTests: XCTestCase {
     @MainActor
     func testGenerateXtxXmlEscaping() {
         let fields = [
-            EtaxField(id: "test", fieldLabel: "テスト<>&'\"", taxLine: .salesRevenue, value: 100, section: .revenue)
+            EtaxField(id: "declarant_name", fieldLabel: "氏名", taxLine: nil, value: "テスト<>&'\"", section: .declarantInfo)
         ]
         let form = makeForm(fields: fields)
         let result = EtaxXtxExporter.generateXtx(form: form)
@@ -106,10 +122,9 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let csv = String(data: data, encoding: .utf8)!
             let lines = csv.components(separatedBy: "\n")
-            XCTAssertEqual(lines[0], "セクション,フィールド名,税区分,金額")
+            XCTAssertEqual(lines[0], "internalKey,xmlTag,セクション,フィールド名,値")
             XCTAssertTrue(lines.count > 1)
-            // Check revenue line (values are now RFC 4180 quoted)
-            XCTAssertTrue(csv.contains("\"収入金額\",\"売上（収入）金額\",\"sales_revenue\",5000000"))
+            XCTAssertTrue(csv.contains("\"revenue_sales_revenue\",\"BlueRevenueSales\",\"収入金額\",\"売上（収入）金額\",\"5000000\""))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }
@@ -125,6 +140,24 @@ final class EtaxXtxExporterTests: XCTestCase {
             XCTFail("Expected failure for empty form")
         case .failure:
             break // expected
+        }
+    }
+
+    @MainActor
+    func testGenerateCsvUnsupportedYearFails() {
+        let form = EtaxForm(
+            fiscalYear: 1900,
+            formType: .blueReturn,
+            fields: sampleFields(),
+            generatedAt: Date()
+        )
+        let result = EtaxXtxExporter.generateCsv(form: form)
+
+        switch result {
+        case .success:
+            XCTFail("Expected failure for unsupported year")
+        case .failure(let error):
+            XCTAssertTrue(error.description.contains("未対応"))
         }
     }
 

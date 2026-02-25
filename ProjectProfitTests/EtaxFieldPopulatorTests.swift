@@ -83,7 +83,7 @@ final class EtaxFieldPopulatorTests: XCTestCase {
 
         let revenueFields = form.fields.filter { $0.section == .revenue }
         XCTAssertEqual(revenueFields.count, 1)
-        XCTAssertEqual(revenueFields[0].value, 5_000_000)
+        XCTAssertEqual(revenueFields[0].value.numberValue, 5_000_000)
         XCTAssertEqual(revenueFields[0].taxLine, .salesRevenue)
     }
 
@@ -159,9 +159,9 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         let totalExpensesField = incomeFields.first { $0.id == "income_total_expenses" }
         let netIncomeField = incomeFields.first { $0.id == "income_net" }
 
-        XCTAssertEqual(totalRevenueField?.value, 3_000_000)
-        XCTAssertEqual(totalExpensesField?.value, 500_000)
-        XCTAssertEqual(netIncomeField?.value, 2_500_000)
+        XCTAssertEqual(totalRevenueField?.value.numberValue, 3_000_000)
+        XCTAssertEqual(totalExpensesField?.value.numberValue, 500_000)
+        XCTAssertEqual(netIncomeField?.value.numberValue, 2_500_000)
     }
 
     func testPopulateWhiteReturnFormType() {

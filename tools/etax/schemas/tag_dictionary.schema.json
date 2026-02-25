@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TagDictionary",
+  "type": "object",
+  "required": [
+    "taxYear",
+    "generatedAt",
+    "sourceDirectory",
+    "itemCount",
+    "items"
+  ],
+  "properties": {
+    "taxYear": {
+      "type": "integer",
+      "minimum": 2000,
+      "maximum": 2999
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "sourceDirectory": {
+      "type": "string"
+    },
+    "itemCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "skippedRowCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "missingRequiredKeys": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "internalKey",
+          "xmlTag",
+          "dataType",
+          "sourceFile",
+          "sourceSheet",
+          "sourceRow"
+        ],
+        "properties": {
+          "internalKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "xmlTag": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataType": {
+            "type": "string",
+            "enum": [
+              "number",
+              "text",
+              "flag"
+            ]
+          },
+          "requiredRule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceFile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceSheet": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceRow": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

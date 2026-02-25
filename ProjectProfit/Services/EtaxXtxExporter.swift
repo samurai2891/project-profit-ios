@@ -4,16 +4,41 @@ import Foundation
 @MainActor
 enum EtaxXtxExporter {
 
+    private struct MappedEtaxField {
+        let field: EtaxField
+        let xmlTag: String
+    }
+
     /// e-Tax .xtx 形式のXMLデータを生成
     static func generateXtx(form: EtaxForm) -> Result<Data, EtaxExportError> {
+        guard let definition = TaxYearDefinitionLoader.loadDefinition(for: form.fiscalYear) else {
+            return .failure(.unsupportedTaxYear(year: form.fiscalYear))
+        }
+
+        let mappedResult = resolveMappedFields(form: form, definition: definition)
+        let mappedFields: [MappedEtaxField]
+        switch mappedResult {
+        case .success(let fields):
+            mappedFields = fields
+        case .failure(let error):
+            return .failure(error)
+        }
+
         // バリデーション
-        let errors = EtaxCharacterValidator.validateForm(form)
+        let errors = EtaxCharacterValidator.validateForm(
+            EtaxForm(
+                fiscalYear: form.fiscalYear,
+                formType: form.formType,
+                fields: mappedFields.map(\.field),
+                generatedAt: form.generatedAt
+            )
+        )
         guard errors.isEmpty else {
             return .failure(errors[0])
         }
 
         do {
-            let xml = try buildXml(form: form)
+            let xml = try buildXml(form: form, fields: mappedFields)
             guard let data = xml.data(using: .utf8) else {
                 return .failure(.xmlGenerationFailed(underlying: NSError(
                     domain: "EtaxXtxExporter",
@@ -29,19 +54,41 @@ enum EtaxXtxExporter {
 
     /// CSVエクスポート（簡易形式）
     static func generateCsv(form: EtaxForm) -> Result<Data, EtaxExportError> {
-        let errors = EtaxCharacterValidator.validateForm(form)
+        guard let definition = TaxYearDefinitionLoader.loadDefinition(for: form.fiscalYear) else {
+            return .failure(.unsupportedTaxYear(year: form.fiscalYear))
+        }
+
+        let mappedResult = resolveMappedFields(form: form, definition: definition)
+        let mappedFields: [MappedEtaxField]
+        switch mappedResult {
+        case .success(let fields):
+            mappedFields = fields
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let errors = EtaxCharacterValidator.validateForm(
+            EtaxForm(
+                fiscalYear: form.fiscalYear,
+                formType: form.formType,
+                fields: mappedFields.map(\.field),
+                generatedAt: form.generatedAt
+            )
+        )
         guard errors.isEmpty else {
             return .failure(errors[0])
         }
 
         var lines: [String] = []
-        lines.append("セクション,フィールド名,税区分,金額")
+        lines.append("internalKey,xmlTag,セクション,フィールド名,値")
 
-        for field in form.fields {
-            let section = csvQuote(field.section.rawValue)
-            let label = csvQuote(EtaxCharacterValidator.sanitize(field.fieldLabel))
-            let taxLine = csvQuote(field.taxLine?.rawValue ?? "")
-            lines.append("\(section),\(label),\(taxLine),\(field.value)")
+        for mapped in mappedFields {
+            let section = csvQuote(mapped.field.section.rawValue)
+            let key = csvQuote(mapped.field.id)
+            let xmlTag = csvQuote(mapped.xmlTag)
+            let label = csvQuote(EtaxCharacterValidator.sanitize(mapped.field.fieldLabel))
+            let value = csvQuote(EtaxCharacterValidator.sanitize(mapped.field.value.exportText))
+            lines.append("\(key),\(xmlTag),\(section),\(label),\(value)")
         }
 
         let csv = lines.joined(separator: "\n")
@@ -57,101 +104,55 @@ enum EtaxXtxExporter {
 
     // MARK: - XML Builder
 
-    private static func buildXml(form: EtaxForm) throws -> String {
+    private static func buildXml(form: EtaxForm, fields: [MappedEtaxField]) throws -> String {
         var xml = """
         <?xml version="1.0" encoding="UTF-8"?>
-        <税務申告データ>
-          <申告書情報>
-            <年度>\(form.fiscalYear)</年度>
-            <申告書種類>\(xmlEscape(form.formType.rawValue))</申告書種類>
-            <生成日時>\(iso8601(form.generatedAt))</生成日時>
-          </申告書情報>
+        <eTaxData year="\(form.fiscalYear)" formType="\(xmlEscape(form.formType.rawValue))" generatedAt="\(iso8601(form.generatedAt))">
         """
 
-        // 収入セクション
-        let revenueFields = form.fields.filter { $0.section == .revenue }
-        if !revenueFields.isEmpty {
-            xml += "\n  <収入金額>"
-            for field in revenueFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </収入金額>"
+        for mapped in fields {
+            let value = xmlEscape(EtaxCharacterValidator.sanitize(mapped.field.value.exportText))
+            xml += "\n  <\(mapped.xmlTag)>\(value)</\(mapped.xmlTag)>"
         }
 
-        // 経費セクション
-        let expenseFields = form.fields.filter { $0.section == .expenses }
-        if !expenseFields.isEmpty {
-            xml += "\n  <必要経費>"
-            for field in expenseFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </必要経費>"
-        }
-
-        // 所得セクション
-        let incomeFields = form.fields.filter { $0.section == .income }
-        if !incomeFields.isEmpty {
-            xml += "\n  <所得金額>"
-            for field in incomeFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </所得金額>"
-        }
-
-        // 申告者情報セクション
-        let declarantFields = form.fields.filter { $0.section == .declarantInfo }
-        if !declarantFields.isEmpty {
-            xml += "\n  <申告者情報>"
-            for field in declarantFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </申告者情報>"
-        }
-
-        // 棚卸セクション
-        let inventoryFields = form.fields.filter { $0.section == .inventory }
-        if !inventoryFields.isEmpty {
-            xml += "\n  <棚卸>"
-            for field in inventoryFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </棚卸>"
-        }
-
-        // 固定資産明細セクション
-        let assetFields = form.fields.filter { $0.section == .fixedAssetSchedule }
-        if !assetFields.isEmpty {
-            xml += "\n  <固定資産明細>"
-            for field in assetFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </固定資産明細>"
-        }
-
-        // 貸借対照表セクション
-        let bsFields = form.fields.filter { $0.section == .balanceSheet }
-        if !bsFields.isEmpty {
-            xml += "\n  <貸借対照表>"
-            for field in bsFields {
-                xml += buildFieldXml(field: field)
-            }
-            xml += "\n  </貸借対照表>"
-        }
-
-        xml += "\n</税務申告データ>"
+        xml += "\n</eTaxData>"
         return xml
     }
 
-    private static func buildFieldXml(field: EtaxField) -> String {
-        let sanitizedLabel = EtaxCharacterValidator.sanitize(field.fieldLabel)
-        let taxLineAttr = field.taxLine.map { " taxLine=\"\(xmlEscape($0.rawValue))\"" } ?? ""
-        return """
+    private static func resolveMappedFields(
+        form: EtaxForm,
+        definition: TaxYearDefinition
+    ) -> Result<[MappedEtaxField], EtaxExportError> {
+        guard !form.fields.isEmpty else {
+            return .failure(.noData)
+        }
 
-            <フィールド id="\(xmlEscape(field.id))"\(taxLineAttr)>
-              <ラベル>\(xmlEscape(sanitizedLabel))</ラベル>
-              <金額>\(field.value)</金額>
-            </フィールド>
-        """
+        if let missingTagField = definition.fields.first(where: { ($0.xmlTag ?? "").isEmpty }) {
+            return .failure(.missingXmlTag(internalKey: missingTagField.internalKey))
+        }
+
+        let definitionsByKey = Dictionary(uniqueKeysWithValues: definition.fields.map { ($0.internalKey, $0) })
+        var mapped: [MappedEtaxField] = []
+
+        for field in form.fields {
+            guard let definitionField = definitionsByKey[field.id] else {
+                continue
+            }
+            guard let xmlTag = definitionField.xmlTag, !xmlTag.isEmpty else {
+                return .failure(.missingXmlTag(internalKey: field.id))
+            }
+            mapped.append(MappedEtaxField(field: field, xmlTag: xmlTag))
+        }
+
+        guard !mapped.isEmpty else {
+            return .failure(.noData)
+        }
+        return .success(mapped.sorted {
+            if $0.field.section.rawValue == $1.field.section.rawValue {
+                return $0.field.id < $1.field.id
+            }
+            return $0.field.section.rawValue < $1.field.section.rawValue
+        })
     }
 
     // MARK: - Utilities

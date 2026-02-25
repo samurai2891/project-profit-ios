@@ -16,9 +16,10 @@ enum ConsumptionTaxReportService {
         fiscalYear: Int,
         journalEntries: [PPJournalEntry],
         journalLines: [PPJournalLine],
-        accounts: [PPAccount]
+        accounts: [PPAccount],
+        startMonth: Int = 1
     ) -> ConsumptionTaxSummary {
-        let (startDate, endDate) = fiscalYearRange(year: fiscalYear)
+        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
         let postedEntryIds = postedEntryIdsInRange(
             entries: journalEntries, start: startDate, end: endDate
         )
@@ -46,10 +47,10 @@ enum ConsumptionTaxReportService {
 
     // MARK: - Helpers
 
-    private static func fiscalYearRange(year: Int) -> (start: Date, end: Date) {
+    private static func fiscalYearRange(year: Int, startMonth: Int) -> (start: Date, end: Date) {
         let calendar = Calendar(identifier: .gregorian)
-        let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1))!
-        let end = calendar.date(from: DateComponents(year: year, month: 12, day: 31))!
+        let start = calendar.date(from: DateComponents(year: year, month: startMonth, day: 1))!
+        let end = calendar.date(byAdding: DateComponents(year: 1, day: -1), to: start)!
         let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: end)!
         return (start, endOfDay)
     }

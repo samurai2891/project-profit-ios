@@ -577,8 +577,9 @@ class DataStore {
 
     // MARK: - Transaction CRUD
 
-    @discardableResult
-    func addTransaction(
+    /// 取引を追加し、保存結果を返す。
+    /// 年度ロックなどで追加できない場合は `.failure` を返す。
+    func addTransactionResult(
         type: TransactionType,
         amount: Int,
         date: Date,
@@ -595,13 +596,21 @@ class DataStore {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil
-    ) -> PPTransaction {
+    ) -> Result<PPTransaction, AppError> {
         // T5: 年度ロックガード
         guard !isYearLocked(for: date) else {
-            return PPTransaction(type: type, amount: amount, date: date, categoryId: categoryId, memo: memo)
+            return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
         }
-        let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        let allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
+        let safeCategoryId: String
+        switch type {
+        case .transfer:
+            // 振替はカテゴリ不要。入力がなければ空文字を保持する。
+            safeCategoryId = categoryId
+        case .income, .expense:
+            safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
+        }
+        let baseAllocations = type == .transfer ? [] : allocations
+        let allocs = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
         let transaction = PPTransaction(
             type: type,
             amount: amount,
@@ -632,7 +641,52 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
-        return transaction
+        return .success(transaction)
+    }
+
+    @discardableResult
+    func addTransaction(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID? = nil,
+        receiptImagePath: String? = nil,
+        lineItems: [ReceiptLineItem] = [],
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil
+    ) -> PPTransaction {
+        switch addTransactionResult(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory
+        ) {
+        case .success(let transaction):
+            return transaction
+        case .failure:
+            // 既存呼び出しとの後方互換のため、失敗時は未保存インスタンスを返す。
+            return PPTransaction(type: type, amount: amount, date: date, categoryId: categoryId, memo: memo)
+        }
     }
 
     func updateTransaction(
@@ -1316,20 +1370,24 @@ class DataStore {
                 }
             }
         }
-        let transaction = PPTransaction(
+        let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+        switch addTransactionResult(
             type: recurring.type,
             amount: recurring.amount,
             date: txDate,
             categoryId: recurring.categoryId,
             memo: memo,
-            allocations: txAllocations,
+            allocations: txRatios,
             recurringId: recurring.id,
             paymentAccountId: recurring.paymentAccountId,
             transferToAccountId: recurring.transferToAccountId,
             taxDeductibleRate: recurring.taxDeductibleRate
-        )
-        modelContext.insert(transaction)
-        return transaction
+        ) {
+        case .success(let transaction):
+            return transaction
+        case .failure:
+            return nil
+        }
     }
 
     @discardableResult
@@ -1461,6 +1519,9 @@ class DataStore {
         if generatedCount > 0 {
             save()
             refreshRecurring()
+            refreshTransactions()
+            refreshJournalEntries()
+            refreshJournalLines()
         }
 
         return generatedCount
@@ -1607,16 +1668,24 @@ class DataStore {
                 }
             }
 
-            let transaction = PPTransaction(
+            let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+            switch addTransactionResult(
                 type: recurring.type,
                 amount: txAmount,
                 date: txDate,
                 categoryId: recurring.categoryId,
                 memo: memo,
-                allocations: txAllocations,
-                recurringId: recurring.id
-            )
-            modelContext.insert(transaction)
+                allocations: txRatios,
+                recurringId: recurring.id,
+                paymentAccountId: recurring.paymentAccountId,
+                transferToAccountId: recurring.transferToAccountId,
+                taxDeductibleRate: recurring.taxDeductibleRate
+            ) {
+            case .success:
+                break
+            case .failure:
+                continue
+            }
 
             recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
             recurring.lastGeneratedDate = txDate

@@ -68,7 +68,7 @@ struct EtaxFormPreviewView: View {
                         Text(field.fieldLabel)
                             .font(.caption)
                         Spacer()
-                        Text(formatCurrency(field.value))
+                        Text(field.value.previewText)
                             .font(.caption.monospacedDigit())
                     }
                 }

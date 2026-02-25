@@ -71,7 +71,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
 
         let revenueField = form.fields.first { $0.id == "shushi_revenue_total" }
         XCTAssertNotNil(revenueField)
-        XCTAssertEqual(revenueField?.value, 3_000_000)
+        XCTAssertEqual(revenueField?.value.numberValue, 3_000_000)
     }
 
     func testBuildExpenseMappedByTaxLine() {
@@ -97,7 +97,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
 
         let commField = form.fields.first { $0.taxLine == .communicationExpense }
         XCTAssertNotNil(commField)
-        XCTAssertEqual(commField?.value, 120_000)
+        XCTAssertEqual(commField?.value.numberValue, 120_000)
     }
 
     func testBuildNetIncome() {
@@ -130,7 +130,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
 
         let netIncomeField = form.fields.first { $0.id == "shushi_income_net" }
         XCTAssertNotNil(netIncomeField)
-        XCTAssertEqual(netIncomeField?.value, 1_700_000)
+        XCTAssertEqual(netIncomeField?.value.numberValue, 1_700_000)
     }
 
     func testBuildExpenseTotalField() {
@@ -162,6 +162,6 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
 
         let totalField = form.fields.first { $0.id == "shushi_expense_total" }
         XCTAssertNotNil(totalField)
-        XCTAssertEqual(totalField?.value, 150_000)
+        XCTAssertEqual(totalField?.value.numberValue, 150_000)
     }
 }

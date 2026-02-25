@@ -369,4 +369,28 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
         XCTAssertEqual(summary.outputTaxTotal, 10_000)
         XCTAssertEqual(summary.inputTaxTotal, 0)
     }
+
+    func testGenerateSummary_respectsFiscalStartMonth() {
+        let beforeFiscalStart = makeEntry(date: makeDate(year: 2025, month: 3, day: 31))
+        let inFiscalYear = makeEntry(date: makeDate(year: 2025, month: 4, day: 1))
+        let fiscalYearEnd = makeEntry(date: makeDate(year: 2026, month: 3, day: 31))
+        let afterFiscalEnd = makeEntry(date: makeDate(year: 2026, month: 4, day: 1))
+
+        let lines = [
+            makeLine(entryId: beforeFiscalStart.id, accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: 100),
+            makeLine(entryId: inFiscalYear.id, accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: 200),
+            makeLine(entryId: fiscalYearEnd.id, accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: 300),
+            makeLine(entryId: afterFiscalEnd.id, accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: 400),
+        ]
+
+        let summary = ConsumptionTaxReportService.generateSummary(
+            fiscalYear: 2025,
+            journalEntries: [beforeFiscalStart, inFiscalYear, fiscalYearEnd, afterFiscalEnd],
+            journalLines: lines,
+            accounts: accounts,
+            startMonth: 4
+        )
+
+        XCTAssertEqual(summary.outputTaxTotal, 500)
+    }
 }

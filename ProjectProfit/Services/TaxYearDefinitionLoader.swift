@@ -20,6 +20,22 @@ enum TaxYearDefinitionLoader {
         return field.fieldLabel
     }
 
+    /// 指定年度の internalKey に対応するフィールド定義を返す
+    static func fieldDefinition(for internalKey: String, fiscalYear: Int) -> TaxFieldDefinition? {
+        loadDefinition(for: fiscalYear)?.fields.first(where: { $0.internalKey == internalKey })
+    }
+
+    /// 指定年度の internalKey に対応する XML タグを返す
+    static func xmlTag(for internalKey: String, fiscalYear: Int) -> String? {
+        guard let definition = fieldDefinition(for: internalKey, fiscalYear: fiscalYear),
+              let xmlTag = definition.xmlTag,
+              !xmlTag.isEmpty
+        else {
+            return nil
+        }
+        return xmlTag
+    }
+
     /// 指定年度の全フィールド定義をロードする
     static func loadDefinition(for fiscalYear: Int) -> TaxYearDefinition? {
         if let cached = cache[fiscalYear] { return cached }
@@ -37,6 +53,31 @@ enum TaxYearDefinitionLoader {
         } catch {
             return nil
         }
+    }
+
+    /// 対応済み年分かどうかを返す
+    static func isSupported(year fiscalYear: Int) -> Bool {
+        loadDefinition(for: fiscalYear) != nil
+    }
+
+    /// バンドルに存在する対応年分一覧を返す
+    static func supportedYears() -> [Int] {
+        let filePaths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
+        let prefix = "TaxYear"
+        let suffix = ".json"
+
+        var years = Set(cache.keys)
+        for path in filePaths {
+            let fileName = URL(fileURLWithPath: path).lastPathComponent
+            guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else { continue }
+            let raw = fileName
+                .replacingOccurrences(of: prefix, with: "")
+                .replacingOccurrences(of: suffix, with: "")
+            if let year = Int(raw) {
+                years.insert(year)
+            }
+        }
+        return years.sorted()
     }
 
     /// キャッシュをクリアする（テスト用）

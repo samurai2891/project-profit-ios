@@ -184,7 +184,7 @@ final class AccountingBootstrapService {
                 changed = true
             }
             if transaction.bookkeepingMode == nil {
-                transaction.bookkeepingMode = .doubleEntry
+                transaction.bookkeepingMode = .auto
                 changed = true
             }
 

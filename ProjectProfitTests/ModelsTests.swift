@@ -1194,19 +1194,25 @@ final class ModelsTests: XCTestCase {
 
     func testBookkeepingModeAllCases() {
         let allCases = BookkeepingMode.allCases
-        XCTAssertEqual(allCases.count, 2)
+        XCTAssertEqual(allCases.count, 4)
         XCTAssertTrue(allCases.contains(.singleEntry))
         XCTAssertTrue(allCases.contains(.doubleEntry))
+        XCTAssertTrue(allCases.contains(.auto))
+        XCTAssertTrue(allCases.contains(.locked))
     }
 
     func testBookkeepingModeRawValues() {
         XCTAssertEqual(BookkeepingMode.singleEntry.rawValue, "singleEntry")
         XCTAssertEqual(BookkeepingMode.doubleEntry.rawValue, "doubleEntry")
+        XCTAssertEqual(BookkeepingMode.auto.rawValue, "auto")
+        XCTAssertEqual(BookkeepingMode.locked.rawValue, "locked")
     }
 
     func testBookkeepingModeLabels() {
         XCTAssertEqual(BookkeepingMode.singleEntry.label, "簡易簿記")
         XCTAssertEqual(BookkeepingMode.doubleEntry.label, "複式簿記")
+        XCTAssertEqual(BookkeepingMode.auto.label, "自動")
+        XCTAssertEqual(BookkeepingMode.locked.label, "ロック")
     }
 
     func testBookkeepingModeCodable() throws {

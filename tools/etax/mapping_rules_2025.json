@@ -1,0 +1,484 @@
+{
+  "tax_year": 2025,
+  "required_keys_file": "required_internal_keys.json",
+  "column_aliases": {
+    "internal_key": [
+      "internalKey",
+      "internal_key",
+      "内部キー"
+    ],
+    "field_label": [
+      "fieldLabelJP",
+      "fieldLabel",
+      "field_label",
+      "項目名",
+      "項目名称"
+    ],
+    "xml_tag": [
+      "xmlTag",
+      "xml_tag",
+      "XMLタグ",
+      "タグ"
+    ],
+    "data_type": [
+      "dataType",
+      "data_type",
+      "型",
+      "データ型"
+    ],
+    "section": [
+      "section",
+      "sectionPath",
+      "セクション"
+    ],
+    "form": [
+      "form",
+      "formName",
+      "帳票",
+      "様式"
+    ]
+  },
+  "field_mappings": [
+    {
+      "internal_key": "revenue_sales_revenue",
+      "field_label": "ア 売上（収入）金額",
+      "section": "revenue",
+      "form": "blue_general",
+      "xml_tag": "BlueRevenueSales",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "revenue_other_income",
+      "field_label": "カ 雑収入",
+      "section": "revenue",
+      "form": "blue_general",
+      "xml_tag": "BlueRevenueOther",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_rent",
+      "field_label": "地代家賃",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseRent",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_utilities",
+      "field_label": "水道光熱費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseUtilities",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_travel",
+      "field_label": "旅費交通費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseTravel",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_communication",
+      "field_label": "通信費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseCommunication",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_advertising",
+      "field_label": "広告宣伝費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseAdvertising",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_entertainment",
+      "field_label": "接待交際費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseEntertainment",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_depreciation",
+      "field_label": "減価償却費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseDepreciation",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_repair",
+      "field_label": "修繕費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseRepair",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_supplies",
+      "field_label": "消耗品費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseSupplies",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_welfare",
+      "field_label": "福利厚生費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseWelfare",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_outsourcing",
+      "field_label": "外注工賃",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseOutsourcing",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_misc",
+      "field_label": "雑費",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "BlueExpenseMisc",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "income_total_revenue",
+      "field_label": "収入金額合計",
+      "section": "income",
+      "form": "blue_general",
+      "xml_tag": "BlueIncomeTotalRevenue",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "income_total_expenses",
+      "field_label": "必要経費合計",
+      "section": "income",
+      "form": "blue_general",
+      "xml_tag": "BlueIncomeTotalExpenses",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "income_net",
+      "field_label": "所得金額",
+      "section": "income",
+      "form": "blue_general",
+      "xml_tag": "BlueIncomeNet",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_name",
+      "field_label": "氏名",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonName",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_name_kana",
+      "field_label": "氏名カナ",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonNameKana",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_postal_code",
+      "field_label": "郵便番号",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonPostalCode",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_address",
+      "field_label": "住所",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonAddress",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_phone",
+      "field_label": "電話番号",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonPhone",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_business_name",
+      "field_label": "屋号",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonBusinessName",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_business_category",
+      "field_label": "事業種類",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonBusinessCategory",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_birth_date",
+      "field_label": "生年月日",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonBirthDate",
+      "data_type": "text",
+      "required_rule": null
+    },
+    {
+      "internal_key": "declarant_my_number_flag",
+      "field_label": "マイナンバー提出有無",
+      "section": "declarantInfo",
+      "form": "common",
+      "xml_tag": "CommonMyNumberFlag",
+      "data_type": "flag",
+      "required_rule": null
+    },
+    {
+      "internal_key": "inventory_opening",
+      "field_label": "期首商品棚卸高",
+      "section": "inventory",
+      "form": "blue_general",
+      "xml_tag": "BlueInventoryOpening",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "inventory_purchases",
+      "field_label": "仕入高",
+      "section": "inventory",
+      "form": "blue_general",
+      "xml_tag": "BlueInventoryPurchases",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "inventory_closing",
+      "field_label": "期末商品棚卸高",
+      "section": "inventory",
+      "form": "blue_general",
+      "xml_tag": "BlueInventoryClosing",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "inventory_cogs",
+      "field_label": "売上原価",
+      "section": "inventory",
+      "form": "blue_general",
+      "xml_tag": "BlueInventoryCogs",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "bs_total_assets",
+      "field_label": "資産合計",
+      "section": "balanceSheet",
+      "form": "blue_general",
+      "xml_tag": "BlueBSTotalAssets",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "bs_total_liabilities",
+      "field_label": "負債合計",
+      "section": "balanceSheet",
+      "form": "blue_general",
+      "xml_tag": "BlueBSTotalLiabilities",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "bs_total_equity",
+      "field_label": "資本合計",
+      "section": "balanceSheet",
+      "form": "blue_general",
+      "xml_tag": "BlueBSTotalEquity",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_revenue_total",
+      "field_label": "収入金額",
+      "section": "revenue",
+      "form": "white_shushi",
+      "xml_tag": "WhiteIncomeTotal",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_rent",
+      "field_label": "地代家賃",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseRent",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_utilities",
+      "field_label": "水道光熱費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseUtilities",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_travel",
+      "field_label": "旅費交通費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseTravel",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_communication",
+      "field_label": "通信費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseCommunication",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_advertising",
+      "field_label": "広告宣伝費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseAdvertising",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_entertainment",
+      "field_label": "接待交際費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseEntertainment",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_depreciation",
+      "field_label": "減価償却費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseDepreciation",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_repair",
+      "field_label": "修繕費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseRepair",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_supplies",
+      "field_label": "消耗品費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseSupplies",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_welfare",
+      "field_label": "福利厚生費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseWelfare",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_outsourcing",
+      "field_label": "外注工賃",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseOutsourcing",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_misc",
+      "field_label": "雑費",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseMisc",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_total",
+      "field_label": "経費合計",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "WhiteExpenseTotal",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_income_net",
+      "field_label": "所得金額",
+      "section": "income",
+      "form": "white_shushi",
+      "xml_tag": "WhiteIncomeNet",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_rent_breakdown",
+      "field_label": "地代家賃合計",
+      "section": "deductions",
+      "form": "white_shushi",
+      "xml_tag": "WhiteRentBreakdownTotal",
+      "data_type": "number",
+      "required_rule": null
+    }
+  ]
+}

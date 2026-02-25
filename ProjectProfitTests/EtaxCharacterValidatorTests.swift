@@ -110,4 +110,25 @@ final class EtaxCharacterValidatorTests: XCTestCase {
         let errors = EtaxCharacterValidator.validateForm(form)
         XCTAssertTrue(errors.isEmpty)
     }
+
+    func testValidateFormDetectsInvalidCharacterInValue() {
+        let form = EtaxForm(
+            fiscalYear: 2025,
+            formType: .blueReturn,
+            fields: [
+                EtaxField(
+                    id: "declarant_name",
+                    fieldLabel: "氏名",
+                    taxLine: nil,
+                    value: "山田🎉太郎",
+                    section: .declarantInfo
+                )
+            ],
+            generatedAt: Date()
+        )
+
+        let errors = EtaxCharacterValidator.validateForm(form)
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertTrue(errors[0].description.contains("declarant_name"))
+    }
 }

@@ -4,7 +4,7 @@
     {
       "internalKey": "revenue_sales_revenue",
       "fieldLabel": "ア 売上（収入）金額",
-      "xmlTag": "BlueRevenueSales",
+      "xmlTag": "",
       "taxLineRawValue": "sales_revenue",
       "section": "revenue",
       "dataType": "number"
@@ -12,7 +12,7 @@
     {
       "internalKey": "revenue_other_income",
       "fieldLabel": "カ 雑収入",
-      "xmlTag": "BlueRevenueOther",
+      "xmlTag": "",
       "taxLineRawValue": "other_income",
       "section": "revenue",
       "dataType": "number"
@@ -20,7 +20,7 @@
     {
       "internalKey": "expense_rent",
       "fieldLabel": "地代家賃",
-      "xmlTag": "BlueExpenseRent",
+      "xmlTag": "",
       "taxLineRawValue": "rent",
       "section": "expenses",
       "dataType": "number"
@@ -28,7 +28,7 @@
     {
       "internalKey": "expense_utilities",
       "fieldLabel": "水道光熱費",
-      "xmlTag": "BlueExpenseUtilities",
+      "xmlTag": "",
       "taxLineRawValue": "utilities",
       "section": "expenses",
       "dataType": "number"
@@ -36,7 +36,7 @@
     {
       "internalKey": "expense_travel",
       "fieldLabel": "旅費交通費",
-      "xmlTag": "BlueExpenseTravel",
+      "xmlTag": "",
       "taxLineRawValue": "travel",
       "section": "expenses",
       "dataType": "number"
@@ -44,7 +44,7 @@
     {
       "internalKey": "expense_communication",
       "fieldLabel": "通信費",
-      "xmlTag": "BlueExpenseCommunication",
+      "xmlTag": "",
       "taxLineRawValue": "communication",
       "section": "expenses",
       "dataType": "number"
@@ -52,7 +52,7 @@
     {
       "internalKey": "expense_advertising",
       "fieldLabel": "広告宣伝費",
-      "xmlTag": "BlueExpenseAdvertising",
+      "xmlTag": "",
       "taxLineRawValue": "advertising",
       "section": "expenses",
       "dataType": "number"
@@ -60,7 +60,7 @@
     {
       "internalKey": "expense_entertainment",
       "fieldLabel": "接待交際費",
-      "xmlTag": "BlueExpenseEntertainment",
+      "xmlTag": "",
       "taxLineRawValue": "entertainment",
       "section": "expenses",
       "dataType": "number"
@@ -68,7 +68,7 @@
     {
       "internalKey": "expense_depreciation",
       "fieldLabel": "減価償却費",
-      "xmlTag": "BlueExpenseDepreciation",
+      "xmlTag": "",
       "taxLineRawValue": "depreciation",
       "section": "expenses",
       "dataType": "number"
@@ -76,7 +76,7 @@
     {
       "internalKey": "expense_repair",
       "fieldLabel": "修繕費",
-      "xmlTag": "BlueExpenseRepair",
+      "xmlTag": "",
       "taxLineRawValue": "repair",
       "section": "expenses",
       "dataType": "number"
@@ -84,7 +84,7 @@
     {
       "internalKey": "expense_supplies",
       "fieldLabel": "消耗品費",
-      "xmlTag": "BlueExpenseSupplies",
+      "xmlTag": "",
       "taxLineRawValue": "supplies",
       "section": "expenses",
       "dataType": "number"
@@ -92,7 +92,7 @@
     {
       "internalKey": "expense_welfare",
       "fieldLabel": "福利厚生費",
-      "xmlTag": "BlueExpenseWelfare",
+      "xmlTag": "",
       "taxLineRawValue": "welfare",
       "section": "expenses",
       "dataType": "number"
@@ -100,7 +100,7 @@
     {
       "internalKey": "expense_outsourcing",
       "fieldLabel": "外注工賃",
-      "xmlTag": "BlueExpenseOutsourcing",
+      "xmlTag": "",
       "taxLineRawValue": "outsourcing",
       "section": "expenses",
       "dataType": "number"
@@ -108,7 +108,7 @@
     {
       "internalKey": "expense_misc",
       "fieldLabel": "雑費",
-      "xmlTag": "BlueExpenseMisc",
+      "xmlTag": "",
       "taxLineRawValue": "misc",
       "section": "expenses",
       "dataType": "number"
@@ -116,7 +116,7 @@
     {
       "internalKey": "income_total_revenue",
       "fieldLabel": "収入金額合計",
-      "xmlTag": "BlueIncomeTotalRevenue",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "income",
       "dataType": "number"
@@ -124,7 +124,7 @@
     {
       "internalKey": "income_total_expenses",
       "fieldLabel": "必要経費合計",
-      "xmlTag": "BlueIncomeTotalExpenses",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "income",
       "dataType": "number"
@@ -132,7 +132,7 @@
     {
       "internalKey": "income_net",
       "fieldLabel": "所得金額",
-      "xmlTag": "BlueIncomeNet",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "income",
       "dataType": "number"
@@ -140,7 +140,7 @@
     {
       "internalKey": "declarant_name",
       "fieldLabel": "氏名",
-      "xmlTag": "CommonName",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -148,7 +148,7 @@
     {
       "internalKey": "declarant_name_kana",
       "fieldLabel": "氏名カナ",
-      "xmlTag": "CommonNameKana",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -156,7 +156,7 @@
     {
       "internalKey": "declarant_postal_code",
       "fieldLabel": "郵便番号",
-      "xmlTag": "CommonPostalCode",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -164,7 +164,7 @@
     {
       "internalKey": "declarant_address",
       "fieldLabel": "住所",
-      "xmlTag": "CommonAddress",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -172,7 +172,7 @@
     {
       "internalKey": "declarant_phone",
       "fieldLabel": "電話番号",
-      "xmlTag": "CommonPhone",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -180,7 +180,7 @@
     {
       "internalKey": "declarant_business_name",
       "fieldLabel": "屋号",
-      "xmlTag": "CommonBusinessName",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -188,7 +188,7 @@
     {
       "internalKey": "declarant_business_category",
       "fieldLabel": "事業種類",
-      "xmlTag": "CommonBusinessCategory",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -196,7 +196,7 @@
     {
       "internalKey": "declarant_birth_date",
       "fieldLabel": "生年月日",
-      "xmlTag": "CommonBirthDate",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "text"
@@ -204,7 +204,7 @@
     {
       "internalKey": "declarant_my_number_flag",
       "fieldLabel": "マイナンバー提出有無",
-      "xmlTag": "CommonMyNumberFlag",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "declarantInfo",
       "dataType": "flag"
@@ -212,7 +212,7 @@
     {
       "internalKey": "inventory_opening",
       "fieldLabel": "期首商品棚卸高",
-      "xmlTag": "BlueInventoryOpening",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "inventory",
       "dataType": "number"
@@ -220,7 +220,7 @@
     {
       "internalKey": "inventory_purchases",
       "fieldLabel": "仕入高",
-      "xmlTag": "BlueInventoryPurchases",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "inventory",
       "dataType": "number"
@@ -228,7 +228,7 @@
     {
       "internalKey": "inventory_closing",
       "fieldLabel": "期末商品棚卸高",
-      "xmlTag": "BlueInventoryClosing",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "inventory",
       "dataType": "number"
@@ -236,7 +236,7 @@
     {
       "internalKey": "inventory_cogs",
       "fieldLabel": "売上原価",
-      "xmlTag": "BlueInventoryCogs",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "inventory",
       "dataType": "number"
@@ -244,7 +244,7 @@
     {
       "internalKey": "bs_total_assets",
       "fieldLabel": "資産合計",
-      "xmlTag": "BlueBSTotalAssets",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "balanceSheet",
       "dataType": "number"
@@ -252,7 +252,7 @@
     {
       "internalKey": "bs_total_liabilities",
       "fieldLabel": "負債合計",
-      "xmlTag": "BlueBSTotalLiabilities",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "balanceSheet",
       "dataType": "number"
@@ -260,7 +260,7 @@
     {
       "internalKey": "bs_total_equity",
       "fieldLabel": "資本合計",
-      "xmlTag": "BlueBSTotalEquity",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "balanceSheet",
       "dataType": "number"
@@ -268,7 +268,7 @@
     {
       "internalKey": "shushi_revenue_total",
       "fieldLabel": "収入金額",
-      "xmlTag": "WhiteIncomeTotal",
+      "xmlTag": "",
       "taxLineRawValue": "sales_revenue",
       "section": "revenue",
       "dataType": "number"
@@ -276,7 +276,7 @@
     {
       "internalKey": "shushi_expense_rent",
       "fieldLabel": "地代家賃",
-      "xmlTag": "WhiteExpenseRent",
+      "xmlTag": "",
       "taxLineRawValue": "rent",
       "section": "expenses",
       "dataType": "number"
@@ -284,7 +284,7 @@
     {
       "internalKey": "shushi_expense_utilities",
       "fieldLabel": "水道光熱費",
-      "xmlTag": "WhiteExpenseUtilities",
+      "xmlTag": "",
       "taxLineRawValue": "utilities",
       "section": "expenses",
       "dataType": "number"
@@ -292,7 +292,7 @@
     {
       "internalKey": "shushi_expense_travel",
       "fieldLabel": "旅費交通費",
-      "xmlTag": "WhiteExpenseTravel",
+      "xmlTag": "",
       "taxLineRawValue": "travel",
       "section": "expenses",
       "dataType": "number"
@@ -300,7 +300,7 @@
     {
       "internalKey": "shushi_expense_communication",
       "fieldLabel": "通信費",
-      "xmlTag": "WhiteExpenseCommunication",
+      "xmlTag": "",
       "taxLineRawValue": "communication",
       "section": "expenses",
       "dataType": "number"
@@ -308,7 +308,7 @@
     {
       "internalKey": "shushi_expense_advertising",
       "fieldLabel": "広告宣伝費",
-      "xmlTag": "WhiteExpenseAdvertising",
+      "xmlTag": "",
       "taxLineRawValue": "advertising",
       "section": "expenses",
       "dataType": "number"
@@ -316,7 +316,7 @@
     {
       "internalKey": "shushi_expense_entertainment",
       "fieldLabel": "接待交際費",
-      "xmlTag": "WhiteExpenseEntertainment",
+      "xmlTag": "",
       "taxLineRawValue": "entertainment",
       "section": "expenses",
       "dataType": "number"
@@ -324,7 +324,7 @@
     {
       "internalKey": "shushi_expense_depreciation",
       "fieldLabel": "減価償却費",
-      "xmlTag": "WhiteExpenseDepreciation",
+      "xmlTag": "",
       "taxLineRawValue": "depreciation",
       "section": "expenses",
       "dataType": "number"
@@ -332,7 +332,7 @@
     {
       "internalKey": "shushi_expense_repair",
       "fieldLabel": "修繕費",
-      "xmlTag": "WhiteExpenseRepair",
+      "xmlTag": "",
       "taxLineRawValue": "repair",
       "section": "expenses",
       "dataType": "number"
@@ -340,7 +340,7 @@
     {
       "internalKey": "shushi_expense_supplies",
       "fieldLabel": "消耗品費",
-      "xmlTag": "WhiteExpenseSupplies",
+      "xmlTag": "",
       "taxLineRawValue": "supplies",
       "section": "expenses",
       "dataType": "number"
@@ -348,7 +348,7 @@
     {
       "internalKey": "shushi_expense_welfare",
       "fieldLabel": "福利厚生費",
-      "xmlTag": "WhiteExpenseWelfare",
+      "xmlTag": "",
       "taxLineRawValue": "welfare",
       "section": "expenses",
       "dataType": "number"
@@ -356,7 +356,7 @@
     {
       "internalKey": "shushi_expense_outsourcing",
       "fieldLabel": "外注工賃",
-      "xmlTag": "WhiteExpenseOutsourcing",
+      "xmlTag": "",
       "taxLineRawValue": "outsourcing",
       "section": "expenses",
       "dataType": "number"
@@ -364,7 +364,7 @@
     {
       "internalKey": "shushi_expense_misc",
       "fieldLabel": "雑費",
-      "xmlTag": "WhiteExpenseMisc",
+      "xmlTag": "",
       "taxLineRawValue": "misc",
       "section": "expenses",
       "dataType": "number"
@@ -372,7 +372,7 @@
     {
       "internalKey": "shushi_expense_total",
       "fieldLabel": "経費合計",
-      "xmlTag": "WhiteExpenseTotal",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "expenses",
       "dataType": "number"
@@ -380,7 +380,7 @@
     {
       "internalKey": "shushi_income_net",
       "fieldLabel": "所得金額",
-      "xmlTag": "WhiteIncomeNet",
+      "xmlTag": "",
       "taxLineRawValue": null,
       "section": "income",
       "dataType": "number"
@@ -388,7 +388,7 @@
     {
       "internalKey": "shushi_rent_breakdown",
       "fieldLabel": "地代家賃合計",
-      "xmlTag": "WhiteRentBreakdownTotal",
+      "xmlTag": "",
       "taxLineRawValue": "rent",
       "section": "deductions",
       "dataType": "number"
