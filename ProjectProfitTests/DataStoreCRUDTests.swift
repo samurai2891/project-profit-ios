@@ -2417,4 +2417,34 @@ final class DataStoreCRUDTests: XCTestCase {
         let descriptor = FetchDescriptor<PPTransaction>()
         return (try? context.fetch(descriptor)) ?? []
     }
+
+    // MARK: - M10: Category Name Uniqueness
+
+    func testAddCategory_rejectsDuplicateName() {
+        dataStore.addCategory(name: "Travel", type: .expense, icon: "airplane")
+        let duplicate = dataStore.addCategory(name: "Travel", type: .expense, icon: "car")
+
+        XCTAssertNil(duplicate, "同名・同タイプのカテゴリ追加はnilを返すべき")
+        let travelCategories = dataStore.categories.filter { $0.name == "Travel" && $0.type == .expense }
+        XCTAssertEqual(travelCategories.count, 1)
+    }
+
+    func testAddCategory_allowsSameNameDifferentType() {
+        let expense = dataStore.addCategory(name: "Consulting", type: .expense, icon: "briefcase")
+        let income = dataStore.addCategory(name: "Consulting", type: .income, icon: "briefcase")
+
+        XCTAssertNotNil(expense)
+        XCTAssertNotNil(income)
+        XCTAssertNotEqual(expense?.id, income?.id)
+    }
+
+    func testUpdateCategory_rejectsDuplicateName() {
+        dataStore.addCategory(name: "Alpha", type: .expense, icon: "star")
+        let beta = dataStore.addCategory(name: "Beta", type: .expense, icon: "star")
+
+        dataStore.updateCategory(id: beta!.id, name: "Alpha")
+
+        let fetched = dataStore.getCategory(id: beta!.id)
+        XCTAssertEqual(fetched?.name, "Beta", "重複する名前への更新は拒否されるべき")
+    }
 }
