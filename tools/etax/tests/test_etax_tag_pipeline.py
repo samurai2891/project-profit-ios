@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 class EtaxTagPipelineTests(unittest.TestCase):
@@ -16,14 +20,69 @@ class EtaxTagPipelineTests(unittest.TestCase):
         cls.mapping_config = cls.repo_root / "tools" / "etax" / "mapping_rules_2025.json"
         cls.required_keys = cls.repo_root / "tools" / "etax" / "required_internal_keys.json"
 
-    def run_cmd(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def run_cmd(
+        self,
+        *args: str,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             list(args),
             cwd=self.repo_root,
             text=True,
             capture_output=True,
             check=False,
+            env=env,
         )
+
+    def write_minimal_xlsx(self, path: Path) -> None:
+        content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>"""
+        rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"""
+        workbook = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>"""
+        workbook_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>"""
+        sheet = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="inlineStr"><is><t>formName</t></is></c>
+      <c r="B1" t="inlineStr"><is><t>section</t></is></c>
+      <c r="C1" t="inlineStr"><is><t>fieldLabelJP</t></is></c>
+      <c r="D1" t="inlineStr"><is><t>xmlTag</t></is></c>
+      <c r="E1" t="inlineStr"><is><t>dataType</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>blue_general</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>revenue</t></is></c>
+      <c r="C2" t="inlineStr"><is><t>ア 売上（収入）金額</t></is></c>
+      <c r="D2" t="inlineStr"><is><t>BlueRevenueSales</t></is></c>
+      <c r="E2" t="inlineStr"><is><t>number</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>"""
+
+        with ZipFile(path, "w", compression=ZIP_DEFLATED) as zf:
+            zf.writestr("[Content_Types].xml", content_types)
+            zf.writestr("_rels/.rels", rels)
+            zf.writestr("xl/workbook.xml", workbook)
+            zf.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+            zf.writestr("xl/worksheets/sheet1.xml", sheet)
 
     def test_extract_validate_apply_pipeline_success(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -103,6 +162,65 @@ class EtaxTagPipelineTests(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("入力ディレクトリ", result.stderr)
+
+    def test_extract_supports_xlsx_without_openpyxl_via_xml_parser(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            xlsx_path = temp_dir / "fixture.xlsx"
+            self.write_minimal_xlsx(xlsx_path)
+            tag_dict = temp_dir / "TagDictionary_2025.json"
+
+            env = dict(os.environ)
+            env["ETAX_XLSX_PARSER"] = "xml"
+            extract = self.run_cmd(
+                "python3",
+                str(self.extract_script),
+                "--input-dir",
+                str(temp_dir),
+                "--tax-year",
+                "2025",
+                "--mapping-config",
+                str(self.mapping_config),
+                "--out-tag-dict",
+                str(tag_dict),
+                "--allow-partial",
+                env=env,
+            )
+            self.assertEqual(extract.returncode, 0, msg=extract.stdout + extract.stderr)
+            with tag_dict.open("r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            internal_keys = {item["internalKey"] for item in payload["items"]}
+            self.assertIn("revenue_sales_revenue", internal_keys)
+
+    def test_extract_supports_cp932_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            csv_path = temp_dir / "fixture.csv"
+            csv_text = (
+                "formName,section,fieldLabelJP,xmlTag,dataType\n"
+                "blue_general,revenue,ア 売上（収入）金額,BlueRevenueSales,number\n"
+            )
+            csv_path.write_bytes(csv_text.encode("cp932"))
+            tag_dict = temp_dir / "TagDictionary_2025.json"
+
+            extract = self.run_cmd(
+                "python3",
+                str(self.extract_script),
+                "--input-dir",
+                str(temp_dir),
+                "--tax-year",
+                "2025",
+                "--mapping-config",
+                str(self.mapping_config),
+                "--out-tag-dict",
+                str(tag_dict),
+                "--allow-partial",
+            )
+            self.assertEqual(extract.returncode, 0, msg=extract.stdout + extract.stderr)
+            with tag_dict.open("r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            internal_keys = {item["internalKey"] for item in payload["items"]}
+            self.assertIn("revenue_sales_revenue", internal_keys)
 
     def test_validate_detects_missing_required_keys(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -10,13 +10,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
+import os
+import posixpath
 import re
 import sys
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 
 VALID_DATA_TYPES = {"number", "text", "flag"}
@@ -102,33 +107,49 @@ def load_required_keys(path: Path) -> set[str]:
 def parse_csv_like(path: Path) -> list[SourceRow]:
     delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
     rows: list[SourceRow] = []
-    with path.open("r", encoding="utf-8-sig", newline="") as fp:
-        reader = csv.DictReader(fp, delimiter=delimiter)
-        if reader.fieldnames is None:
-            return rows
-        for row_index, raw_row in enumerate(reader, start=2):
-            normalized_row: dict[str, str] = {}
-            for key, value in raw_row.items():
-                normalized_row[normalize_header(key)] = str(value).strip() if value is not None else ""
-            rows.append(
-                SourceRow(
-                    source_file=str(path),
-                    source_sheet="csv",
-                    source_row=row_index,
-                    row=normalized_row,
-                )
+    raw = path.read_bytes()
+    decoded_text: str | None = None
+    for encoding in ("utf-8-sig", "utf-8", "cp932", "shift_jis", "utf-16", "utf-16le", "utf-16be"):
+        try:
+            decoded_text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if decoded_text is None:
+        raise RuntimeError(f"CSV/TSV の文字コードを判定できません: {path}")
+
+    fp = io.StringIO(decoded_text)
+    reader = csv.DictReader(fp, delimiter=delimiter)
+    if reader.fieldnames is None:
+        return rows
+    for row_index, raw_row in enumerate(reader, start=2):
+        normalized_row: dict[str, str] = {}
+        for key, value in raw_row.items():
+            normalized_row[normalize_header(key)] = str(value).strip() if value is not None else ""
+        rows.append(
+            SourceRow(
+                source_file=str(path),
+                source_sheet="csv",
+                source_row=row_index,
+                row=normalized_row,
             )
+        )
     return rows
 
 
 def parse_xlsx(path: Path) -> list[SourceRow]:
+    parser_preference = os.environ.get("ETAX_XLSX_PARSER", "").strip().lower()
+    if parser_preference == "xml":
+        return parse_xlsx_with_xml(path)
     try:
         import openpyxl  # type: ignore
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            "XLSX入力には openpyxl が必要です。`pip install openpyxl` を実行してください。"
-        ) from exc
+    except ModuleNotFoundError:
+        return parse_xlsx_with_xml(path)
 
+    return parse_xlsx_with_openpyxl(path, openpyxl)
+
+
+def parse_xlsx_with_openpyxl(path: Path, openpyxl: Any) -> list[SourceRow]:
     rows: list[SourceRow] = []
     workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
     for sheet in workbook.worksheets:
@@ -160,6 +181,180 @@ def parse_xlsx(path: Path) -> list[SourceRow]:
                     row=normalized_row,
                 )
             )
+    return rows
+
+
+def col_to_index(cell_ref: str) -> int:
+    col = 0
+    for ch in cell_ref:
+        if "A" <= ch <= "Z":
+            col = col * 26 + (ord(ch) - ord("A") + 1)
+        elif "a" <= ch <= "z":
+            col = col * 26 + (ord(ch) - ord("a") + 1)
+        else:
+            break
+    return col
+
+
+def read_shared_strings(zip_file: zipfile.ZipFile) -> list[str]:
+    shared_strings_path = "xl/sharedStrings.xml"
+    if shared_strings_path not in zip_file.namelist():
+        return []
+    root = ET.fromstring(zip_file.read(shared_strings_path))
+    ns_main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    items: list[str] = []
+    for si in root.findall(f"{ns_main}si"):
+        texts = [node.text or "" for node in si.findall(f".//{ns_main}t")]
+        items.append("".join(texts))
+    return items
+
+
+def read_workbook_sheets(zip_file: zipfile.ZipFile) -> list[tuple[str, str]]:
+    workbook_path = "xl/workbook.xml"
+    rels_path = "xl/_rels/workbook.xml.rels"
+    if workbook_path not in zip_file.namelist():
+        raise ValueError("workbook.xml が見つかりません")
+    if rels_path not in zip_file.namelist():
+        raise ValueError("workbook.xml.rels が見つかりません")
+
+    wb_root = ET.fromstring(zip_file.read(workbook_path))
+    rels_root = ET.fromstring(zip_file.read(rels_path))
+
+    ns_main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    ns_rel = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    ns_pkg_rel = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+    rel_target_by_id: dict[str, str] = {}
+    for rel in rels_root.findall(f"{ns_pkg_rel}Relationship"):
+        rel_id = rel.attrib.get("Id", "")
+        target = rel.attrib.get("Target", "")
+        if rel_id and target:
+            normalized = target.lstrip("/")
+            if not normalized.startswith("xl/"):
+                normalized = posixpath.normpath(posixpath.join("xl", normalized))
+            rel_target_by_id[rel_id] = normalized
+
+    sheets: list[tuple[str, str]] = []
+    for sheet in wb_root.findall(f".//{ns_main}sheet"):
+        name = sheet.attrib.get("name", "").strip()
+        rel_id = sheet.attrib.get(f"{ns_rel}id", "").strip()
+        target = rel_target_by_id.get(rel_id)
+        if name and target:
+            sheets.append((name, target))
+    return sheets
+
+
+def extract_cell_text(cell: ET.Element, shared_strings: list[str], ns_main: str) -> str:
+    cell_type = cell.attrib.get("t", "")
+    value_node = cell.find(f"{ns_main}v")
+    if cell_type == "inlineStr":
+        texts = [node.text or "" for node in cell.findall(f".//{ns_main}t")]
+        return "".join(texts).strip()
+    if value_node is None or value_node.text is None:
+        return ""
+    value_text = value_node.text.strip()
+    if cell_type == "s":
+        if not value_text:
+            return ""
+        try:
+            idx = int(value_text)
+        except ValueError:
+            return ""
+        if 0 <= idx < len(shared_strings):
+            return shared_strings[idx].strip()
+        return ""
+    if cell_type == "b":
+        if value_text == "1":
+            return "TRUE"
+        if value_text == "0":
+            return "FALSE"
+    return value_text
+
+
+def parse_sheet_rows(
+    sheet_xml: bytes,
+    sheet_name: str,
+    source_file: str,
+    shared_strings: list[str],
+) -> list[SourceRow]:
+    ns_main = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    root = ET.fromstring(sheet_xml)
+    row_nodes = root.findall(f".//{ns_main}sheetData/{ns_main}row")
+    if not row_nodes:
+        return []
+
+    row_data: list[tuple[int, dict[int, str]]] = []
+    for row_pos, row in enumerate(row_nodes, start=1):
+        row_num = row.attrib.get("r")
+        try:
+            row_index = int(row_num) if row_num else row_pos
+        except ValueError:
+            row_index = row_pos
+        cells_by_col: dict[int, str] = {}
+        sequential_col = 1
+        for cell in row.findall(f"{ns_main}c"):
+            cell_ref = cell.attrib.get("r", "")
+            col_index = col_to_index(cell_ref) if cell_ref else sequential_col
+            if col_index <= 0:
+                col_index = sequential_col
+            sequential_col = col_index + 1
+            text = extract_cell_text(cell, shared_strings, ns_main)
+            cells_by_col[col_index] = text
+        row_data.append((row_index, cells_by_col))
+
+    if not row_data:
+        return []
+
+    header_row_index, header_cells = row_data[0]
+    if not header_cells:
+        return []
+    ordered_cols = sorted(header_cells.keys())
+    header_keys = {
+        col: normalize_header(header_cells.get(col, ""))
+        for col in ordered_cols
+    }
+    if not any(header_keys.values()):
+        return []
+
+    parsed: list[SourceRow] = []
+    for row_index, row_cells in row_data[1:]:
+        normalized_row: dict[str, str] = {}
+        has_any_value = False
+        for col in ordered_cols:
+            key = header_keys.get(col, "")
+            if not key:
+                continue
+            value = row_cells.get(col, "").strip()
+            if value:
+                has_any_value = True
+            normalized_row[key] = value
+        if not has_any_value:
+            continue
+        parsed.append(
+            SourceRow(
+                source_file=source_file,
+                source_sheet=sheet_name,
+                source_row=row_index if row_index > header_row_index else (header_row_index + 1),
+                row=normalized_row,
+            )
+        )
+    return parsed
+
+
+def parse_xlsx_with_xml(path: Path) -> list[SourceRow]:
+    rows: list[SourceRow] = []
+    with zipfile.ZipFile(path, "r") as zip_file:
+        shared_strings = read_shared_strings(zip_file)
+        for sheet_name, sheet_path in read_workbook_sheets(zip_file):
+            if sheet_path not in zip_file.namelist():
+                continue
+            sheet_rows = parse_sheet_rows(
+                zip_file.read(sheet_path),
+                sheet_name=sheet_name,
+                source_file=str(path),
+                shared_strings=shared_strings,
+            )
+            rows.extend(sheet_rows)
     return rows
 
 
