@@ -51,6 +51,13 @@ final class EtaxXtxExporterTests: XCTestCase {
         try data.write(to: url, options: .atomic)
     }
 
+    private func emitFixturePayloadForCI(_ data: Data, marker: String) {
+        let payload = data.base64EncodedString()
+        print("ETAX_EXPORT_\(marker)_BASE64_BEGIN")
+        print(payload)
+        print("ETAX_EXPORT_\(marker)_BASE64_END")
+    }
+
     // MARK: - XTX Generation
 
     @MainActor
@@ -128,6 +135,7 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA210 "))
+            emitFixturePayloadForCI(data, marker: "BLUE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_BLUE_EXPORT_XML")
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
@@ -146,6 +154,7 @@ final class EtaxXtxExporterTests: XCTestCase {
             XCTAssertTrue(xml.contains("<AIG00020>3000000</AIG00020>"))
             XCTAssertTrue(xml.contains("<AIG00290>50000</AIG00290>"))
             XCTAssertTrue(xml.contains("<AIG00220>80000</AIG00220>"))
+            emitFixturePayloadForCI(data, marker: "WHITE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_WHITE_EXPORT_XML")
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")

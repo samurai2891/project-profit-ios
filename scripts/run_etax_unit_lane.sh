@@ -103,6 +103,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     simulator_device="iPhone 15"
   fi
   echo "swift lane device: $simulator_device"
+  xcodebuild_log="$artifact_dir/xcodebuild_etax.log"
   ETAX_XSD_BLUE_EXPORT_XML="$blue_export_xml" \
   ETAX_XSD_WHITE_EXPORT_XML="$white_export_xml" \
   xcodebuild test \
@@ -112,7 +113,41 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests \
     -only-testing:ProjectProfitTests/EtaxCharacterValidatorTests \
     -only-testing:ProjectProfitTests/EtaxXtxExporterTests \
-    -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests
+    -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests 2>&1 | tee "$xcodebuild_log"
+
+  python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" <<'PY'
+import base64
+from pathlib import Path
+import re
+import sys
+
+log_path = Path(sys.argv[1])
+blue_out = Path(sys.argv[2])
+white_out = Path(sys.argv[3])
+log_text = log_path.read_text(encoding="utf-8", errors="ignore")
+
+def extract(marker: str, output: Path) -> None:
+    pattern = re.compile(
+        rf"ETAX_EXPORT_{marker}_BASE64_BEGIN\s*(.*?)\s*ETAX_EXPORT_{marker}_BASE64_END",
+        re.DOTALL,
+    )
+    match = pattern.search(log_text)
+    if not match:
+        print(f"info: no ETAX export marker found for {marker}")
+        return
+
+    payload = re.sub(r"\s+", "", match.group(1))
+    if not payload:
+        print(f"info: empty ETAX export payload for {marker}")
+        return
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(base64.b64decode(payload))
+    print(f"info: recovered ETAX export xml for {marker}: {output}")
+
+extract("BLUE", blue_out)
+extract("WHITE", white_out)
+PY
 else
   if [[ -z "$health_status" ]]; then
     health_status="error"
