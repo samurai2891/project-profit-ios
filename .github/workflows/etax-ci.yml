@@ -1,0 +1,83 @@
+name: e-Tax CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  simulator-health:
+    name: Simulator Health
+    runs-on: macos-latest
+    outputs:
+      status: ${{ steps.health.outputs.status }}
+      reason: ${{ steps.health.outputs.reason }}
+      simulator_device: ${{ steps.health.outputs.simulator_device }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check simulator health
+        id: health
+        shell: bash
+        run: |
+          set +e
+          output="$(bash scripts/check_simulator_health.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          simulator_device="$(printf '%s\n' "$output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="simulator health check output parsing failed"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          if [[ -n "$simulator_device" ]]; then
+            echo "simulator_device=$simulator_device" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "### simulator-health"
+            echo "- status: $status"
+            echo "- reason: $reason"
+            if [[ -n "$simulator_device" ]]; then
+              echo "- simulator_device: $simulator_device"
+            fi
+            echo ""
+            echo '```text'
+            printf '%s\n' "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$status" == "error" || "$exit_code" -ne 0 ]]; then
+            echo "simulator-health failed: $reason" >&2
+            exit 1
+          fi
+
+  etax-unit:
+    name: e-Tax Unit Lane
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run e-Tax unit lane
+        env:
+          ETAX_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+        run: |
+          chmod +x scripts/run_etax_unit_lane.sh
+          ./scripts/run_etax_unit_lane.sh
