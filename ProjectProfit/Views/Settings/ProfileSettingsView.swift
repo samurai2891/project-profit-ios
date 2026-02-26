@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ProfileSettingsView: View {
+    static let secureStoreFailureMessage = "機微情報はKeychainへ保存できなかったため、平文では保存していません。端末設定を確認して再試行してください。"
+
     @Environment(DataStore.self) private var dataStore
     @Environment(\.dismiss) private var dismiss
 
@@ -278,7 +280,7 @@ struct ProfileSettingsView: View {
             return true
         }
 
-        saveErrorMessage = "機微情報はKeychainへ保存できなかったため、平文では保存していません。端末設定を確認して再試行してください。"
+        saveErrorMessage = Self.secureStoreFailureMessage
         return false
     }
 

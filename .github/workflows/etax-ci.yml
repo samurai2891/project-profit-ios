@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  schedule:
+    - cron: "0 3 * * 1-5"
   workflow_dispatch:
 
 jobs:
@@ -75,10 +77,62 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Fetch CAB input source
+        id: cab-input
+        shell: bash
+        env:
+          ETAX_CAB_SOURCE_URL: ${{ secrets.ETAX_CAB_SOURCE_URL }}
+          ETAX_CAB_SOURCE_SHA256: ${{ secrets.ETAX_CAB_SOURCE_SHA256 }}
+          ETAX_CAB_SOURCE_REQUIRED: ${{ github.event_name == 'schedule' }}
+          ETAX_CAB_ARCHIVE_TYPE: ${{ vars.ETAX_CAB_ARCHIVE_TYPE }}
+          ETAX_CAB_FETCH_ROOT_DIR: /tmp/etax-cab-input
+          ETAX_CAB_FALLBACK_INPUT_DIR: tools/etax/fixtures
+        run: |
+          set +e
+          output="$(bash scripts/fetch_etax_cab_input.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          input_dir="$(printf '%s\n' "$output" | awk -F= '/^input_dir=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="cab input fetch output parsing failed"
+          fi
+          if [[ -z "$input_dir" ]]; then
+            input_dir="tools/etax/fixtures"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "tag_input_dir=$input_dir" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### cab-input"
+            echo "- status: $status"
+            echo "- reason: $reason"
+            echo "- input_dir: $input_dir"
+            echo ""
+            echo '```text'
+            printf '%s\n' "$output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$status" == "error" || "$exit_code" -ne 0 ]]; then
+            echo "cab-input failed: $reason" >&2
+            exit 1
+          fi
+
       - name: Run e-Tax unit lane
         env:
           ETAX_ARTIFACTS_DIR: /tmp/etax-unit-lane
-          ETAX_TAG_INPUT_DIR: tools/etax/fixtures
+          ETAX_TAG_INPUT_DIR: ${{ steps.cab-input.outputs.tag_input_dir }}
           ETAX_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           ETAX_CAB_OVERLAY_JSON: tools/etax/fixtures/cab_overlay_2025.json
           ETAX_CAB_BLUE_FIELD_SPEC_XLSX: "e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx"
@@ -91,10 +145,26 @@ jobs:
           ETAX_XSD_BLUE_FALLBACK_XML: tools/etax/fixtures/KOA210_minimal.xml
           ETAX_XSD_WHITE_FALLBACK_XML: tools/etax/fixtures/KOA110_minimal.xml
         run: |
+          chmod +x scripts/fetch_etax_cab_input.sh
           chmod +x scripts/etax_resolve_xsd.sh
           chmod +x scripts/etax_validate_xsd.sh
           chmod +x scripts/run_etax_unit_lane.sh
           ./scripts/run_etax_unit_lane.sh
+
+      - name: Guard CAB overlay report
+        shell: bash
+        env:
+          ETAX_OVERLAY_MAX_MISSING_INTERNAL_KEYS: ${{ vars.ETAX_OVERLAY_MAX_MISSING_INTERNAL_KEYS }}
+          ETAX_OVERLAY_MAX_UNRESOLVED_IDREFS: ${{ vars.ETAX_OVERLAY_MAX_UNRESOLVED_IDREFS }}
+        run: |
+          max_missing="${ETAX_OVERLAY_MAX_MISSING_INTERNAL_KEYS:-12}"
+          max_unresolved="${ETAX_OVERLAY_MAX_UNRESOLVED_IDREFS:-0}"
+          python3 scripts/etax_overlay_guard.py \
+            --report /tmp/etax-unit-lane/cab_overlay_2025.generated.report.json \
+            --max-missing-internal-keys "$max_missing" \
+            --max-unresolved-idrefs "$max_unresolved" \
+            --out-json /tmp/etax-unit-lane/overlay_guard_summary.json \
+            --out-text /tmp/etax-unit-lane/overlay_guard_summary.txt
 
       - name: Summarize lane evidence
         if: always()

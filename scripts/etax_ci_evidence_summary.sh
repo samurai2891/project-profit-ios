@@ -8,6 +8,7 @@ blue_log="$artifact_dir/xsd_blue_validation.log"
 white_log="$artifact_dir/xsd_white_validation.log"
 overlay_report="$artifact_dir/cab_overlay_2025.generated.report.json"
 overlay_diff="$artifact_dir/TaxYear2025.overlay.diff.json"
+overlay_guard_text="$artifact_dir/overlay_guard_summary.txt"
 
 extract_status() {
   local log_file="$1"
@@ -87,10 +88,22 @@ if not os.path.isfile(path):
 with open(path, "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
-print(f"- changedFieldCount: {data.get('changedFieldCount', 0)}")
-print(f"- addedCount: {data.get('addedCount', 0)}")
-print(f"- removedCount: {data.get('removedCount', 0)}")
+summary = data.get("summary") or {}
+print(f"- changedFieldCount: {summary.get('changedFieldCount', data.get('changedFieldCount', 0))}")
+print(f"- addedCount: {summary.get('addedCount', data.get('addedCount', 0))}")
+print(f"- removedCount: {summary.get('removedCount', data.get('removedCount', 0))}")
 PY
+
+echo ""
+echo "#### Overlay guard"
+if [[ -f "$overlay_guard_text" ]]; then
+  echo ""
+  echo '```text'
+  cat "$overlay_guard_text"
+  echo '```'
+else
+  echo "- overlay guard summary not found: $overlay_guard_text"
+fi
 
 echo ""
 echo "#### Files"
@@ -99,7 +112,8 @@ for path in \
   "$blue_log" \
   "$white_log" \
   "$overlay_report" \
-  "$overlay_diff"; do
+  "$overlay_diff" \
+  "$overlay_guard_text"; do
   if [[ -f "$path" ]]; then
     echo "- [x] $path"
   else

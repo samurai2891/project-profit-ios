@@ -4,8 +4,8 @@
 
 ## タグ抽出
 - [x] `etax_extract_tags.py` が fixture から `TagDictionary` を生成できる
-- [ ] `internalKey` の重複/競合で失敗する
-- [ ] `xmlTag` 重複で失敗する
+- [x] `internalKey` の重複/競合で失敗する
+- [x] `xmlTag` 重複で失敗する
 - [x] `required internalKey` 欠落で失敗する（`--allow-partial` なし）
 
 ## タグ適用
@@ -24,17 +24,17 @@
 - [x] CIで `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML検証が通る
 
 ## ガード動作
-- [ ] 未対応年分でプレビュー生成が失敗し、`unsupportedTaxYear` を返す
-- [ ] 未対応年分で `.xtx/.csv` エクスポートが失敗する
-- [ ] 対応年分で `internalKey -> xmlTag` 出力を確認できる
+- [x] 未対応年分でプレビュー生成が失敗し、`unsupportedTaxYear` を返す
+- [x] 未対応年分で `.xtx/.csv` エクスポートが失敗する
+- [x] 対応年分で `internalKey -> xmlTag` 出力を確認できる
 
 ## 文字種検証
-- [ ] ラベルではなく実際の出力値を検証している
-- [ ] 禁止文字（例: emoji）で出力前に失敗する
+- [x] ラベルではなく実際の出力値を検証している
+- [x] 禁止文字（例: emoji）で出力前に失敗する
 
 ## 会計年度連動
-- [ ] 開始月変更でレポート期間とe-Taxプレビュー期間が一致する
-- [ ] 消費税集計が `startMonth` 境界を正しく判定する
+- [x] 開始月変更でレポート期間とe-Taxプレビュー期間が一致する
+- [x] 消費税集計が `startMonth` 境界を正しく判定する
 
 ## 完了証跡
 - [x] `etax-ci.yml` の `simulator-health` ジョブ結果をPRに添付
@@ -47,6 +47,11 @@
 
 ## 更新メモ（2026-02-26）
 - `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 12/12 success）と `tools/etax/tests` の追加テストで確認。
+- `tools/etax/tests/test_etax_tag_pipeline.py` に `internalKey/xmlTag` 重複検知ケースを追加。
+- `ProjectProfitTests/EtaxExportViewModelTests.swift` に `unsupportedTaxYear` の preview/export (`.xtx/.csv`) と `startMonth` 境界ケースを追加。
+- `ProjectProfitTests/EtaxXtxExporterTests.swift` の CSV検証で `internalKey -> xmlTag` 出力を確認。
+- `ProjectProfitTests/EtaxCharacterValidatorTests.swift` に「ラベルではなく実値を検証」ケースを追加し、emoji値での失敗ケースと併せて確認。
+- `ProjectProfitTests/ConsumptionTaxReportServiceTests.swift` の `testGenerateSummary_respectsFiscalStartMonth` で `startMonth` 境界集計を確認。
 - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` 時に実生成XML欠落でFailすることを確認。
 - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff` を1つのMarkdown要約として出力可能。
 - GitHub Actions `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）で `success` を確認。

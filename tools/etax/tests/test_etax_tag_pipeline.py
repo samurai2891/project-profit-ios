@@ -287,6 +287,71 @@ class EtaxTagPipelineTests(unittest.TestCase):
             self.assertNotEqual(validate.returncode, 0)
             self.assertIn("required internalKey が不足", validate.stdout)
 
+    def test_validate_detects_duplicate_internal_key(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            invalid_taxyear = temp_dir / "TaxYear2025.duplicate_internal.json"
+            with (self.fixture_dir / "base_taxyear_2025.json").open("r", encoding="utf-8") as fp:
+                taxyear = json.load(fp)
+
+            duplicate = dict(taxyear["fields"][0])
+            duplicate["xmlTag"] = "DUPLICATE_INTERNAL_KEY_TAG"
+            taxyear["fields"].append(duplicate)
+
+            with invalid_taxyear.open("w", encoding="utf-8") as fp:
+                json.dump(taxyear, fp, ensure_ascii=False, indent=2)
+                fp.write("\n")
+
+            validate = self.run_cmd(
+                "python3",
+                str(self.validate_script),
+                "--taxyear-json",
+                str(invalid_taxyear),
+                "--required-keys",
+                str(self.required_keys),
+            )
+            self.assertNotEqual(validate.returncode, 0)
+            self.assertIn("internalKey 重複", validate.stdout)
+
+    def test_validate_detects_duplicate_xml_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            invalid_taxyear = temp_dir / "TaxYear2025.duplicate_xmltag.json"
+            with self.taxyear_resource.open("r", encoding="utf-8") as fp:
+                taxyear = json.load(fp)
+
+            if len(taxyear["fields"]) < 2:
+                self.fail("base taxyear fixture must include at least 2 fields")
+
+            source = next((field for field in taxyear["fields"] if str(field.get("xmlTag", "")).strip()), None)
+            target = next(
+                (
+                    field
+                    for field in taxyear["fields"]
+                    if field is not source and str(field.get("xmlTag", "")).strip()
+                ),
+                None,
+            )
+            if source is None or target is None:
+                self.fail("taxyear resource must include at least 2 non-empty xml tags")
+
+            target["xmlTag"] = source["xmlTag"]
+
+            with invalid_taxyear.open("w", encoding="utf-8") as fp:
+                json.dump(taxyear, fp, ensure_ascii=False, indent=2)
+                fp.write("\n")
+
+            validate = self.run_cmd(
+                "python3",
+                str(self.validate_script),
+                "--taxyear-json",
+                str(invalid_taxyear),
+                "--required-keys",
+                str(self.required_keys),
+            )
+            self.assertNotEqual(validate.returncode, 0)
+            self.assertIn("xmlTag 重複", validate.stdout)
+
     def test_apply_fails_on_missing_without_allow_missing_flag(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             temp_dir = Path(td)

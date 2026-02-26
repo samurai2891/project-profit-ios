@@ -345,4 +345,19 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         XCTAssertFalse(ids.contains("declarant_birth_date"))
         XCTAssertFalse(ids.contains("declarant_my_number_flag"))
     }
+
+    func testProfileSecureStoreSaveFailsForEmptyProfileId() {
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "テスト",
+            postalCode: "1000001",
+            address: "東京都千代田区1-1",
+            phoneNumber: "0312345678",
+            dateOfBirth: nil,
+            businessCategory: "テスト業",
+            myNumberFlag: nil,
+            includeSensitiveInExport: true
+        )
+
+        XCTAssertFalse(ProfileSecureStore.save(payload, profileId: ""))
+    }
 }

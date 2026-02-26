@@ -328,6 +328,9 @@ enum ProfileSecureStore {
 
     @discardableResult
     static func save(_ payload: ProfileSensitivePayload, profileId: String) -> Bool {
+        if profileId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return false
+        }
         let encoder = JSONEncoder()
         guard let data = try? encoder.encode(payload) else {
             return false

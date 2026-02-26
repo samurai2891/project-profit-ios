@@ -6,20 +6,24 @@
 
 ## 目的
 - CAB未投入状態でも、e-Taxタグ抽出基盤と年分ガードの品質を検証できるようにする。
+- CAB本番入力をSecrets URLから取得し、平日定期実行で監視を固定化する。
 - CAB由来オーバーレイ（`requiredRule/idref/format`）を段階適用できるようにする。
 - KOA210/KOA110 の実生成XMLをXSD検証し、様式バージョンとの整合を継続確認する（CIは実生成XML必須）。
 - `xcodebuild test` が環境要因で不安定な場合でも、回帰確認を止めない。
 - CI上で「環境異常」と「実装修正要因」を分離して判定する。
+- `missingInternalKeys/unresolvedIdrefs` をCIで閾値監視し、非0をFailとして検出する。
 
 ## レーン構成
-1. `tag-pipeline`（Python）
-2. `cab-overlay-generate`（Python, e-taxall実データ由来）
-3. `cab-overlay-apply`（Python, 任意）
-4. `overlay-diff`（Python, 差分レポート）
-5. `simulator-health`（環境異常判定）
-6. `etax-core`（Swift 単体テスト + 実生成XML出力）
-7. `xsd-validate`（xmllint: CIは実生成XML必須）
-8. `artifact-summary`（CI収集用）
+1. `cab-input-fetch`（Secrets URL / fallback切替）
+2. `tag-pipeline`（Python）
+3. `cab-overlay-generate`（Python, e-taxall実データ由来）
+4. `cab-overlay-apply`（Python, 任意）
+5. `overlay-diff`（Python, 差分レポート）
+6. `simulator-health`（環境異常判定）
+7. `etax-core`（Swift 単体テスト + 実生成XML出力）
+8. `xsd-validate`（xmllint: CIは実生成XML必須）
+9. `overlay-guard`（`missingInternalKeys/unresolvedIdrefs` 閾値監視）
+10. `artifact-summary`（CI収集用）
 
 ## 事前条件
 - ルートディレクトリ: `/Users/yutaro/project-profit-ios`
@@ -28,11 +32,17 @@
 
 ## CI（分離運用）
 - ワークフロー: `.github/workflows/etax-ci.yml`
+- トリガー:
+  - `push/pull_request/workflow_dispatch`
+  - `schedule`（平日1回、UTC `0 3 * * 1-5`）
 - ジョブ:
   - `simulator-health`: `scripts/check_simulator_health.sh` を実行し、runtime/device異常時にFail
-  - `etax-unit`: `needs: simulator-health`。Python lane + CAB overlay生成/適用 + 実生成XML XSD検証 + e-Tax最小Swiftテストを実行
+  - `etax-unit`: `needs: simulator-health`
+    - `scripts/fetch_etax_cab_input.sh` で CAB入力を取得（`ETAX_CAB_SOURCE_URL` 未設定時は fixture fallback）
+    - Python lane + CAB overlay生成/適用 + 実生成XML XSD検証 + e-Tax最小Swiftテストを実行
+    - `scripts/etax_overlay_guard.py` で `missingInternalKeys/unresolvedIdrefs` を閾値監視（既定: 0）
   - `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定し、実生成XML欠落時はFail
-  - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff` を `GITHUB_STEP_SUMMARY` へ集約
+  - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff + overlay guard` を `GITHUB_STEP_SUMMARY` へ集約
 
 ## 実行コマンド
 
@@ -50,6 +60,7 @@ cd /Users/yutaro/project-profit-ios
 - `status=error` の場合は `skip: swift lane skipped (simulator-health ...)` を出力
 - Swift実行時は `ETAX_XSD_*_EXPORT_XML` に実生成XMLを出力し、XSD検証へ接続
 - `ETAX_XSD_REQUIRE_GENERATED_XML=true` の場合、実生成XMLがないと lane は失敗する
+- CIでは `scripts/fetch_etax_cab_input.sh` の出力 `input_dir` を `ETAX_TAG_INPUT_DIR` として採用する
 
 ### 1) tag-pipeline（必須）
 ```bash
@@ -113,11 +124,14 @@ xcodebuild test \
 - `etax_validate_tags.py` が required key 欠落なしで終了コード0
 - `etax_apply_cab_overlay.py` 適用後も required key 検証が終了コード0
 - `etax_validate_xsd.sh` が KOA210/KOA110 を検証成功（CIは実生成XMLのみ）
+- `etax_overlay_guard.py` が `missingInternalKeys/unresolvedIdrefs` 閾値内で終了コード0
 - 未対応年分で `unsupportedTaxYear` を返すテストが成功
 - CIで `simulator-health` と `etax-unit` の失敗原因が分類される
 
 ## 失敗時の分類ルール
+- `cab-input` 失敗: 入力ソース要因（Secrets URL未設定・取得失敗・SHA不一致）
 - `simulator-health` 失敗: 環境要因（CoreSimulatorService / runtime欠落 / device欠落）
+- `overlay-guard` 失敗: 監視要因（`missingInternalKeys/unresolvedIdrefs` 閾値超過）
 - `etax-unit` 失敗: 実装修正要因（overlay不整合 / XSD不整合 / JSON不整合 / xmlTag重複 / required key欠落 / Swiftテスト失敗）
 
 ## 環境変数（任意）
@@ -136,3 +150,8 @@ xcodebuild test \
 - `ETAX_XSD_BLUE_FALLBACK_XML`: 青色fallback XML（default: fixture）
 - `ETAX_XSD_WHITE_FALLBACK_XML`: 白色fallback XML（default: fixture）
 - `ETAX_SIMULATOR_DEVICE`: Swift lane実行Simulator名
+- `ETAX_CAB_SOURCE_URL`: CAB入力アーカイブURL（CI secrets）
+- `ETAX_CAB_SOURCE_SHA256`: CAB入力アーカイブSHA-256（任意）
+- `ETAX_CAB_SOURCE_REQUIRED`: `true|false`（scheduleは `true`）
+- `ETAX_CAB_ARCHIVE_TYPE`: `auto|zip|tar|tgz|tar.gz`
+- `ETAX_CAB_FETCH_ROOT_DIR`: CAB展開先ルート（default: `/tmp/etax-cab-input`）
