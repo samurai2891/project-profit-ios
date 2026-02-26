@@ -12,14 +12,15 @@
   - `./scripts/run_etax_unit_lane.sh` で overlay適用 + KOA210/KOA110最小XSD検証が成功
   - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` により実生成XML未出力でFail（fail-fast動作を確認）
   - `xcodebuild test ... -only-testing:ProjectProfitTests/EtaxXtxExporterTests` は CoreSimulator 不達で失敗（証跡 E040）
-  - `gh auth status` は default token invalid（`gh auth login -h github.com` が必要）
   - ローカル実行証跡: `docs/testing/etax-ci-local-evidence-2026-02-26.md`
+  - GitHub実行証跡: `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）で success。実生成XML（`KOA210.export.xml` / `KOA110.export.xml`）経由の XSD pass を確認
+  - GitHub実行証跡ドキュメント: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
 
 ## 2. 実装進捗（2026-02-26 実装反映後）
 
 | ID | 状態 | 実装済み事実 | 残タスク |
 |---|---|---|---|
-| T01 | 実装完了（CI証跡待ち） | `run_etax_unit_lane.sh` に `ETAX_XSD_REQUIRE_GENERATED_XML` を追加し、CIでは実生成XML欠落時にFailする構成へ更新。`etax-ci.yml` は `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定 | PR上でKOA210/KOA110実生成XMLのXSD passログを添付 |
+| T01 | 完了（CI証跡確定） | `run_etax_unit_lane.sh` + `etax-ci.yml` で `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定し、run `22440157027` / `22440174004` で `KOA210.export.xml` / `KOA110.export.xml` の XSD pass を確認 | なし |
 | T02 | 実装完了（運用監視） | `scripts/etax_generate_cab_overlay.py` を追加し、`帳票フィールド仕様書(所得-申告)Ver11x/12x` の KOA210/KOA110 から `requiredRule/idref/format` overlay を生成。laneで自動生成overlayを優先適用 | report の `missingInternalKeys/unresolvedIdrefs` を継続監視 |
 | T03 | 完了 | `TaxLine/AccountSubtype` に `insurance` を追加。`TaxYear2025.json` / `mapping_rules_2025.json` / `base_taxyear_2025.json` / `required_internal_keys.json` に `expense_insurance(AMF00260)` と `shushi_expense_insurance(AIG00290)` を反映。`cat-insurance -> acct-insurance` で実入力導線を追加 | なし |
 | T04 | 完了 | `docs/testing/etax-taxyear-runbook.md` を追加し、2026年以降の TaxYear更新手順・検証手順・受入条件を明文化。implementation-packにも同期 | なし |
@@ -31,11 +32,10 @@
 | T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
-1. `gh auth login -h github.com` を実施し、`etax-ci` をPR/`workflow_dispatch`で実行可能にする。
-2. T01/T02: PR上で `etax-ci` の実行証跡（実生成XMLのXSD pass、overlay report）を添付する。
-3. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する。
-4. T05: Keychain保存失敗時のUI運用とSwift回帰証跡をCIで確定する。
-5. T07: Simulator実行環境でSwiftテスト実行を完了する。
+1. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する。
+2. T05: Keychain保存失敗時のUI運用とSwift回帰証跡をCIで確定する。
+3. T07: Simulator実行環境でSwiftテスト実行を完了する。
+4. T02: `missingInternalKeys/unresolvedIdrefs` の継続監視を運用定義へ落とし込む。
 
 ## 3. 原本Todo一覧（監査時点）
 
@@ -54,23 +54,25 @@
 
 ---
 
-### T01: XSD準拠XML構造の未実装
+### T01: XSD準拠XML構造の未実装（解消）
 - 区分: 根本問題
 - 事実:
   - `EtaxXtxExporterTests` が `ETAX_XSD_BLUE_EXPORT_XML` / `ETAX_XSD_WHITE_EXPORT_XML` 指定時に実生成XMLを書き出す。
   - `run_etax_unit_lane.sh` は実生成XMLを優先し、未生成時のみ fixture へfallbackする。
   - `.github/workflows/etax-ci.yml` は lane成果物をartifactとして収集する。
+  - `e-Tax CI` run `22440157027` / `22440174004` で `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML経由のXSD passを確認した。
 - 根拠:
   - `ProjectProfitTests/EtaxXtxExporterTests.swift`
   - `scripts/run_etax_unit_lane.sh`
   - `.github/workflows/etax-ci.yml`
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
 - 影響:
-  - 仕組みは実装済みだが、CoreSimulator不達環境では実生成XMLが未出力のため最終検証が未確定。
+  - 最小fixture止まりのリスクは解消し、CI上で実生成XML必須のXSD検証を恒常実行できる状態になった。
 - 修正Todo:
-  1. Simulator利用可能なCI実行ログで、実生成XML経由のXSD passを証跡化する。
-  2. 様式別（blue/white）で最低1ケースずつ実データ検証の結果をPRに添付する。
+  1. 完了: PR run `22440157027` で `KOA210.export.xml` / `KOA110.export.xml` の `reason=xsd validation passed` を確認。
+  2. 完了: `workflow_dispatch` run `22440174004` で同一条件の再現成功を確認。
 - 受入条件:
-  - 実データ由来の KOA210/KOA110 XML がCIで毎回XSD検証を通過する。
+  - 実データ由来の KOA210/KOA110 XML がCIで毎回XSD検証を通過する（達成）。
 
 ### T02: 必須/型/書式/相関バリデーション欠落
 - 区分: 根本問題

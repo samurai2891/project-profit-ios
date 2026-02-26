@@ -21,7 +21,7 @@
 - [x] `etax_resolve_xsd.sh` が `TaxYear*.json` の `formId/formVer` からXSDを解決できる
 - [x] `etax_validate_xsd.sh` が KOA210 を検証成功する（実生成XMLまたはfallback）
 - [x] `etax_validate_xsd.sh` が KOA110 を検証成功する（実生成XMLまたはfallback）
-- [ ] CIで `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML検証が通る
+- [x] CIで `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML検証が通る
 
 ## ガード動作
 - [ ] 未対応年分でプレビュー生成が失敗し、`unsupportedTaxYear` を返す
@@ -37,16 +37,18 @@
 - [ ] 消費税集計が `startMonth` 境界を正しく判定する
 
 ## 完了証跡
-- [ ] `etax-ci.yml` の `simulator-health` ジョブ結果をPRに添付
-- [ ] `etax-ci.yml` の `etax-unit` ジョブ結果をPRに添付
+- [x] `etax-ci.yml` の `simulator-health` ジョブ結果をPRに添付
+- [x] `etax-ci.yml` の `etax-unit` ジョブ結果をPRに添付
 - [x] `etax-unit` ログに overlay / diff / xsd 検証結果が出力される
 - [x] lane成果物（TagDictionary/TaxYear差分/XML）をCI artifactとして収集できる
 - [x] lane成果物に `cab_overlay_2025.generated.report.json` が含まれる
-- [ ] 実行コマンド・結果ログをPRに添付
-- [ ] 監査Todoに完了IDと残リスクを追記
+- [x] 実行コマンド・結果ログをPRに添付
+- [x] 監査Todoに完了IDと残リスクを追記
 
 ## 更新メモ（2026-02-26）
 - `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 12/12 success）と `tools/etax/tests` の追加テストで確認。
 - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` 時に実生成XML欠落でFailすることを確認。
 - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff` を1つのMarkdown要約として出力可能。
-- Swift項目は Simulator異常時に未実行（`skip: swift lane skipped (simulator-health ...)`）。
+- GitHub Actions `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）で `success` を確認。
+- 上記 run の `Run e-Tax unit lane` で `ETAX_XSD_REQUIRE_GENERATED_XML: true`、`xml_path=/tmp/etax-unit-lane/KOA210.export.xml`、`xml_path=/tmp/etax-unit-lane/KOA110.export.xml`、`reason=xsd validation passed` を確認。
+- 証跡: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
