@@ -7,7 +7,11 @@ xml_path=""
 schema_path=""
 form_key=""
 taxyear_json="$REPO_ROOT/ProjectProfit/Resources/TaxYear2025.json"
-schema_dir="$REPO_ROOT/e-taxall/19XMLスキーマ/shotoku"
+default_schema_dir="$REPO_ROOT/e-taxall/19XMLスキーマ/shotoku"
+if [[ ! -d "$default_schema_dir" ]]; then
+  default_schema_dir="$REPO_ROOT/tools/etax/xsd/shotoku"
+fi
+schema_dir="$default_schema_dir"
 
 print_usage() {
   cat <<'EOF'
@@ -19,7 +23,7 @@ Options:
   --form-key <name>       forms key in TaxYear json (required when --schema is not used)
   --schema <path>         explicit XSD path (optional)
   --taxyear-json <path>   TaxYear*.json path
-  --schema-dir <path>     shotoku XSD directory
+  --schema-dir <path>     shotoku XSD directory (default: auto-detect e-taxall -> tools/etax/xsd/shotoku)
 EOF
 }
 
