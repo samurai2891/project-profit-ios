@@ -156,11 +156,11 @@ final class EtaxXtxExporterTests: XCTestCase {
     func testGenerateXtxWritesWhiteFixtureWhenEnvIsSet() throws {
         let fields = [
             EtaxField(
-                id: "shushi_revenue_total",
-                fieldLabel: "収入金額",
-                taxLine: .salesRevenue,
-                value: 3_000_000,
-                section: .revenue
+                id: "shushi_expense_taxes",
+                fieldLabel: "租税公課",
+                taxLine: .taxesExpense,
+                value: 80_000,
+                section: .expenses
             )
         ]
         let form = makeForm(fields: fields, formType: .whiteReturn)
@@ -170,7 +170,7 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA110 "))
-            XCTAssertTrue(xml.contains("<AIG00020>3000000</AIG00020>"))
+            XCTAssertTrue(xml.contains("<AIG00220>80000</AIG00220>"))
             emitFixturePayloadForCI(data, marker: "WHITE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_WHITE_EXPORT_XML")
         case .failure(let error):
