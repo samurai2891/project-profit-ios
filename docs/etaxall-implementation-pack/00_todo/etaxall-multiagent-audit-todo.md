@@ -24,16 +24,15 @@
 | T07 | 進行中 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新 | Simulator実行環境でSwiftテスト実行を完了 |
 | T08 | 完了 | `TaxYearDefinitionLoader` に `fieldLabel/xmlTag/fieldDefinition` の `formType` 対応を追加 | なし |
 | T09 | 完了（方針固定） | スコープは「作成のみ（送信連携は非対応）」で固定 | 仕様書/リリース判定文書への明記反映 |
-| T10 | 進行中 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加し、環境異常と実装修正要因を分離 | GitHub Actions実行結果の確認と必須チェック設定の反映 |
+| T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
-1. T10: `etax-ci.yml` のGitHub実行結果を確認し、PRゲートへ必須チェックとして反映する。
-2. T01: 生成XMLに対するXSD検証フェーズを追加し、提出可能形式を自動検証する。
-3. T02: CAB実データから `requiredRule/idref/format` を取り込み、必須・相関チェックを実効化する。
-4. T05: 機微情報の平文保持禁止をコード上で強制し、失敗時の平文フォールバックを解消する。
-5. T06: CAB投入から `抽出→適用→検証→差分レポート` までをCIで自動化する。
-6. T03: `TaxLine` 語彙と勘定マッピングを仕様書と一致させる。
-7. T04: 2026年以降の `TaxYear*.json` 運用（更新手順・レビュー手順）をRunbook化する。
+1. T01: 生成XMLに対するXSD検証フェーズを追加し、提出可能形式を自動検証する。
+2. T02: CAB実データから `requiredRule/idref/format` を取り込み、必須・相関チェックを実効化する。
+3. T05: 機微情報の平文保持禁止をコード上で強制し、失敗時の平文フォールバックを解消する。
+4. T06: CAB投入から `抽出→適用→検証→差分レポート` までをCIで自動化する。
+5. T03: `TaxLine` 語彙と勘定マッピングを仕様書と一致させる。
+6. T04: 2026年以降の `TaxYear*.json` 運用（更新手順・レビュー手順）をRunbook化する。
 
 ## 3. 原本Todo一覧（監査時点）
 
