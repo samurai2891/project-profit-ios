@@ -222,6 +222,39 @@ class EtaxTagPipelineTests(unittest.TestCase):
             internal_keys = {item["internalKey"] for item in payload["items"]}
             self.assertIn("revenue_sales_revenue", internal_keys)
 
+    def test_extract_does_not_fuzzy_match_when_unknown_xml_tag_present(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            csv_path = temp_dir / "fixture.csv"
+            csv_text = (
+                "formName,section,fieldLabelJP,xmlTag,dataType\n"
+                "blue_general,income,計,UNKNOWN_XML_TAG,number\n"
+            )
+            csv_path.write_text(csv_text, encoding="utf-8")
+            tag_dict = temp_dir / "TagDictionary_2025.json"
+
+            extract = self.run_cmd(
+                "python3",
+                str(self.extract_script),
+                "--input-dir",
+                str(temp_dir),
+                "--tax-year",
+                "2025",
+                "--mapping-config",
+                str(self.mapping_config),
+                "--out-tag-dict",
+                str(tag_dict),
+                "--allow-partial",
+            )
+            self.assertEqual(extract.returncode, 0, msg=extract.stdout + extract.stderr)
+            with tag_dict.open("r", encoding="utf-8") as fp:
+                payload = json.load(fp)
+            income_total_expenses = next(
+                item for item in payload["items"] if item["internalKey"] == "income_total_expenses"
+            )
+            self.assertEqual(income_total_expenses["xmlTag"], "AMF00380")
+            self.assertEqual(income_total_expenses["sourceSheet"], "field_mappings:fallback")
+
     def test_validate_detects_missing_required_keys(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             temp_dir = Path(td)

@@ -305,6 +305,10 @@ def parse_sheet_rows(
     if not row_data:
         return []
 
+    specialized = parse_xml_structure_rows(row_data, sheet_name=sheet_name, source_file=source_file)
+    if specialized is not None:
+        return specialized
+
     header_row_index, header_cells = row_data[0]
     if not header_cells:
         return []
@@ -336,6 +340,119 @@ def parse_sheet_rows(
                 source_sheet=sheet_name,
                 source_row=row_index if row_index > header_row_index else (header_row_index + 1),
                 row=normalized_row,
+            )
+        )
+    return parsed
+
+
+def parse_xml_structure_rows(
+    row_data: list[tuple[int, dict[int, str]]],
+    sheet_name: str,
+    source_file: str,
+) -> list[SourceRow] | None:
+    header_row_index: int | None = None
+    header_cells: dict[int, str] | None = None
+    for row_index, cells in row_data[:30]:
+        values = {idx: (text or "").strip() for idx, text in cells.items()}
+        has_tag = any(value == "タグ名" for value in values.values())
+        has_content = any("要素内容" in value for value in values.values())
+        if has_tag and has_content:
+            header_row_index = row_index
+            header_cells = values
+            break
+    if header_row_index is None or header_cells is None:
+        return None
+
+    tag_col: int | None = None
+    data_type_col: int | None = None
+    content_col: int | None = None
+    for col, value in header_cells.items():
+        if value == "タグ名":
+            tag_col = col
+        if "共通ボキャブラリ" in value or value == "データ型":
+            data_type_col = col
+        if "要素内容" in value:
+            content_col = col
+
+    if tag_col is None or content_col is None:
+        return None
+
+    form_col: int | None = None
+    for row_index, cells in row_data[:2]:
+        if row_index != 1:
+            continue
+        for col, value in cells.items():
+            text = (value or "").strip()
+            if "様式" in text and ("ＩＤ" in text or "ID" in text):
+                form_col = col
+                break
+        if form_col is not None:
+            break
+
+    form_value = sheet_name
+    if form_col is not None:
+        for row_index, cells in row_data:
+            if row_index == 2:
+                form_candidate = (cells.get(form_col, "") or "").strip()
+                if form_candidate:
+                    form_value = form_candidate
+                break
+
+    level_cols: list[int] = []
+    for row_index, cells in row_data:
+        if row_index <= header_row_index:
+            continue
+        numeric_cols = [
+            col
+            for col, value in cells.items()
+            if re.fullmatch(r"\d+", (value or "").strip())
+        ]
+        if len(numeric_cols) >= 2:
+            level_cols = sorted(numeric_cols)
+            break
+
+    if not level_cols:
+        right_bound = min(
+            value
+            for value in [data_type_col, tag_col]
+            if value is not None
+        )
+        level_cols = list(range(content_col, right_bound))
+    if not level_cols:
+        return None
+
+    parsed: list[SourceRow] = []
+    for row_index, cells in row_data:
+        if row_index <= header_row_index + 1:
+            continue
+        tag = (cells.get(tag_col, "") or "").strip()
+        if not tag:
+            continue
+
+        label = ""
+        for col in sorted(level_cols, reverse=True):
+            value = (cells.get(col, "") or "").strip()
+            if value:
+                label = value
+                break
+        if not label:
+            continue
+
+        data_type = ""
+        if data_type_col is not None:
+            data_type = (cells.get(data_type_col, "") or "").strip()
+
+        parsed.append(
+            SourceRow(
+                source_file=source_file,
+                source_sheet=sheet_name,
+                source_row=row_index,
+                row={
+                    normalize_header("fieldLabelJP"): label,
+                    normalize_header("xmlTag"): tag,
+                    normalize_header("dataType"): data_type,
+                    normalize_header("form"): form_value,
+                },
             )
         )
     return parsed
@@ -405,58 +522,103 @@ def build_mapping_index(
     field_mappings: list[dict[str, Any]],
 ) -> tuple[
     dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
     dict[tuple[str, str, str], dict[str, Any]],
+    dict[tuple[str, str], dict[str, Any]],
     dict[tuple[str, str], dict[str, Any]],
     dict[str, dict[str, Any]],
 ]:
     by_internal_key: dict[str, dict[str, Any]] = {}
+    by_xml_tag: dict[str, dict[str, Any]] = {}
     by_label_section_form: dict[tuple[str, str, str], dict[str, Any]] = {}
+    by_label_form: dict[tuple[str, str], dict[str, Any]] = {}
     by_label_section: dict[tuple[str, str], dict[str, Any]] = {}
-    by_label: dict[str, dict[str, Any]] = {}
+    label_candidates: dict[str, list[dict[str, Any]]] = {}
 
     for mapping in field_mappings:
         internal_key = str(mapping.get("internal_key", "")).strip()
         if not internal_key:
             continue
         by_internal_key[internal_key] = mapping
+        xml_tag = str(mapping.get("xml_tag", "")).strip()
+        if xml_tag:
+            by_xml_tag[xml_tag] = mapping
         label = normalize_label(str(mapping.get("field_label", "")))
         section = normalize_token(str(mapping.get("section", "")))
         form = normalize_token(str(mapping.get("form", "")))
         if label and section and form:
             by_label_section_form[(label, section, form)] = mapping
+        if label and form:
+            by_label_form[(label, form)] = mapping
         if label and section:
             by_label_section[(label, section)] = mapping
         if label:
-            by_label[label] = mapping
-    return by_internal_key, by_label_section_form, by_label_section, by_label
+            label_candidates.setdefault(label, []).append(mapping)
+    by_label = {
+        label: mappings[0]
+        for label, mappings in label_candidates.items()
+        if len(mappings) == 1
+    }
+    return by_internal_key, by_xml_tag, by_label_section_form, by_label_form, by_label_section, by_label
 
 
 def resolve_mapping(
     row: dict[str, str],
     aliases: dict[str, list[str]],
     by_internal_key: dict[str, dict[str, Any]],
+    by_xml_tag: dict[str, dict[str, Any]],
     by_label_section_form: dict[tuple[str, str, str], dict[str, Any]],
+    by_label_form: dict[tuple[str, str], dict[str, Any]],
     by_label_section: dict[tuple[str, str], dict[str, Any]],
     by_label: dict[str, dict[str, Any]],
+    form_aliases: dict[str, str],
 ) -> dict[str, Any] | None:
     row_internal_key = first_value(row, aliases.get("internal_key", []))
     if row_internal_key and row_internal_key in by_internal_key:
         return by_internal_key[row_internal_key]
 
+    row_xml_tag = first_value(row, aliases.get("xml_tag", []))
+    if row_xml_tag:
+        mapped = by_xml_tag.get(row_xml_tag)
+        if mapped is not None:
+            return mapped
+        # XML構造設計書は同一ラベルが大量にあるため、xmlTag不一致時のラベル推定は誤対応を招く。
+        return None
+
     label = normalize_label(first_value(row, aliases.get("field_label", [])))
     section = normalize_token(first_value(row, aliases.get("section", [])))
     form = normalize_token(first_value(row, aliases.get("form", [])))
+    if form in form_aliases:
+        form = form_aliases[form]
     if label and section and form:
         mapped = by_label_section_form.get((label, section, form))
+        if mapped is not None:
+            return mapped
+    if label and form:
+        mapped = by_label_form.get((label, form))
         if mapped is not None:
             return mapped
     if label and section:
         mapped = by_label_section.get((label, section))
         if mapped is not None:
             return mapped
-    if label:
+    if label and not form:
         return by_label.get(label)
     return None
+
+
+def normalize_aliases_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for k, v in value.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            continue
+        source = normalize_token(k)
+        target = normalize_token(v)
+        if source and target:
+            normalized[source] = target
+    return normalized
 
 
 def ensure_output_parent(path: Path) -> None:
@@ -533,10 +695,13 @@ def main() -> int:
 
     (
         by_internal_key,
+        by_xml_tag,
         by_label_section_form,
+        by_label_form,
         by_label_section,
         by_label,
     ) = build_mapping_index(field_mappings)
+    form_aliases = normalize_aliases_map(mapping_config.get("form_aliases", {}))
 
     source_rows = load_source_rows(Path(args.input_dir).resolve())
     if not source_rows:
@@ -552,9 +717,12 @@ def main() -> int:
             source.row,
             aliases,
             by_internal_key,
+            by_xml_tag,
             by_label_section_form,
+            by_label_form,
             by_label_section,
             by_label,
+            form_aliases,
         )
         if mapping is None:
             skipped_rows += 1
@@ -602,6 +770,34 @@ def main() -> int:
 
     extracted_items = sorted(by_internal_extracted.values(), key=lambda x: x["internalKey"])
     missing_required = sorted(required_keys - set(by_internal_extracted.keys()))
+
+    fallback_filled = 0
+    for missing_key in missing_required:
+        mapping = by_internal_key.get(missing_key)
+        if mapping is None:
+            continue
+        xml_tag = str(mapping.get("xml_tag", "")).strip()
+        data_type = canonical_data_type("", str(mapping.get("data_type", "")).strip())
+        if not xml_tag or data_type not in VALID_DATA_TYPES:
+            continue
+        owner = xml_tag_owner.get(xml_tag)
+        if owner is not None and owner != missing_key:
+            continue
+        item = {
+            "internalKey": missing_key,
+            "xmlTag": xml_tag,
+            "dataType": data_type,
+            "requiredRule": mapping.get("required_rule"),
+            "sourceFile": str(mapping_config_path),
+            "sourceSheet": "field_mappings:fallback",
+            "sourceRow": 0,
+        }
+        by_internal_extracted[missing_key] = item
+        xml_tag_owner[xml_tag] = missing_key
+        fallback_filled += 1
+
+    extracted_items = sorted(by_internal_extracted.values(), key=lambda x: x["internalKey"])
+    missing_required = sorted(required_keys - set(by_internal_extracted.keys()))
     if missing_required and not args.allow_partial:
         raise ValueError(
             "required internalKey が不足しています: " + ", ".join(missing_required)
@@ -613,6 +809,7 @@ def main() -> int:
         "sourceDirectory": str(Path(args.input_dir).resolve()),
         "itemCount": len(extracted_items),
         "skippedRowCount": skipped_rows,
+        "fallbackFilledCount": fallback_filled,
         "missingRequiredKeys": missing_required,
         "items": extracted_items,
     }
@@ -639,6 +836,7 @@ def main() -> int:
                 "taxYear": args.tax_year,
                 "itemCount": len(extracted_items),
                 "skippedRowCount": skipped_rows,
+                "fallbackFilledCount": fallback_filled,
                 "missingRequiredKeyCount": len(missing_required),
                 "output": str(out_tag_dict),
             },
