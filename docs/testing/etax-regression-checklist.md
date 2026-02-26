@@ -41,12 +41,13 @@
 - [x] `etax-ci.yml` の `etax-unit` ジョブ結果をPRに添付
 - [x] `etax-unit` ログに overlay / diff / xsd 検証結果が出力される
 - [x] lane成果物（TagDictionary/TaxYear差分/XML）をCI artifactとして収集できる
-- [x] lane成果物に `cab_overlay_2025.generated.report.json` が含まれる
+- [x] `cab-input status=ok` の run では lane成果物に `cab_overlay_2025.generated.report.json` が含まれる
+- [x] `cab-input status!=ok` の run では `overlay guard` が `status=skip` で記録される
 - [x] 実行コマンド・結果ログをPRに添付
 - [x] 監査Todoに完了IDと残リスクを追記
 
 ## 更新メモ（2026-02-26）
-- `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 12/12 success）と `tools/etax/tests` の追加テストで確認。
+- `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 14/14 success）と `tools/etax/tests` の追加テストで確認。
 - `tools/etax/tests/test_etax_tag_pipeline.py` に `internalKey/xmlTag` 重複検知ケースを追加。
 - `ProjectProfitTests/EtaxExportViewModelTests.swift` に `unsupportedTaxYear` の preview/export (`.xtx/.csv`) と `startMonth` 境界ケースを追加。
 - `ProjectProfitTests/EtaxXtxExporterTests.swift` の CSV検証で `internalKey -> xmlTag` 出力を確認。
@@ -56,4 +57,6 @@
 - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff` を1つのMarkdown要約として出力可能。
 - GitHub Actions `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）で `success` を確認。
 - 上記 run の `Run e-Tax unit lane` で `ETAX_XSD_REQUIRE_GENERATED_XML: true`、`xml_path=/tmp/etax-unit-lane/KOA210.export.xml`、`xml_path=/tmp/etax-unit-lane/KOA110.export.xml`、`reason=xsd validation passed` を確認。
+- GitHub Actions `e-Tax CI` run `22443589546`（PR）で `ProfileSettingsViewTests` を含むSwift回帰の成功を確認。
+- run `22443589546` で `cab-input status=skip` 時に `Guard CAB overlay report` が `skipped`、`Skip CAB overlay guard` が `success` となることを確認。
 - 証跡: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`

@@ -8,12 +8,13 @@
 - 調査証跡: 46件（`docs/etaxall-audit/evidence-index.csv`）
 - 参照資料: `e-taxall` 内仕様書・XSD・モジュール文書 + `ProjectProfit` 実装 + `ProjectProfitTests`
 - 非破壊検証:
-  - `python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'` は 12/12 success
+  - `python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'` は 14/14 success
   - `./scripts/run_etax_unit_lane.sh` で overlay適用 + KOA210/KOA110最小XSD検証が成功
   - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` により実生成XML未出力でFail（fail-fast動作を確認）
   - `xcodebuild test ... -only-testing:ProjectProfitTests/EtaxXtxExporterTests` は CoreSimulator 不達で失敗（証跡 E040）
   - ローカル実行証跡: `docs/testing/etax-ci-local-evidence-2026-02-26.md`
-  - GitHub実行証跡: `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）で success。実生成XML（`KOA210.export.xml` / `KOA110.export.xml`）経由の XSD pass を確認
+  - GitHub実行証跡: `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）/`22443589546`（PR）で success。実生成XML（`KOA210.export.xml` / `KOA110.export.xml`）経由の XSD pass を確認
+  - run `22443589546` では `cab-input status=skip` 時に `Guard CAB overlay report` を `skipped`、`Skip CAB overlay guard` を `success` として分離し false failure を解消
   - GitHub実行証跡ドキュメント: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
 
 ## 2. 実装進捗（2026-02-26 実装反映後）
@@ -24,18 +25,16 @@
 | T02 | 実装完了（運用監視） | `scripts/etax_generate_cab_overlay.py` を追加し、`帳票フィールド仕様書(所得-申告)Ver11x/12x` の KOA210/KOA110 から `requiredRule/idref/format` overlay を生成。laneで自動生成overlayを優先適用 | report の `missingInternalKeys/unresolvedIdrefs` を継続監視 |
 | T03 | 完了 | `TaxLine/AccountSubtype` に `insurance` を追加。`TaxYear2025.json` / `mapping_rules_2025.json` / `base_taxyear_2025.json` / `required_internal_keys.json` に `expense_insurance(AMF00260)` と `shushi_expense_insurance(AIG00290)` を反映。`cat-insurance -> acct-insurance` で実入力導線を追加 | なし |
 | T04 | 完了 | `docs/testing/etax-taxyear-runbook.md` を追加し、2026年以降の TaxYear更新手順・検証手順・受入条件を明文化。implementation-packにも同期 | なし |
-| T05 | 進行中 | `ProfileSettingsView.saveProfile` の平文フォールバックを削除。`EtaxFieldPopulator` は secure payload のみ参照。平文読取遮断のテストを追加 | Simulator実行環境でSwift回帰を通し受入証跡を確定 |
+| T05 | 完了 | `ProfileSettingsView.saveProfile` の平文フォールバックを削除。`EtaxFieldPopulator` は secure payload のみ参照。`ProfileSettingsViewTests` を含むSwift回帰を run `22443589546` で通過 | なし |
 | T06 | 進行中 | `run_etax_unit_lane.sh` に `ETAX_TAG_INPUT_DIR`/overlay diff生成（JSON+MD）を追加。`etax-ci.yml` で lane成果物をartifact収集 | CAB本番入力ディレクトリを使った定期実行運用を固定 |
-| T07 | 進行中 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新 | Simulator実行環境でSwiftテスト実行を完了 |
+| T07 | 完了 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新し、`e-Tax Unit Lane`（run `22443589546`）で安定通過を確認 | なし |
 | T08 | 完了 | `TaxYearDefinitionLoader` に `fieldLabel/xmlTag/fieldDefinition` の `formType` 対応を追加 | なし |
 | T09 | 完了（方針固定） | スコープは「作成のみ（送信連携は非対応）」で固定 | 仕様書/リリース判定文書への明記反映 |
 | T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
-1. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する。
-2. T05: Keychain保存失敗時のUI運用とSwift回帰証跡をCIで確定する。
-3. T07: Simulator実行環境でSwiftテスト実行を完了する。
-4. T02: `missingInternalKeys/unresolvedIdrefs` の継続監視を運用定義へ落とし込む。
+1. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する（Secrets URLの実データ供給待ち）。
+2. T02: `missingInternalKeys/unresolvedIdrefs` の閾値監視を本番CAB投入runで継続運用する。
 
 ## 3. 原本Todo一覧（監査時点）
 
@@ -140,12 +139,14 @@
   - `ProjectProfit/Views/Settings/ProfileSettingsView.swift`
   - `ProjectProfit/Services/EtaxFieldPopulator.swift`
   - `ProjectProfitTests/EtaxFieldPopulatorTests.swift`
+  - `ProjectProfitTests/ProfileSettingsViewTests.swift`
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22443589546`）
 - 影響:
-  - 平文保存リスクは低減したが、Simulator実行環境でのSwift回帰証跡が未取得。
+  - 平文保存リスクと回帰未検証リスクは解消した。
 - 修正Todo:
-  1. CI実行で追加テストを通し、受入証跡を固定化する。
+  1. 完了: `e-Tax Unit Lane` に `ProfileSettingsViewTests` を追加し、run `22443589546` で成功を確認。
 - 受入条件:
-  - 機微情報が平文DBに残らないことをテストで確認できる。
+  - 機微情報が平文DBに残らないことをテストで確認できる（達成）。
 
 ### T06: CAB本番入力を含むパイプライン未整備
 - 区分: 運用問題
@@ -157,31 +158,33 @@
   - `scripts/run_etax_unit_lane.sh`
   - `scripts/etax_report_taxyear_diff.py`
   - `.github/workflows/etax-ci.yml`
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22443589546`）
 - 影響:
-  - パイプライン枠は整備されたが、本番CAB入力を定期投入する運用ルールは未確定。
+  - パイプライン枠とfail/skip分類は整備されたが、本番CAB入力（Secrets URL）の定期投入ルールは未確定。
 - 修正Todo:
   1. 本番CABの配置先と投入タイミングを定義し、`ETAX_TAG_INPUT_DIR` でCI定期実行する。
+  2. `cab-input status=ok` runで `cab_overlay_2025.generated.report.json` を生成し、`overlay-guard` を実行する。
 - 受入条件:
   - 新CAB投入で `抽出→検証→反映→差分レポート` が自動実行される。
 
 ### T07: Swiftテスト資産のドリフト
 - 区分: 技術的負債
 - 事実:
-  - Swiftテストは `BlueRevenueSales` 等を期待（E033, E034）。
-  - 実リソースは `AMF00100` 系（E035）。
-  - 回帰チェックリストは未チェック状態（E046）。
+  - Swiftテスト期待値は `AMF/AIG/KOA` 系へ更新済み。
+  - `e-Tax Unit Lane`（run `22443589546`）で e-Tax Swift最小セットが成功した。
 - 根拠:
-  - `ProjectProfitTests/EtaxXtxExporterTests.swift:42-44`
-  - `ProjectProfitTests/TaxYearDefinitionLoaderTests.swift:43-44`
+  - `ProjectProfitTests/EtaxXtxExporterTests.swift`
+  - `ProjectProfitTests/TaxYearDefinitionLoaderTests.swift`
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22443589546`）
   - `ProjectProfit/Resources/TaxYear2025.json:7`
-  - `docs/testing/etax-regression-checklist.md:6-31`
+  - `docs/testing/etax-regression-checklist.md`
 - 影響:
-  - テスト実行可能環境で大量失敗の可能性、品質指標の信頼低下。
+  - 主要ドリフトは解消し、CI品質指標の信頼性が回復した。
 - 修正Todo:
-  1. テスト期待値を現行TaxYearタグに合わせる。
-  2. タグ変更多発箇所は固定文字列比較から定義参照型へ移行。
+  1. 完了: テスト期待値を現行TaxYearタグに合わせた。
+  2. 完了: `e-Tax Unit Lane` でSimulator実行の回帰通過を確認した。
 - 受入条件:
-  - e-Tax関連Swiftテストが現行定義で安定通過する。
+  - e-Tax関連Swiftテストが現行定義で安定通過する（達成）。
 
 ### T08: formType非考慮ローダの曖昧性
 - 区分: 技術的負債
