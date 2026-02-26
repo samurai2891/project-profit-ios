@@ -98,8 +98,8 @@ final class EtaxCharacterValidatorTests: XCTestCase {
             formType: .blueReturn,
             fields: [
                 EtaxField(
-                    id: "test",
-                    fieldLabel: "テスト",
+                    id: "revenue_sales_revenue",
+                    fieldLabel: "売上（収入）金額",
                     taxLine: .salesRevenue,
                     value: 1000,
                     section: .revenue

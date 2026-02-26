@@ -37,11 +37,12 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
-            XCTAssertTrue(xml.contains("<eTaxData year=\"2025\""))
-            XCTAssertTrue(xml.contains("formType=\"青色申告決算書\""))
-            XCTAssertTrue(xml.contains("<BlueRevenueSales>5000000</BlueRevenueSales>"))
-            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>120000</BlueExpenseCommunication>"))
-            XCTAssertTrue(xml.contains("<BlueIncomeNet>4800000</BlueIncomeNet>"))
+            XCTAssertTrue(xml.contains("<KOA210 "))
+            XCTAssertTrue(xml.contains("VR=\"11.0\""))
+            XCTAssertTrue(xml.contains("<KOA210-1>"))
+            XCTAssertTrue(xml.contains("<AMF00100>5000000</AMF00100>"))
+            XCTAssertTrue(xml.contains("<AMF00230>120000</AMF00230>"))
+            XCTAssertTrue(xml.contains("<AMF00530>4800000</AMF00530>"))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }
@@ -85,8 +86,8 @@ final class EtaxXtxExporterTests: XCTestCase {
 
         if case .success(let data) = result {
             let xml = String(data: data, encoding: .utf8)!
-            XCTAssertTrue(xml.contains("<BlueRevenueSales>5000000</BlueRevenueSales>"))
-            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>120000</BlueExpenseCommunication>"))
+            XCTAssertTrue(xml.contains("<AMF00100>5000000</AMF00100>"))
+            XCTAssertTrue(xml.contains("<AMF00230>120000</AMF00230>"))
         } else {
             XCTFail("Expected success")
         }
@@ -122,9 +123,9 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let csv = String(data: data, encoding: .utf8)!
             let lines = csv.components(separatedBy: "\n")
-            XCTAssertEqual(lines[0], "internalKey,xmlTag,セクション,フィールド名,値")
+            XCTAssertEqual(lines[0], "internalKey,xmlTag,form,セクション,フィールド名,値")
             XCTAssertTrue(lines.count > 1)
-            XCTAssertTrue(csv.contains("\"revenue_sales_revenue\",\"BlueRevenueSales\",\"収入金額\",\"売上（収入）金額\",\"5000000\""))
+            XCTAssertTrue(csv.contains("\"revenue_sales_revenue\",\"AMF00100\",\"blue_general\",\"収入金額\",\"売上（収入）金額\",\"5000000\""))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }

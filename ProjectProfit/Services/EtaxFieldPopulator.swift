@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// P&L / B/S レポートデータを e-Tax フィールドにマッピングする
 @MainActor
@@ -26,7 +27,11 @@ enum EtaxFieldPopulator {
         for (taxLine, amount) in revenueByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             fields.append(EtaxField(
                 id: "revenue_\(taxLine.rawValue)",
-                fieldLabel: TaxYearDefinitionLoader.fieldLabel(for: taxLine, fiscalYear: fiscalYear),
+                fieldLabel: TaxYearDefinitionLoader.fieldLabel(
+                    for: taxLine,
+                    formType: .blueReturn,
+                    fiscalYear: fiscalYear
+                ),
                 taxLine: taxLine,
                 value: amount,
                 section: .revenue
@@ -43,7 +48,11 @@ enum EtaxFieldPopulator {
         for (taxLine, amount) in expenseByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             fields.append(EtaxField(
                 id: "expense_\(taxLine.rawValue)",
-                fieldLabel: TaxYearDefinitionLoader.fieldLabel(for: taxLine, fiscalYear: fiscalYear),
+                fieldLabel: TaxYearDefinitionLoader.fieldLabel(
+                    for: taxLine,
+                    formType: .blueReturn,
+                    fiscalYear: fiscalYear
+                ),
                 taxLine: taxLine,
                 value: amount,
                 section: .expenses
@@ -101,6 +110,16 @@ enum EtaxFieldPopulator {
     /// 申告者情報セクションのフィールドを生成
     static func populateDeclarantInfo(profile: PPAccountingProfile) -> [EtaxField] {
         var fields: [EtaxField] = []
+        let secure = ProfileSecureStore.load(profileId: profile.id)
+        let includeSensitive = secure?.includeSensitiveInExport ?? true
+
+        let ownerNameKana = secure?.ownerNameKana ?? profile.ownerNameKana
+        let postalCode = secure?.postalCode ?? profile.postalCode
+        let address = secure?.address ?? profile.address
+        let phoneNumber = secure?.phoneNumber ?? profile.phoneNumber
+        let dateOfBirth = secure?.dateOfBirth ?? profile.dateOfBirth
+        let businessCategory = secure?.businessCategory ?? profile.businessCategory
+        let myNumberFlag = secure?.myNumberFlag ?? profile.myNumberFlag
 
         if !profile.ownerName.isEmpty {
             fields.append(EtaxField(
@@ -108,25 +127,25 @@ enum EtaxFieldPopulator {
                 taxLine: nil, value: profile.ownerName, section: .declarantInfo
             ))
         }
-        if let kana = profile.ownerNameKana, !kana.isEmpty {
+        if includeSensitive, let kana = ownerNameKana, !kana.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_name_kana", fieldLabel: "氏名カナ",
                 taxLine: nil, value: kana, section: .declarantInfo
             ))
         }
-        if let postalCode = profile.postalCode, !postalCode.isEmpty {
+        if includeSensitive, let postalCode, !postalCode.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_postal_code", fieldLabel: "郵便番号",
                 taxLine: nil, value: postalCode, section: .declarantInfo
             ))
         }
-        if let address = profile.address, !address.isEmpty {
+        if includeSensitive, let address, !address.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_address", fieldLabel: "住所",
                 taxLine: nil, value: address, section: .declarantInfo
             ))
         }
-        if let phone = profile.phoneNumber, !phone.isEmpty {
+        if includeSensitive, let phone = phoneNumber, !phone.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_phone", fieldLabel: "電話番号",
                 taxLine: nil, value: phone, section: .declarantInfo
@@ -138,19 +157,19 @@ enum EtaxFieldPopulator {
                 taxLine: nil, value: profile.businessName, section: .declarantInfo
             ))
         }
-        if let category = profile.businessCategory, !category.isEmpty {
+        if includeSensitive, let category = businessCategory, !category.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_business_category", fieldLabel: "事業種類",
                 taxLine: nil, value: category, section: .declarantInfo
             ))
         }
-        if let birthDate = profile.dateOfBirth {
+        if includeSensitive, let birthDate = dateOfBirth {
             fields.append(EtaxField(
                 id: "declarant_birth_date", fieldLabel: "生年月日",
                 taxLine: nil, value: birthDateEtaxString(from: birthDate), section: .declarantInfo
             ))
         }
-        if let myNumberFlag = profile.myNumberFlag {
+        if includeSensitive, let myNumberFlag {
             fields.append(EtaxField(
                 id: "declarant_my_number_flag", fieldLabel: "マイナンバー提出有無",
                 taxLine: nil, value: myNumberFlag, section: .declarantInfo
@@ -242,5 +261,110 @@ enum EtaxFieldPopulator {
         formatter.locale = Locale(identifier: "ja_JP_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Profile Secure Storage
+
+struct ProfileSensitivePayload: Codable, Equatable {
+    var ownerNameKana: String?
+    var postalCode: String?
+    var address: String?
+    var phoneNumber: String?
+    var dateOfBirth: Date?
+    var businessCategory: String?
+    var myNumberFlag: Bool?
+    var includeSensitiveInExport: Bool
+
+    static func fromLegacyProfile(
+        ownerNameKana: String?,
+        postalCode: String?,
+        address: String?,
+        phoneNumber: String?,
+        dateOfBirth: Date?,
+        businessCategory: String?,
+        myNumberFlag: Bool?,
+        includeSensitiveInExport: Bool = true
+    ) -> ProfileSensitivePayload {
+        ProfileSensitivePayload(
+            ownerNameKana: normalize(ownerNameKana),
+            postalCode: normalize(postalCode),
+            address: normalize(address),
+            phoneNumber: normalize(phoneNumber),
+            dateOfBirth: dateOfBirth,
+            businessCategory: normalize(businessCategory),
+            myNumberFlag: myNumberFlag,
+            includeSensitiveInExport: includeSensitiveInExport
+        )
+    }
+
+    private static func normalize(_ text: String?) -> String? {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
+enum ProfileSecureStore {
+    private static let service = "com.projectprofit.profile-sensitive"
+
+    static func load(profileId: String) -> ProfileSensitivePayload? {
+        var query = baseQuery(profileId: profileId)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = kCFBooleanTrue
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        return try? decoder.decode(ProfileSensitivePayload.self, from: data)
+    }
+
+    @discardableResult
+    static func save(_ payload: ProfileSensitivePayload, profileId: String) -> Bool {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(payload) else {
+            return false
+        }
+
+        let base = baseQuery(profileId: profileId)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+
+        let updateStatus = SecItemUpdate(base as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return true
+        }
+        if updateStatus != errSecItemNotFound {
+            return false
+        }
+
+        var addQuery = base
+        attributes.forEach { key, value in
+            addQuery[key] = value
+        }
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    static func delete(profileId: String) -> Bool {
+        let status = SecItemDelete(baseQuery(profileId: profileId) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    private static func baseQuery(profileId: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: profileId
+        ]
     }
 }

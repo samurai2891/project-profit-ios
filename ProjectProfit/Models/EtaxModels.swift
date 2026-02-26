@@ -128,6 +128,15 @@ struct EtaxForm {
 enum EtaxFormType: String {
     case blueReturn = "青色申告決算書"
     case whiteReturn = "白色収支内訳書"
+
+    var definitionFormKey: String {
+        switch self {
+        case .blueReturn:
+            return "blue_general"
+        case .whiteReturn:
+            return "white_shushi"
+        }
+    }
 }
 
 // MARK: - Tax Year Definition
@@ -135,7 +144,15 @@ enum EtaxFormType: String {
 /// 年度別のTaxLine→フィールドラベル定義
 struct TaxYearDefinition: Codable {
     let fiscalYear: Int
+    let forms: [String: TaxFormDefinition]?
     let fields: [TaxFieldDefinition]
+}
+
+struct TaxFormDefinition: Codable {
+    let formId: String
+    let formVer: String
+    let rootTag: String
+    let mappingFile: String?
 }
 
 enum EtaxFieldDataType: String, Codable {
@@ -151,6 +168,10 @@ struct TaxFieldDefinition: Codable {
     let taxLineRawValue: String?  // TaxLine.rawValue or nil for calculated fields
     let section: String
     let dataType: EtaxFieldDataType?
+    let form: String?
+    let idref: String?
+    let format: String?
+    let requiredRule: String?
 }
 
 // MARK: - Export Error

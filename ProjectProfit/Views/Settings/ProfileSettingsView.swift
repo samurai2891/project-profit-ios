@@ -14,6 +14,7 @@ struct ProfileSettingsView: View {
     @State private var hasDateOfBirth: Bool = false
     @State private var businessCategory: String = ""
     @State private var myNumberFlag: Bool = false
+    @State private var includeSensitiveInExport: Bool = true
 
     var body: some View {
         ScrollView {
@@ -149,6 +150,19 @@ struct ProfileSettingsView: View {
                         .labelsHidden()
                 }
                 .padding(16)
+
+                Divider().padding(.leading, 16)
+
+                HStack {
+                    Text("機微情報を出力")
+                        .font(.body)
+
+                    Spacer()
+
+                    Toggle("機微情報を出力", isOn: $includeSensitiveInExport)
+                        .labelsHidden()
+                }
+                .padding(16)
             }
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -182,16 +196,37 @@ struct ProfileSettingsView: View {
 
         businessName = profile.businessName
         ownerName = profile.ownerName
-        ownerNameKana = profile.ownerNameKana ?? ""
-        postalCode = profile.postalCode ?? ""
-        address = profile.address ?? ""
-        phoneNumber = profile.phoneNumber ?? ""
-        businessCategory = profile.businessCategory ?? ""
-        myNumberFlag = profile.myNumberFlag ?? false
+        let secure = ProfileSecureStore.load(profileId: profile.id)
 
-        if let dob = profile.dateOfBirth {
+        ownerNameKana = secure?.ownerNameKana ?? profile.ownerNameKana ?? ""
+        postalCode = secure?.postalCode ?? profile.postalCode ?? ""
+        address = secure?.address ?? profile.address ?? ""
+        phoneNumber = secure?.phoneNumber ?? profile.phoneNumber ?? ""
+        businessCategory = secure?.businessCategory ?? profile.businessCategory ?? ""
+        myNumberFlag = secure?.myNumberFlag ?? profile.myNumberFlag ?? false
+        includeSensitiveInExport = secure?.includeSensitiveInExport ?? true
+
+        if let dob = secure?.dateOfBirth ?? profile.dateOfBirth {
             dateOfBirth = dob
             hasDateOfBirth = true
+        }
+
+        if secure == nil, hasLegacySensitiveFields(profile: profile) {
+            let migrated = ProfileSensitivePayload.fromLegacyProfile(
+                ownerNameKana: profile.ownerNameKana,
+                postalCode: profile.postalCode,
+                address: profile.address,
+                phoneNumber: profile.phoneNumber,
+                dateOfBirth: profile.dateOfBirth,
+                businessCategory: profile.businessCategory,
+                myNumberFlag: profile.myNumberFlag,
+                includeSensitiveInExport: includeSensitiveInExport
+            )
+            if ProfileSecureStore.save(migrated, profileId: profile.id) {
+                clearLegacySensitiveFields(profile: profile)
+                profile.updatedAt = Date()
+                dataStore.save()
+            }
         }
     }
 
@@ -200,15 +235,52 @@ struct ProfileSettingsView: View {
 
         profile.businessName = businessName
         profile.ownerName = ownerName
-        profile.ownerNameKana = ownerNameKana.isEmpty ? nil : ownerNameKana
-        profile.postalCode = postalCode.isEmpty ? nil : postalCode
-        profile.address = address.isEmpty ? nil : address
-        profile.phoneNumber = phoneNumber.isEmpty ? nil : phoneNumber
-        profile.businessCategory = businessCategory.isEmpty ? nil : businessCategory
-        profile.myNumberFlag = myNumberFlag
-        profile.dateOfBirth = hasDateOfBirth ? dateOfBirth : nil
+
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: ownerNameKana,
+            postalCode: postalCode,
+            address: address,
+            phoneNumber: phoneNumber,
+            dateOfBirth: hasDateOfBirth ? dateOfBirth : nil,
+            businessCategory: businessCategory,
+            myNumberFlag: myNumberFlag,
+            includeSensitiveInExport: includeSensitiveInExport
+        )
+
+        if ProfileSecureStore.save(payload, profileId: profile.id) {
+            clearLegacySensitiveFields(profile: profile)
+        } else {
+            profile.ownerNameKana = ownerNameKana.isEmpty ? nil : ownerNameKana
+            profile.postalCode = postalCode.isEmpty ? nil : postalCode
+            profile.address = address.isEmpty ? nil : address
+            profile.phoneNumber = phoneNumber.isEmpty ? nil : phoneNumber
+            profile.businessCategory = businessCategory.isEmpty ? nil : businessCategory
+            profile.myNumberFlag = myNumberFlag
+            profile.dateOfBirth = hasDateOfBirth ? dateOfBirth : nil
+        }
+
         profile.updatedAt = Date()
 
         dataStore.save()
+    }
+
+    private func hasLegacySensitiveFields(profile: PPAccountingProfile) -> Bool {
+        profile.ownerNameKana != nil ||
+        profile.postalCode != nil ||
+        profile.address != nil ||
+        profile.phoneNumber != nil ||
+        profile.dateOfBirth != nil ||
+        profile.businessCategory != nil ||
+        profile.myNumberFlag != nil
+    }
+
+    private func clearLegacySensitiveFields(profile: PPAccountingProfile) {
+        profile.ownerNameKana = nil
+        profile.postalCode = nil
+        profile.address = nil
+        profile.phoneNumber = nil
+        profile.dateOfBirth = nil
+        profile.businessCategory = nil
+        profile.myNumberFlag = nil
     }
 }

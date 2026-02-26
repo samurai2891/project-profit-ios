@@ -7,7 +7,9 @@
       "xmlTag": "AMF00100",
       "taxLineRawValue": "sales_revenue",
       "section": "revenue",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "revenue_other_income",
@@ -15,7 +17,9 @@
       "xmlTag": "AMF00960",
       "taxLineRawValue": "other_income",
       "section": "revenue",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_rent",
@@ -23,7 +27,9 @@
       "xmlTag": "AMF00340",
       "taxLineRawValue": "rent",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_utilities",
@@ -31,7 +37,9 @@
       "xmlTag": "AMF00210",
       "taxLineRawValue": "utilities",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_travel",
@@ -39,7 +47,9 @@
       "xmlTag": "AMF00220",
       "taxLineRawValue": "travel",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_communication",
@@ -47,7 +57,9 @@
       "xmlTag": "AMF00230",
       "taxLineRawValue": "communication",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_advertising",
@@ -55,7 +67,9 @@
       "xmlTag": "AMF00240",
       "taxLineRawValue": "advertising",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_entertainment",
@@ -63,7 +77,9 @@
       "xmlTag": "AMF00250",
       "taxLineRawValue": "entertainment",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_depreciation",
@@ -71,7 +87,9 @@
       "xmlTag": "AMF00290",
       "taxLineRawValue": "depreciation",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_repair",
@@ -79,7 +97,9 @@
       "xmlTag": "AMF00270",
       "taxLineRawValue": "repair",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_supplies",
@@ -87,7 +107,9 @@
       "xmlTag": "AMF00280",
       "taxLineRawValue": "supplies",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_welfare",
@@ -95,7 +117,9 @@
       "xmlTag": "AMF00300",
       "taxLineRawValue": "welfare",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_outsourcing",
@@ -103,7 +127,9 @@
       "xmlTag": "AMF00320",
       "taxLineRawValue": "outsourcing",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "expense_misc",
@@ -111,7 +137,9 @@
       "xmlTag": "AMF00370",
       "taxLineRawValue": "misc",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "income_total_revenue",
@@ -119,7 +147,9 @@
       "xmlTag": "AMF00970",
       "taxLineRawValue": null,
       "section": "income",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "income_total_expenses",
@@ -127,7 +157,9 @@
       "xmlTag": "AMF00380",
       "taxLineRawValue": null,
       "section": "income",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "income_net",
@@ -135,7 +167,9 @@
       "xmlTag": "AMF00530",
       "taxLineRawValue": null,
       "section": "income",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_name",
@@ -143,7 +177,9 @@
       "xmlTag": "ABA00140",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_name_kana",
@@ -151,7 +187,9 @@
       "xmlTag": "ABA00130",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_postal_code",
@@ -159,7 +197,10 @@
       "xmlTag": "ABA00080",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null,
+      "format": "digits7"
     },
     {
       "internalKey": "declarant_address",
@@ -167,7 +208,9 @@
       "xmlTag": "ABA00090",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_phone",
@@ -175,7 +218,9 @@
       "xmlTag": "ABA00220",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_business_name",
@@ -183,7 +228,9 @@
       "xmlTag": "ABA00170",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_business_category",
@@ -191,7 +238,9 @@
       "xmlTag": "ABA00160",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "declarant_birth_date",
@@ -199,7 +248,10 @@
       "xmlTag": "ABA00200",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "text"
+      "dataType": "text",
+      "form": "common",
+      "requiredRule": null,
+      "format": "date"
     },
     {
       "internalKey": "declarant_my_number_flag",
@@ -207,7 +259,9 @@
       "xmlTag": "ABA00125",
       "taxLineRawValue": null,
       "section": "declarantInfo",
-      "dataType": "flag"
+      "dataType": "flag",
+      "form": "common",
+      "requiredRule": null
     },
     {
       "internalKey": "inventory_opening",
@@ -215,7 +269,9 @@
       "xmlTag": "AMF00120",
       "taxLineRawValue": null,
       "section": "inventory",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "inventory_purchases",
@@ -223,7 +279,9 @@
       "xmlTag": "AMF00130",
       "taxLineRawValue": null,
       "section": "inventory",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "inventory_closing",
@@ -231,7 +289,9 @@
       "xmlTag": "AMF00150",
       "taxLineRawValue": null,
       "section": "inventory",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "inventory_cogs",
@@ -239,7 +299,9 @@
       "xmlTag": "AMF00110",
       "taxLineRawValue": null,
       "section": "inventory",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "bs_total_assets",
@@ -247,7 +309,9 @@
       "xmlTag": "AMG00440",
       "taxLineRawValue": null,
       "section": "balanceSheet",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "bs_total_liabilities",
@@ -255,7 +319,9 @@
       "xmlTag": "AMG00760",
       "taxLineRawValue": null,
       "section": "balanceSheet",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "bs_total_equity",
@@ -263,7 +329,9 @@
       "xmlTag": "AMG00740",
       "taxLineRawValue": null,
       "section": "balanceSheet",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_revenue_total",
@@ -271,7 +339,9 @@
       "xmlTag": "AIG00020",
       "taxLineRawValue": "sales_revenue",
       "section": "revenue",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_rent",
@@ -279,7 +349,9 @@
       "xmlTag": "AIG00190",
       "taxLineRawValue": "rent",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_utilities",
@@ -287,7 +359,9 @@
       "xmlTag": "AIG00240",
       "taxLineRawValue": "utilities",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_travel",
@@ -295,7 +369,9 @@
       "xmlTag": "AIG00250",
       "taxLineRawValue": "travel",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_communication",
@@ -303,7 +379,9 @@
       "xmlTag": "AIG00260",
       "taxLineRawValue": "communication",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_advertising",
@@ -311,7 +389,9 @@
       "xmlTag": "AIG00270",
       "taxLineRawValue": "advertising",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_entertainment",
@@ -319,7 +399,9 @@
       "xmlTag": "AIG00280",
       "taxLineRawValue": "entertainment",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_depreciation",
@@ -327,7 +409,9 @@
       "xmlTag": "AIG00170",
       "taxLineRawValue": "depreciation",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_repair",
@@ -335,7 +419,9 @@
       "xmlTag": "AIG00300",
       "taxLineRawValue": "repair",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_supplies",
@@ -343,7 +429,9 @@
       "xmlTag": "AIG00310",
       "taxLineRawValue": "supplies",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_welfare",
@@ -351,7 +439,9 @@
       "xmlTag": "AIG00320",
       "taxLineRawValue": "welfare",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_outsourcing",
@@ -359,7 +449,9 @@
       "xmlTag": "AIG00160",
       "taxLineRawValue": "outsourcing",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_misc",
@@ -367,7 +459,9 @@
       "xmlTag": "AIG00340",
       "taxLineRawValue": "misc",
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_expense_total",
@@ -375,7 +469,9 @@
       "xmlTag": "AIG00360",
       "taxLineRawValue": null,
       "section": "expenses",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_income_net",
@@ -383,7 +479,9 @@
       "xmlTag": "AIG00400",
       "taxLineRawValue": null,
       "section": "income",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     },
     {
       "internalKey": "shushi_rent_breakdown",
@@ -391,7 +489,23 @@
       "xmlTag": "AIN00090",
       "taxLineRawValue": "rent",
       "section": "deductions",
-      "dataType": "number"
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
     }
-  ]
+  ],
+  "forms": {
+    "blue_general": {
+      "formId": "KOA210",
+      "formVer": "11.0",
+      "rootTag": "KOA210",
+      "mappingFile": "tools/etax/mapping_rules_2025.json"
+    },
+    "white_shushi": {
+      "formId": "KOA110",
+      "formVer": "12.0",
+      "rootTag": "KOA110",
+      "mappingFile": "tools/etax/mapping_rules_2025.json"
+    }
+  }
 }
