@@ -10,6 +10,7 @@ enum ShushiNaiyakushoBuilder {
         fiscalYear: Int,
         profitLoss: ProfitLossReport,
         accounts: [PPAccount],
+        profile: PPAccountingProfile? = nil,
         fixedAssets: [PPFixedAsset] = [],
         journalLines: [PPJournalLine] = [],
         journalEntries: [PPJournalEntry] = []
@@ -39,7 +40,11 @@ enum ShushiNaiyakushoBuilder {
         for (taxLine, amount) in expenseByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             fields.append(EtaxField(
                 id: "shushi_expense_\(taxLine.rawValue)",
-                fieldLabel: TaxYearDefinitionLoader.fieldLabel(for: taxLine, fiscalYear: fiscalYear),
+                fieldLabel: TaxYearDefinitionLoader.fieldLabel(
+                    for: taxLine,
+                    formType: .whiteReturn,
+                    fiscalYear: fiscalYear
+                ),
                 taxLine: taxLine,
                 value: amount,
                 section: .expenses
@@ -98,6 +103,11 @@ enum ShushiNaiyakushoBuilder {
                 value: rentTotal,
                 section: .deductions
             ))
+        }
+
+        // 共通の申告者情報
+        if let profile {
+            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(profile: profile))
         }
 
         return EtaxForm(

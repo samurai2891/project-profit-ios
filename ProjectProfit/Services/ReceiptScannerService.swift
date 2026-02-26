@@ -218,7 +218,7 @@ final class ReceiptScannerService {
           hosting（サーバー・ドメイン・クラウド）, tools（ソフトウェア・SaaS）, ads（広告）,
           contractor（外注・委託）, communication（通信・電話）, supplies（事務用品・消耗品）,
           transport（交通費・タクシー・駐車場）, food（飲食・食料品・コンビニ・レストラン・カフェ）,
-          entertainment（接待・会議費）, other-expense（上記以外の経費）,
+          entertainment（接待・会議費）, insurance（保険料）, other-expense（上記以外の経費）,
           sales（売上）, service（サービス収入）, other-income（上記以外の収益）
         - itemSummary: 購入品目の要約（品名を3つまでカンマ区切り）
         - confidence: 推定の信頼度を0.0〜1.0で返す
@@ -654,7 +654,7 @@ enum RegexReceiptParser {
         let validIncome = Set(["sales", "service", "other-income"])
         let validExpense = Set([
             "hosting", "tools", "ads", "contractor", "communication",
-            "supplies", "transport", "food", "entertainment", "other-expense",
+            "supplies", "transport", "food", "entertainment", "insurance", "other-expense",
         ])
 
         if type == .income {
@@ -739,6 +739,10 @@ enum RegexReceiptParser {
             ("entertainment", [
                 "接待", "会議費", "懇親会", "歓迎会", "送別会", "忘年会", "新年会",
                 "打ち合わせ", "ミーティング", "セミナー", "研修",
+            ]),
+            ("insurance", [
+                "保険", "保険料", "損害保険", "火災保険", "地震保険", "自動車保険",
+                "賠償責任保険", "共済", "生命保険", "医療保険",
             ]),
             ("supplies", [
                 "文具", "コピー", "用紙", "消耗品", "事務用品", "トナー", "インク",

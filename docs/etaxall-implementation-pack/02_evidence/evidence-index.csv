@@ -1,0 +1,47 @@
+EvidenceID,Source,Line,Fact,CollectedBy
+E001,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,7-10,"タグを仕様書から機械抽出して埋める運用が必須と明記",A01
+E002,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,70-72,"年分別マッピングと更新履歴追従が必要",A01
+E003,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,110-117,"TaxYearDefinitionにforms(formId/formVer/mappingFile)を持つ設計を要求",A02
+E004,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,158-162,"全internalKeyにxmlTag 100%埋め込みが受入条件",A02
+E005,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,385-390,"xmlTag/format/requiredRuleの強制と不充足時エクスポート不可を要求",A03
+E006,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,178-179,"高機微情報は端末内暗号化・同意・エクスポート除外を必須化",A10
+E007,e-taxall/確定申告仕様書/Project Profit iOS：複式簿記コア導入・完全仕様書（外注実装用）.md,6,"送信（ログイン/署名/送信操作）は非スコープ",A05
+E008,docs/etaxall-audit/extracted/api_spec.txt,89-90,"API呼出しにX-Etax-Api-KeyとAuthorizationトークンが必須",A05
+E009,docs/etaxall-audit/extracted/api_spec.txt,92,"ブラウザ呼出し非対応でサーバーサイド処理が必要",A05
+E010,docs/etaxall-audit/extracted/api_spec.txt,122,"本番APIドメインは api.e-tax.nta.go.jp",A05
+E011,docs/etaxall-audit/extracted/e_signature_spec.txt,20-24,"電子署名はXML署名、SHA-1/SHA-256を許容",A06
+E012,docs/etaxall-audit/extracted/e_signature_spec.txt,65,"1送信データに複数XML署名を付与可能",A06
+E013,docs/etaxall-audit/extracted/send_receive_module_spec.txt,10-27,"CLICommunication/CreateRequest/Send/GetResponseの連携が前提",A07
+E014,docs/etaxall-audit/extracted/send_receive_module_spec.txt,72-75,"MyNumberCardLogin関数でマイナンバーカード認証を実施",A07
+E015,docs/etaxall-audit/extracted/csv_module_spec.txt,31-51,"CsvCheckToXbrl2とCsvConvToXbrl2の検証→変換フローを定義",A08
+E016,docs/etaxall-audit/extracted/csv_module_spec.txt,176,"CSV変換モジュールはファイル/パス名のマルチバイト文字を禁止",A08
+E017,docs/etaxall-audit/extracted/csv_module_interface_spec.txt,6,"変換結果はe-Tax受付可能データ形式(XML)のレベル3タグ配下",A08
+E018,docs/etaxall-audit/extracted/csv_module_interface_spec.txt,233,"SoftNM属性は eTaxCSVConv_作成ソフト名 の規則",A08
+E019,e-taxall/19XMLスキーマ/shotoku/KOA210-011.xsd,23-52,"青色申告決算書はKOA210要素でVR属性とFormAttribute必須",A02
+E020,e-taxall/19XMLスキーマ/shotoku/KOA210-011.xsd,171-210,"AMF00100はKOA210内のネスト要素として定義",A02
+E021,e-taxall/19XMLスキーマ/shotoku/KOA110-012.xsd,23-42,"収支内訳書はKOA110要素でVR属性とFormAttribute必須",A03
+E022,e-taxall/19XMLスキーマ/general/General.xsd,22-27,"FormAttributeにsoftNM/sakuseiNM/sakuseiDayがrequired",A04
+E023,command:find e-taxall -type f | wc -l,n/a,"e-taxall全体は18,497ファイル、うちxsd 16,913件",A09
+E024,command:find e-taxall/09XML構造設計書等【所得税】 -maxdepth 1 -type f | wc -l,n/a,"所得税設計書ディレクトリ直下に58ファイル",A09
+E025,ProjectProfit/Resources,TaxYear2025.json only,"TaxYearリソースは2025年分1ファイルのみ",A14
+E026,ProjectProfit/Resources/TaxYear2025.json,2-3,"TaxYear2025のトップキーはfiscalYearとfieldsのみ(forms無し)",A13
+E027,ProjectProfit/Resources/TaxYear2025.json,7/143/271,"実運用タグはAMF00100/ABA00140/AIG00020系",A13
+E028,ProjectProfit/Services/EtaxXtxExporter.swift,107-118,"出力XMLルートは<eTaxData>で名前空間・VR属性なし",A11
+E029,ProjectProfit/Services/EtaxXtxExporter.swift,137-140,"定義に無いinternalKeyはcontinueで黙って破棄",A11
+E030,ProjectProfit/Services/EtaxCharacterValidator.swift,79-95,"フォーム検証は文字種のみでrequired/format/typeチェックなし",A12
+E031,ProjectProfit/Services/EtaxFieldPopulator.swift,105-157,"申告者情報は非空項目だけ追加され、必須項目欠落を許容",A12
+E032,ProjectProfit/Models/EtaxModels.swift,161-179,"missingRequiredField/validationFailedエラー型が定義のみで未使用",A12
+E033,ProjectProfitTests/EtaxXtxExporterTests.swift,42-44/127,"SwiftテストはBlueRevenueSales系タグを期待",A16
+E034,ProjectProfitTests/TaxYearDefinitionLoaderTests.swift,43-44,"LoaderテストはxmlTag=BlueRevenueSalesを期待",A16
+E035,ProjectProfit/Resources/TaxYear2025.json,7,"実リソースのrevenue_sales_revenueはAMF00100",A16
+E036,scripts/run_etax_unit_lane.sh,7-22,"実行スクリプトはPython系3ステップのみでSwift laneを実行しない",A15
+E037,docs/testing/etax-unit-lane.md,9-13/43-51,"文書上はetax-core(Swift)とfiscal-linkをレーン構成に含む",A15
+E038,search(ProjectProfit/**),no matches,"CryptoKit/Keychain/SecItem参照がProjectProfit配下で見つからない",A17
+E039,ProjectProfit/Models/PPAccountingProfile.swift,23-29,"氏名/住所/電話/生年月日/マイナンバーフラグを平文属性で保持",A17
+E040,xcodebuild test (2026-02-26),stderr,"CoreSimulatorService invalidによりiPhone 15 destination解決不可",A24
+E041,tools/etax/required_internal_keys.json,2-52/53-105,"required keyはall=49（blue33 + white16）",A13
+E042,e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md,216-227,"主要経費TaxLineに利子割引料/租税公課を含む",A04
+E043,ProjectProfit/Models/TaxLineDefinitions.swift,10-21,"実装TaxLineはrepair/welfareを含みinterest/taxesを持たない",A04
+E044,ProjectProfit/Resources/TaxYear2025.json,5-17/271-277,"sales_revenueがblue/shushi双方で重複定義",A13
+E045,ProjectProfit/Services/TaxYearDefinitionLoader.swift,15-20,"fieldLabel(for taxLine)は最初に見つかった1件のみ返す",A13
+E046,docs/testing/etax-regression-checklist.md,6-31,"回帰チェック項目が全て未チェック状態",A23

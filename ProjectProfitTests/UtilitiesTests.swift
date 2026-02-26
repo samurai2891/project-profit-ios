@@ -634,7 +634,7 @@ final class UtilitiesTests: XCTestCase {
         )
 
         let withoutBOM = String(csv.dropFirst())
-        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\"")
+        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\"")
     }
 
     func testGenerateCSVEmptyTransactions() {
@@ -834,7 +834,7 @@ final class UtilitiesTests: XCTestCase {
         // The category field should be empty string within quotes
         // Row format: "date","type","amount","","","memo"
         let fields = parseCSVRow(row)
-        XCTAssertEqual(fields.count, 12)
+        XCTAssertEqual(fields.count, 19)
         XCTAssertEqual(fields[3], "", "Nil category should produce empty string")
     }
 
@@ -879,6 +879,51 @@ final class UtilitiesTests: XCTestCase {
         }
         fields.append(current)
         return fields
+    }
+
+    // MARK: - parseCSV
+
+    func testParseCSVPreservesIdenticalRowsAsSeparateTransactions() {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ
+        2026-01-10,経費,1000,消耗品,ProjectA(100%),同一行
+        2026-01-10,経費,1000,消耗品,ProjectA(100%),同一行
+        """
+
+        let parsed = parseCSV(csvString: csv)
+        XCTAssertEqual(parsed.count, 2, "同一内容の行は重複削除せず2件として保持する")
+    }
+
+    func testParseCSVTransferAllowsEmptyCategoryAndProject() {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,振替先口座
+        2026-01-10,振替,5000,,,口座間移動,acct-cash,acct-bank
+        """
+
+        let parsed = parseCSV(csvString: csv)
+        XCTAssertEqual(parsed.count, 1)
+        XCTAssertEqual(parsed[0].type, .transfer)
+        XCTAssertEqual(parsed[0].categoryName, "")
+        XCTAssertTrue(parsed[0].allocations.isEmpty)
+        XCTAssertEqual(parsed[0].paymentAccountId, "acct-cash")
+        XCTAssertEqual(parsed[0].transferToAccountId, "acct-bank")
+    }
+
+    func testParseCSVReadsExtendedAccountingColumns() {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,振替先口座,必要経費算入率,消費税額,税率,税込区分,税区分
+        2026-01-10,経費,1080,消耗品,ProjectA(100%),CSV拡張,acct-cash,,80,80,8,税込,reducedRate
+        """
+
+        let parsed = parseCSV(csvString: csv)
+        XCTAssertEqual(parsed.count, 1)
+        XCTAssertEqual(parsed[0].paymentAccountId, "acct-cash")
+        XCTAssertNil(parsed[0].transferToAccountId)
+        XCTAssertEqual(parsed[0].taxDeductibleRate, 80)
+        XCTAssertEqual(parsed[0].taxAmount, 80)
+        XCTAssertEqual(parsed[0].taxRate, 8)
+        XCTAssertEqual(parsed[0].isTaxIncluded, true)
+        XCTAssertEqual(parsed[0].taxCategory, .reducedRate)
     }
 
     // MARK: - calculateRatioAllocations
@@ -1008,6 +1053,13 @@ final class UtilitiesTests: XCTestCase {
         XCTAssertTrue(withoutBOM.contains("\"更新日\""), "Header should contain 更新日")
         XCTAssertTrue(withoutBOM.contains("\"レシート画像\""), "Header should contain レシート画像")
         XCTAssertTrue(withoutBOM.contains("\"明細\""), "Header should contain 明細")
+        XCTAssertTrue(withoutBOM.contains("\"支払口座\""), "Header should contain 支払口座")
+        XCTAssertTrue(withoutBOM.contains("\"振替先口座\""), "Header should contain 振替先口座")
+        XCTAssertTrue(withoutBOM.contains("\"必要経費算入率\""), "Header should contain 必要経費算入率")
+        XCTAssertTrue(withoutBOM.contains("\"消費税額\""), "Header should contain 消費税額")
+        XCTAssertTrue(withoutBOM.contains("\"税率\""), "Header should contain 税率")
+        XCTAssertTrue(withoutBOM.contains("\"税込区分\""), "Header should contain 税込区分")
+        XCTAssertTrue(withoutBOM.contains("\"税区分\""), "Header should contain 税区分")
     }
 
     func testGenerateCSVExpandedFieldsOutput() {
@@ -1028,6 +1080,13 @@ final class UtilitiesTests: XCTestCase {
             recurringId: recurringId,
             receiptImagePath: "receipt_001.jpg",
             lineItems: [lineItem],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: "acct-bank",
+            taxDeductibleRate: 80,
+            taxAmount: 400,
+            taxRate: 8,
+            isTaxIncluded: true,
+            taxCategory: .reducedRate,
             createdAt: createdAt,
             updatedAt: createdAt
         )
@@ -1045,12 +1104,19 @@ final class UtilitiesTests: XCTestCase {
 
         let row = lines[1]
         let fields = parseCSVRow(row)
-        XCTAssertEqual(fields.count, 12, "Should have 12 fields")
+        XCTAssertEqual(fields.count, 19, "Should have 19 fields")
         XCTAssertTrue(fields[6].contains("TestProject:5000"), "Allocation amounts field")
         XCTAssertEqual(fields[7], recurringId.uuidString, "Recurring ID field")
         XCTAssertTrue(fields[8].contains("2026-02-28"), "Created at field")
         XCTAssertEqual(fields[10], "receipt_001.jpg", "Receipt image field")
         XCTAssertTrue(fields[11].contains("品目A×2@2500"), "Line items field")
+        XCTAssertEqual(fields[12], "acct-cash")
+        XCTAssertEqual(fields[13], "acct-bank")
+        XCTAssertEqual(fields[14], "80")
+        XCTAssertEqual(fields[15], "400")
+        XCTAssertEqual(fields[16], "8")
+        XCTAssertEqual(fields[17], "税込")
+        XCTAssertEqual(fields[18], TaxCategory.reducedRate.rawValue)
     }
 
     func testGenerateCSVBackwardCompatibleFieldOrder() {

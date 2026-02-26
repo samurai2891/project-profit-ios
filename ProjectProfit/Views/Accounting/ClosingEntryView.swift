@@ -6,6 +6,8 @@ struct ClosingEntryView: View {
     @State private var selectedYear: Int
     @State private var showDeleteConfirmation = false
     @State private var showRegenerateConfirmation = false
+    @State private var showLockConfirmation = false
+    @State private var showUnlockConfirmation = false
 
     init() {
         let currentYear = Calendar.current.component(.year, from: Date())
@@ -57,6 +59,22 @@ struct ClosingEntryView: View {
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("既存の決算仕訳を削除して、最新データで再生成します。")
+        }
+        .alert("\(selectedYear)年度をロックしますか？", isPresented: $showLockConfirmation) {
+            Button("ロック", role: .destructive) {
+                dataStore.lockFiscalYear(selectedYear)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("ロック中は、この年度の取引・仕訳・固定資産・棚卸の更新ができません。")
+        }
+        .alert("\(selectedYear)年度のロックを解除しますか？", isPresented: $showUnlockConfirmation) {
+            Button("解除") {
+                dataStore.unlockFiscalYear(selectedYear)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("ロック解除後は、この年度の更新が可能になります。")
         }
     }
 
@@ -148,6 +166,21 @@ struct ClosingEntryView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 8) {
+            Button {
+                if isYearLocked {
+                    showUnlockConfirmation = true
+                } else {
+                    showLockConfirmation = true
+                }
+            } label: {
+                Label(
+                    isYearLocked ? "年度ロックを解除" : "この年度をロック",
+                    systemImage: isYearLocked ? "lock.open" : "lock"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
             if closingEntry == nil {
                 Button {
                     dataStore.generateClosingEntry(for: selectedYear)

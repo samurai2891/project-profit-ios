@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<KOA210
+  xmlns="http://xml.e-tax.nta.go.jp/XSD/shotoku"
+  xmlns:gen="http://xml.e-tax.nta.go.jp/XSD/general"
+  VR="11.0"
+  softNM="ProjectProfit"
+  sakuseiNM="Project Profit iOS"
+  sakuseiDay="2026-01-01">
+</KOA210>

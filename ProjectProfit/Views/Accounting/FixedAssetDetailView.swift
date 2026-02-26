@@ -19,6 +19,16 @@ struct FixedAssetDetailView: View {
         Calendar.current.component(.year, from: Date())
     }
 
+    private var isAssetFiscalYearLocked: Bool {
+        guard let asset else { return false }
+        let year = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
+        return dataStore.accountingProfile?.isYearLocked(year) ?? false
+    }
+
+    private var isCurrentYearLocked: Bool {
+        dataStore.accountingProfile?.isYearLocked(currentYear) ?? false
+    }
+
     private var schedule: [DepreciationCalculation] {
         guard let asset else { return [] }
         return dataStore.previewDepreciationSchedule(asset: asset)
@@ -54,23 +64,27 @@ struct FixedAssetDetailView: View {
                         } label: {
                             Label("編集", systemImage: "pencil")
                         }
+                        .disabled(isAssetFiscalYearLocked)
                         Button {
                             showPostConfirmation = true
                         } label: {
                             Label("\(currentYear)年の償却を計上", systemImage: "tray.and.arrow.down")
                         }
+                        .disabled(isCurrentYearLocked)
                         if currentAsset.assetStatus == .active {
                             Button(role: .destructive) {
                                 showDisposeConfirmation = true
                             } label: {
                                 Label("除却", systemImage: "xmark.circle")
                             }
+                            .disabled(isAssetFiscalYearLocked)
                         }
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
                         } label: {
                             Label("削除", systemImage: "trash")
                         }
+                        .disabled(isAssetFiscalYearLocked)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -84,8 +98,9 @@ struct FixedAssetDetailView: View {
         }
         .alert("固定資産を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                dataStore.deleteFixedAsset(id: assetId)
-                dismiss()
+                if dataStore.deleteFixedAsset(id: assetId) {
+                    dismiss()
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -146,6 +161,11 @@ struct FixedAssetDetailView: View {
             }
             infoRow("事業使用割合", "\(asset.businessUsePercent)%")
             infoRow("ステータス", asset.assetStatus.label)
+            if isAssetFiscalYearLocked {
+                Label("取得年度がロック済みのため編集・削除はできません", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.warning)
+            }
             if let memo = asset.memo, !memo.isEmpty {
                 infoRow("メモ", memo)
             }

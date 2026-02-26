@@ -1,0 +1,1132 @@
+Ⅱ　インターフェイス仕様書
+1.　CLICsvConvXMLインターフェイス
+
+1.1　概要
+CSV形式の財務諸表データ、勘定科目内訳明細書データ、および法人税申告書別表等データをXML形式(※1)に変換するためのインターフェイス。
+(※1) e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下
+
+1.2　メンバー関数
+(1)  CsvCheckToXbrl
+HRESULT CsvCheckToXbrl (
+[in] BSTR bstrCsvFilePath,  [in] BSTR bstrPropertyFolderPath, 
+[in] BSTR bstrStyleVersion, [in] BSTR bstrNameConvListFilePath);
+
+説明
+財務諸表（HOT010（Ver2.0））に対応したCSVデータを検証する。なお、e-Tax標準科目への集約を行う勘定科目が存在する場合、勘定科目集約前後の情報をCSV形式で一覧に出力する。
+引数
+説明
+bstrCsvFilePath
+財務諸表CSVファイルのフルパス名（ファイル名含む）。なお、ファイル名の命名規則は以下とする。
+「様式ID_財務諸表_様式バージョン.csv」
+（例）HOT010_財務諸表_2.0.csv
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+指定されたフォルダ配下には、以下のファイルが格納されていること。
+・e-Tax標準科目和名プロパティ（CSV）
+・e-Tax標準科目リスト（XML）
+・変換情報プロパティ（XML）
+bstrStyleVersion
+検証する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+bstrNameConvListFilePath
+e-Tax標準科目へ集約を行った科目リストCSVファイルを出力するフルパス名（ファイル名含む）。
+NULLまたは、空が指定された場合、出力は行わない。
+なお、CSVデータには、カンマ区切りで"財務諸表CSVファイル内のレコード,集約前科目名,集約後科目名"を格納する。
+（CSV出力例）
+5,医薬品,薬品
+8,車両,車両運搬具
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_FAIL
+失敗
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(2)  CsvCheckToXbrl2
+HRESULT CsvCheckToXbrl2 (
+[in] BSTR bstrCsvFilePath, 
+[in] BSTR bstrCsvFolderPath,
+[in] BSTR bstrPropertyFolderPath,
+[in] BSTR bstrStyleVersion,
+[out,retval] IDispatch** pResultInfo);
+
+説明
+財務諸表（HOT010（Ver3.0））に対応したCSVファイルを検証する。
+引数
+説明
+bstrCsvFilePath
+CSVファイル単位で検証を行う場合に、対象とするCSVファイルのフルパス名（ファイル名含む）。
+bstrCsvFolderPath
+CSVファイルが格納されたフォルダ単位で検証する場合に、対象とするフォルダパス。
+※引数“bstrCsvFilePath”にも値が設定されている場合は戻り値に「E_FAIL」を返却する。
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。指定されたフォルダ配下には、以下のファイルが格納されていること。
+・勘定科目コードリスト（CSV）
+・タクソノミ情報プロパティ（ini）
+bstrStyleVersion
+検証する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+pResultInfo
+処理結果情報(※)を受け取る変数へのポインタ
+(※)「2. CLIXbrlResultインターフェイス」参照。
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+(3)  CsvCheckToDetailAccountTitle
+HRESULT CsvCheckToDetailAccountTitle (
+[in] BSTR bstrCsvFilePath,  [in] BSTR bstrPropertyFolderPath,
+[in] BSTR bstrStyleVersion);
+説明
+手続きVer15.1.0～18.0.2に対応する勘定科目内訳明細書CSVデータを検証する。
+
+引数
+説明
+bstrCsvFilePath
+勘定科目内訳明細書CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」または「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOI010_1.0.csv
+※手続きVer15.1.0～18.0.2に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+bstrStyleVersion
+検証する様式のバージョンを指定する (X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+※手続きVer15.1.0～18.0.2に対応する様式バージョンが対象
+
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_FAIL
+失敗
+
+
+
+
+(4)  CsvCheckToDetailAccountTitle2
+HRESULT CsvCheckToDetailAccountTitle2 (
+[in] BSTR bstrCsvFilePath,  [in] BSTR bstrPropertyFolderPath,
+[in] BSTR bstrStyleVersion,
+[out] LONG* pVal);
+説明
+手続きVer18.1.0以降に対応する勘定科目内訳明細書CSVデータを検証する。
+
+引数
+説明
+bstrCsvFilePath
+勘定科目内訳明細書CSVファイルのフルパス名（ファイル名含む）。なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」または「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOI010_1.0.csv
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+bstrStyleVersion
+検証する様式のバージョンを指定する (X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+pVal
+CSVファイルの状態を格納するLONG型変数へのポインタ。勘定科目内訳明細書CSVファイルが、「レコードの内容及び留意事項」に沿っている場合「1」、「レコードの内容及び留意事項」に沿っていない場合「2」を格納。
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+(5)  CsvCheckToAppendedTable
+HRESULT CsvCheckToCsvCheckToAppendedTable (
+[in] BSTR bstrCsvFilePath,  [in] BSTR bstrPropertyFolderPath,
+[in] BSTR bstrStyleVersion,
+[out] LONG* pVal);
+説明
+法人税申告書別表等CSVデータを検証する。
+
+引数
+説明
+bstrCsvFilePath
+法人税申告書別表等CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」または「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOB016_4.0.csv
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+bstrStyleVersion
+検証する様式のバージョンを指定する (X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+pVal
+CSVファイルの状態を格納するLONG型変数へのポインタ。法人税申告書別表等CSVファイルが、「レコードの内容及び留意事項」に沿っている場合「1」、「レコードの内容及び留意事項」に沿っていない場合「2」を格納。
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+(6)  CsvConvToXbrl
+HRESULT CsvConvToXbrl(
+[in] BSTR bstrCsvFilePath,
+[in] BSTR bstrPropertyFolderPath
+[in] BSTR bstrStyleVersion,
+[in] BSTR bstrSoftNM,
+[in] BSTR bstrOutputFilePath,
+[in] BSTR bstrNameConvListFilePath, [out] VARIANT* pvarNameConvList, [out,retval] BSTR* pbstrConvXML);
+
+説明
+財務諸表（HOT010（Ver2.0））に対応したCSVデータをXML形式(※1)に変換する。
+(※1) e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下
+引数
+説明
+bstrCsvFilePath
+財務諸表CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_財務諸表_様式バージョン.csv」
+（例）HOT010_財務諸表_2.0.csv
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+指定されたフォルダ配下には、以下のファイルが格納されていること。
+・e-Tax標準科目和名プロパティ（CSV）
+・e-Tax標準科目リスト（XML）
+・変換情報プロパティ（XML）
+bstrStyleVersion
+変換する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+※様式バージョンについては平成28年3月における最新手続き以降に対応するバージョンが対象
+bstrSoftNM
+作成ソフト名。指定された値は、"eTaxCSVConv" + "_" + "作成ソフト名" の文字列として設定する。NULLまたは、空が指定された場合、"eTaxCSVConv"とする。
+bstrOutputFilePath
+変換後のXMLデータを出力するファイルのフルパス名（ファイル名含む）。NULLまたは、空が指定された場合、出力は行わない。
+bstrNameConvListFilePath
+e-Tax標準科目へ集約を行った科目リストCSVファイルを出力するフルパス名（ファイル名含む）。
+NULLまたは、空が指定された場合、出力は行わない。
+なお、CSVデータには、カンマ区切りで"財務諸表CSVファイル内のレコード,集約前科目名,集約後科目名"を格納する。
+（CSV出力例）
+5,医薬品,薬品
+8,車両,車両運搬具
+pvarNameConvList
+e-Tax標準科目へ集約を行った科目リストを格納するSAFEARRAY型の値を受け取る変数へのポインタ
+e-Tax標準科目へ集約を行った科目リストは、カンマ区切りで"財務諸表CSVファイル内のレコード,集約前科目名,集約後科目名"を格納
+
+格納イメージ）
+parray[0]：5,医薬品,薬品
+parray[1]：8,車両,車両運搬具
+pbstrConvXML
+変換XMLを受け取る変数へのポインタ
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+
+(7)  CsvConvToXbrl2
+HRESULT CsvConvToXbrl2(
+[in] BSTR bstrCsvFilePath,
+[in] BSTR bstrCsvFolderPath,
+[in] BSTR bstrPropertyFolderPath,
+[in] BSTR bstrStyleVersion,
+[in] BSTR bstrSoftNM,
+[in] BSTR bstrSakuseiNM,
+[in] BSTR bstrOutputFilePath,
+[out,retval] IDispatch** pResultInfo);
+
+説明
+財務諸表（HOT010（Ver3.0））に対応したCSVデータをXML形式(※1)に変換する。
+(※1) e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下
+
+引数
+説明
+bstrCsvFilePath
+CSVファイル単位で変換を行う場合に、対象とするCSVファイルのフルパス名（ファイル名含む）。
+bstrCsvFolderPath
+CSVファイルが格納されたフォルダ単位で変換する場合に、対象とするフォルダパス。
+※引数“bstrCsvFilePath”にも値が設定されている場合は戻り値に「E_FAIL」を返却する。
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。指定されたフォルダ配下には、以下のファイルが格納されていること。
+・勘定科目コードリスト（CSV）
+・タクソノミ情報プロパティ（ini）
+bstrStyleVersion
+変換する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている様式のバージョンを設定する。
+bstrSoftNM
+作成ソフト名。指定された値は、"eTaxCSVConv" + "_" + "作成ソフト名" の文字列として設定する。NULLまたは、空が指定された場合、"eTaxCSVConv"とする。
+bstrSakuseiNM
+変換後のXMLデータ内の「作成者」に設定する値を30文字以内で指定する。
+bstrOutputFilePath
+変換後のXMLデータを出力するファイルのフルパス名（ファイル名含む）。NULLまたは、空が指定された場合、出力は行わない。
+pResultInfo
+処理結果情報(※)を受け取る変数へのポインタ
+(※)「2. CLIXbrlResultインターフェイス」参照。
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(8)  CsvConvToDetailAccountTitle
+HRESULT CsvConvToDetailAccountTitle (
+[in] BSTR bstrCsvFilePath, 
+[in] BSTR bstrPropertyFolderPath, [in] BSTR bstrStyleVersion,
+[in] BSTR bstrSoftNM, 
+[in] BSTR bstrSakuseiNM,
+[in] BSTR bstrOutputFilePath,
+[out,retval] BSTR* pbstrConvXML);
+説明
+手続きVer15.1.0～18.0.2に対応する勘定科目内訳明細書CSVデータをXML形式(※1)に変換する。
+(※1) e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下
+
+引数
+説明
+bstrCsvFilePath
+勘定科目内訳明細書CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」又は「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOI010_1.0.csv
+※手続きVer15.1.0～18.0.2に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+・XML構造設計プロパティ（XML）
+bstrStyleVersion
+変換する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている帳票のバージョンを設定する。
+bstrSoftNM
+作成ソフト名。指定された値は、"eTaxCSVConv" + "_" + "作成ソフト名" の文字列として使用する。NULLまたは、空が指定された場合、"eTaxCSVConv"とする。
+bstrSakuseiNM
+変換後のXMLデータ内の「作成者」に設定する値を30文字以内で指定する。
+bstrOutputFilePath
+変換後のXMLデータを出力するファイルのフルパス名（ファイル名含む）。NULLまたは、空が指定された場合、出力は行わない。
+pbstrConvXML
+変換後のXMLデータを受け取る変数へのポインタ
+
+
+(9)  CsvConvToDetailAccountTitle2
+HRESULT CsvConvToDetailAccountTitle2 (
+[in] BSTR bstrCsvFilePath, 
+[in] BSTR bstrPropertyFolderPath, [in] BSTR bstrStyleVersion,
+[in] BSTR bstrSoftNM, 
+[in] BSTR bstrSakuseiNM, 
+[in] BSTR bstrOutputFilePath,
+[out] LONG* pVal
+[in,optional] VARIANT vtCSVPageNo,  [out,retval] BSTR* pbstrConvXML);
+
+説明
+手続きVer18.1.0以降に対応する勘定科目内訳明細書CSVデータをXML形式(※1)に変換する。
+(※1) 「レコードの内容及び留意事項」に沿っている勘定科目内訳明細書CSVデータの場合は、e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下。
+「レコードの内容及び留意事項」に沿っていない勘定科目内訳明細書CSVデータの場合は、e-Taxで受付可能なデータ形式(XML)のレベル4タグ配下のCSV形式部分。
+
+
+
+
+
+
+
+
+
+引数
+説明
+bstrCsvFilePath
+勘定科目内訳明細書CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」又は「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOI010_1.0.csv
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+・XML構造設計プロパティ（XML）
+bstrStyleVersion
+変換する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている帳票のバージョンを設定する。
+bstrSoftNM
+作成ソフト名。指定された値は、"eTaxCSVConv" + "_" + "作成ソフト名" の文字列として使用する。NULLまたは、空が指定された場合、"eTaxCSVConv"とする。
+bstrSakuseiNM
+変換後のXMLデータ内の「作成者」に設定する値を30文字以内で指定する。
+bstrOutputFilePath
+変換後のXMLデータを出力するファイルのフルパス名（ファイル名含む）。NULLまたは、空が指定された場合、出力は行わない。
+pVal
+CSVファイルの状態を格納するLONG型変数へのポインタ。勘定科目内訳明細書CSVファイルが、「レコードの内容及び留意事項」に沿っている場合「1」、「レコードの内容及び留意事項」に沿っていない場合「2」を格納。
+vtCSVPageNo
+変換後のCSVデータ内の「ページ」に設定する値を設定する。設定しない場合は１を設定する。
+pbstrConvXML
+変換後のXMLデータを受け取る変数へのポインタ
+
+
+
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(10)  CsvConvToAppendedTable
+HRESULT CsvConvToAppendedTable (
+[in] BSTR bstrCsvFilePath, 
+[in] BSTR bstrPropertyFolderPath, [in] BSTR bstrStyleVersion,
+[in] BSTR bstrSoftNM, 
+[in] BSTR bstrSakuseiNM
+[in] BSTR bstrOutputFilePath, 
+[out] LONG* pVal,
+[in,optional] VARIANT vtCSVPageNo, [in,optional] VARIANT vtStartXMLPageNo,
+[out,retval] BSTR* pbstrConvXML);
+
+説明
+法人税申告書別表等CSVデータをXML形式(※1)に変換する。
+(※1) 「レコードの内容及び留意事項」に沿っている法人税申告書別表等CSVデータの場合は、e-Taxで受付可能なデータ形式(XML)のレベル3タグ配下。
+「レコードの内容及び留意事項」に沿っていない法人税申告書別表等CSVデータの場合は、e-Taxで受付可能なデータ形式(XML)のレベル4タグ配下のCSV形式部分。
+
+
+
+
+
+
+
+
+引数
+説明
+bstrCsvFilePath
+法人税申告書別表等CSVファイルのフルパス名（ファイル名含む）
+なお、ファイル名の命名規則は以下とする。
+「様式ID_様式バージョン.csv」又は「様式ID_様式バージョン_(任意の文字列).csv」
+（例）HOB015_5.0.csv
+※手続きVer18.1.0以降に対応する様式バージョンが対象
+bstrPropertyFolderPath
+変換に使用するプロパティファイルを格納するフォルダパス名。
+・XML構造設計プロパティ（XML）
+bstrStyleVersion
+変換する様式のバージョン(X.X)。
+※対象帳票一覧に記載されている帳票のバージョンを設定する。
+bstrSoftNM
+作成ソフト名。指定された値は、"eTaxCSVConv" + "_" + "作成ソフト名" の文字列として使用する。NULLまたは、空が指定された場合、"eTaxCSVConv"とする。
+bstrSakuseiNM
+変換後のXMLデータ内の「作成者」に設定する値を30文字以内で指定する。
+bstrOutputFilePath
+変換後のXMLデータを出力するファイルのフルパス名（ファイル名含む）。NULLまたは、空が指定された場合、出力は行わない。
+pVal
+CSVファイルの状態を格納するLONG型変数へのポインタ。法人税申告書別表等CSVファイルが、記載要領に沿っている場合「1」、記載要領に沿っていない場合「2」を格納。
+vtCSVPageNo
+変換後のCSVデータ内の「ページ」に設定する値を設定する。設定しない場合は１を設定する。
+vtStartXMLPageNo
+変換後のXMLデータ内の「ページ」に設定する開始番号を指定する。
+指定しない場合は１を設定する。
+pbstrConvXML
+変換後のXMLデータを受け取る変数へのポインタ
+
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(11)  GetReportId
+HRESULT GetReportId (
+[in] BSTR bstrCsvFilePath, 
+[out,retval] BSTR* pbstrId);
+
+説明
+CSVデータを読み込んで様式IDを取得する。
+※手続きVer18.1.0以降に対応する法人税申告書別表等のCSVデータから様式IDを取得する場合は、CSVデータのファイル名から様式IDを取得することとし、当関数は利用しないこと。
+ 
+引数
+説明
+bstrCsvFilePath
+財務諸表、勘定科目内訳明細書CSVファイルのフルパス名（ファイル名含む）
+pbstrId
+様式IDを受け取る変数へのポインタ
+財務諸表、勘定科目内訳明細書に該当しない場合、NULLを返す。
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(12)  GetError
+HRESULT GetError (
+[out,retval] BSTR* pbstrErrorCode);
+
+説明
+以下に示すメンバー関数の実行後に、詳細エラー情報を取得する。
+・CsvCheckToXbrl
+・CsvCheckToDetailAccountTitle
+・CsvCheckToDetailAccountTitle2
+・CsvCheckToAppendedTable
+・CsvConvToXbrl
+・CsvConvToDetailAccountTitle
+・CsvConvToDetailAccountTitle2
+・CsvConvToAppendedTable
+・GetReportId
+
+引数
+説明
+pbstrErrorCode
+検証の詳細エラー情報を格納する変数へのポインタ。
+詳細は「3.詳細エラー情報の構成」を参照。
+
+戻り値：
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+インターフェイス受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+
+
+
+
+
+
+
+2.　CLIXbrlResultインターフェイス
+
+2.1　概要
+CLICsvConvXML. CsvCheckToXbrl2、CLICsvConvXML. CsvConvToXbrl2関数の処理結果を取得するインターフェイス。
+
+2.2　メンバー関数
+(1)　CsvFileCountプロパティ
+HRESULT CsvFileCount (
+ [out,retval] LONG* pCsvFileCount);
+
+説明
+処理の対象としたCSVファイルの総数を取得する。
+
+引数
+説明
+pCsvFileCount
+「CLICsvConvXML. CsvCheckToXbrl2」及び「CLICsvConvXML. CsvConvToXbrl2」で処理されたCSVファイルの総数を受け取る変数へのポインタ。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+
+
+
+
+
+
+
+(2)　ConvXbrlプロパティ
+HRESULT ConvXbrl (
+ [out,retval] BSTR* pConvXbrl);
+
+説明
+後述の「GetCheckResult」の返却値が「0」のCSVデータを用いて変換を行った、XBRLデータを取得する。
+
+引数
+説明
+pConvXbrl
+変換後XBRLデータを受け取る変数へのポインタ。変換されなかった場合は空を返却する。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(3)　 GetFileName
+HRESULT GetFileName (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrCsvFileName);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVファイル名（拡張子含む）を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrCsvFileName
+検証を行ったCSVファイル名（拡張子含む）を受け取る変数へのポインタ。なお、フォルダパスは含まない。
+
+
+
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(4)　 GetCheckResult
+HRESULT GetCheckResult (
+[in] LONG lCsvFileNumber,
+[out,retval] LONG* pVal);
+
+説明
+財務諸表（HOT010（Ver3.0））に対応したCSVファイルの検証結果を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pVal
+CSVファイルの検証結果を格納するLONG型変数へのポインタ。
+検証を行ったCSVファイルが、記載要領に沿っており、XBRL変換が可能な場合「0」、記載要領に沿っていない場合は「1」、CSVファイル間の整合性に不備がある場合は「2」、e-Taxで受付可能なデータ形式へ変換できないエラーが存在する場合は「3」を格納。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+(5)　 GetXbrlType
+HRESULT GetXbrlType (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrXbrlType);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVファイルに含まれる、財務諸表種別を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrXbrlType
+検証を行った財務諸表CSVファイルに含まれる財務諸表種別を受け取る変数へのポインタ。以下のとおり返却する。
+
+・貸借対照表：BS
+・損益計算書：PL
+・製造原価報告書：SC
+・株主資本等変動計算：SS
+・社員資本等変動計算書：SE
+・個別注記表：NT
+・損益金の処分表：SR
+・種別を取得できなかった場合：-
+
+複数の種別を含む場合はカンマで区切って編集する。
+例：BS,PL,SR
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+(6)　 GetStyleVersion
+HRESULT GetStyleVersion (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrStyleVersion);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVの、様式バージョンを取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrStyleVersion
+検証に指定された様式のバージョンを受け取る変数へのポインタ。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(7)　 GetCorporateName
+HRESULT GetCorporateName (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrCorporateName);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVの、法人名を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrCorporateName
+検証を行った財務諸表CSVファイルに含まれる法人名称を受け取る変数へのポインタ。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(8)　 GetFiscalYearFrom
+HRESULT GetFiscalYearFrom (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrFiscalYearFrom);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVの、事業年度（自）を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrFiscalYearFrom
+検証を行った財務諸表CSVファイルに含まれる事業年度（自）を受け取る変数へのポインタ。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+
+
+
+
+
+
+
+(9)　 GetFiscalYearTo
+HRESULT GetFiscalYearTo (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrFiscalYearTo);
+
+説明
+検証を行った財務諸表（HOT010（Ver3.0））に対応したCSVの、事業年度（至）を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrFiscalYearTo
+検証を行った財務諸表CSVファイルに含まれる事業年度（至）を受け取る変数へのポインタ。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(10)　 GetGenericCsv
+HRESULT GetGenericCsv (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrGenericCsv);
+
+説明
+検証を行った結果、XBRL変換が行えないCSVファイルの場合に返却されるCSVデータ（※１）を取得する。「GetCheckResult」の返却値が「1」または「2」の場合に格納される。
+
+(※1) e-Taxで受付可能なデータ形式(XML)のレベル4タグ配下のCSV形式部分。
+
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrGenericCsv
+検証の結果、XBRL変換が行えないCSVファイルの場合に返却される、CSVデータを受け取る変数へのポインタ。CSVファイルがXBRL変換された場合は空を返却する。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+
+(11)　 GetDetailErrorInfo
+HRESULT GetDetailErrorInfo (
+[in] LONG lCsvFileNumber,
+[out,retval] BSTR* pbstrDetailErrorInfo);
+
+説明
+検証結果の詳細エラー情報を取得する。
+
+引数
+説明
+lCsvFileNumber
+検証結果を取得する対象のCSVファイル番号
+pbstrDetailErrorInfo
+詳細エラー情報を受け取る変数へのポインタ
+詳細は「3.詳細エラー情報の構成」を参照。
+
+戻り値
+戻り値
+説明
+S_OK
+成功
+E_POINTER
+受け取りポインタが不正
+E_FAIL
+失敗
+
+3.　詳細エラー情報の構成
+
+3.1　概要
+CLICsvConvXML.GetError、CLIXbrlResult. GetDetailErrorInfoで返却する詳細エラー情報の構成。
+
+3.2　形式
+AAAAA-BBBBBBB-CCCCCCCC
+
+3.3　内容
+各アルファベットは、以下のように設定し、繋ぎにはハイフンを使用する。
+
+（１）CSV内容エラー
+AAAA    ；CSVのレコード数 ※1
+BBBBB　 ；CSVのカラム数
+CCCCCCCC；エラーコード ※2
+（例：0001-00002-HE9350E,0003:0004-00005-HE9440E）
+
+（２）引数エラー
+AAAA    ；9999
+BBBBB　 ；誤りのある引数の順番
+CCCCCCCC；エラーコード ※2
+（例：CsvConvToXbrlのbstrCsvFilePathに誤りがあった場合
+9999-00001- HCL9220E）
+
+（３）その他エラー
+AAAA    ；0000
+BBBBB　 ；00000
+CCCCCCCC；エラーコード ※2
+（例：0000-00000- HCL9560E）
+
+なお、2件以上エラーがある場合は、昇順にソートを行った後、カンマで区切って編集する。
+（例：00007-0000005-HE40001E,00029-0000009-HE40009E）
+
+処理中エラーが発生せず、すべて正常に終了した場合、空文字が取得される。
+
+※1 財務諸表種別の組み合わせ不正等の複数レコードに跨ってエラーが発生した場合は、「開始レコード数：終了レコード数」を設定する。
+※2 エラーコードの値は表 1のとおり。
+
+表 1 エラーコード
+コード
+説明
+HCL9210E
+ファイル名が空欄です。
+HCL9220E
+指定されたファイルの拡張子に誤りがあります。\n「.txt」「.TXT」「.csv」「.CSV」形式のファイルを選択してください。
+HCL9230E
+指定されたファイルが存在しないか、読み込むことができません。
+HCL9240E
+指定されたフォルダが存在しません。
+HCL9970E
+指定されたフォルダにファイルが存在しません。
+HCL9980E
+指定されたフォルダに同一様式のCSVファイルが複数存在します。
+HCL9990E
+作成者名は30文字以内で設定してください。
+HCL9250E
+指定されたバージョンの様式は作成できません。
+HCL9270E
+作成者名が設定されていません。
+HCL9900E
+作成可能なデータ数(5000件)を超えてしまうため、読み込むことができません。
+HCL9910E
+変換後のファイルサイズが10MBを超えています。
+HCL9920E
+詳細エラー情報のファイルサイズが2MBを超えています。
+HCL9930E
+指定されたファイル名が正しくありません。
+HCL9940E
+指定されたファイルに書き込みできません。
+HCL9950E
+プロパティファイルのフォルダパスが空欄です。
+HCL9350E
+指定されたファイル名が正しくありません。\n命名規則通りのファイル名であるか、確認してください。\n（例：HOI010_1.0.csv）
+HCL9300E
+読み込んだCSVファイルの1行のカラム数が正しくありません。
+HCL9310E
+読み込んだCSVファイルにe-Taxで使用できない文字が含まれています。
+HCL9960E
+読み込んだCSVファイルに必須項目が設定されていません。
+HCL9320E
+読み込んだCSVファイルのID値が20桁を超えています。
+HCL9330E
+読み込んだCSVファイルのID値に使用できない文字が含まれています。
+HCL9340E
+読み込んだCSVファイルのID値に重複があります。
+HCL9360E
+読み込んだCSVファイルの財務諸表種別に設定できない値があります。
+HCL9370E
+指定されたファイルの拡張子に誤りがあります。\n「.csv」「.CSV」形式のファイルを選択してください。
+HCL9380E
+読み込んだCSVファイルに法人名等が複数存在しています。
+HCL9390E
+読み込んだCSVファイルの法人名等が50文字を超えています。
+HCL9410E
+読み込んだCSVファイルに事業年度が複数存在しています。
+HCL9420E
+読み込んだCSVファイルの事業年度（自）または事業年度（至）の値がYYYY-MM-DD形式ではありません。
+HCL9430E
+読み込んだCSVファイルの事業年度（自）または事業年度（至）に存在しない年月日が入力されています。
+HCL9440E
+読み込んだCSVファイルの事業年度（自）と事業年度（至）の設定に誤りがあります。
+HCL9460E
+読み込んだCSVファイルの種別または階層番号の設定が正しくありません。
+HCL9470E
+読み込んだCSVファイルの階層番号は1から5000の範囲で設定してください。
+HCL9480E
+読み込んだCSVファイルの第一階層の勘定科目に親勘定科目のIDは設定できません。
+HCL9490E
+読み込んだCSVファイルの勘定科目に親勘定科目のIDが設定されていません。
+HCL9500E
+読み込んだCSVファイルの独自勘定科目の要素名、型、名前空間のいずれかが設定されていません。 
+HCL9510E
+読み込んだCSVファイルの独自勘定科目の要素設定が正しくありません。
+HCL9520E
+読み込んだCSVファイルの独自勘定科目の名前空間設定が正しくありません。
+HCL9530E
+読み込んだCSVファイルの独自勘定科目の型設定が正しくありません。
+HCL9540E
+読み込んだCSVファイルの勘定科目の設定値が正しくありません。
+HCL9550E
+読み込んだCSVファイルのタイトル項目に値は設定できません。
+HCL9560E
+想定しないエラーが発生しました。
+HCL9570E
+読み込んだCSVファイルのフォーマット区分が存在しません。
+HCL9580E
+読み込んだCSVファイルのフォーマット区分が正しくありません。
+HCL9590E
+読み込んだCSVファイルの行区分が存在しません。
+HCL9600E
+読み込んだCSVファイルの行区分が正しくありません。
+HCL9610E
+読み込んだCSVファイルの合計行に明細は設定できません。
+HCL9620E
+読み込んだCSVファイルの設定値が正しくありません。
+HCL9630E
+変換後のファイルの各帳票のサイズが1MBを超えています。
+HCL9640E
+読み込んだCSVファイルの「上位科目ID」に対応する「項目IDまたは科目ID」が設定されていません。
+HCL9650E
+読み込んだCSVファイルの独自勘定科目の要素名が、様式内で重複しています。
+HCL9660E
+指定されたファイル名が125文字を超えています。
+HCL9670E
+指定されたページ数が正しくありません。
+HCL8020E
+SS、SE、SRのCSVファイルは、いずれか１つのみにしてください。
+HCL8030E
+1レコード2カラム目の財務諸表種別に対応した財務諸表名を設定してください。
+HCL8040E
+読み込んだCSVファイルの事業年度（自）に存在しない年月日が入力されていますので、ご確認ください。
+HCL8050E
+読み込んだCSVファイルの事業年度（至）に存在しない年月日が入力されていますので、ご確認ください。
+HCL8060E
+読み込んだCSVファイル間の事業年度（自）が一致していませんので、ご確認ください。
+HCL8070E
+読み込んだCSVファイル間の事業年度（至）が一致していませんので、ご確認ください。
+HCL8080E
+読み込んだCSVファイル間の法人名が一致していませんので、ご確認ください。
+HCL8090E
+CSVファイルの勘定科目コードが重複しています。
+HCL8210E
+読み込んだCSVファイルの法人名が50文字を超えています。
+HCL8220E
+法人名を複数設定できないため、削除してください。
+HCL8230E
+読み込んだCSVファイルにe-Taxで利用できない文字が含まれています。
+HCL8240E
+法人名を全角で設定してください。
+HCL8250E
+繰り返し勘定科目コードを設定した勘定科目名は同じにしてください。
+HCL8260E
+繰り返し勘定科目コードが記載要領等に沿って設定されているか、ご確認ください。
+HCL8270E
+CSVファイルの上位勘定科目と下位勘定科目の階層番号は、連番を設定してください。
+HCL8280E
+ファイルパスとフォルダパスは同時に指定できません。
+HCL8790W
+帳票作成されませんでした。
+HCL9000E
+引数を指定してください。
+HCL9040E
+設定された「勘定科目コード」がタイトル項目のため、行区分は半角で「T」になります。
+HCL9050E
+CSVファイルに勘定科目コードを設定してください。
+HCL9060E
+ファイル名に使用できない文字が含まれています。
+HCL9080E
+1行のカラム数を5カラムにしてください。
+HCL9130E
+ファイル名に同じ財務諸表種別が使用されたCSVファイルがありますので、いずれか１つにしてください。
+HCL9160E
+BS、PL、SS、SE、SR、NT、SCのいずれかを設定してください。
+HCL9290E
+CSVファイルの事業年度（自）の値を半角でYYYY-MM-DD形式にしてください。
+HCL9400E
+CSVファイルの事業年度（至）の値を半角でYYYY-MM-DD形式にしてください。
+HCL9450E
+「内容又は金額等」は、入力可能桁数(15桁)以内で入力してください。
+HCL9680E
+「内容又は金額等」は半角数字で入力してください。負の数値を設定する場合は、「△」を使用しないでください。
+HCL9690E
+CSVファイルの勘定科目コードが20文字を超えています。
+HCL9700E
+CSVファイルの勘定科目コードが記載要領等に沿って設定されているか、ご確認ください。
+HCL9710E
+CSVファイルの財務諸表名は、財務諸表種別を設定した次の行に設定してください。
+HCL9720E
+CSVファイルの財務諸表名に設定できない財務諸表が入力されていますので、ご確認ください。
+HCL9730E
+CSVファイルの階層番号は、「2」から「5000」までの整数で設定してください。
+HCL9740E
+CSVファイルを複数同時送信する場合、各CSVファイルは財務諸表の種類ごとに作成してください。
+HCL9750E
+CSVファイル名に記載された財務諸表種別と一致しません。
+HCL9760E
+「A」を半角で設定してください。
+HCL9770E
+「B」を半角で設定してください。
+HCL9780E
+「C1」を半角で設定してください。
+HCL9790E
+「C2」を半角で設定してください。
+HCL9810E
+設定された「勘定科目コード」がタイトル項目のため、値は設定できません。
+HCL9820E
+「行区分」を「1」、「2」のいずれか半角で設定してください。
+HCL9830E
+「行区分」を「T」、「1」、「2」のいずれか半角で設定してください。
+HCL9840E
+不要な項目が設定されているため、削除してください。
+HCL9850E
+事業年度(自)を複数設定できないため、削除してください。
+HCL9860E
+事業年度(自)より前の日付が事業年度(至)に設定されていますので、ご確認ください。
+HCL9870E
+事業年度(至)を複数設定できないため、削除してください。
+HCL9880E
+勘定科目名を入力してください。
+HCL9890E
+同じ財務諸表種別が重複して記載されていますので、ご確認ください。
+

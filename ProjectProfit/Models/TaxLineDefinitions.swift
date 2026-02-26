@@ -6,7 +6,7 @@ enum TaxLine: String, Codable, CaseIterable, Identifiable {
     case salesRevenue       = "sales_revenue"       // ア 売上（収入）金額
     case otherIncome        = "other_income"         // カ 雑収入
 
-    // 経費 — e-Tax 12区分
+    // 経費 — e-Tax 区分
     case rentExpense        = "rent"                 // 地代家賃
     case utilitiesExpense   = "utilities"            // 水道光熱費
     case travelExpense      = "travel"               // 旅費交通費
@@ -14,9 +14,10 @@ enum TaxLine: String, Codable, CaseIterable, Identifiable {
     case advertisingExpense = "advertising"          // 広告宣伝費
     case entertainmentExpense = "entertainment"      // 接待交際費
     case depreciationExpense = "depreciation"        // 減価償却費
-    case repairExpense      = "repair"               // 修繕費
+    case insuranceExpense   = "insurance"            // 損害保険料
+    case interestExpense    = "interest"             // 利子割引料
+    case taxesExpense       = "taxes"                // 租税公課
     case suppliesExpense    = "supplies"             // 消耗品費
-    case welfareExpense     = "welfare"              // 福利厚生費
     case outsourcingExpense = "outsourcing"          // 外注工賃
     case miscExpense        = "misc"                 // 雑費
 
@@ -33,9 +34,10 @@ enum TaxLine: String, Codable, CaseIterable, Identifiable {
         case .advertisingExpense: "広告宣伝費"
         case .entertainmentExpense: "接待交際費"
         case .depreciationExpense: "減価償却費"
-        case .repairExpense: "修繕費"
+        case .insuranceExpense: "損害保険料"
+        case .interestExpense: "利子割引料"
+        case .taxesExpense: "租税公課"
         case .suppliesExpense: "消耗品費"
-        case .welfareExpense: "福利厚生費"
         case .outsourcingExpense: "外注工賃"
         case .miscExpense: "雑費"
         }
@@ -60,9 +62,10 @@ enum TaxLine: String, Codable, CaseIterable, Identifiable {
         case .advertisingExpense: .advertisingExpense
         case .entertainmentExpense: .entertainmentExpense
         case .depreciationExpense: .depreciationExpense
-        case .repairExpense: .repairExpense
+        case .insuranceExpense: .insuranceExpense
+        case .interestExpense: .interestExpense
+        case .taxesExpense: .taxesExpense
         case .suppliesExpense: .suppliesExpense
-        case .welfareExpense: .welfareExpense
         case .outsourcingExpense: .outsourcingExpense
         case .miscExpense: .miscExpense
         }

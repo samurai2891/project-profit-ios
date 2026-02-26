@@ -192,6 +192,18 @@ final class LineItemTests: XCTestCase {
         XCTAssertEqual(data.categoryId, "cat-service")
     }
 
+    func testReceiptDataExpenseInsuranceCategoryMapping() {
+        let data = ReceiptData(
+            totalAmount: 12000,
+            date: "2026-02-01",
+            storeName: "保険会社",
+            estimatedCategory: "insurance",
+            itemSummary: "自動車保険",
+            suggestedTransactionType: .expense
+        )
+        XCTAssertEqual(data.categoryId, "cat-insurance")
+    }
+
     func testReceiptDataFormattedMemoUsesDocumentLabel() {
         let data = ReceiptData(
             totalAmount: 5500,

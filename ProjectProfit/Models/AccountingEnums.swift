@@ -46,7 +46,7 @@ enum NormalBalance: String, Codable {
 
 // MARK: - AccountSubtype
 
-/// 勘定科目の詳細区分（資産・負債・資本・収益の各区分 + e-Tax TaxLine 12経費区分）
+/// 勘定科目の詳細区分（資産・負債・資本・収益の各区分 + e-Tax TaxLine経費区分）
 enum AccountSubtype: String, Codable, CaseIterable {
     // 資産 (Assets)
     case cash                    // 現金
@@ -84,7 +84,7 @@ enum AccountSubtype: String, Codable, CaseIterable {
     case closingInventory        // 期末商品棚卸高
     case costOfGoodsSold         // 売上原価
 
-    // 費用 — e-Tax 12経費区分 (Expenses)
+    // 費用 — e-Tax 経費区分 (Expenses)
     case rentExpense             // 地代家賃
     case utilitiesExpense        // 水道光熱費
     case travelExpense           // 旅費交通費
@@ -92,9 +92,10 @@ enum AccountSubtype: String, Codable, CaseIterable {
     case advertisingExpense      // 広告宣伝費
     case entertainmentExpense    // 接待交際費
     case depreciationExpense     // 減価償却費
-    case repairExpense           // 修繕費
+    case insuranceExpense        // 損害保険料
+    case interestExpense         // 利子割引料
+    case taxesExpense            // 租税公課
     case suppliesExpense         // 消耗品費
-    case welfareExpense          // 福利厚生費
     case outsourcingExpense      // 外注工賃
     case miscExpense             // 雑費
 
@@ -129,12 +130,38 @@ enum AccountSubtype: String, Codable, CaseIterable {
         case .advertisingExpense: "広告宣伝費"
         case .entertainmentExpense: "接待交際費"
         case .depreciationExpense: "減価償却費"
-        case .repairExpense: "修繕費"
+        case .insuranceExpense: "損害保険料"
+        case .interestExpense: "利子割引料"
+        case .taxesExpense: "租税公課"
         case .suppliesExpense: "消耗品費"
-        case .welfareExpense: "福利厚生費"
         case .outsourcingExpense: "外注工賃"
         case .miscExpense: "雑費"
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        switch rawValue {
+        case "repairExpense":
+            self = .interestExpense
+        case "welfareExpense":
+            self = .taxesExpense
+        default:
+            guard let value = AccountSubtype(rawValue: rawValue) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Unknown AccountSubtype raw value: \(rawValue)"
+                )
+            }
+            self = value
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }
 

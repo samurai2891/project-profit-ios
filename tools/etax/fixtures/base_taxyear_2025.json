@@ -74,10 +74,18 @@
       "dataType": "number"
     },
     {
-      "internalKey": "expense_repair",
-      "fieldLabel": "修繕費",
+      "internalKey": "expense_insurance",
+      "fieldLabel": "損害保険料",
       "xmlTag": "",
-      "taxLineRawValue": "repair",
+      "taxLineRawValue": "insurance",
+      "section": "expenses",
+      "dataType": "number"
+    },
+    {
+      "internalKey": "expense_interest",
+      "fieldLabel": "利子割引料",
+      "xmlTag": "",
+      "taxLineRawValue": "interest",
       "section": "expenses",
       "dataType": "number"
     },
@@ -90,10 +98,10 @@
       "dataType": "number"
     },
     {
-      "internalKey": "expense_welfare",
-      "fieldLabel": "福利厚生費",
+      "internalKey": "expense_taxes",
+      "fieldLabel": "租税公課",
       "xmlTag": "",
-      "taxLineRawValue": "welfare",
+      "taxLineRawValue": "taxes",
       "section": "expenses",
       "dataType": "number"
     },
@@ -330,10 +338,18 @@
       "dataType": "number"
     },
     {
-      "internalKey": "shushi_expense_repair",
-      "fieldLabel": "修繕費",
+      "internalKey": "shushi_expense_insurance",
+      "fieldLabel": "損害保険料",
       "xmlTag": "",
-      "taxLineRawValue": "repair",
+      "taxLineRawValue": "insurance",
+      "section": "expenses",
+      "dataType": "number"
+    },
+    {
+      "internalKey": "shushi_expense_interest",
+      "fieldLabel": "利子割引料",
+      "xmlTag": "",
+      "taxLineRawValue": "interest",
       "section": "expenses",
       "dataType": "number"
     },
@@ -346,10 +362,10 @@
       "dataType": "number"
     },
     {
-      "internalKey": "shushi_expense_welfare",
-      "fieldLabel": "福利厚生費",
+      "internalKey": "shushi_expense_taxes",
+      "fieldLabel": "租税公課",
       "xmlTag": "",
-      "taxLineRawValue": "welfare",
+      "taxLineRawValue": "taxes",
       "section": "expenses",
       "dataType": "number"
     },

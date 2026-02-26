@@ -1076,7 +1076,8 @@ final class ModelsTests: XCTestCase {
         // 4B-1: prepaidExpenses, accruedExpenses, ownerCapital を追加 (23 + 3 = 26)
         // Batch 13: accumulatedDepreciation 追加 (26 + 1 = 27)
         // 消費税3 + 在庫/COGS4 = 7 追加 (27 + 7 = 34)
-        XCTAssertEqual(allCases.count, 34)
+        // 損害保険料を追加 (34 + 1 = 35)
+        XCTAssertEqual(allCases.count, 35)
     }
 
     func testAccountSubtypeRawValues() {
@@ -1098,9 +1099,10 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(AccountSubtype.advertisingExpense.rawValue, "advertisingExpense")
         XCTAssertEqual(AccountSubtype.entertainmentExpense.rawValue, "entertainmentExpense")
         XCTAssertEqual(AccountSubtype.depreciationExpense.rawValue, "depreciationExpense")
-        XCTAssertEqual(AccountSubtype.repairExpense.rawValue, "repairExpense")
+        XCTAssertEqual(AccountSubtype.insuranceExpense.rawValue, "insuranceExpense")
+        XCTAssertEqual(AccountSubtype.interestExpense.rawValue, "interestExpense")
+        XCTAssertEqual(AccountSubtype.taxesExpense.rawValue, "taxesExpense")
         XCTAssertEqual(AccountSubtype.suppliesExpense.rawValue, "suppliesExpense")
-        XCTAssertEqual(AccountSubtype.welfareExpense.rawValue, "welfareExpense")
         XCTAssertEqual(AccountSubtype.outsourcingExpense.rawValue, "outsourcingExpense")
         XCTAssertEqual(AccountSubtype.miscExpense.rawValue, "miscExpense")
     }
@@ -1124,9 +1126,10 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(AccountSubtype.advertisingExpense.label, "広告宣伝費")
         XCTAssertEqual(AccountSubtype.entertainmentExpense.label, "接待交際費")
         XCTAssertEqual(AccountSubtype.depreciationExpense.label, "減価償却費")
-        XCTAssertEqual(AccountSubtype.repairExpense.label, "修繕費")
+        XCTAssertEqual(AccountSubtype.insuranceExpense.label, "損害保険料")
+        XCTAssertEqual(AccountSubtype.interestExpense.label, "利子割引料")
+        XCTAssertEqual(AccountSubtype.taxesExpense.label, "租税公課")
         XCTAssertEqual(AccountSubtype.suppliesExpense.label, "消耗品費")
-        XCTAssertEqual(AccountSubtype.welfareExpense.label, "福利厚生費")
         XCTAssertEqual(AccountSubtype.outsourcingExpense.label, "外注工賃")
         XCTAssertEqual(AccountSubtype.miscExpense.label, "雑費")
     }
@@ -1146,6 +1149,15 @@ final class ModelsTests: XCTestCase {
         let decoder = JSONDecoder()
         let invalidData = Data("\"unknown\"".utf8)
         XCTAssertThrowsError(try decoder.decode(AccountSubtype.self, from: invalidData))
+    }
+
+    func testAccountSubtypeDecodingLegacyValues() throws {
+        let decoder = JSONDecoder()
+        let repairData = Data("\"repairExpense\"".utf8)
+        let welfareData = Data("\"welfareExpense\"".utf8)
+
+        XCTAssertEqual(try decoder.decode(AccountSubtype.self, from: repairData), .interestExpense)
+        XCTAssertEqual(try decoder.decode(AccountSubtype.self, from: welfareData), .taxesExpense)
     }
 
     // MARK: - JournalEntryType Tests

@@ -212,17 +212,27 @@ final class AccountingIntegrationTests: XCTestCase {
     /// PPAccountingProfile に e-Tax フィールドを設定し、EtaxFieldPopulator が
     /// .declarantInfo セクションのフィールドを正しく生成することを検証
     func testEtaxFieldPopulator_GeneratesDeclarantInfoFields() {
+        let profileId = UUID().uuidString
+        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
+
         let profile = PPAccountingProfile(
+            id: profileId,
             fiscalYear: 2025,
             bookkeepingMode: .doubleEntry,
             businessName: "テスト屋号",
-            ownerName: "田中太郎",
+            ownerName: "田中太郎"
+        )
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
             ownerNameKana: "タナカタロウ",
             postalCode: "1000001",
             address: "東京都千代田区千代田1-1",
             phoneNumber: "03-1234-5678",
-            businessCategory: "ソフトウェア開発"
+            dateOfBirth: nil,
+            businessCategory: "ソフトウェア開発",
+            myNumberFlag: nil,
+            includeSensitiveInExport: true
         )
+        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
 
         let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
 
@@ -318,17 +328,17 @@ final class AccountingIntegrationTests: XCTestCase {
             let xml = String(data: data, encoding: .utf8)!
 
             // ルート要素
-            XCTAssertTrue(xml.contains("<eTaxData year=\"2025\""), "ルート開始タグ")
-            XCTAssertTrue(xml.contains("</eTaxData>"), "ルート終了タグ")
-            XCTAssertTrue(xml.contains("formType=\"青色申告決算書\""), "申告書種類")
+            XCTAssertTrue(xml.contains("<KOA210 "), "ルート開始タグ")
+            XCTAssertTrue(xml.contains("</KOA210>"), "ルート終了タグ")
+            XCTAssertTrue(xml.contains("VR=\"11.0\""), "フォームバージョン")
 
             // xmlTag マッピングで出力されること
-            XCTAssertTrue(xml.contains("<BlueRevenueSales>1000000</BlueRevenueSales>"), "売上金額")
-            XCTAssertTrue(xml.contains("<BlueExpenseCommunication>50000</BlueExpenseCommunication>"), "通信費")
-            XCTAssertTrue(xml.contains("<BlueIncomeNet>950000</BlueIncomeNet>"), "所得金額")
-            XCTAssertTrue(xml.contains("<CommonName>山田太郎</CommonName>"), "氏名")
-            XCTAssertTrue(xml.contains("<BlueInventoryOpening>100000</BlueInventoryOpening>"), "棚卸")
-            XCTAssertTrue(xml.contains("<BlueBSTotalAssets>500000</BlueBSTotalAssets>"), "資産合計")
+            XCTAssertTrue(xml.contains("<AMF00100>1000000</AMF00100>"), "売上金額")
+            XCTAssertTrue(xml.contains("<AMF00230>50000</AMF00230>"), "通信費")
+            XCTAssertTrue(xml.contains("<AMF00530>950000</AMF00530>"), "所得金額")
+            XCTAssertTrue(xml.contains("<ABA00140>山田太郎</ABA00140>"), "氏名")
+            XCTAssertTrue(xml.contains("<AMF00120>100000</AMF00120>"), "棚卸")
+            XCTAssertTrue(xml.contains("<AMG00440>500000</AMG00440>"), "資産合計")
 
         case .failure(let error):
             XCTFail("XTX生成に失敗: \(error)")

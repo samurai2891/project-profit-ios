@@ -28,13 +28,14 @@ final class EtaxExportViewModel {
 
     init(dataStore: DataStore) {
         self.dataStore = dataStore
-        self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        let preferredYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
     }
 
     // MARK: - Generate Preview
 
     func generatePreview() {
-        guard TaxYearDefinitionLoader.loadDefinition(for: fiscalYear) != nil else {
+        guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
             exportedForm = nil
             validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
             return
@@ -76,6 +77,7 @@ final class EtaxExportViewModel {
                 fiscalYear: fiscalYear,
                 profitLoss: pl,
                 accounts: dataStore.accounts,
+                profile: profile,
                 fixedAssets: dataStore.fixedAssets,
                 journalLines: dataStore.journalLines,
                 journalEntries: dataStore.journalEntries
@@ -94,7 +96,7 @@ final class EtaxExportViewModel {
             exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
             return
         }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear) else {
+        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
             exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
             return
         }
@@ -121,7 +123,7 @@ final class EtaxExportViewModel {
             exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
             return
         }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear) else {
+        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
             exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
             return
         }
@@ -145,6 +147,14 @@ final class EtaxExportViewModel {
     // MARK: - File Handling
 
     private static let logger = Logger(subsystem: "com.projectprofit", category: "EtaxExport")
+
+    private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
+        let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
+        if years.contains(preferredYear) {
+            return preferredYear
+        }
+        return years.last ?? preferredYear
+    }
 
     private func saveToTempFile(data: Data, extension ext: String) -> URL? {
         let fileName = "etax_\(fiscalYear)_\(formType.rawValue).\(ext)"

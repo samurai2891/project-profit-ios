@@ -1,6 +1,7 @@
 import XCTest
 @testable import ProjectProfit
 
+@MainActor
 final class EtaxCharacterValidatorTests: XCTestCase {
 
     // MARK: - ASCII
@@ -98,8 +99,8 @@ final class EtaxCharacterValidatorTests: XCTestCase {
             formType: .blueReturn,
             fields: [
                 EtaxField(
-                    id: "test",
-                    fieldLabel: "テスト",
+                    id: "revenue_sales_revenue",
+                    fieldLabel: "売上（収入）金額",
                     taxLine: .salesRevenue,
                     value: 1000,
                     section: .revenue
@@ -130,5 +131,25 @@ final class EtaxCharacterValidatorTests: XCTestCase {
         let errors = EtaxCharacterValidator.validateForm(form)
         XCTAssertEqual(errors.count, 1)
         XCTAssertTrue(errors[0].description.contains("declarant_name"))
+    }
+
+    func testValidateFormUsesExportValueNotFieldLabel() {
+        let form = EtaxForm(
+            fiscalYear: 2025,
+            formType: .blueReturn,
+            fields: [
+                EtaxField(
+                    id: "revenue_sales_revenue",
+                    fieldLabel: "売上🎉ラベル",
+                    taxLine: .salesRevenue,
+                    value: 1000,
+                    section: .revenue
+                )
+            ],
+            generatedAt: Date()
+        )
+
+        let errors = EtaxCharacterValidator.validateForm(form)
+        XCTAssertTrue(errors.isEmpty, "ラベルではなく出力値で文字種判定されるべき")
     }
 }

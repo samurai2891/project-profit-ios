@@ -31,8 +31,9 @@
 - 完了: `P0-06`（文字種バリデーション対象をラベルから出力値へ変更）
 - 完了: `P0-07`（会計レポート/e-Taxプレビューに会計年度開始月を伝播）
 - 完了: `P1-07`（消費税集計サービスが開始月指定に対応）
+- 完了: `P1-06`（固定資産/棚卸CRUDに年度ロックガードを実装）
 - 完了: `P0-05`準備フェーズ（CAB未投入でも `抽出 -> 検証 -> TaxYear反映` を実行可能なバッチ基盤を追加）
-- 保留: 公式CAB/Excel投入後の `TaxYear2025.xmlTag` 本番値反映（データ提供待ち）
+- 完了: 公式CAB/Excel（`e-taxall` 実データ）投入後の本番値反映を実施（`xmlTag` 差分0、`requiredRule/format/dataType` を39項目反映）
 
 ## 3. P0（申告・帳簿の正確性に直結、最優先）
 
@@ -247,11 +248,14 @@
   - 監査Todoが継続更新され、リリース判断に使用できる。
 
 ## 6. 実装時チェックリスト（共通）
-- [ ] 変更前後で仕訳の貸借一致が崩れていない。
-- [ ] 振替・消費税・按分を含むE2Eシナリオで数値が一致する。
-- [ ] e-Tax出力の入力値バリデーションがラベル依存ではない。
-- [ ] 会計年度開始月を変更してもレポート/e-Tax期間が一致する。
-- [ ] 追加テストが失敗する状態を再現し、修正後に通過する。
+- [x] 変更前後で仕訳の貸借一致が崩れていない。
+- [x] 振替・消費税・按分を含むE2Eシナリオで数値が一致する。
+- [x] e-Tax出力の入力値バリデーションがラベル依存ではない。
+- [x] 会計年度開始月を変更してもレポート/e-Tax期間が一致する。
+- [x] 追加テストが失敗する状態を再現し、修正後に通過する。
+- 確認根拠:
+  - `python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'`（14/14 success）
+  - `ETAX_ARTIFACTS_DIR=/tmp/etax-unit-lane-final ETAX_TAG_INPUT_DIR=e-taxall ./scripts/run_etax_unit_lane.sh`（success）
 
 ## 7. 第2次監査（アプリ全体）: 15観点エージェント分割ログ
 - 実施内容:
@@ -278,22 +282,15 @@
 
 ## 8. 追加で確認した修正Todo（第2次監査）
 
-### P0-08 年度ロック時 `addTransaction` が未保存のダミー取引を返す
-- 事実:
-  - 年度ロック時、`addTransaction` は `modelContext.insert` せずに新規 `PPTransaction` を返して処理終了する。
+### P0-08 年度ロック時 `addTransaction` が未保存のダミー取引を返す（解消）
+- 実施:
+  - `DataStore.addTransaction` の失敗時ダミー返却を廃止し、失敗時は `preconditionFailure` で明示失敗させる契約に変更。
+  - 失敗判定が必要な呼び出しは `addTransactionResult` を利用する方針へ統一し、`YearLockTests` を更新。
 - 根拠:
-  - `ProjectProfit/Services/DataStore.swift:600`
-  - `ProjectProfit/Services/DataStore.swift:601`
-  - `ProjectProfit/Services/DataStore.swift:623`
-- 影響:
-  - 呼び出し側が戻り値だけを見ると「保存成功」と誤認する余地がある。
-- 修正Todo:
-  1. 失敗時の戻り値契約を `PPTransaction?` / `Result` / `throw` のいずれかに統一する。
-  2. 年度ロック時は必ず失敗状態を返し、成功オブジェクトを返さない。
-  3. 既存呼び出し側で失敗ハンドリングを追加する。
-- 受入条件:
-  - 年度ロック時、取引は保存されず、呼び出し側で失敗を判定できる。
-  - 単体テストで「保存件数0・失敗通知あり」を確認できる。
+  - `ProjectProfit/Services/DataStore.swift`
+  - `ProjectProfitTests/YearLockTests.swift`
+- 検証結果:
+  - 年度ロック時の追加は `addTransactionResult` が `.failure(.yearLocked)` を返し、`lastError` が設定されることを単体テストで確認。
 
 ### P0-09 年度ロック判定が暦年固定で会計年度開始月と不整合
 - 事実:
@@ -394,27 +391,18 @@
   - 手動配分で0%・空配分の定期取引は保存できない。
   - 既存0%データは起動時に警告表示される。
 
-### P1-06 固定資産/棚卸CRUDに年度ロックガードが無い
-- 事実:
-  - 固定資産の `add/update/delete` に `isYearLocked` 判定がない。
-  - 同ファイル内の減価償却計上 (`postDepreciation`) には年度ロックガードがある。
-  - 棚卸の `add/update/delete` にも年度ロックガードがない。
+### P1-06 固定資産/棚卸CRUDに年度ロックガードが無い（解消）
+- 実施:
+  - 固定資産 `add/update/delete` に `isYearLocked` 判定を追加し、対象年度ロック時は処理を拒否するよう修正。
+  - 棚卸 `add/update/delete` にも同等のロック判定を追加し、ロック年度の更新を拒否するよう修正。
 - 根拠:
-  - `ProjectProfit/Services/DataStore+FixedAsset.swift:11`
-  - `ProjectProfit/Services/DataStore+FixedAsset.swift:37`
-  - `ProjectProfit/Services/DataStore+FixedAsset.swift:73`
-  - `ProjectProfit/Services/DataStore+FixedAsset.swift:108`
-  - `ProjectProfit/Services/DataStore+Inventory.swift:11`
-  - `ProjectProfit/Services/DataStore+Inventory.swift:31`
-  - `ProjectProfit/Services/DataStore+Inventory.swift:50`
-- 影響:
-  - 年度ロック中でも固定資産・棚卸の元データを変更でき、帳簿凍結の整合性が崩れる。
-- 修正Todo:
-  1. 固定資産CRUDに対象年度判定を追加し、ロック年度は編集不可にする。
-  2. 棚卸CRUDにも同様のロック判定を実装する。
-- 受入条件:
-  - ロック年度に紐づく固定資産/棚卸の追加・更新・削除が拒否される。
-  - 解除後のみ編集可能になる。
+  - `ProjectProfit/Services/DataStore+FixedAsset.swift`
+  - `ProjectProfit/Services/DataStore+Inventory.swift`
+  - `ProjectProfitTests/DataStoreFixedAssetTests.swift`
+  - `ProjectProfitTests/DataStoreInventoryTests.swift`
+- 検証結果:
+  - 固定資産: ロック年度での追加/更新/削除拒否を単体テストで確認。
+  - 棚卸: ロック年度での追加/更新/削除拒否を単体テストで確認。
 
 ### P1-07 消費税集計サービスが会計年度開始月に未対応
 - 事実:
@@ -453,18 +441,21 @@
   - 実装側根拠: `ProjectProfit/Models/PPAccountingProfile.swift:23`
 
 ## 10. 完了までのマスターTodo（実装順）
-- [ ] フェーズ1（入力・登録経路の整合）
+- [x] フェーズ1（入力・登録経路の整合）
   - 対象: P0-01, P0-02, P0-12
   - 完了条件: 通常入力/OCR入力/振替入力で保存項目とバリデーションが一致。
-- [ ] フェーズ2（年度ロックと会計年度境界）
+- [x] フェーズ2（年度ロックと会計年度境界）
   - 対象: P0-08, P0-09, P1-06, P1-07
   - 完了条件: 開始月を変えてもロック判定・集計期間・固定資産/棚卸編集可否が一致。
-- [ ] フェーズ3（定期取引と仕訳同期）
+- [x] フェーズ3（定期取引と仕訳同期）
   - 対象: P0-10, P0-11, P1-05
   - 完了条件: 定期取引生成直後に取引/仕訳/レポートが同一データを参照。
-- [ ] フェーズ4（e-Taxデータ品質）
+- [x] フェーズ4（e-Taxデータ品質）
   - 対象: P0-04, P0-05, P0-06, P1-01
   - 完了条件: 年分別マッピング駆動で文字列/数値を正しく出力し、事前検証で弾ける。
-- [ ] フェーズ5（互換・保護・運用）
+- [x] フェーズ5（互換・保護・運用）
   - 対象: P1-02, P1-03, P1-04, P2-01, P2-02
   - 完了条件: CSV互換・個人情報保護・テスト実行性・監査運用テンプレートが整備済み。
+- 完了判定根拠:
+  - `docs/testing/etax-ci-local-evidence-2026-02-26.md`
+  - `docs/testing/etax-regression-checklist.md`

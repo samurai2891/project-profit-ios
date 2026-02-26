@@ -157,6 +157,7 @@ struct ReceiptData: Sendable, Hashable {
             "transport": "cat-transport",
             "food": "cat-food",
             "entertainment": "cat-entertainment",
+            "insurance": "cat-insurance",
             "other-expense": "cat-other-expense",
         ]
         return mapping[estimatedCategory] ?? "cat-other-expense"

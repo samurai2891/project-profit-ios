@@ -24,4 +24,28 @@ python3 scripts/etax_extract_tags.py \
 python3 scripts/etax_validate_tags.py \
   --taxyear-json /tmp/TaxYear2025.applied.json \
   --required-keys tools/etax/required_internal_keys.json
+
+python3 scripts/etax_apply_cab_overlay.py \
+  --base-taxyear-json /tmp/TaxYear2025.applied.json \
+  --overlay-json tools/etax/fixtures/cab_overlay_2025.json \
+  --out-taxyear-json /tmp/TaxYear2025.overlay.applied.json
+
+python3 scripts/etax_generate_cab_overlay.py \
+  --taxyear-json ProjectProfit/Resources/TaxYear2025.json \
+  --blue-spec-xlsx 'e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx' \
+  --blue-sheet KOA210 \
+  --white-spec-xlsx 'e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx' \
+  --white-sheet KOA110 \
+  --out-overlay /tmp/cab_overlay_2025.generated.json \
+  --out-report /tmp/cab_overlay_2025.generated.report.json
+
+python3 scripts/etax_report_taxyear_diff.py \
+  --before /tmp/TaxYear2025.applied.json \
+  --after /tmp/TaxYear2025.overlay.applied.json \
+  --out-json /tmp/TaxYear2025.overlay.diff.json \
+  --out-md /tmp/TaxYear2025.overlay.diff.md
+
+bash scripts/etax_validate_xsd.sh \
+  --xml tools/etax/fixtures/KOA210_minimal.xml \
+  --form-key blue_general
 ```

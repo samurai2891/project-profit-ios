@@ -70,8 +70,12 @@ struct EtaxExportView: View {
 
     // MARK: - Settings
 
+    @MainActor
     private func settingsSection(viewModel: EtaxExportViewModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: viewModel.formType)
+        let yearOptions = supportedYears.isEmpty ? [viewModel.fiscalYear] : supportedYears
+
+        return VStack(alignment: .leading, spacing: 12) {
             Text("設定")
                 .font(.headline)
 
@@ -86,8 +90,7 @@ struct EtaxExportView: View {
                         viewModel.validationErrors = []
                     }
                 )) {
-                    let currentYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
-                    ForEach((currentYear - 5)...currentYear, id: \.self) { year in
+                    ForEach(yearOptions, id: \.self) { year in
                         Text("\(year)年").tag(year)
                     }
                 }
@@ -101,6 +104,13 @@ struct EtaxExportView: View {
                     get: { viewModel.formType },
                     set: {
                         viewModel.formType = $0
+                        let years = TaxYearDefinitionLoader.supportedYears(formType: $0)
+                        if !years.isEmpty,
+                           !years.contains(viewModel.fiscalYear),
+                           let latest = years.last
+                        {
+                            viewModel.fiscalYear = latest
+                        }
                         viewModel.exportedForm = nil
                         viewModel.validationErrors = []
                     }
