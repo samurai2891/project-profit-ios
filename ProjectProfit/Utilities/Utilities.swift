@@ -586,11 +586,23 @@ struct CSVImportResult {
     let errors: [String]
 }
 
-func parseCSV(
-    csvString: String,
-    getOrCreateProject: (String) -> UUID,
-    getCategoryId: (String, TransactionType) -> String?
-) -> [(type: TransactionType, amount: Int, date: Date, categoryId: String, memo: String, projectName: String, ratio: Int, allocations: [(projectName: String, ratio: Int)])] {
+struct CSVParsedTransaction {
+    let type: TransactionType
+    let amount: Int
+    let date: Date
+    let categoryName: String
+    let memo: String
+    let allocations: [(projectName: String, ratio: Int)]
+    let paymentAccountId: String?
+    let transferToAccountId: String?
+    let taxDeductibleRate: Int?
+    let taxAmount: Int?
+    let taxRate: Int?
+    let isTaxIncluded: Bool?
+    let taxCategory: TaxCategory?
+}
+
+func parseCSV(csvString: String) -> [CSVParsedTransaction] {
     let cleaned = csvString.replacingOccurrences(of: "\u{FEFF}", with: "")
     let lines = cleaned.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -599,18 +611,33 @@ func parseCSV(
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
 
-    var results: [(type: TransactionType, amount: Int, date: Date, categoryId: String, memo: String, projectName: String, ratio: Int, allocations: [(projectName: String, ratio: Int)])] = []
+    let headerFields = parseCSVLine(lines[0])
+    let headerIndex = Dictionary(uniqueKeysWithValues: headerFields.enumerated().map {
+        ($0.element.trimmingCharacters(in: .whitespacesAndNewlines), $0.offset)
+    })
+
+    func field(named: String, fallbackIndex: Int? = nil, in fields: [String]) -> String {
+        if let idx = headerIndex[named], idx < fields.count {
+            return fields[idx]
+        }
+        if let fallbackIndex, fallbackIndex < fields.count {
+            return fields[fallbackIndex]
+        }
+        return ""
+    }
+
+    var results: [CSVParsedTransaction] = []
 
     for line in lines.dropFirst() {
         let fields = parseCSVLine(line)
         guard fields.count >= 6 else { continue }
 
-        let dateStr = fields[0]
-        let typeStr = fields[1]
-        let amountStr = fields[2]
-        let categoryName = fields[3]
-        let projectStr = fields[4]
-        let memo = fields[5]
+        let dateStr = field(named: "日付", fallbackIndex: 0, in: fields)
+        let typeStr = field(named: "種類", fallbackIndex: 1, in: fields)
+        let amountStr = field(named: "金額", fallbackIndex: 2, in: fields)
+        let categoryName = field(named: "カテゴリ", fallbackIndex: 3, in: fields)
+        let projectStr = field(named: "プロジェクト", fallbackIndex: 4, in: fields)
+        let memo = field(named: "メモ", fallbackIndex: 5, in: fields)
 
         guard let date = dateFormatter.date(from: dateStr) else { continue }
 
@@ -623,55 +650,55 @@ func parseCSV(
 
         guard let amount = Int(amountStr), amount > 0 else { continue }
 
-        guard let categoryId = getCategoryId(categoryName, type) else { continue }
-
         let allocations = parseProjectAllocations(projectStr)
-        guard !allocations.isEmpty else { continue }
 
-        for allocation in allocations {
-            let projectId = getOrCreateProject(allocation.name)
-            results.append((
-                type: type,
-                amount: amount,
-                date: date,
-                categoryId: categoryId,
-                memo: memo,
-                projectName: allocation.name,
-                ratio: allocation.ratio,
-                allocations: allocations.map { (projectName: $0.name, ratio: $0.ratio) }
-            ))
-        }
+        results.append(CSVParsedTransaction(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryName: categoryName,
+            memo: memo,
+            allocations: allocations.map { (projectName: $0.name, ratio: $0.ratio) },
+            paymentAccountId: normalizedCSVText(field(named: "支払口座", in: fields)),
+            transferToAccountId: normalizedCSVText(field(named: "振替先口座", in: fields)),
+            taxDeductibleRate: parseCSVInt(field(named: "必要経費算入率", in: fields)),
+            taxAmount: parseCSVInt(field(named: "消費税額", in: fields)),
+            taxRate: parseCSVInt(field(named: "税率", in: fields)),
+            isTaxIncluded: parseCSVBool(field(named: "税込区分", in: fields)),
+            taxCategory: parseCSVTaxCategory(field(named: "税区分", in: fields))
+        ))
     }
 
-    // Deduplicate: group by unique transaction (all fields except per-allocation breakdown)
-    var seen = Set<String>()
-    var deduplicated: [(type: TransactionType, amount: Int, date: Date, categoryId: String, memo: String, projectName: String, ratio: Int, allocations: [(projectName: String, ratio: Int)])] = []
-
-    for entry in results {
-        let key = "\(entry.date)-\(entry.type)-\(entry.amount)-\(entry.categoryId)-\(entry.memo)"
-        if !seen.contains(key) {
-            seen.insert(key)
-            deduplicated.append(entry)
-        }
-    }
-
-    return deduplicated
+    return results
 }
 
 private func parseCSVLine(_ line: String) -> [String] {
     var fields: [String] = []
     var current = ""
     var inQuotes = false
+    let characters = Array(line)
+    var index = 0
 
-    for char in line {
+    while index < characters.count {
+        let char = characters[index]
         if char == "\"" {
+            if inQuotes, index + 1 < characters.count, characters[index + 1] == "\"" {
+                current.append("\"")
+                index += 2
+                continue
+            }
             inQuotes.toggle()
-        } else if char == "," && !inQuotes {
+            index += 1
+            continue
+        }
+
+        if char == "," && !inQuotes {
             fields.append(current)
             current = ""
         } else {
             current.append(char)
         }
+        index += 1
     }
     fields.append(current)
     return fields
@@ -683,7 +710,7 @@ private struct ProjectAllocation {
 }
 
 private func parseProjectAllocations(_ projectStr: String) -> [ProjectAllocation] {
-    let parts = projectStr.components(separatedBy: "; ")
+    let parts = projectStr.split(separator: ";", omittingEmptySubsequences: true).map(String.init)
     var allocations: [ProjectAllocation] = []
 
     for part in parts {
@@ -708,6 +735,47 @@ private func parseProjectAllocations(_ projectStr: String) -> [ProjectAllocation
     return allocations
 }
 
+private func normalizedCSVText(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+private func parseCSVInt(_ value: String) -> Int? {
+    guard let normalized = normalizedCSVText(value) else { return nil }
+    return Int(normalized)
+}
+
+private func parseCSVBool(_ value: String) -> Bool? {
+    guard let normalized = normalizedCSVText(value)?.lowercased() else { return nil }
+    switch normalized {
+    case "1", "true", "yes", "税込":
+        return true
+    case "0", "false", "no", "税抜":
+        return false
+    default:
+        return nil
+    }
+}
+
+private func parseCSVTaxCategory(_ value: String) -> TaxCategory? {
+    guard let normalized = normalizedCSVText(value) else { return nil }
+    if let raw = TaxCategory(rawValue: normalized) {
+        return raw
+    }
+    switch normalized {
+    case TaxCategory.standardRate.label:
+        return .standardRate
+    case TaxCategory.reducedRate.label:
+        return .reducedRate
+    case TaxCategory.exempt.label:
+        return .exempt
+    case TaxCategory.nonTaxable.label:
+        return .nonTaxable
+    default:
+        return nil
+    }
+}
+
 // MARK: - CSV Export
 
 func generateCSV(
@@ -716,7 +784,7 @@ func generateCSV(
     getProject: (UUID) -> PPProject?
 ) -> String {
     let bom = "\u{FEFF}"
-    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\""
+    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\""
 
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -754,9 +822,23 @@ func generateCSV(
         let lineItemsStr = t.lineItems
             .map { "\($0.name)×\($0.quantity)@\($0.unitPrice)" }
             .joined(separator: "; ")
+        let paymentAccountStr = t.paymentAccountId ?? ""
+        let transferToAccountStr = t.transferToAccountId ?? ""
+        let taxDeductibleRateStr = t.taxDeductibleRate.map(String.init) ?? ""
+        let taxAmountStr = t.taxAmount.map(String.init) ?? ""
+        let taxRateStr = t.taxRate.map(String.init) ?? ""
+        let isTaxIncludedStr: String
+        if let isTaxIncluded = t.isTaxIncluded {
+            isTaxIncludedStr = isTaxIncluded ? "税込" : "税抜"
+        } else {
+            isTaxIncludedStr = ""
+        }
+        let taxCategoryStr = t.taxCategory?.rawValue ?? ""
 
         return [dateStr, typeStr, "\(t.amount)", category, projectNames, t.memo,
-                allocationAmounts, recurringIdStr, createdAtStr, updatedAtStr, receiptStr, lineItemsStr]
+                allocationAmounts, recurringIdStr, createdAtStr, updatedAtStr, receiptStr, lineItemsStr,
+                paymentAccountStr, transferToAccountStr, taxDeductibleRateStr, taxAmountStr, taxRateStr,
+                isTaxIncludedStr, taxCategoryStr]
             .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
             .map { "\"\($0)\"" }
             .joined(separator: ",")

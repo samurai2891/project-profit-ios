@@ -59,6 +59,7 @@ cd /Users/yutaro/project-profit-ios
 - overlay適用時に `TaxYear2025.overlay.diff.json/.md` を生成
 - Swift unit は `scripts/check_simulator_health.sh` の `status=ok|warn` の場合のみ実行
 - `status=error` の場合は `skip: swift lane skipped (simulator-health ...)` を出力
+- `CoreSimulatorService` 不達時は `reason=CoreSimulatorService is unavailable` でFail分類する
 - Swift実行時は `ETAX_XSD_*_EXPORT_XML` に実生成XMLを出力し、XSD検証へ接続
 - `ETAX_XSD_REQUIRE_GENERATED_XML=true` の場合、実生成XMLがないと lane は失敗する
 - CIでは `scripts/fetch_etax_cab_input.sh` の出力 `input_dir` を `ETAX_TAG_INPUT_DIR` として採用する

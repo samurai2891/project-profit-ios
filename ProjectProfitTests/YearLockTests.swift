@@ -72,9 +72,8 @@ final class YearLockTests: XCTestCase {
         setupProfileAndLockYear(2025)
 
         let lockedDate = dateFrom(year: 2025, month: 6, day: 15)
-        let countBefore = dataStore.transactions.count
 
-        dataStore.addTransaction(
+        let result = dataStore.addTransactionResult(
             type: .expense,
             amount: 1000,
             date: lockedDate,
@@ -83,8 +82,11 @@ final class YearLockTests: XCTestCase {
             allocations: []
         )
 
-        // トランザクションは挿入されないはず（ガードで返されたダミーは未挿入）
-        // lastErrorに年度ロックエラーが設定されること
+        if case .success = result {
+            XCTFail("locked year should return failure")
+        }
+
+        // トランザクションは挿入されず、lastErrorに年度ロックエラーが設定されること
         XCTAssertNotNil(dataStore.lastError)
         if case .yearLocked(let year) = dataStore.lastError {
             XCTAssertEqual(year, 2025)

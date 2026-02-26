@@ -28,7 +28,8 @@ final class EtaxExportViewModel {
 
     init(dataStore: DataStore) {
         self.dataStore = dataStore
-        self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        let preferredYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
     }
 
     // MARK: - Generate Preview
@@ -146,6 +147,14 @@ final class EtaxExportViewModel {
     // MARK: - File Handling
 
     private static let logger = Logger(subsystem: "com.projectprofit", category: "EtaxExport")
+
+    private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
+        let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
+        if years.contains(preferredYear) {
+            return preferredYear
+        }
+        return years.last ?? preferredYear
+    }
 
     private func saveToTempFile(data: Data, extension ext: String) -> URL? {
         let fileName = "etax_\(fiscalYear)_\(formType.rawValue).\(ext)"

@@ -9,7 +9,8 @@
       "section": "revenue",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "revenue_other_income",
@@ -19,7 +20,8 @@
       "section": "revenue",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_rent",
@@ -29,7 +31,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_utilities",
@@ -39,7 +42,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_travel",
@@ -49,7 +53,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_communication",
@@ -59,7 +64,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_advertising",
@@ -69,7 +75,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_entertainment",
@@ -79,7 +86,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_depreciation",
@@ -89,7 +97,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_insurance",
@@ -99,7 +108,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_interest",
@@ -109,7 +119,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_supplies",
@@ -119,7 +130,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_taxes",
@@ -129,7 +141,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_outsourcing",
@@ -139,7 +152,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "expense_misc",
@@ -149,7 +163,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "income_total_revenue",
@@ -169,7 +184,8 @@
       "section": "income",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "income_net",
@@ -179,7 +195,8 @@
       "section": "income",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "declarant_name",
@@ -281,7 +298,8 @@
       "section": "inventory",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "inventory_purchases",
@@ -291,7 +309,8 @@
       "section": "inventory",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "inventory_closing",
@@ -301,7 +320,8 @@
       "section": "inventory",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "inventory_cogs",
@@ -321,7 +341,8 @@
       "section": "balanceSheet",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "bs_total_liabilities",
@@ -331,7 +352,8 @@
       "section": "balanceSheet",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "bs_total_equity",
@@ -341,7 +363,8 @@
       "section": "balanceSheet",
       "dataType": "number",
       "form": "blue_general",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_revenue_total",
@@ -361,7 +384,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_utilities",
@@ -371,7 +395,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_travel",
@@ -381,7 +406,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_communication",
@@ -391,7 +417,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_advertising",
@@ -401,7 +428,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_entertainment",
@@ -411,7 +439,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_depreciation",
@@ -421,7 +450,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_insurance",
@@ -431,7 +461,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_interest",
@@ -441,7 +472,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_supplies",
@@ -451,7 +483,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_taxes",
@@ -461,7 +494,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_outsourcing",
@@ -471,7 +505,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_misc",
@@ -481,7 +516,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_expense_total",
@@ -491,7 +527,8 @@
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_income_net",
@@ -501,7 +538,8 @@
       "section": "income",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     },
     {
       "internalKey": "shushi_rent_breakdown",
@@ -511,7 +549,8 @@
       "section": "deductions",
       "dataType": "number",
       "form": "white_shushi",
-      "requiredRule": null
+      "requiredRule": "optional",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ"
     }
   ],
   "forms": {

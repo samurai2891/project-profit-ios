@@ -683,9 +683,8 @@ class DataStore {
         ) {
         case .success(let transaction):
             return transaction
-        case .failure:
-            // 既存呼び出しとの後方互換のため、失敗時は未保存インスタンスを返す。
-            return PPTransaction(type: type, amount: amount, date: date, categoryId: categoryId, memo: memo)
+        case .failure(let error):
+            preconditionFailure("DataStore.addTransaction failed: \(error.localizedDescription). Use addTransactionResult() for failure handling.")
         }
     }
 
@@ -1908,60 +1907,70 @@ class DataStore {
         var errorCount = 0
         var errors: [String] = []
 
-        let parsed = parseCSV(
-            csvString: csvString,
-            getOrCreateProject: { [self] name in
-                if let existing = projects.first(where: { $0.name == name }) {
-                    return existing.id
-                }
-                let newProject = addProject(name: name, description: "")
-                return newProject.id
-            },
-            getCategoryId: { [self] name, type in
-                let categoryType: CategoryType = switch type {
-                case .income: .income
-                case .expense, .transfer: .expense
-                }
-                if let existing = categories.first(where: { $0.name == name && $0.type == categoryType }) {
-                    return existing.id
-                }
-                // Also try matching by name only as a fallback
-                if let existing = categories.first(where: { $0.name == name }) {
-                    return existing.id
-                }
-                return nil
-            }
-        )
+        let parsed = parseCSV(csvString: csvString)
 
         for entry in parsed {
-            let allocations: [(projectId: UUID, ratio: Int)] = entry.allocations.compactMap { alloc in
-                if let project = projects.first(where: { $0.name == alloc.projectName }) {
-                    return (projectId: project.id, ratio: alloc.ratio)
+            let allocations: [(projectId: UUID, ratio: Int)] = entry.allocations.compactMap { allocation in
+                if let existing = projects.first(where: { $0.name == allocation.projectName }) {
+                    return (projectId: existing.id, ratio: allocation.ratio)
                 }
-                return nil
+                let created = addProject(name: allocation.projectName, description: "")
+                return (projectId: created.id, ratio: allocation.ratio)
             }
 
-            guard !allocations.isEmpty else {
-                errorCount += 1
-                errors.append("プロジェクトが見つかりません: \(entry.projectName)")
-                continue
+            if entry.type != .transfer {
+                guard !allocations.isEmpty else {
+                    errorCount += 1
+                    errors.append("プロジェクトが見つかりません")
+                    continue
+                }
+
+                let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
+                guard totalRatio == 100 else {
+                    errorCount += 1
+                    errors.append("配分比率が不正です（合計: \(totalRatio)%）")
+                    continue
+                }
             }
 
-            let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-            guard totalRatio > 0, totalRatio <= 100 else {
-                errorCount += 1
-                errors.append("配分比率が不正です（合計: \(totalRatio)%）")
-                continue
+            let categoryId: String
+            switch entry.type {
+            case .transfer:
+                categoryId = ""
+            case .income, .expense:
+                let categoryType: CategoryType = entry.type == .income ? .income : .expense
+                if let existing = categories.first(where: { $0.name == entry.categoryName && $0.type == categoryType }) {
+                    categoryId = existing.id
+                } else if let fallback = categories.first(where: { $0.name == entry.categoryName }) {
+                    categoryId = fallback.id
+                } else {
+                    errorCount += 1
+                    errors.append("カテゴリが見つかりません: \(entry.categoryName)")
+                    continue
+                }
             }
 
-            addTransaction(
+            let result = addTransactionResult(
                 type: entry.type,
                 amount: entry.amount,
                 date: entry.date,
-                categoryId: entry.categoryId,
+                categoryId: categoryId,
                 memo: entry.memo,
-                allocations: allocations
+                allocations: entry.type == .transfer ? [] : allocations,
+                paymentAccountId: entry.paymentAccountId,
+                transferToAccountId: entry.type == .transfer ? entry.transferToAccountId : nil,
+                taxDeductibleRate: entry.type == .expense ? entry.taxDeductibleRate : nil,
+                taxAmount: entry.taxAmount,
+                taxRate: entry.taxRate,
+                isTaxIncluded: entry.isTaxIncluded,
+                taxCategory: entry.taxCategory
             )
+
+            if case .failure(let error) = result {
+                errorCount += 1
+                errors.append(error.localizedDescription)
+                continue
+            }
             successCount += 1
         }
 

@@ -61,8 +61,9 @@ final class InventoryViewModel {
     func save() {
         let memoValue: String? = memo.isEmpty ? nil : memo
 
+        let saved: Bool
         if let existing = existingRecord {
-            dataStore.updateInventoryRecord(
+            saved = dataStore.updateInventoryRecord(
                 id: existing.id,
                 openingInventory: openingInventory,
                 purchases: purchases,
@@ -70,16 +71,18 @@ final class InventoryViewModel {
                 memo: memoValue
             )
         } else {
-            dataStore.addInventoryRecord(
+            saved = dataStore.addInventoryRecord(
                 fiscalYear: fiscalYear,
                 openingInventory: openingInventory,
                 purchases: purchases,
                 closingInventory: closingInventory,
                 memo: memoValue
-            )
+            ) != nil
         }
 
-        // Reload to pick up the saved record
-        loadForYear()
+        // 保存成功時のみ再読込してフォーム値を同期する
+        if saved {
+            loadForYear()
+        }
     }
 }

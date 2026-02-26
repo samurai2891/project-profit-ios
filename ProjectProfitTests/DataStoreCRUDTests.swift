@@ -2641,4 +2641,52 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertNil(updated.taxDeductibleRate)
         XCTAssertEqual(updated.effectiveTaxDeductibleRate, 100)
     }
+
+    // MARK: - CSV Import Contract
+
+    func testImportTransactionsTransferWithoutCategorySucceeds() {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,振替先口座
+        2026-01-10,振替,5000,,,口座間移動,acct-cash,acct-bank
+        """
+
+        let result = dataStore.importTransactions(from: csv)
+        XCTAssertEqual(result.successCount, 1)
+        XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(dataStore.transactions.count, 1)
+
+        let tx = dataStore.transactions[0]
+        XCTAssertEqual(tx.type, .transfer)
+        XCTAssertEqual(tx.categoryId, "")
+        XCTAssertTrue(tx.allocations.isEmpty)
+        XCTAssertEqual(tx.paymentAccountId, "acct-cash")
+        XCTAssertEqual(tx.transferToAccountId, "acct-bank")
+    }
+
+    func testImportTransactionsRejectsRatioNotEqual100() {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ
+        2026-01-10,経費,5000,ツール,ProjectA(80%),比率不足
+        """
+
+        let result = dataStore.importTransactions(from: csv)
+        XCTAssertEqual(result.successCount, 0)
+        XCTAssertEqual(result.errorCount, 1)
+        XCTAssertTrue(result.errors.contains(where: { $0.contains("配分比率が不正") }))
+        XCTAssertTrue(dataStore.transactions.isEmpty)
+    }
+
+    func testImportTransactionsDoesNotCountYearLockedFailureAsSuccess() {
+        dataStore.lockFiscalYear(2026)
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ
+        2026-01-10,経費,5000,ツール,LockedProject(100%),ロック年度
+        """
+
+        let result = dataStore.importTransactions(from: csv)
+        XCTAssertEqual(result.successCount, 0)
+        XCTAssertEqual(result.errorCount, 1)
+        XCTAssertTrue(result.errors.contains(where: { $0.contains("ロック") }))
+        XCTAssertTrue(dataStore.transactions.isEmpty)
+    }
 }

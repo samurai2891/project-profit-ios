@@ -253,9 +253,6 @@ struct ProfileSettingsView: View {
     private func saveProfile() -> Bool {
         guard let profile = dataStore.accountingProfile else { return false }
 
-        profile.businessName = businessName
-        profile.ownerName = ownerName
-
         let payload = ProfileSensitivePayload.fromLegacyProfile(
             ownerNameKana: ownerNameKana,
             postalCode: postalCode,
@@ -267,21 +264,18 @@ struct ProfileSettingsView: View {
             includeSensitiveInExport: includeSensitiveInExport
         )
 
-        let secureSaved = ProfileSecureStore.save(payload, profileId: profile.id)
-        if secureSaved {
-            clearLegacySensitiveFields(profile: profile)
+        guard ProfileSecureStore.save(payload, profileId: profile.id) else {
+            saveErrorMessage = Self.secureStoreFailureMessage
+            return false
         }
 
+        profile.businessName = businessName
+        profile.ownerName = ownerName
+        clearLegacySensitiveFields(profile: profile)
         profile.updatedAt = Date()
         dataStore.save()
-
-        if secureSaved {
-            saveErrorMessage = nil
-            return true
-        }
-
-        saveErrorMessage = Self.secureStoreFailureMessage
-        return false
+        saveErrorMessage = nil
+        return true
     }
 
     private func hasLegacySensitiveFields(profile: PPAccountingProfile) -> Bool {

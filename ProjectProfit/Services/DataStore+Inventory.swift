@@ -14,7 +14,9 @@ extension DataStore {
         purchases: Int = 0,
         closingInventory: Int = 0,
         memo: String? = nil
-    ) -> PPInventoryRecord {
+    ) -> PPInventoryRecord? {
+        guard !isYearLocked(fiscalYear) else { return nil }
+
         let record = PPInventoryRecord(
             fiscalYear: fiscalYear,
             openingInventory: openingInventory,
@@ -28,14 +30,16 @@ extension DataStore {
         return record
     }
 
+    @discardableResult
     func updateInventoryRecord(
         id: UUID,
         openingInventory: Int? = nil,
         purchases: Int? = nil,
         closingInventory: Int? = nil,
         memo: String?? = nil
-    ) {
-        guard let record = inventoryRecords.first(where: { $0.id == id }) else { return }
+    ) -> Bool {
+        guard let record = inventoryRecords.first(where: { $0.id == id }) else { return false }
+        guard !isYearLocked(record.fiscalYear) else { return false }
 
         if let openingInventory { record.openingInventory = max(0, openingInventory) }
         if let purchases { record.purchases = max(0, purchases) }
@@ -45,13 +49,17 @@ extension DataStore {
 
         save()
         refreshInventoryRecords()
+        return true
     }
 
-    func deleteInventoryRecord(id: UUID) {
-        guard let record = inventoryRecords.first(where: { $0.id == id }) else { return }
+    @discardableResult
+    func deleteInventoryRecord(id: UUID) -> Bool {
+        guard let record = inventoryRecords.first(where: { $0.id == id }) else { return false }
+        guard !isYearLocked(record.fiscalYear) else { return false }
         modelContext.delete(record)
         save()
         refreshInventoryRecords()
+        return true
     }
 
     func getInventoryRecord(fiscalYear: Int) -> PPInventoryRecord? {

@@ -31,19 +31,35 @@ print_result() {
   fi
 }
 
+is_coresimulator_unavailable() {
+  local text="$1"
+  printf '%s\n' "$text" | grep -qiE \
+    'CoreSimulatorService connection became invalid|Unable to locate device set|Connection refused|simdiskimaged'
+}
+
 if ! command -v xcrun >/dev/null 2>&1; then
   print_result "error" "xcrun command is not available"
   exit 1
 fi
 
-runtime_list="$(xcrun simctl list runtimes 2>/dev/null || true)"
+runtime_list="$(xcrun simctl list runtimes 2>&1 || true)"
+if is_coresimulator_unavailable "$runtime_list"; then
+  print_result "error" "CoreSimulatorService is unavailable"
+  exit 1
+fi
 if ! printf '%s\n' "$runtime_list" | grep -q '^iOS'; then
   print_result "error" "No iOS simulator runtime found"
   exit 1
 fi
 
+simctl_devices_output="$(xcrun simctl list devices available 2>&1 || true)"
+if is_coresimulator_unavailable "$simctl_devices_output"; then
+  print_result "error" "CoreSimulatorService is unavailable"
+  exit 1
+fi
+
 device="$(
-  xcrun simctl list devices available 2>/dev/null | awk '
+  printf '%s\n' "$simctl_devices_output" | awk '
     /^-- iOS/ { ios = 1; next }
     /^-- / { ios = 0 }
     ios && /iPhone/ {

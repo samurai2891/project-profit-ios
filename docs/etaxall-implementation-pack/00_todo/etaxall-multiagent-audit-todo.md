@@ -30,7 +30,7 @@
 | T06 | 完了（本番CAB定期運用固定） | `ETAX_CAB_SOURCE_URL`/`ETAX_CAB_SOURCE_SHA256`/`ETAX_CAB_ARCHIVE_TYPE` を設定し、run `22445208956` で fetched CAB入力から `抽出→適用→検証→差分→guard` を実行 | なし |
 | T07 | 完了 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新し、`e-Tax Unit Lane`（run `22443589546`）で安定通過を確認 | なし |
 | T08 | 完了 | `TaxYearDefinitionLoader` に `fieldLabel/xmlTag/fieldDefinition` の `formType` 対応を追加 | なし |
-| T09 | 完了（方針固定） | スコープは「作成のみ（送信連携は非対応）」で固定 | 仕様書/リリース判定文書への明記反映 |
+| T09 | 完了（仕様/リリース文書反映済み） | スコープは「作成のみ（送信連携は非対応）」で固定し、仕様書とリリースゲートへ明記 | なし |
 | T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
@@ -205,21 +205,17 @@
 - 受入条件:
   - 白色/青色で同一taxLineでも正しいラベルが選択される。
 
-### T09: 送信連携スコープ未固定
+### T09: 送信連携スコープ未固定（解消）
 - 区分: 根本問題
-- 事実:
-  - 現仕様は送信非スコープ（E007）。
-  - e-taxallにはAPI/署名/送受信モジュールの詳細要件がある（E008-E014）。
+- 実施:
+  - 送信連携はスコープ外、アプリの責務は `.xtx/.csv` の作成までとする方針を固定。
+  - 仕様書に「送信（ログイン/署名/送信操作）は行わない」を明記し、リリースゲート文書にも同方針を反映。
 - 根拠:
-  - `e-taxall/確定申告仕様書/Project Profit iOS：複式簿記コア導入・完全仕様書（外注実装用）.md:6`
-  - `docs/etaxall-audit/extracted/api_spec.txt:89-92`
-- 影響:
-  - リリース定義（どこまで提供するか）が不明確なままでは評価軸が揺れる。
-- 修正Todo:
-  1. プロダクトとして「作成のみ」か「提出連携まで」かを意思決定。
-  2. 決定内容に合わせて受入条件とテスト範囲を再定義。
+  - `docs/etaxall-implementation-pack/04_specs/Project Profit iOS：複式簿記コア導入・完全仕様書（外注実装用）.md:6`
+  - `docs/etaxall-implementation-pack/04_specs/Project Profit iOS：複式簿記コア導入・完全仕様書（外注実装用）.md:44`
+  - `docs/etaxall-implementation-pack/00_todo/etaxall-multiagent-audit-todo.md:247`
 - 受入条件:
-  - リリース判定文書にスコープ境界が明記される。
+  - 仕様書とリリース判定文書でスコープ境界が一致している（達成）。
 
 ### T10: テスト実行基盤の不安定性
 - 区分: 運用問題

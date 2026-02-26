@@ -29,6 +29,12 @@ final class EtaxExportViewModelTests: XCTestCase {
         super.tearDown()
     }
 
+    func testInitUsesSupportedFiscalYear() {
+        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: .blueReturn)
+        XCTAssertTrue(supportedYears.contains(viewModel.fiscalYear))
+    }
+
     func testGeneratePreviewUnsupportedYearSetsValidationError() {
         let viewModel = EtaxExportViewModel(dataStore: dataStore)
         viewModel.fiscalYear = 1900

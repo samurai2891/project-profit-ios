@@ -17,7 +17,10 @@ extension DataStore {
         salvageValue: Int = 1,
         businessUsePercent: Int = 100,
         memo: String? = nil
-    ) -> PPFixedAsset {
+    ) -> PPFixedAsset? {
+        let acquisitionFiscalYear = fiscalYear(for: acquisitionDate, startMonth: FiscalYearSettings.startMonth)
+        guard !isYearLocked(acquisitionFiscalYear) else { return nil }
+
         let asset = PPFixedAsset(
             name: name,
             acquisitionDate: acquisitionDate,
@@ -34,6 +37,7 @@ extension DataStore {
         return asset
     }
 
+    @discardableResult
     func updateFixedAsset(
         id: UUID,
         name: String? = nil,
@@ -47,10 +51,16 @@ extension DataStore {
         disposalAmount: Int?? = nil,
         businessUsePercent: Int? = nil,
         memo: String?? = nil
-    ) {
+    ) -> Bool {
         guard let asset = fixedAssets.first(where: { $0.id == id }) else {
             lastError = .fixedAssetNotFound(id: id)
-            return
+            return false
+        }
+        let currentFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
+        guard !isYearLocked(currentFiscalYear) else { return false }
+        if let acquisitionDate {
+            let updatedFiscalYear = fiscalYear(for: acquisitionDate, startMonth: FiscalYearSettings.startMonth)
+            guard !isYearLocked(updatedFiscalYear) else { return false }
         }
 
         if let name { asset.name = name }
@@ -68,10 +78,14 @@ extension DataStore {
 
         save()
         refreshFixedAssets()
+        return true
     }
 
-    func deleteFixedAsset(id: UUID) {
-        guard let asset = fixedAssets.first(where: { $0.id == id }) else { return }
+    @discardableResult
+    func deleteFixedAsset(id: UUID) -> Bool {
+        guard let asset = fixedAssets.first(where: { $0.id == id }) else { return false }
+        let acquisitionFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
+        guard !isYearLocked(acquisitionFiscalYear) else { return false }
 
         // 関連する減価償却仕訳も削除
         let calendar = Calendar(identifier: .gregorian)
@@ -94,6 +108,7 @@ extension DataStore {
         refreshFixedAssets()
         refreshJournalEntries()
         refreshJournalLines()
+        return true
     }
 
     func getFixedAsset(id: UUID) -> PPFixedAsset? {

@@ -410,12 +410,11 @@ class EtaxTagPipelineTests(unittest.TestCase):
                 taxyear = json.load(fp)
             by_key = {field["internalKey"]: field for field in taxyear["fields"]}
 
-            self.assertEqual(by_key["declarant_postal_code"]["format"], "digits7")
-            self.assertEqual(by_key["declarant_postal_code"]["requiredRule"], "required")
-            self.assertEqual(by_key["declarant_birth_date"]["format"], "date")
-            self.assertEqual(by_key["declarant_birth_date"]["requiredRule"], "required")
-            self.assertEqual(by_key["declarant_my_number_flag"]["dataType"], "flag")
-            self.assertEqual(by_key["declarant_my_number_flag"]["idref"], "declarant_name")
+            self.assertEqual(by_key["expense_insurance"]["format"], "Z,ZZZ,ZZZ,ZZZ,ZZZ")
+            self.assertEqual(by_key["expense_insurance"]["requiredRule"], "optional")
+            self.assertEqual(by_key["shushi_expense_taxes"]["format"], "Z,ZZZ,ZZZ,ZZZ,ZZZ")
+            self.assertEqual(by_key["shushi_expense_taxes"]["requiredRule"], "optional")
+            self.assertEqual(by_key["shushi_expense_interest"]["dataType"], "number")
 
     def test_apply_cab_overlay_strict_fails_for_unknown_key(self) -> None:
         with tempfile.TemporaryDirectory() as td:

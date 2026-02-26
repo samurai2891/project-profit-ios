@@ -24,6 +24,7 @@
 		1D77147F4EB78C57378D8B67 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FA3127B4B30EDEAE075140 /* Models.swift */; };
 		20859FD1817416822B24AEC4 /* JournalValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939B4BB233225EA40BDF5E4F /* JournalValidationService.swift */; };
 		20D70E4108CF27C3CE363F91 /* DataStoreCRUDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */; };
+		A1D6E4C2B9F04A1C8D7E6F53 /* DataStoreInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D6E4C2B9F04A1C8D7E6F51 /* DataStoreInventoryTests.swift */; };
 		25111A7F5C96D87106EB4F03 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 30F820BD451D85876D9709F3 /* Preview Assets.xcassets */; };
 		2640BB4C113D2A295E49C6EF /* PPJournalEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57A55B947211762FFEBFEA4 /* PPJournalEntry.swift */; };
 		26A0A3B306005337A944815B /* TransactionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F3BDCB029F505713916303 /* TransactionsViewModel.swift */; };
@@ -107,6 +108,7 @@
 		B18B964C900BF8EC167A6B85 /* PPAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270FDA4E263E19B6DDE753DB /* PPAccount.swift */; };
 		B406406FAA82862A8DAD352C /* ClassificationLearningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5C1E62DDD3291254471BE4 /* ClassificationLearningService.swift */; };
 		B4ACDABAD19B2745A3571502 /* InventoryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B90CAF206FD0EF1801E6886 /* InventoryServiceTests.swift */; };
+		A1D6E4C2B9F04A1C8D7E6F54 /* InventoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D6E4C2B9F04A1C8D7E6F52 /* InventoryViewModelTests.swift */; };
 		B6C6F24C707483A67E2BBB86 /* LineItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD4A493F79541BF4E5906DF /* LineItemTests.swift */; };
 		B7D56AA504FC8B33248CCCA3 /* RecurringView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E00231725E1D3A746430A2E /* RecurringView.swift */; };
 		B818661117168F518730C7EF /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 887103837A9505D7A09E6069 /* ProjectsView.swift */; };
@@ -201,6 +203,8 @@
 		2CC302CCC2D662F715B7F9BD /* TransactionHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionHistoryTests.swift; sourceTree = "<group>"; };
 		2CD8A10AEB255406F2B83859 /* ProjectFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFormView.swift; sourceTree = "<group>"; };
 		2EF535C7D5846F8B4FF2DBCA /* FixedAssetListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetListView.swift; sourceTree = "<group>"; };
+		A1D6E4C2B9F04A1C8D7E6F51 /* DataStoreInventoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreInventoryTests.swift; sourceTree = "<group>"; };
+		A1D6E4C2B9F04A1C8D7E6F52 /* InventoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryViewModelTests.swift; sourceTree = "<group>"; };
 		30F820BD451D85876D9709F3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		34972547443B4D43E57421DF /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		3575D41E0A72538404C83423 /* DataStore+Accounting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+Accounting.swift"; sourceTree = "<group>"; };
@@ -403,6 +407,7 @@
 				B655CC608E618292BD875311 /* DataStoreAccountingTests.swift */,
 				D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */,
 				FAA64290ACD6A71147683711 /* DataStoreFixedAssetTests.swift */,
+				A1D6E4C2B9F04A1C8D7E6F51 /* DataStoreInventoryTests.swift */,
 				5532FFAAEC276A9776BB1855 /* DataStoreSummaryTests.swift */,
 				890651B2C97C4594F40FE15C /* DepreciationEngineTests.swift */,
 				2895FAC055FE1C89F1A0D8C6 /* DepreciationScheduleBuilderTests.swift */,
@@ -412,6 +417,7 @@
 				967AACD0E99E858FF6BAF046 /* FiscalYearDataStoreTests.swift */,
 				67BD4168BBEA56AEFAE018A4 /* FiscalYearUtilitiesTests.swift */,
 				2B90CAF206FD0EF1801E6886 /* InventoryServiceTests.swift */,
+				A1D6E4C2B9F04A1C8D7E6F52 /* InventoryViewModelTests.swift */,
 				3D5B2F6990993B64C0491769 /* JournalValidationTests.swift */,
 				2AD4A493F79541BF4E5906DF /* LineItemTests.swift */,
 				E381DD792F5D179A094CB2F9 /* ModelsTests.swift */,
@@ -856,6 +862,7 @@
 				DC11EE6A7ED8734EF5CBE0DC /* DataStoreAccountingTests.swift in Sources */,
 				20D70E4108CF27C3CE363F91 /* DataStoreCRUDTests.swift in Sources */,
 				80C21EFFF606F078639CFEA4 /* DataStoreFixedAssetTests.swift in Sources */,
+				A1D6E4C2B9F04A1C8D7E6F53 /* DataStoreInventoryTests.swift in Sources */,
 				13B331FCA855B8C13ECAE210 /* DataStoreSummaryTests.swift in Sources */,
 				9EF25609A38CD13B28BB620B /* DepreciationEngineTests.swift in Sources */,
 				C6121CE58D5A6FC62DF8DED6 /* DepreciationScheduleBuilderTests.swift in Sources */,
@@ -865,6 +872,7 @@
 				53FA302956BD263966CE6873 /* FiscalYearDataStoreTests.swift in Sources */,
 				E6E56F16F4D56BA0DBD6D6F0 /* FiscalYearUtilitiesTests.swift in Sources */,
 				B4ACDABAD19B2745A3571502 /* InventoryServiceTests.swift in Sources */,
+				A1D6E4C2B9F04A1C8D7E6F54 /* InventoryViewModelTests.swift in Sources */,
 				2910729067E7F3407730CAE8 /* JournalValidationTests.swift in Sources */,
 				B6C6F24C707483A67E2BBB86 /* LineItemTests.swift in Sources */,
 				4A8130E3078B559221E684B6 /* ModelsTests.swift in Sources */,

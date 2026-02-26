@@ -1,20 +1,247 @@
 {
   "taxYear": 2025,
+  "generatedAt": "2026-02-26T15:32:31.987295+00:00",
+  "source": {
+    "taxYearJson": "/Users/yutaro/project-profit-ios/ProjectProfit/Resources/TaxYear2025.json",
+    "blueSpecXlsx": "/Users/yutaro/project-profit-ios/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx",
+    "blueSheet": "KOA210",
+    "whiteSpecXlsx": "/Users/yutaro/project-profit-ios/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx",
+    "whiteSheet": "KOA110"
+  },
+  "itemCount": 39,
   "items": [
     {
-      "internalKey": "declarant_postal_code",
-      "format": "digits7",
-      "requiredRule": "required"
+      "internalKey": "bs_total_assets",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
     },
     {
-      "internalKey": "declarant_birth_date",
-      "format": "date",
-      "requiredRule": "required"
+      "internalKey": "bs_total_equity",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
     },
     {
-      "internalKey": "declarant_my_number_flag",
-      "dataType": "flag",
-      "idref": "declarant_name",
+      "internalKey": "bs_total_liabilities",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_advertising",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_communication",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_depreciation",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_entertainment",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_insurance",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_interest",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_misc",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_outsourcing",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_rent",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_supplies",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_taxes",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_travel",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "expense_utilities",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "income_net",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "income_total_expenses",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "inventory_closing",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "inventory_opening",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "inventory_purchases",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "revenue_other_income",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "revenue_sales_revenue",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_advertising",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_communication",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_depreciation",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_entertainment",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_insurance",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_interest",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_misc",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_outsourcing",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_rent",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_supplies",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_taxes",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_total",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_travel",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_expense_utilities",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_income_net",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
+      "requiredRule": "optional"
+    },
+    {
+      "internalKey": "shushi_rent_breakdown",
+      "dataType": "number",
+      "format": "Z,ZZZ,ZZZ,ZZZ,ZZZ",
       "requiredRule": "optional"
     }
   ]

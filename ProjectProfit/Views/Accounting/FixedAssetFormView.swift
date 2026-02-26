@@ -94,8 +94,9 @@ struct FixedAssetFormView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") {
-                    saveAsset()
-                    dismiss()
+                    if saveAsset() {
+                        dismiss()
+                    }
                 }
                 .disabled(!isValid)
             }
@@ -114,9 +115,9 @@ struct FixedAssetFormView: View {
         }
     }
 
-    private func saveAsset() {
+    private func saveAsset() -> Bool {
         if let asset = editingAsset {
-            dataStore.updateFixedAsset(
+            return dataStore.updateFixedAsset(
                 id: asset.id,
                 name: name,
                 acquisitionDate: acquisitionDate,
@@ -128,7 +129,7 @@ struct FixedAssetFormView: View {
                 memo: memo.isEmpty ? nil : memo
             )
         } else {
-            dataStore.addFixedAsset(
+            return dataStore.addFixedAsset(
                 name: name,
                 acquisitionDate: acquisitionDate,
                 acquisitionCost: acquisitionCost,
@@ -137,7 +138,7 @@ struct FixedAssetFormView: View {
                 salvageValue: salvageValue,
                 businessUsePercent: businessUsePercent,
                 memo: memo.isEmpty ? nil : memo
-            )
+            ) != nil
         }
     }
 }
