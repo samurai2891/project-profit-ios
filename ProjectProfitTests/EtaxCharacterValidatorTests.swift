@@ -1,6 +1,7 @@
 import XCTest
 @testable import ProjectProfit
 
+@MainActor
 final class EtaxCharacterValidatorTests: XCTestCase {
 
     // MARK: - ASCII
