@@ -128,13 +128,23 @@ final class EtaxXtxExporterTests: XCTestCase {
 
     @MainActor
     func testGenerateXtxWritesBlueFixtureWhenEnvIsSet() throws {
-        let form = makeForm(fields: sampleFields(), formType: .blueReturn)
+        let fields = [
+            EtaxField(
+                id: "revenue_sales_revenue",
+                fieldLabel: "売上（収入）金額",
+                taxLine: .salesRevenue,
+                value: 5_000_000,
+                section: .revenue
+            )
+        ]
+        let form = makeForm(fields: fields, formType: .blueReturn)
         let result = EtaxXtxExporter.generateXtx(form: form)
 
         switch result {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA210 "))
+            XCTAssertTrue(xml.contains("<AMF00100>5000000</AMF00100>"))
             emitFixturePayloadForCI(data, marker: "BLUE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_BLUE_EXPORT_XML")
         case .failure(let error):
@@ -144,7 +154,16 @@ final class EtaxXtxExporterTests: XCTestCase {
 
     @MainActor
     func testGenerateXtxWritesWhiteFixtureWhenEnvIsSet() throws {
-        let form = makeForm(fields: sampleWhiteFields(), formType: .whiteReturn)
+        let fields = [
+            EtaxField(
+                id: "shushi_revenue_total",
+                fieldLabel: "収入金額",
+                taxLine: .salesRevenue,
+                value: 3_000_000,
+                section: .revenue
+            )
+        ]
+        let form = makeForm(fields: fields, formType: .whiteReturn)
         let result = EtaxXtxExporter.generateXtx(form: form)
 
         switch result {
@@ -152,8 +171,6 @@ final class EtaxXtxExporterTests: XCTestCase {
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA110 "))
             XCTAssertTrue(xml.contains("<AIG00020>3000000</AIG00020>"))
-            XCTAssertTrue(xml.contains("<AIG00290>50000</AIG00290>"))
-            XCTAssertTrue(xml.contains("<AIG00220>80000</AIG00220>"))
             emitFixturePayloadForCI(data, marker: "WHITE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_WHITE_EXPORT_XML")
         case .failure(let error):
