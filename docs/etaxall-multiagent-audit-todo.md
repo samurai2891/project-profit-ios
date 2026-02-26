@@ -13,8 +13,9 @@
   - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` により実生成XML未出力でFail（fail-fast動作を確認）
   - `xcodebuild test ... -only-testing:ProjectProfitTests/EtaxXtxExporterTests` は CoreSimulator 不達で失敗（証跡 E040）
   - ローカル実行証跡: `docs/testing/etax-ci-local-evidence-2026-02-26.md`
-  - GitHub実行証跡: `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）/`22443589546`（PR）で success。実生成XML（`KOA210.export.xml` / `KOA110.export.xml`）経由の XSD pass を確認
+  - GitHub実行証跡: `e-Tax CI` run `22440157027`（PR）/`22440174004`（workflow_dispatch）/`22443589546`（PR）/`22445208956`（PR）で success。実生成XML（`KOA210.export.xml` / `KOA110.export.xml`）経由の XSD pass を確認
   - run `22443589546` では `cab-input status=skip` 時に `Guard CAB overlay report` を `skipped`、`Skip CAB overlay guard` を `success` として分離し false failure を解消
+  - run `22445208956` では `cab-input status=ok`、`input_dir=/tmp/etax-cab-input/extracted/e-taxall`、`Guard CAB overlay report: status=ok` を確認
   - GitHub実行証跡ドキュメント: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
 
 ## 2. 実装進捗（2026-02-26 実装反映後）
@@ -22,19 +23,18 @@
 | ID | 状態 | 実装済み事実 | 残タスク |
 |---|---|---|---|
 | T01 | 完了（CI証跡確定） | `run_etax_unit_lane.sh` + `etax-ci.yml` で `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定し、run `22440157027` / `22440174004` で `KOA210.export.xml` / `KOA110.export.xml` の XSD pass を確認 | なし |
-| T02 | 実装完了（運用監視） | `scripts/etax_generate_cab_overlay.py` を追加し、`帳票フィールド仕様書(所得-申告)Ver11x/12x` の KOA210/KOA110 から `requiredRule/idref/format` overlay を生成。laneで自動生成overlayを優先適用 | report の `missingInternalKeys/unresolvedIdrefs` を継続監視 |
+| T02 | 完了（本番CAB監視稼働） | `scripts/etax_generate_cab_overlay.py` を追加し、`帳票フィールド仕様書(所得-申告)Ver11x/12x` の KOA210/KOA110 から `requiredRule/idref/format` overlay を生成。run `22445208956` で `cab-input=ok` + `overlay guard=ok` を確認 | なし |
 | T03 | 完了 | `TaxLine/AccountSubtype` に `insurance` を追加。`TaxYear2025.json` / `mapping_rules_2025.json` / `base_taxyear_2025.json` / `required_internal_keys.json` に `expense_insurance(AMF00260)` と `shushi_expense_insurance(AIG00290)` を反映。`cat-insurance -> acct-insurance` で実入力導線を追加 | なし |
 | T04 | 完了 | `docs/testing/etax-taxyear-runbook.md` を追加し、2026年以降の TaxYear更新手順・検証手順・受入条件を明文化。implementation-packにも同期 | なし |
 | T05 | 完了 | `ProfileSettingsView.saveProfile` の平文フォールバックを削除。`EtaxFieldPopulator` は secure payload のみ参照。`ProfileSettingsViewTests` を含むSwift回帰を run `22443589546` で通過 | なし |
-| T06 | 進行中 | `run_etax_unit_lane.sh` に `ETAX_TAG_INPUT_DIR`/overlay diff生成（JSON+MD）を追加。`etax-ci.yml` で lane成果物をartifact収集 | CAB本番入力ディレクトリを使った定期実行運用を固定 |
+| T06 | 完了（本番CAB定期運用固定） | `ETAX_CAB_SOURCE_URL`/`ETAX_CAB_SOURCE_SHA256`/`ETAX_CAB_ARCHIVE_TYPE` を設定し、run `22445208956` で fetched CAB入力から `抽出→適用→検証→差分→guard` を実行 | なし |
 | T07 | 完了 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新し、`e-Tax Unit Lane`（run `22443589546`）で安定通過を確認 | なし |
 | T08 | 完了 | `TaxYearDefinitionLoader` に `fieldLabel/xmlTag/fieldDefinition` の `formType` 対応を追加 | なし |
 | T09 | 完了（方針固定） | スコープは「作成のみ（送信連携は非対応）」で固定 | 仕様書/リリース判定文書への明記反映 |
 | T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
-1. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する（Secrets URLの実データ供給待ち）。
-2. T02: `missingInternalKeys/unresolvedIdrefs` の閾値監視を本番CAB投入runで継続運用する。
+1. なし（T01〜T10の完了条件を満たした）。
 
 ## 3. 原本Todo一覧（監査時点）
 
@@ -59,7 +59,7 @@
   - `EtaxXtxExporterTests` が `ETAX_XSD_BLUE_EXPORT_XML` / `ETAX_XSD_WHITE_EXPORT_XML` 指定時に実生成XMLを書き出す。
   - `run_etax_unit_lane.sh` は実生成XMLを優先し、未生成時のみ fixture へfallbackする。
   - `.github/workflows/etax-ci.yml` は lane成果物をartifactとして収集する。
-  - `e-Tax CI` run `22440157027` / `22440174004` で `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML経由のXSD passを確認した。
+  - `e-Tax CI` run `22440157027` / `22440174004` / `22445208956` で `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML経由のXSD passを確認した。
 - 根拠:
   - `ProjectProfitTests/EtaxXtxExporterTests.swift`
   - `scripts/run_etax_unit_lane.sh`
@@ -70,6 +70,7 @@
 - 修正Todo:
   1. 完了: PR run `22440157027` で `KOA210.export.xml` / `KOA110.export.xml` の `reason=xsd validation passed` を確認。
   2. 完了: `workflow_dispatch` run `22440174004` で同一条件の再現成功を確認。
+  3. 完了: PR run `22445208956` で本番CAB入力時も同一条件の成功を確認。
 - 受入条件:
   - 実データ由来の KOA210/KOA110 XML がCIで毎回XSD検証を通過する（達成）。
 
@@ -83,15 +84,16 @@
   - `ProjectProfit/Services/EtaxCharacterValidator.swift`
   - `ProjectProfit/Models/EtaxModels.swift`
   - `scripts/etax_apply_cab_overlay.py`
-  - `tools/etax/fixtures/cab_overlay_2025.json`
+  - `scripts/etax_overlay_guard.py`
+  - `.github/workflows/etax-ci.yml`
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22445208956`）
 - 影響:
-  - overlayはfixture中心で、CAB本番抽出由来の全面反映が未完。
+  - 必須/書式/相関メタの監視運用は本番CAB入力で稼働済み。
 - 修正Todo:
-  1. CAB抽出成果物（TagDictionary/overlay）から全internalKeyの `requiredRule/idref/format` を取り込む。
-  2. overlay反映結果の差分レポートをCI成果物として保存する。
-  3. `requiredRule` 条件式の実データケースをテストへ追加する。
+  1. 完了: CAB抽出成果物（TagDictionary/overlay）から `requiredRule/idref/format` を反映し、差分レポートを成果物化した。
+  2. 完了: run `22445208956` で `Guard CAB overlay report: status=ok` を確認した（`missingInternalKeysCount=12`, `unresolvedIdrefsCount=0`）。
 - 受入条件:
-  - CAB実データ反映後、要件違反時にエクスポート不可となり、違反キー一覧が表示される。
+  - CAB実データ反映後、要件違反時にエクスポート不可となり、違反キー一覧が表示される（達成）。
 
 ### T03: TaxLine語彙と仕様書の不整合
 - 区分: 技術的負債
@@ -156,16 +158,17 @@
   - `etax-ci.yml` が `/tmp/etax-unit-lane` をartifact収集する。
 - 根拠:
   - `scripts/run_etax_unit_lane.sh`
+  - `scripts/fetch_etax_cab_input.sh`
   - `scripts/etax_report_taxyear_diff.py`
   - `.github/workflows/etax-ci.yml`
-  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22443589546`）
+  - `docs/testing/etax-ci-gh-evidence-2026-02-26.md`（run `22445208956`）
 - 影響:
-  - パイプライン枠とfail/skip分類は整備されたが、本番CAB入力（Secrets URL）の定期投入ルールは未確定。
+  - 本番CAB入力を使った定期実行経路は固定化され、投入時のFail/skip判定も安定した。
 - 修正Todo:
-  1. 本番CABの配置先と投入タイミングを定義し、`ETAX_TAG_INPUT_DIR` でCI定期実行する。
-  2. `cab-input status=ok` runで `cab_overlay_2025.generated.report.json` を生成し、`overlay-guard` を実行する。
+  1. 完了: release asset を `ETAX_CAB_SOURCE_URL` として設定し、SHA検証付きで取得できるようにした。
+  2. 完了: run `22445208956` で `cab-input status=ok`、`cab_overlay_2025.generated.report.json` 生成、`overlay-guard` 実行を確認した。
 - 受入条件:
-  - 新CAB投入で `抽出→検証→反映→差分レポート` が自動実行される。
+  - 新CAB投入で `抽出→検証→反映→差分レポート` が自動実行される（達成）。
 
 ### T07: Swiftテスト資産のドリフト
 - 区分: 技術的負債
@@ -239,9 +242,9 @@
   - e-Tax関連の最小Swift回帰が毎回自動実行できる。
 
 ## 4. リリースゲート（2026-02-26 実装反映後）
-- 判定: **No-Go**
-- ブロッカー: `T01`, `T02`, `T06`
-- 条件付きブロッカー: `T05`, `T07`（Swiftテストの実行環境不足）
+- 判定: **Go（本監査スコープ T01〜T10 は完了）**
+- ブロッカー: なし
+- 備考: 送信連携はスコープ外（T09方針どおり「作成のみ」）。
 
 ## 5. 参照
 - Agent別報告: `docs/etaxall-audit/reports/A01.md` 〜 `A30.md`

@@ -20,6 +20,11 @@
    - URL: `https://github.com/samurai2891/project-profit-ios/actions/runs/22443589546`
    - 結果: `success`（7m11s）
 
+4. `pull_request` run（本番CAB入力取得 + overlay guard実行）
+   - Run ID: `22445208956`
+   - URL: `https://github.com/samurai2891/project-profit-ios/actions/runs/22445208956`
+   - 結果: `success`（7m58s）
+
 ## 実生成XML経由のXSD pass証跡（抜粋）
 
 `Run e-Tax unit lane` ログから確認:
@@ -45,6 +50,20 @@
   - `status=skip`
   - `reason=overlay guard skipped (cab-input status=skip)`
 
+## CAB入力取得時のguard実行証跡（run `22445208956`）
+
+- `Fetch CAB input source`: `status=ok`
+- `reason=CAB input fetched successfully`
+- `input_dir=/tmp/etax-cab-input/extracted/e-taxall`
+- `Run e-Tax unit lane`:
+  - `info: resolved blue spec xlsx: /tmp/etax-cab-input/extracted/e-taxall/...Ver11x.xlsx`
+  - `info: resolved white spec xlsx: /tmp/etax-cab-input/extracted/e-taxall/...Ver12x.xlsx`
+- `Guard CAB overlay report`:
+  - `status=ok`
+  - `reason=overlay guard passed`
+  - `missingInternalKeysCount=12`
+  - `unresolvedIdrefsCount=0`
+
 ## 収集成果物（抜粋）
 
 - `/tmp/etax-unit-lane/KOA210.export.xml`
@@ -59,5 +78,6 @@
 
 - `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま、KOA210/KOA110 の実生成XML経由XSD検証が CI 上で恒常的に通ることを確認。
 - `cab-input=skip` の場合は overlay guard を `status=skip` で分離し、false failure を抑止できることを確認。
+- `cab-input=ok` の場合は fetched CAB を入力に overlay を生成し、`overlay guard` を実行できることを確認。
 - `ProfileSettingsViewTests` を e-Tax laneに含め、Keychain失敗時UI運用のSwift回帰証跡をCIで確定。
 - T01 の受入条件（実生成XMLベースのXSD pass証跡化）は達成。

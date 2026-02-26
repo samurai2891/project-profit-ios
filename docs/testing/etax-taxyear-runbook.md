@@ -21,13 +21,18 @@
 5. lane を実行し、`TagDictionary -> overlay -> diff -> XSD` の証跡を確認する。
 6. `missingInternalKeys` / `whiteInsuranceFacts` など report の差分をレビューする。
 7. `scripts/etax_overlay_guard.py` で `missingInternalKeys/unresolvedIdrefs` が閾値内（既定: 0）であることを確認する。
-8. Swift最小回帰（4テスト）を通し、実生成XMLのXSD通過を確認する。
+8. Swift最小回帰（5テスト）を通し、実生成XMLのXSD通過を確認する。
 9. 変更内容と検証ログをPRへ添付する。
 
 ## 定期運用（CAB本番入力）
 - CI `e-Tax CI` は平日1回（UTC `0 3 * * 1-5`）で実行する。
 - CAB本番入力は `ETAX_CAB_SOURCE_URL`（GitHub Actions secrets）から取得する。
 - `ETAX_CAB_SOURCE_REQUIRED=true` のため、schedule実行時にURL未設定・取得失敗・SHA不一致はFailにする。
+- 設定済み入力（2026-02-26 時点）:
+  - release tag: `etax-cab-input-20260226`
+  - asset URL: `https://github.com/samurai2891/project-profit-ios/releases/download/etax-cab-input-20260226/etax-cab-input-20260226.tar.gz`
+  - SHA-256: `5688ababef7177cf5d31171b272504eaf96783bcd8f45133fcefd2d226498a37`
+  - archive type: `tar.gz`
 
 ## 実行コマンド（例: 2026年分の準備）
 ```bash

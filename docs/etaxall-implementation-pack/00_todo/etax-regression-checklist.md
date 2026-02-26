@@ -59,4 +59,5 @@
 - 上記 run の `Run e-Tax unit lane` で `ETAX_XSD_REQUIRE_GENERATED_XML: true`、`xml_path=/tmp/etax-unit-lane/KOA210.export.xml`、`xml_path=/tmp/etax-unit-lane/KOA110.export.xml`、`reason=xsd validation passed` を確認。
 - GitHub Actions `e-Tax CI` run `22443589546`（PR）で `ProfileSettingsViewTests` を含むSwift回帰の成功を確認。
 - run `22443589546` で `cab-input status=skip` 時に `Guard CAB overlay report` が `skipped`、`Skip CAB overlay guard` が `success` となることを確認。
+- GitHub Actions `e-Tax CI` run `22445208956`（PR）で `cab-input status=ok`、`input_dir=/tmp/etax-cab-input/extracted/e-taxall`、`Guard CAB overlay report: status=ok` を確認。
 - 証跡: `docs/testing/etax-ci-gh-evidence-2026-02-26.md`
