@@ -11,6 +11,7 @@ cab_blue_spec_xlsx="${ETAX_CAB_BLUE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計�
 cab_blue_spec_sheet="${ETAX_CAB_BLUE_FIELD_SPEC_SHEET:-KOA210}"
 cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
 cab_white_spec_sheet="${ETAX_CAB_WHITE_FIELD_SPEC_SHEET:-KOA110}"
+cab_spec_dir="${ETAX_CAB_SPEC_DIR:-e-taxall/09XML構造設計書等【所得税】}"
 xsd_require_generated_mode="${ETAX_XSD_REQUIRE_GENERATED_XML:-auto}"
 
 tag_dict_json="$artifact_dir/TagDictionary_2025.json"
@@ -28,6 +29,31 @@ xsd_white_log="$artifact_dir/xsd_white_validation.log"
 xsd_summary_file="$artifact_dir/xsd_validation_summary.txt"
 
 mkdir -p "$artifact_dir"
+
+resolve_spec_path() {
+  local preferred="$1"
+  local search_dir="$2"
+  local version_hint="$3"
+
+  if [[ -f "$preferred" ]]; then
+    printf '%s' "$preferred"
+    return 0
+  fi
+
+  if [[ -d "$search_dir" ]]; then
+    local candidate
+    candidate="$(find "$search_dir" -maxdepth 1 -type f -name "*Ver${version_hint}.xlsx" | sort | head -n 1 || true)"
+    if [[ -n "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+
+  printf '%s' "$preferred"
+}
+
+cab_blue_spec_xlsx_resolved="$(resolve_spec_path "$cab_blue_spec_xlsx" "$cab_spec_dir" "11x")"
+cab_white_spec_xlsx_resolved="$(resolve_spec_path "$cab_white_spec_xlsx" "$cab_spec_dir" "12x")"
 
 echo "[1/8] Python unit tests (tag pipeline)"
 python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'
@@ -49,18 +75,20 @@ python3 scripts/etax_validate_tags.py \
 overlay_to_apply="$overlay_json"
 
 echo "[4/8] Generate CAB overlay from e-taxall specs (optional)"
-if [[ -f "$cab_blue_spec_xlsx" ]] && [[ -f "$cab_white_spec_xlsx" ]]; then
+if [[ -f "$cab_blue_spec_xlsx_resolved" ]] && [[ -f "$cab_white_spec_xlsx_resolved" ]]; then
+  echo "info: resolved blue spec xlsx: $cab_blue_spec_xlsx_resolved"
+  echo "info: resolved white spec xlsx: $cab_white_spec_xlsx_resolved"
   python3 scripts/etax_generate_cab_overlay.py \
     --taxyear-json ProjectProfit/Resources/TaxYear2025.json \
-    --blue-spec-xlsx "$cab_blue_spec_xlsx" \
+    --blue-spec-xlsx "$cab_blue_spec_xlsx_resolved" \
     --blue-sheet "$cab_blue_spec_sheet" \
-    --white-spec-xlsx "$cab_white_spec_xlsx" \
+    --white-spec-xlsx "$cab_white_spec_xlsx_resolved" \
     --white-sheet "$cab_white_spec_sheet" \
     --out-overlay "$overlay_generated_json" \
     --out-report "$overlay_generated_report_json"
   overlay_to_apply="$overlay_generated_json"
 else
-  echo "skip: cab overlay generation skipped (spec file not found: $cab_blue_spec_xlsx | $cab_white_spec_xlsx)"
+  echo "skip: cab overlay generation skipped (spec file not found: $cab_blue_spec_xlsx_resolved | $cab_white_spec_xlsx_resolved)"
 fi
 
 echo "[5/8] Apply CAB overlay (optional)"
