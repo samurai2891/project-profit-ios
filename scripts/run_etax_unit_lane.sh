@@ -156,7 +156,8 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests \
     -only-testing:ProjectProfitTests/EtaxCharacterValidatorTests \
     -only-testing:ProjectProfitTests/EtaxXtxExporterTests \
-    -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests 2>&1 | tee "$xcodebuild_log"
+    -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests \
+    -only-testing:ProjectProfitTests/ProfileSettingsViewTests 2>&1 | tee "$xcodebuild_log"
 
   python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" <<'PY'
 import base64

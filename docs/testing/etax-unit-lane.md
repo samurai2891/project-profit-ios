@@ -117,7 +117,8 @@ xcodebuild test \
   -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests \
   -only-testing:ProjectProfitTests/EtaxCharacterValidatorTests \
   -only-testing:ProjectProfitTests/EtaxXtxExporterTests \
-  -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests
+  -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests \
+  -only-testing:ProjectProfitTests/ProfileSettingsViewTests
 ```
 
 ## 合格条件
