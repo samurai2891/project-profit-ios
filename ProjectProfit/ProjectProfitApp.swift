@@ -29,7 +29,9 @@ struct ProjectProfitApp: App {
             PPAccountingProfile.self,
             PPUserRule.self,
             PPFixedAsset.self,
-            PPInventoryRecord.self
+            PPInventoryRecord.self,
+            PPDocumentRecord.self,
+            PPComplianceLog.self
         ])
     }
 }

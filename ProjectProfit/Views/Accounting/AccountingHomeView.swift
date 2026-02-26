@@ -96,6 +96,30 @@ struct AccountingHomeView: View {
                 destination: LedgerView()
             )
             navigationRow(
+                icon: "banknote",
+                title: "現金出納帳",
+                subtitle: "現金勘定の増減明細",
+                destination: SubLedgerView(type: .cashBook)
+            )
+            navigationRow(
+                icon: "creditcard.and.123",
+                title: "売掛帳",
+                subtitle: "売掛金の増減明細",
+                destination: SubLedgerView(type: .accountsReceivableBook)
+            )
+            navigationRow(
+                icon: "cart.badge.minus",
+                title: "買掛帳",
+                subtitle: "買掛金の増減明細",
+                destination: SubLedgerView(type: .accountsPayableBook)
+            )
+            navigationRow(
+                icon: "chart.bar.xaxis",
+                title: "経費帳",
+                subtitle: "費用科目の明細",
+                destination: SubLedgerView(type: .expenseBook)
+            )
+            navigationRow(
                 icon: "tablecells",
                 title: "試算表",
                 subtitle: "勘定科目の残高一覧",
@@ -142,6 +166,12 @@ struct AccountingHomeView: View {
                 title: "e-Tax出力",
                 subtitle: "確定申告データの出力",
                 destination: EtaxExportView()
+            )
+            navigationRow(
+                icon: "archivebox",
+                title: "書類台帳",
+                subtitle: "法定書類の保存管理",
+                destination: LegalDocumentLedgerView()
             )
         }
     }

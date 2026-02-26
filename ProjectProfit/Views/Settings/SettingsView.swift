@@ -19,6 +19,9 @@ struct SettingsView: View {
                 // Fiscal Year
                 fiscalYearSection
 
+                // Retention Policy
+                retentionPolicySection
+
                 // Management
                 managementSection
 
@@ -172,6 +175,45 @@ struct SettingsView: View {
     }
 
     // MARK: - Management
+
+    private var retentionPolicySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("法定保存期間")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(spacing: 10) {
+                retentionRow(title: "帳簿", years: "7年", detail: "仕訳帳・総勘定元帳・現金出納帳等")
+                retentionRow(title: "決算関係書類", years: "7年", detail: "損益計算書・貸借対照表・棚卸表等")
+                retentionRow(title: "現金預金取引等関係書類", years: "7年", detail: "領収証・小切手控・預金通帳・借用証等")
+                retentionRow(title: "その他の書類", years: "5年", detail: "請求書・見積書・契約書・納品書・送り状等")
+            }
+            .padding(16)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func retentionRow(title: String, years: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Text(years)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AppColors.primary.opacity(0.12))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
 
     private var managementSection: some View {
         VStack(alignment: .leading, spacing: 12) {

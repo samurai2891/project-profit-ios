@@ -65,6 +65,7 @@ struct TransactionDetailView: View {
                     if transaction.receiptImagePath != nil {
                         receiptImageSection
                     }
+                    documentSection
                     if !transaction.memo.isEmpty {
                         memoSection
                     }
@@ -386,6 +387,48 @@ struct TransactionDetailView: View {
                     .stroke(AppColors.border, lineWidth: 1)
             )
         }
+    }
+
+    // MARK: - Legal Document Section
+
+    private var documentSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "archivebox")
+                    .foregroundStyle(AppColors.primary)
+                Text("書類管理")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Text("\(dataStore.documentCount(for: transaction.id))件")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            NavigationLink {
+                TransactionDocumentsView(transaction: transaction)
+            } label: {
+                HStack {
+                    Text("添付書類を管理")
+                        .font(.subheadline)
+                        .foregroundStyle(AppColors.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
     }
 
     // MARK: - Memo Section

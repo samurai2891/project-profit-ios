@@ -49,6 +49,7 @@ class DataStore {
                 seedMissingCategories()
             }
             migrateNilOptionalFields()
+            migrateLegacyReceiptImagesToDocumentRecords()
 
             // Phase 4B: 会計データの読み込み
             let accountDescriptor = FetchDescriptor<PPAccount>(sortBy: [SortDescriptor(\.displayOrder)])
@@ -105,6 +106,109 @@ class DataStore {
     private func migrateNilOptionalFields() {
         // SwiftData handles schema migration with default values from init.
         // This method is retained as a hook for future migrations.
+    }
+
+    /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
+    /// 冪等性を担保するため、同一 transactionId + originalFileName の既存レコードがあれば再作成しない。
+    private func migrateLegacyReceiptImagesToDocumentRecords() {
+        let legacyTransactions = transactions.filter {
+            guard let path = $0.receiptImagePath else { return false }
+            return !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !legacyTransactions.isEmpty else { return }
+
+        let existingRecords: [PPDocumentRecord]
+        do {
+            existingRecords = try modelContext.fetch(FetchDescriptor<PPDocumentRecord>())
+        } catch {
+            AppLogger.dataStore.warning("Legacy receipt migration skipped: document model unavailable (\(error.localizedDescription))")
+            return
+        }
+
+        let existingKeys = Set(
+            existingRecords.compactMap { record -> String? in
+                guard record.documentType == .receipt,
+                      let transactionId = record.transactionId else { return nil }
+                return "\(transactionId.uuidString)|\(record.originalFileName)"
+            }
+        )
+
+        var changed = false
+        var migratedCount = 0
+        var alreadyBackfilledCount = 0
+        var missingFileCount = 0
+        var newDocumentFiles: [String] = []
+        var legacyFilesToDelete: [String] = []
+        let now = Date()
+
+        for transaction in legacyTransactions {
+            guard let legacyPath = transaction.receiptImagePath,
+                  let safeLegacyPath = ReceiptImageStore.sanitizedFileName(legacyPath)
+            else {
+                continue
+            }
+
+            let key = "\(transaction.id.uuidString)|\(safeLegacyPath)"
+            if existingKeys.contains(key) {
+                transaction.receiptImagePath = nil
+                transaction.updatedAt = now
+                legacyFilesToDelete.append(safeLegacyPath)
+                changed = true
+                alreadyBackfilledCount += 1
+                continue
+            }
+
+            guard let imageData = ReceiptImageStore.loadImageData(fileName: safeLegacyPath) else {
+                missingFileCount += 1
+                AppLogger.dataStore.warning("Legacy receipt migration skipped: file missing for transaction=\(transaction.id.uuidString)")
+                continue
+            }
+
+            do {
+                let storedFileName = try ReceiptImageStore.saveDocumentData(imageData, originalFileName: safeLegacyPath)
+                let record = PPDocumentRecord(
+                    transactionId: transaction.id,
+                    documentType: .receipt,
+                    storedFileName: storedFileName,
+                    originalFileName: safeLegacyPath,
+                    mimeType: "image/jpeg",
+                    fileSize: imageData.count,
+                    contentHash: ReceiptImageStore.sha256Hex(data: imageData),
+                    issueDate: transaction.date,
+                    note: "legacy-receipt-backfill",
+                    createdAt: now,
+                    updatedAt: now
+                )
+                modelContext.insert(record)
+                transaction.receiptImagePath = nil
+                transaction.updatedAt = now
+                newDocumentFiles.append(storedFileName)
+                legacyFilesToDelete.append(safeLegacyPath)
+                migratedCount += 1
+                changed = true
+            } catch {
+                AppLogger.dataStore.error("Legacy receipt migration failed: transaction=\(transaction.id.uuidString), error=\(error.localizedDescription)")
+            }
+        }
+
+        guard changed else {
+            if missingFileCount > 0 {
+                AppLogger.dataStore.warning("Legacy receipt migration completed with missing files: \(missingFileCount)件")
+            }
+            return
+        }
+
+        if save() {
+            for fileName in legacyFilesToDelete {
+                ReceiptImageStore.deleteImage(fileName: fileName)
+            }
+            AppLogger.dataStore.info("Legacy receipt migration done: migrated=\(migratedCount), alreadyBackfilled=\(alreadyBackfilledCount), missing=\(missingFileCount)")
+        } else {
+            for fileName in newDocumentFiles {
+                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
+            }
+            AppLogger.dataStore.error("Legacy receipt migration rolled back due to save failure")
+        }
     }
 
     private func seedDefaultCategories() {
@@ -762,6 +866,7 @@ class DataStore {
 
         // C4: save成功後に削除するため画像パスを保持
         let imageToDelete = transaction.receiptImagePath
+        let attachedDocumentFiles = purgeDocumentRecords(for: transaction.id)
 
         // Capture recurring info before deletion
         let recurringId = transaction.recurringId
@@ -775,6 +880,9 @@ class DataStore {
         if save() {
             if let imagePath = imageToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+            for fileName in attachedDocumentFiles {
+                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             }
         }
         refreshTransactions()
@@ -1983,6 +2091,9 @@ class DataStore {
         // C4: save成功後に削除するため画像パスを収集（トランザクション＋定期取引の両方）
         let imagesToDelete = transactions.compactMap(\.receiptImagePath)
             + recurringTransactions.compactMap(\.receiptImagePath)
+        let documentRecords = listDocumentRecords()
+        let documentFilesToDelete = documentRecords.map(\.storedFileName)
+        let complianceLogs = listComplianceLogs(limit: Int.max)
 
         for p in projects { modelContext.delete(p) }
         for t in transactions { modelContext.delete(t) }
@@ -1994,9 +2105,14 @@ class DataStore {
         for jl in journalLines { modelContext.delete(jl) }
         if let profile = accountingProfile { modelContext.delete(profile) }
         for fa in fixedAssets { modelContext.delete(fa) }
+        for document in documentRecords { modelContext.delete(document) }
+        for log in complianceLogs { modelContext.delete(log) }
         if save() {
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+            for fileName in documentFilesToDelete {
+                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             }
         }
         projects = []

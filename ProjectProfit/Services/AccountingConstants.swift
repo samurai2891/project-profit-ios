@@ -108,6 +108,10 @@ enum AccountingConstants {
     static let cashAccountId = "acct-cash"
     /// 普通預金
     static let bankAccountId = "acct-bank"
+    /// 売掛金
+    static let accountsReceivableAccountId = "acct-ar"
+    /// 買掛金
+    static let accountsPayableAccountId = "acct-ap"
     /// 事業主貸
     static let ownerDrawingsAccountId = "acct-owner-drawings"
     /// 事業主借
