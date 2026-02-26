@@ -49,6 +49,21 @@ resolve_spec_path() {
     fi
   fi
 
+  if [[ -d "e-taxall" ]]; then
+    local broad_candidate
+    broad_candidate="$(
+      find "e-taxall" -type f -name "*Ver${version_hint}.xlsx" \
+        | grep '所得-申告' \
+        | grep '帳票' \
+        | sort \
+        | head -n 1 || true
+    )"
+    if [[ -n "$broad_candidate" ]]; then
+      printf '%s' "$broad_candidate"
+      return 0
+    fi
+  fi
+
   printf '%s' "$preferred"
 }
 
