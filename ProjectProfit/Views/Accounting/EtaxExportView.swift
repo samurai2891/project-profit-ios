@@ -70,11 +70,12 @@ struct EtaxExportView: View {
 
     // MARK: - Settings
 
+    @MainActor
     private func settingsSection(viewModel: EtaxExportViewModel) -> some View {
         let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: viewModel.formType)
         let yearOptions = supportedYears.isEmpty ? [viewModel.fiscalYear] : supportedYears
 
-        VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 12) {
             Text("設定")
                 .font(.headline)
 

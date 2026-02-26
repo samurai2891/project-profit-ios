@@ -76,6 +76,7 @@ enum EtaxCharacterValidator {
     }
 
     /// フォーム全体のバリデーション
+    @MainActor
     static func validateForm(_ form: EtaxForm) -> [EtaxExportError] {
         var errors: [EtaxExportError] = []
 
