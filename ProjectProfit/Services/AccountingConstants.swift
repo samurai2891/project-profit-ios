@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - Default Account Definitions
 
-/// デフォルト勘定科目定義（25勘定科目）
-/// Todo.md 4B-1 準拠: 資産6, 負債2, 資本3(事業主貸含む), 収益2, 費用12(e-Tax準拠), 特殊1
+/// デフォルト勘定科目定義（34勘定科目）
+/// Todo.md 4B-1 準拠: 資産9, 負債4, 資本3, 収益2, 費用16(e-Tax+在庫/COGS), 特殊1
 /// コード体系: 1xx資産, 2xx負債, 3xx資本, 4xx収益, 5xx費用, 9xx特殊
 struct DefaultAccountDefinition {
     let id: String
@@ -41,7 +41,7 @@ enum AccountingConstants {
         DefaultAccountDefinition(id: "acct-sales", code: "401", name: "売上高", accountType: .revenue, normalBalance: .credit, subtype: .salesRevenue, displayOrder: 30),
         DefaultAccountDefinition(id: "acct-other-income", code: "402", name: "雑収入", accountType: .revenue, normalBalance: .credit, subtype: .otherIncome, displayOrder: 31),
 
-        // 費用 — e-Tax 12経費区分 (Expenses) — 5xx
+        // 費用 — e-Tax 経費区分 (Expenses) — 5xx
         DefaultAccountDefinition(id: "acct-rent", code: "501", name: "地代家賃", accountType: .expense, normalBalance: .debit, subtype: .rentExpense, displayOrder: 40),
         DefaultAccountDefinition(id: "acct-utilities", code: "502", name: "水道光熱費", accountType: .expense, normalBalance: .debit, subtype: .utilitiesExpense, displayOrder: 41),
         DefaultAccountDefinition(id: "acct-travel", code: "503", name: "旅費交通費", accountType: .expense, normalBalance: .debit, subtype: .travelExpense, displayOrder: 42),
@@ -49,9 +49,11 @@ enum AccountingConstants {
         DefaultAccountDefinition(id: "acct-advertising", code: "505", name: "広告宣伝費", accountType: .expense, normalBalance: .debit, subtype: .advertisingExpense, displayOrder: 44),
         DefaultAccountDefinition(id: "acct-entertainment", code: "506", name: "接待交際費", accountType: .expense, normalBalance: .debit, subtype: .entertainmentExpense, displayOrder: 45),
         DefaultAccountDefinition(id: "acct-depreciation", code: "507", name: "減価償却費", accountType: .expense, normalBalance: .debit, subtype: .depreciationExpense, displayOrder: 46),
-        DefaultAccountDefinition(id: "acct-repair", code: "508", name: "修繕費", accountType: .expense, normalBalance: .debit, subtype: .repairExpense, displayOrder: 47),
+        // IDは互換性維持のため継続利用し、TaxLine語彙のみinterest/taxesへ同期する。
+        DefaultAccountDefinition(id: "acct-repair", code: "508", name: "利子割引料", accountType: .expense, normalBalance: .debit, subtype: .interestExpense, displayOrder: 47),
         DefaultAccountDefinition(id: "acct-supplies", code: "509", name: "消耗品費", accountType: .expense, normalBalance: .debit, subtype: .suppliesExpense, displayOrder: 48),
-        DefaultAccountDefinition(id: "acct-welfare", code: "510", name: "福利厚生費", accountType: .expense, normalBalance: .debit, subtype: .welfareExpense, displayOrder: 49),
+        DefaultAccountDefinition(id: "acct-welfare", code: "510", name: "租税公課", accountType: .expense, normalBalance: .debit, subtype: .taxesExpense, displayOrder: 49),
+        DefaultAccountDefinition(id: "acct-insurance", code: "516", name: "損害保険料", accountType: .expense, normalBalance: .debit, subtype: .insuranceExpense, displayOrder: 52),
         DefaultAccountDefinition(id: "acct-outsourcing", code: "511", name: "外注工賃", accountType: .expense, normalBalance: .debit, subtype: .outsourcingExpense, displayOrder: 50),
         DefaultAccountDefinition(id: "acct-misc", code: "512", name: "雑費", accountType: .expense, normalBalance: .debit, subtype: .miscExpense, displayOrder: 51),
 
@@ -80,7 +82,7 @@ enum AccountingConstants {
 
     // MARK: - Category → Account Mapping
 
-    /// デフォルトカテゴリ ID → 勘定科目 ID のマッピング（Todo.md 4B-2 準拠: 13マッピング）
+    /// デフォルトカテゴリ ID → 勘定科目 ID のマッピング（Todo.md 4B-2 準拠）
     static let categoryToAccountMapping: [String: String] = [
         // 経費カテゴリ
         "cat-hosting": "acct-communication",        // ホスティング → 通信費
@@ -92,6 +94,7 @@ enum AccountingConstants {
         "cat-transport": "acct-travel",             // 交通費 → 旅費交通費
         "cat-food": "acct-entertainment",           // 食費・飲食 → 接待交際費
         "cat-entertainment": "acct-entertainment",  // 接待・会議費 → 接待交際費
+        "cat-insurance": "acct-insurance",          // 保険料 → 損害保険料
         "cat-other-expense": "acct-misc",           // その他経費 → 雑費
         // 収入カテゴリ
         "cat-sales": "acct-sales",                  // 売上 → 売上高
@@ -117,6 +120,8 @@ enum AccountingConstants {
     static let otherIncomeAccountId = "acct-other-income"
     /// 雑費
     static let miscExpenseAccountId = "acct-misc"
+    /// 損害保険料
+    static let insuranceExpenseAccountId = "acct-insurance"
     /// 減価償却累計額
     static let accumulatedDepreciationAccountId = "acct-accumulated-depreciation"
     /// 減価償却費

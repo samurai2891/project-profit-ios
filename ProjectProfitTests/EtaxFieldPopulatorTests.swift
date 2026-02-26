@@ -125,6 +125,36 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         XCTAssertEqual(form.totalExpenses, 200_000)
     }
 
+    func testPopulateWithInsuranceExpenseItem() {
+        let insuranceAccount = dataStore.accounts.first { $0.subtype == .insuranceExpense }!
+
+        let pl = ProfitLossReport(
+            fiscalYear: 2025,
+            generatedAt: Date(),
+            revenueItems: [],
+            expenseItems: [
+                ProfitLossItem(
+                    id: insuranceAccount.id,
+                    code: insuranceAccount.code,
+                    name: insuranceAccount.name,
+                    amount: 95_000,
+                    deductibleAmount: 95_000
+                )
+            ]
+        )
+        let form = EtaxFieldPopulator.populate(
+            fiscalYear: 2025,
+            profitLoss: pl,
+            balanceSheet: nil,
+            accounts: dataStore.accounts
+        )
+
+        let insuranceField = form.fields.first { $0.id == "expense_insurance" }
+        XCTAssertNotNil(insuranceField)
+        XCTAssertEqual(insuranceField?.taxLine, .insuranceExpense)
+        XCTAssertEqual(insuranceField?.value.numberValue, 95_000)
+    }
+
     func testPopulateIncomeSectionTotals() {
         let salesAccount = dataStore.accounts.first { $0.subtype == .salesRevenue }!
         let commAccount = dataStore.accounts.first { $0.subtype == .communicationExpense }!
@@ -270,6 +300,37 @@ final class EtaxFieldPopulatorTests: XCTestCase {
             includeSensitiveInExport: false
         )
         XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
+
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let ids = Set(fields.map(\.id))
+
+        XCTAssertTrue(ids.contains("declarant_name"))
+        XCTAssertTrue(ids.contains("declarant_business_name"))
+        XCTAssertFalse(ids.contains("declarant_name_kana"))
+        XCTAssertFalse(ids.contains("declarant_postal_code"))
+        XCTAssertFalse(ids.contains("declarant_address"))
+        XCTAssertFalse(ids.contains("declarant_phone"))
+        XCTAssertFalse(ids.contains("declarant_business_category"))
+        XCTAssertFalse(ids.contains("declarant_birth_date"))
+        XCTAssertFalse(ids.contains("declarant_my_number_flag"))
+    }
+
+    func testPopulateDeclarantInfoDoesNotUseLegacyPlainFieldsWhenSecurePayloadMissing() {
+        let profileId = UUID().uuidString
+        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
+
+        let profile = PPAccountingProfile(
+            id: profileId,
+            fiscalYear: 2025,
+            businessName: "屋号",
+            ownerName: "田中太郎",
+            ownerNameKana: "タナカタロウ",
+            postalCode: "1000001",
+            address: "東京都千代田区1-1",
+            phoneNumber: "0312345678",
+            businessCategory: "ソフトウェア開発",
+            myNumberFlag: true
+        )
 
         let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
         let ids = Set(fields.map(\.id))

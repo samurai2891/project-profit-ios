@@ -111,15 +111,15 @@ enum EtaxFieldPopulator {
     static func populateDeclarantInfo(profile: PPAccountingProfile) -> [EtaxField] {
         var fields: [EtaxField] = []
         let secure = ProfileSecureStore.load(profileId: profile.id)
-        let includeSensitive = secure?.includeSensitiveInExport ?? true
+        let includeSensitive = secure?.includeSensitiveInExport ?? false
 
-        let ownerNameKana = secure?.ownerNameKana ?? profile.ownerNameKana
-        let postalCode = secure?.postalCode ?? profile.postalCode
-        let address = secure?.address ?? profile.address
-        let phoneNumber = secure?.phoneNumber ?? profile.phoneNumber
-        let dateOfBirth = secure?.dateOfBirth ?? profile.dateOfBirth
-        let businessCategory = secure?.businessCategory ?? profile.businessCategory
-        let myNumberFlag = secure?.myNumberFlag ?? profile.myNumberFlag
+        let ownerNameKana = secure?.ownerNameKana
+        let postalCode = secure?.postalCode
+        let address = secure?.address
+        let phoneNumber = secure?.phoneNumber
+        let dateOfBirth = secure?.dateOfBirth
+        let businessCategory = secure?.businessCategory
+        let myNumberFlag = secure?.myNumberFlag
 
         if !profile.ownerName.isEmpty {
             fields.append(EtaxField(

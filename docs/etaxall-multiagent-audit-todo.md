@@ -8,38 +8,41 @@
 - 調査証跡: 46件（`docs/etaxall-audit/evidence-index.csv`）
 - 参照資料: `e-taxall` 内仕様書・XSD・モジュール文書 + `ProjectProfit` 実装 + `ProjectProfitTests`
 - 非破壊検証:
-  - `python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'` は 7/7 success
+  - `python3 -m unittest discover -s tools/etax/tests -p 'test_*.py'` は 12/12 success
+  - `./scripts/run_etax_unit_lane.sh` で overlay適用 + KOA210/KOA110最小XSD検証が成功
+  - `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` により実生成XML未出力でFail（fail-fast動作を確認）
   - `xcodebuild test ... -only-testing:ProjectProfitTests/EtaxXtxExporterTests` は CoreSimulator 不達で失敗（証跡 E040）
+  - `gh auth status` は default token invalid（`gh auth login -h github.com` が必要）
+  - ローカル実行証跡: `docs/testing/etax-ci-local-evidence-2026-02-26.md`
 
 ## 2. 実装進捗（2026-02-26 実装反映後）
 
 | ID | 状態 | 実装済み事実 | 残タスク |
 |---|---|---|---|
-| T01 | 進行中 | `EtaxXtxExporter` が `KOA210/KOA110` ルートと `VR`/`FormAttribute` を出力 | 生成XMLのXSD検証ジョブ追加 |
-| T02 | 進行中 | `TaxFieldDefinition` に `requiredRule/format/idref/form` を追加し、`validateForm` で型/書式/相関/未定義キーを検証 | CAB由来の `requiredRule/idref/format` 実データ反映 |
-| T03 | 未着手 | なし | `TaxLine` 語彙（interest/taxes など）を仕様と同期 |
-| T04 | 進行中 | `EtaxExportView` が `supportedYears(formType:)` で候補年を制限、`TaxYear2025.json` に `forms` 追加 | 複数年 `TaxYear*.json` 整備と年次更新Runbook |
-| T05 | 進行中 | `ProfileSecureStore`（Keychain）実装、設定画面に「機微情報を出力」トグル追加、保存時マイグレーション実装 | 平文保持禁止の強制（save失敗時フォールバック方針含む）とSwift実行検証 |
-| T06 | 未着手 | なし | CAB本番入力を使うCIパイプライン構築 |
+| T01 | 実装完了（CI証跡待ち） | `run_etax_unit_lane.sh` に `ETAX_XSD_REQUIRE_GENERATED_XML` を追加し、CIでは実生成XML欠落時にFailする構成へ更新。`etax-ci.yml` は `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定 | PR上でKOA210/KOA110実生成XMLのXSD passログを添付 |
+| T02 | 実装完了（運用監視） | `scripts/etax_generate_cab_overlay.py` を追加し、`帳票フィールド仕様書(所得-申告)Ver11x/12x` の KOA210/KOA110 から `requiredRule/idref/format` overlay を生成。laneで自動生成overlayを優先適用 | report の `missingInternalKeys/unresolvedIdrefs` を継続監視 |
+| T03 | 完了 | `TaxLine/AccountSubtype` に `insurance` を追加。`TaxYear2025.json` / `mapping_rules_2025.json` / `base_taxyear_2025.json` / `required_internal_keys.json` に `expense_insurance(AMF00260)` と `shushi_expense_insurance(AIG00290)` を反映。`cat-insurance -> acct-insurance` で実入力導線を追加 | なし |
+| T04 | 完了 | `docs/testing/etax-taxyear-runbook.md` を追加し、2026年以降の TaxYear更新手順・検証手順・受入条件を明文化。implementation-packにも同期 | なし |
+| T05 | 進行中 | `ProfileSettingsView.saveProfile` の平文フォールバックを削除。`EtaxFieldPopulator` は secure payload のみ参照。平文読取遮断のテストを追加 | Simulator実行環境でSwift回帰を通し受入証跡を確定 |
+| T06 | 進行中 | `run_etax_unit_lane.sh` に `ETAX_TAG_INPUT_DIR`/overlay diff生成（JSON+MD）を追加。`etax-ci.yml` で lane成果物をartifact収集 | CAB本番入力ディレクトリを使った定期実行運用を固定 |
 | T07 | 進行中 | e-Tax関連Swiftテスト期待値を `AMF/AIG/KOA` 系に更新 | Simulator実行環境でSwiftテスト実行を完了 |
 | T08 | 完了 | `TaxYearDefinitionLoader` に `fieldLabel/xmlTag/fieldDefinition` の `formType` 対応を追加 | なし |
 | T09 | 完了（方針固定） | スコープは「作成のみ（送信連携は非対応）」で固定 | 仕様書/リリース判定文書への明記反映 |
 | T10 | 完了 | `scripts/check_simulator_health.sh` と `.github/workflows/etax-ci.yml`（`simulator-health` / `etax-unit`）を追加。PR #1 で `simulator-health` success / `etax-unit` failure を確認し、`main` の必須チェックに `e-Tax CI / Simulator Health`, `e-Tax CI / e-Tax Unit Lane` を設定 | なし（検出された実装Failは T07/T01/T02 側で解消） |
 
 ### 残タスク（優先順）
-1. T01: 生成XMLに対するXSD検証フェーズを追加し、提出可能形式を自動検証する。
-2. T02: CAB実データから `requiredRule/idref/format` を取り込み、必須・相関チェックを実効化する。
-3. T05: 機微情報の平文保持禁止をコード上で強制し、失敗時の平文フォールバックを解消する。
-4. T06: CAB投入から `抽出→適用→検証→差分レポート` までをCIで自動化する。
-5. T03: `TaxLine` 語彙と勘定マッピングを仕様書と一致させる。
-6. T04: 2026年以降の `TaxYear*.json` 運用（更新手順・レビュー手順）をRunbook化する。
+1. `gh auth login -h github.com` を実施し、`etax-ci` をPR/`workflow_dispatch`で実行可能にする。
+2. T01/T02: PR上で `etax-ci` の実行証跡（実生成XMLのXSD pass、overlay report）を添付する。
+3. T06: CAB投入から `抽出→適用→検証→差分レポート` を本番入力で定期運用化する。
+4. T05: Keychain保存失敗時のUI運用とSwift回帰証跡をCIで確定する。
+5. T07: Simulator実行環境でSwiftテスト実行を完了する。
 
 ## 3. 原本Todo一覧（監査時点）
 
 | ID | 優先度 | 区分 | タイトル | ブロッカー |
 |---|---|---|---|---|
-| T01 | P0 | 根本問題 | XSD準拠XML構造の未実装 | Yes |
-| T02 | P0 | 根本問題 | 必須/型/書式/相関バリデーション欠落 | Yes |
+| T01 | P0 | 根本問題 | 生成XMLのXSD自動検証が最小fixture止まり | Yes |
+| T02 | P0 | 根本問題 | CAB実データ由来の必須/書式/相関メタ反映不足 | Yes |
 | T03 | P1 | 技術的負債 | TaxLine語彙と仕様書の不整合 | No |
 | T04 | P1 | 運用問題 | 年分対応戦略（UI/TaxYear/版差分）の未固定 | No |
 | T05 | P0 | 根本問題 | 申告者情報の暗号化保存未実装 | Yes |
@@ -54,56 +57,57 @@
 ### T01: XSD準拠XML構造の未実装
 - 区分: 根本問題
 - 事実:
-  - e-taxall XSDは `KOA210` / `KOA110` ルート、`VR` 属性、`FormAttribute` を要求（E019, E021, E022）。
-  - 実装は `<eTaxData year=... formType=...>` の独自ルートを生成（E028）。
+  - `EtaxXtxExporterTests` が `ETAX_XSD_BLUE_EXPORT_XML` / `ETAX_XSD_WHITE_EXPORT_XML` 指定時に実生成XMLを書き出す。
+  - `run_etax_unit_lane.sh` は実生成XMLを優先し、未生成時のみ fixture へfallbackする。
+  - `.github/workflows/etax-ci.yml` は lane成果物をartifactとして収集する。
 - 根拠:
-  - `e-taxall/19XMLスキーマ/shotoku/KOA210-011.xsd:23-52`
-  - `e-taxall/19XMLスキーマ/shotoku/KOA110-012.xsd:23-42`
-  - `e-taxall/19XMLスキーマ/general/General.xsd:22-27`
-  - `ProjectProfit/Services/EtaxXtxExporter.swift:107-118`
+  - `ProjectProfitTests/EtaxXtxExporterTests.swift`
+  - `scripts/run_etax_unit_lane.sh`
+  - `.github/workflows/etax-ci.yml`
 - 影響:
-  - タグ値が正しくても、提出可能XMLとして受理されないリスクが高い。
+  - 仕組みは実装済みだが、CoreSimulator不達環境では実生成XMLが未出力のため最終検証が未確定。
 - 修正Todo:
-  1. `EtaxXtxExporter` をフォーム別（KOA210/KOA110）ビルダーに分離する。
-  2. `VR` と `FormAttribute(softNM/sakuseiNM/sakuseiDay)` を必須出力にする。
-  3. 生成XMLをXSDで検証するフェーズを追加する（T02連動）。
+  1. Simulator利用可能なCI実行ログで、実生成XML経由のXSD passを証跡化する。
+  2. 様式別（blue/white）で最低1ケースずつ実データ検証の結果をPRに添付する。
 - 受入条件:
-  - KOA210/KOA110形式のXMLが生成され、XSD検証を通過する。
+  - 実データ由来の KOA210/KOA110 XML がCIで毎回XSD検証を通過する。
 
 ### T02: 必須/型/書式/相関バリデーション欠落
 - 区分: 根本問題
 - 事実:
-  - 仕様は `format/requiredRule` 強制、違反時エクスポート不可を要求（E005）。
-  - 実装の `validateForm` は文字種チェックのみ（E030）。
-  - `missingRequiredField` / `validationFailed` は未使用（E032）。
-  - 未マップフィールドは `continue` で無言破棄（E029）。
+  - `validateForm` は `requiredRule` / `dataType` / `format` / `idref` / 未定義キー検出を実装済み。
+  - `scripts/etax_apply_cab_overlay.py` で `requiredRule/idref/format/dataType` を TaxYearへ反映可能。
+  - `run_etax_unit_lane.sh` は overlay適用後に `etax_validate_tags.py` を再実行する。
 - 根拠:
-  - `e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md:385-390`
-  - `ProjectProfit/Services/EtaxCharacterValidator.swift:79-95`
-  - `ProjectProfit/Models/EtaxModels.swift:161-179`
-  - `ProjectProfit/Services/EtaxXtxExporter.swift:137-140`
+  - `ProjectProfit/Services/EtaxCharacterValidator.swift`
+  - `ProjectProfit/Models/EtaxModels.swift`
+  - `scripts/etax_apply_cab_overlay.py`
+  - `tools/etax/fixtures/cab_overlay_2025.json`
 - 影響:
-  - 必須欠落や形式違反を通したまま出力する可能性がある。
+  - overlayはfixture中心で、CAB本番抽出由来の全面反映が未完。
 - 修正Todo:
-  1. `TaxFieldDefinition` に `requiredRule`, `format`, `idref`, `form` を追加。
-  2. 出力前に「必須キー欠落」「型違反」「書式違反」「相関違反」を検証。
-  3. 未マップキーは `continue` ではなくエラー化。
+  1. CAB抽出成果物（TagDictionary/overlay）から全internalKeyの `requiredRule/idref/format` を取り込む。
+  2. overlay反映結果の差分レポートをCI成果物として保存する。
+  3. `requiredRule` 条件式の実データケースをテストへ追加する。
 - 受入条件:
-  - 要件違反時はエクスポート不可となり、違反キー一覧が表示される。
+  - CAB実データ反映後、要件違反時にエクスポート不可となり、違反キー一覧が表示される。
 
 ### T03: TaxLine語彙と仕様書の不整合
 - 区分: 技術的負債
 - 事実:
   - 仕様書の主要経費例に `利子割引料` / `租税公課` を含む（E042）。
-  - 実装TaxLineは `repair` / `welfare` を持ち、`interest` / `taxes` を持たない（E043）。
+  - 実装は `interest/taxes` へ同期済みで、`TaxYear2025/mapping_rules/base fixture/required keys` も同語彙に更新済み。
+  - `AccountSubtype` は decode時に旧 `repairExpense/welfareExpense` を `interestExpense/taxesExpense` へ互換吸収する。
 - 根拠:
   - `e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md:216-227`
-  - `ProjectProfit/Models/TaxLineDefinitions.swift:10-21`
+  - `ProjectProfit/Models/TaxLineDefinitions.swift`
+  - `ProjectProfit/Models/AccountingEnums.swift`
+  - `ProjectProfit/Resources/TaxYear2025.json`
 - 影響:
-  - 科目→TaxLineの対応が仕様ドキュメントと一致しない可能性。
+  - `white.exp.insurance` が実入力に流れず、KOA110 `AIG00290` へ出力できないリスクがあった。
 - 修正Todo:
-  1. TaxLine語彙の正をe-taxall仕様に合わせて再定義。
-  2. `AccountingEnums` / `TaxYear2025` / マッピングルールを一括同期。
+  1. `TaxLine/AccountSubtype/DefaultAccount/CategoryMapping` を `insurance` 対応へ拡張。
+  2. `TaxYear2025` と toolchain定義へ `AMF00260` / `AIG00290` を反映。
 - 受入条件:
   - 仕様書側TaxLine一覧と実装一覧の差分がゼロになる。
 
@@ -127,34 +131,34 @@
 ### T05: 機微情報暗号化未実装
 - 区分: 根本問題
 - 事実:
-  - 仕様は高機微情報の端末内暗号化を必須化（E006）。
-  - `PPAccountingProfile` に氏名/住所/電話/生年月日/マイナンバー関連を保持（E039）。
-  - `CryptoKit`/`Keychain`/`SecItem` 利用痕跡なし（E038）。
+  - `ProfileSecureStore`（Keychain）で機微情報を保存し、`saveProfile` の平文フォールバックを削除した。
+  - `EtaxFieldPopulator` は secure payload のみを参照し、legacy平文を出力しない。
+  - `EtaxFieldPopulatorTests` に平文読取遮断ケースを追加した。
 - 根拠:
-  - `e-taxall/確定申告仕様書/仕様書：e‑Tax「決算書・収支内訳書」データ作成.md:178-179`
-  - `ProjectProfit/Models/PPAccountingProfile.swift:23-29`
+  - `ProjectProfit/Views/Settings/ProfileSettingsView.swift`
+  - `ProjectProfit/Services/EtaxFieldPopulator.swift`
+  - `ProjectProfitTests/EtaxFieldPopulatorTests.swift`
 - 影響:
-  - 端末喪失・バックアップ経路での情報露出リスク。
+  - 平文保存リスクは低減したが、Simulator実行環境でのSwift回帰証跡が未取得。
 - 修正Todo:
-  1. 申告者情報の保存先を暗号化ストアへ移行。
-  2. 平文保持禁止ポリシーをコード/テストで強制。
-  3. 同意/表示方針を設定画面に追加。
+  1. CI実行で追加テストを通し、受入証跡を固定化する。
 - 受入条件:
   - 機微情報が平文DBに残らないことをテストで確認できる。
 
 ### T06: CAB本番入力を含むパイプライン未整備
 - 区分: 運用問題
 - 事実:
-  - 実行例・unit laneは `tools/etax/fixtures` と `/tmp` 出力中心（E036）。
-  - CSV変換・版管理仕様はe-taxallにあるが、本番CAB取り込みの継続運用が未定義（E015, E023）。
+  - `run_etax_unit_lane.sh` が `ETAX_TAG_INPUT_DIR` で入力切替可能となり、`抽出→適用→検証→差分` を実行する。
+  - `scripts/etax_report_taxyear_diff.py` が overlay差分を JSON/Markdown で出力する。
+  - `etax-ci.yml` が `/tmp/etax-unit-lane` をartifact収集する。
 - 根拠:
-  - `scripts/run_etax_unit_lane.sh:10-22`
-  - `tools/etax/README.md:16-26`
+  - `scripts/run_etax_unit_lane.sh`
+  - `scripts/etax_report_taxyear_diff.py`
+  - `.github/workflows/etax-ci.yml`
 - 影響:
-  - 本番仕様更新時の追従が手作業化し、取り込み漏れが起きる。
+  - パイプライン枠は整備されたが、本番CAB入力を定期投入する運用ルールは未確定。
 - 修正Todo:
-  1. CAB展開入力を前提にしたCIジョブを追加。
-  2. `TaxYear*.json` への適用から差分レビューまで自動化。
+  1. 本番CABの配置先と投入タイミングを定義し、`ETAX_TAG_INPUT_DIR` でCI定期実行する。
 - 受入条件:
   - 新CAB投入で `抽出→検証→反映→差分レポート` が自動実行される。
 
@@ -231,8 +235,8 @@
 
 ## 4. リリースゲート（2026-02-26 実装反映後）
 - 判定: **No-Go**
-- ブロッカー: `T01`, `T02`, `T05`, `T10`
-- 条件付きブロッカー: `T07`（Swiftテストの実行環境不足）
+- ブロッカー: `T01`, `T02`, `T06`
+- 条件付きブロッカー: `T05`, `T07`（Swiftテストの実行環境不足）
 
 ## 5. 参照
 - Agent別報告: `docs/etaxall-audit/reports/A01.md` 〜 `A30.md`

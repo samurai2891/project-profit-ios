@@ -164,4 +164,33 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
         XCTAssertNotNil(totalField)
         XCTAssertEqual(totalField?.value.numberValue, 150_000)
     }
+
+    func testBuildIncludesInsuranceExpenseField() {
+        let insuranceAccount = dataStore.accounts.first { $0.subtype == .insuranceExpense }!
+
+        let pl = ProfitLossReport(
+            fiscalYear: 2025,
+            generatedAt: Date(),
+            revenueItems: [],
+            expenseItems: [
+                ProfitLossItem(
+                    id: insuranceAccount.id,
+                    code: insuranceAccount.code,
+                    name: insuranceAccount.name,
+                    amount: 90_000,
+                    deductibleAmount: 90_000
+                )
+            ]
+        )
+        let form = ShushiNaiyakushoBuilder.build(
+            fiscalYear: 2025,
+            profitLoss: pl,
+            accounts: dataStore.accounts
+        )
+
+        let insuranceField = form.fields.first { $0.id == "shushi_expense_insurance" }
+        XCTAssertNotNil(insuranceField)
+        XCTAssertEqual(insuranceField?.taxLine, .insuranceExpense)
+        XCTAssertEqual(insuranceField?.value.numberValue, 90_000)
+    }
 }

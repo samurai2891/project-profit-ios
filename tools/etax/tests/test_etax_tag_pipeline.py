@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,9 +17,17 @@ class EtaxTagPipelineTests(unittest.TestCase):
         cls.extract_script = cls.repo_root / "scripts" / "etax_extract_tags.py"
         cls.validate_script = cls.repo_root / "scripts" / "etax_validate_tags.py"
         cls.apply_script = cls.repo_root / "scripts" / "etax_apply_tags.py"
+        cls.apply_overlay_script = cls.repo_root / "scripts" / "etax_apply_cab_overlay.py"
+        cls.generate_overlay_script = cls.repo_root / "scripts" / "etax_generate_cab_overlay.py"
+        cls.resolve_xsd_script = cls.repo_root / "scripts" / "etax_resolve_xsd.sh"
+        cls.validate_xsd_script = cls.repo_root / "scripts" / "etax_validate_xsd.sh"
         cls.fixture_dir = cls.repo_root / "tools" / "etax" / "fixtures"
+        cls.overlay_fixture = cls.fixture_dir / "cab_overlay_2025.json"
         cls.mapping_config = cls.repo_root / "tools" / "etax" / "mapping_rules_2025.json"
         cls.required_keys = cls.repo_root / "tools" / "etax" / "required_internal_keys.json"
+        cls.taxyear_resource = cls.repo_root / "ProjectProfit" / "Resources" / "TaxYear2025.json"
+        cls.blue_spec_xlsx = cls.repo_root / "e-taxall" / "09XML構造設計書等【所得税】" / "帳票フィールド仕様書(所得-申告)Ver11x.xlsx"
+        cls.white_spec_xlsx = cls.repo_root / "e-taxall" / "09XML構造設計書等【所得税】" / "帳票フィールド仕様書(所得-申告)Ver12x.xlsx"
 
     def run_cmd(
         self,
@@ -316,6 +325,137 @@ class EtaxTagPipelineTests(unittest.TestCase):
             )
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("TagDictionaryに存在しないinternalKey", result.stderr)
+
+    def test_apply_cab_overlay_updates_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out_taxyear = Path(td) / "TaxYear2025.overlay.json"
+            result = self.run_cmd(
+                "python3",
+                str(self.apply_overlay_script),
+                "--base-taxyear-json",
+                str(self.fixture_dir / "base_taxyear_2025.json"),
+                "--overlay-json",
+                str(self.overlay_fixture),
+                "--out-taxyear-json",
+                str(out_taxyear),
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+
+            with out_taxyear.open("r", encoding="utf-8") as fp:
+                taxyear = json.load(fp)
+            by_key = {field["internalKey"]: field for field in taxyear["fields"]}
+
+            self.assertEqual(by_key["declarant_postal_code"]["format"], "digits7")
+            self.assertEqual(by_key["declarant_postal_code"]["requiredRule"], "required")
+            self.assertEqual(by_key["declarant_birth_date"]["format"], "date")
+            self.assertEqual(by_key["declarant_birth_date"]["requiredRule"], "required")
+            self.assertEqual(by_key["declarant_my_number_flag"]["dataType"], "flag")
+            self.assertEqual(by_key["declarant_my_number_flag"]["idref"], "declarant_name")
+
+    def test_apply_cab_overlay_strict_fails_for_unknown_key(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            overlay_path = temp_dir / "overlay.json"
+            out_taxyear = temp_dir / "TaxYear2025.overlay.json"
+
+            overlay = {
+                "items": [
+                    {"internalKey": "unknown_internal_key", "requiredRule": "required"},
+                ]
+            }
+            overlay_path.write_text(json.dumps(overlay, ensure_ascii=False), encoding="utf-8")
+
+            result = self.run_cmd(
+                "python3",
+                str(self.apply_overlay_script),
+                "--base-taxyear-json",
+                str(self.fixture_dir / "base_taxyear_2025.json"),
+                "--overlay-json",
+                str(overlay_path),
+                "--out-taxyear-json",
+                str(out_taxyear),
+                "--strict",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("TaxYearに存在しないinternalKey", result.stderr)
+
+    def test_generate_cab_overlay_from_etaxall_specs(self) -> None:
+        if not self.blue_spec_xlsx.exists() or not self.white_spec_xlsx.exists():
+            self.skipTest("e-taxall spec xlsx not available")
+
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            overlay_path = temp_dir / "overlay.json"
+            report_path = temp_dir / "report.json"
+
+            result = self.run_cmd(
+                "python3",
+                str(self.generate_overlay_script),
+                "--taxyear-json",
+                str(self.taxyear_resource),
+                "--blue-spec-xlsx",
+                str(self.blue_spec_xlsx),
+                "--blue-sheet",
+                "KOA210",
+                "--white-spec-xlsx",
+                str(self.white_spec_xlsx),
+                "--white-sheet",
+                "KOA110",
+                "--out-overlay",
+                str(overlay_path),
+                "--out-report",
+                str(report_path),
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+            self.assertTrue(overlay_path.exists())
+            self.assertTrue(report_path.exists())
+
+            with overlay_path.open("r", encoding="utf-8") as fp:
+                overlay_payload = json.load(fp)
+            by_key = {item["internalKey"]: item for item in overlay_payload["items"]}
+
+            self.assertEqual(by_key["shushi_expense_taxes"]["format"], "Z,ZZZ,ZZZ,ZZZ,ZZZ")
+            self.assertEqual(by_key["shushi_expense_taxes"]["requiredRule"], "optional")
+            self.assertEqual(by_key["shushi_expense_interest"]["dataType"], "number")
+            self.assertEqual(by_key["expense_insurance"]["dataType"], "number")
+            self.assertEqual(by_key["shushi_expense_insurance"]["dataType"], "number")
+
+            with report_path.open("r", encoding="utf-8") as fp:
+                report_payload = json.load(fp)
+
+            white_insurance_tags = {item["xmlTag"] for item in report_payload["whiteInsuranceFacts"]}
+            self.assertIn("AIG00290", white_insurance_tags)
+
+    def test_resolve_xsd_uses_taxyear_forms(self) -> None:
+        result = self.run_cmd(
+            "bash",
+            str(self.resolve_xsd_script),
+            "--taxyear-json",
+            str(self.taxyear_resource),
+            "--form-key",
+            "blue_general",
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+        self.assertIn("status=ok", result.stdout)
+        self.assertIn("schema_path=", result.stdout)
+        self.assertIn("KOA210-011.xsd", result.stdout)
+
+    def test_validate_xsd_for_minimal_blue_fixture(self) -> None:
+        if shutil.which("xmllint") is None:
+            self.skipTest("xmllint not available")
+
+        result = self.run_cmd(
+            "bash",
+            str(self.validate_xsd_script),
+            "--xml",
+            str(self.fixture_dir / "KOA210_minimal.xml"),
+            "--taxyear-json",
+            str(self.taxyear_resource),
+            "--form-key",
+            "blue_general",
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+        self.assertIn("xsd validation passed", result.stdout)
 
 
 if __name__ == "__main__":

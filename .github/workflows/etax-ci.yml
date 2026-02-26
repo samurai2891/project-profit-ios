@@ -77,7 +77,41 @@ jobs:
 
       - name: Run e-Tax unit lane
         env:
+          ETAX_ARTIFACTS_DIR: /tmp/etax-unit-lane
+          ETAX_TAG_INPUT_DIR: tools/etax/fixtures
           ETAX_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          ETAX_CAB_OVERLAY_JSON: tools/etax/fixtures/cab_overlay_2025.json
+          ETAX_CAB_BLUE_FIELD_SPEC_XLSX: "e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx"
+          ETAX_CAB_BLUE_FIELD_SPEC_SHEET: KOA210
+          ETAX_CAB_WHITE_FIELD_SPEC_XLSX: "e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx"
+          ETAX_CAB_WHITE_FIELD_SPEC_SHEET: KOA110
+          ETAX_XSD_REQUIRE_GENERATED_XML: "true"
+          ETAX_XSD_BLUE_EXPORT_XML: /tmp/etax-unit-lane/KOA210.export.xml
+          ETAX_XSD_WHITE_EXPORT_XML: /tmp/etax-unit-lane/KOA110.export.xml
+          ETAX_XSD_BLUE_FALLBACK_XML: tools/etax/fixtures/KOA210_minimal.xml
+          ETAX_XSD_WHITE_FALLBACK_XML: tools/etax/fixtures/KOA110_minimal.xml
         run: |
+          chmod +x scripts/etax_resolve_xsd.sh
+          chmod +x scripts/etax_validate_xsd.sh
           chmod +x scripts/run_etax_unit_lane.sh
           ./scripts/run_etax_unit_lane.sh
+
+      - name: Summarize lane evidence
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          scripts/etax_ci_evidence_summary.sh /tmp/etax-unit-lane >> "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            echo "warning: evidence summary script failed with status=$status" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload e-Tax lane artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etax-unit-lane-artifacts
+          path: /tmp/etax-unit-lane
+          if-no-files-found: warn

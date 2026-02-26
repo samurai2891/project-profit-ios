@@ -217,6 +217,11 @@ final class RegexReceiptParserLineItemTests: XCTestCase {
         XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "entertainment")
     }
 
+    func testEstimateCategoryInsurance() {
+        let text = "損害保険料 自動車保険 ¥12,000"
+        XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "insurance")
+    }
+
     func testEstimateCategoryOtherExpense() {
         let text = "特殊な支出 ¥1,000"
         XCTAssertEqual(RegexReceiptParser.estimateCategory(from: text), "other-expense")
@@ -250,5 +255,14 @@ final class RegexReceiptParserLineItemTests: XCTestCase {
             fallbackText: text
         )
         XCTAssertEqual(normalized, "sales")
+    }
+
+    func testNormalizeEstimatedCategoryKeepsInsuranceForExpense() {
+        let normalized = RegexReceiptParser.normalizeEstimatedCategory(
+            "insurance",
+            type: .expense,
+            fallbackText: "保険料"
+        )
+        XCTAssertEqual(normalized, "insurance")
     }
 }

@@ -121,8 +121,17 @@
       "required_rule": null
     },
     {
-      "internal_key": "expense_repair",
-      "field_label": "修繕費",
+      "internal_key": "expense_insurance",
+      "field_label": "損害保険料",
+      "section": "expenses",
+      "form": "blue_general",
+      "xml_tag": "AMF00260",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "expense_interest",
+      "field_label": "利子割引料",
       "section": "expenses",
       "form": "blue_general",
       "xml_tag": "AMF00270",
@@ -139,8 +148,8 @@
       "required_rule": null
     },
     {
-      "internal_key": "expense_welfare",
-      "field_label": "福利厚生費",
+      "internal_key": "expense_taxes",
+      "field_label": "租税公課",
       "section": "expenses",
       "form": "blue_general",
       "xml_tag": "AMF00300",
@@ -409,11 +418,20 @@
       "required_rule": null
     },
     {
-      "internal_key": "shushi_expense_repair",
-      "field_label": "修繕費",
+      "internal_key": "shushi_expense_insurance",
+      "field_label": "損害保険料",
       "section": "expenses",
       "form": "white_shushi",
-      "xml_tag": "AIG00300",
+      "xml_tag": "AIG00290",
+      "data_type": "number",
+      "required_rule": null
+    },
+    {
+      "internal_key": "shushi_expense_interest",
+      "field_label": "利子割引料",
+      "section": "expenses",
+      "form": "white_shushi",
+      "xml_tag": "AIG00200",
       "data_type": "number",
       "required_rule": null
     },
@@ -427,11 +445,11 @@
       "required_rule": null
     },
     {
-      "internal_key": "shushi_expense_welfare",
-      "field_label": "福利厚生費",
+      "internal_key": "shushi_expense_taxes",
+      "field_label": "租税公課",
       "section": "expenses",
       "form": "white_shushi",
-      "xml_tag": "AIG00320",
+      "xml_tag": "AIG00220",
       "data_type": "number",
       "required_rule": null
     },

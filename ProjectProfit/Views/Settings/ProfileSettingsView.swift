@@ -15,6 +15,7 @@ struct ProfileSettingsView: View {
     @State private var businessCategory: String = ""
     @State private var myNumberFlag: Bool = false
     @State private var includeSensitiveInExport: Bool = true
+    @State private var saveErrorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -33,8 +34,9 @@ struct ProfileSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") {
-                    saveProfile()
-                    dismiss()
+                    if saveProfile() {
+                        dismiss()
+                    }
                 }
                 .fontWeight(.semibold)
                 .foregroundStyle(AppColors.primary)
@@ -42,6 +44,21 @@ struct ProfileSettingsView: View {
         }
         .onAppear {
             loadProfile()
+        }
+        .alert(
+            "保存エラー",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        saveErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveErrorMessage ?? "")
         }
     }
 
@@ -230,8 +247,9 @@ struct ProfileSettingsView: View {
         }
     }
 
-    private func saveProfile() {
-        guard let profile = dataStore.accountingProfile else { return }
+    @discardableResult
+    private func saveProfile() -> Bool {
+        guard let profile = dataStore.accountingProfile else { return false }
 
         profile.businessName = businessName
         profile.ownerName = ownerName
@@ -247,21 +265,21 @@ struct ProfileSettingsView: View {
             includeSensitiveInExport: includeSensitiveInExport
         )
 
-        if ProfileSecureStore.save(payload, profileId: profile.id) {
+        let secureSaved = ProfileSecureStore.save(payload, profileId: profile.id)
+        if secureSaved {
             clearLegacySensitiveFields(profile: profile)
-        } else {
-            profile.ownerNameKana = ownerNameKana.isEmpty ? nil : ownerNameKana
-            profile.postalCode = postalCode.isEmpty ? nil : postalCode
-            profile.address = address.isEmpty ? nil : address
-            profile.phoneNumber = phoneNumber.isEmpty ? nil : phoneNumber
-            profile.businessCategory = businessCategory.isEmpty ? nil : businessCategory
-            profile.myNumberFlag = myNumberFlag
-            profile.dateOfBirth = hasDateOfBirth ? dateOfBirth : nil
         }
 
         profile.updatedAt = Date()
-
         dataStore.save()
+
+        if secureSaved {
+            saveErrorMessage = nil
+            return true
+        }
+
+        saveErrorMessage = "機微情報はKeychainへ保存できなかったため、平文では保存していません。端末設定を確認して再試行してください。"
+        return false
     }
 
     private func hasLegacySensitiveFields(profile: PPAccountingProfile) -> Bool {

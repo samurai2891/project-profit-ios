@@ -212,17 +212,27 @@ final class AccountingIntegrationTests: XCTestCase {
     /// PPAccountingProfile に e-Tax フィールドを設定し、EtaxFieldPopulator が
     /// .declarantInfo セクションのフィールドを正しく生成することを検証
     func testEtaxFieldPopulator_GeneratesDeclarantInfoFields() {
+        let profileId = UUID().uuidString
+        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
+
         let profile = PPAccountingProfile(
+            id: profileId,
             fiscalYear: 2025,
             bookkeepingMode: .doubleEntry,
             businessName: "テスト屋号",
-            ownerName: "田中太郎",
+            ownerName: "田中太郎"
+        )
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
             ownerNameKana: "タナカタロウ",
             postalCode: "1000001",
             address: "東京都千代田区千代田1-1",
             phoneNumber: "03-1234-5678",
-            businessCategory: "ソフトウェア開発"
+            dateOfBirth: nil,
+            businessCategory: "ソフトウェア開発",
+            myNumberFlag: nil,
+            includeSensitiveInExport: true
         )
+        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
 
         let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
 

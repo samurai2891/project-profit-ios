@@ -92,10 +92,20 @@
       "requiredRule": null
     },
     {
-      "internalKey": "expense_repair",
-      "fieldLabel": "修繕費",
+      "internalKey": "expense_insurance",
+      "fieldLabel": "損害保険料",
+      "xmlTag": "AMF00260",
+      "taxLineRawValue": "insurance",
+      "section": "expenses",
+      "dataType": "number",
+      "form": "blue_general",
+      "requiredRule": null
+    },
+    {
+      "internalKey": "expense_interest",
+      "fieldLabel": "利子割引料",
       "xmlTag": "AMF00270",
-      "taxLineRawValue": "repair",
+      "taxLineRawValue": "interest",
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
@@ -112,10 +122,10 @@
       "requiredRule": null
     },
     {
-      "internalKey": "expense_welfare",
-      "fieldLabel": "福利厚生費",
+      "internalKey": "expense_taxes",
+      "fieldLabel": "租税公課",
       "xmlTag": "AMF00300",
-      "taxLineRawValue": "welfare",
+      "taxLineRawValue": "taxes",
       "section": "expenses",
       "dataType": "number",
       "form": "blue_general",
@@ -414,10 +424,20 @@
       "requiredRule": null
     },
     {
-      "internalKey": "shushi_expense_repair",
-      "fieldLabel": "修繕費",
-      "xmlTag": "AIG00300",
-      "taxLineRawValue": "repair",
+      "internalKey": "shushi_expense_insurance",
+      "fieldLabel": "損害保険料",
+      "xmlTag": "AIG00290",
+      "taxLineRawValue": "insurance",
+      "section": "expenses",
+      "dataType": "number",
+      "form": "white_shushi",
+      "requiredRule": null
+    },
+    {
+      "internalKey": "shushi_expense_interest",
+      "fieldLabel": "利子割引料",
+      "xmlTag": "AIG00200",
+      "taxLineRawValue": "interest",
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",
@@ -434,10 +454,10 @@
       "requiredRule": null
     },
     {
-      "internalKey": "shushi_expense_welfare",
-      "fieldLabel": "福利厚生費",
-      "xmlTag": "AIG00320",
-      "taxLineRawValue": "welfare",
+      "internalKey": "shushi_expense_taxes",
+      "fieldLabel": "租税公課",
+      "xmlTag": "AIG00220",
+      "taxLineRawValue": "taxes",
       "section": "expenses",
       "dataType": "number",
       "form": "white_shushi",

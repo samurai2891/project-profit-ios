@@ -6,7 +6,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Default Accounts Tests
 
     func testDefaultAccountsCount() {
-        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 33)
+        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 34)
     }
 
     func testAllAccountIdsAreUnique() {
@@ -43,9 +43,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testExpenseAccountsCount() {
-        // 12 e-Tax 経費区分 + 期首商品棚卸高, 仕入高, 売上原価 = 15
+        // e-Tax経費区分 + 期首商品棚卸高, 仕入高, 売上原価 = 16
         let expenses = AccountingConstants.defaultAccounts.filter { $0.accountType == .expense }
-        XCTAssertEqual(expenses.count, 15)
+        XCTAssertEqual(expenses.count, 16)
     }
 
     func testCashAccountDefinition() {
@@ -83,6 +83,15 @@ final class AccountingConstantsTests: XCTestCase {
         XCTAssertEqual(suspense?.accountType, .asset)
     }
 
+    func testInsuranceExpenseAccountDefinition() {
+        let insurance = AccountingConstants.defaultAccountsById["acct-insurance"]
+        XCTAssertNotNil(insurance)
+        XCTAssertEqual(insurance?.code, "516")
+        XCTAssertEqual(insurance?.name, "損害保険料")
+        XCTAssertEqual(insurance?.accountType, .expense)
+        XCTAssertEqual(insurance?.subtype, .insuranceExpense)
+    }
+
     func testCodeSchemeConsistency() {
         for account in AccountingConstants.defaultAccounts {
             let codePrefix = account.code.prefix(1)
@@ -106,7 +115,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Category Mapping Tests
 
     func testCategoryMappingCount() {
-        XCTAssertEqual(AccountingConstants.categoryToAccountMapping.count, 13)
+        XCTAssertEqual(AccountingConstants.categoryToAccountMapping.count, 14)
     }
 
     func testAllMappedAccountIdsExistInDefaultAccounts() {
@@ -148,6 +157,10 @@ final class AccountingConstantsTests: XCTestCase {
         XCTAssertEqual(AccountingConstants.categoryToAccountMapping["cat-other-expense"], "acct-misc")
     }
 
+    func testInsuranceMapsToInsuranceExpense() {
+        XCTAssertEqual(AccountingConstants.categoryToAccountMapping["cat-insurance"], "acct-insurance")
+    }
+
     // MARK: - Well-Known IDs Tests
 
     func testWellKnownIds() {
@@ -158,5 +171,6 @@ final class AccountingConstantsTests: XCTestCase {
         XCTAssertEqual(AccountingConstants.ownerCapitalAccountId, "acct-owner-capital")
         XCTAssertEqual(AccountingConstants.salesAccountId, "acct-sales")
         XCTAssertEqual(AccountingConstants.suspenseAccountId, "acct-suspense")
+        XCTAssertEqual(AccountingConstants.insuranceExpenseAccountId, "acct-insurance")
     }
 }

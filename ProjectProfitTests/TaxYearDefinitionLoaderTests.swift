@@ -56,6 +56,21 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(xmlTag, "AIG00020")
     }
 
+    func testXmlTag_whiteTaxesTagIsCurrentSpec() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "shushi_expense_taxes", formType: .whiteReturn, fiscalYear: 2025)
+        XCTAssertEqual(xmlTag, "AIG00220")
+    }
+
+    func testXmlTag_blueInsuranceTagIsCurrentSpec() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "expense_insurance", formType: .blueReturn, fiscalYear: 2025)
+        XCTAssertEqual(xmlTag, "AMF00260")
+    }
+
+    func testXmlTag_whiteInsuranceTagIsCurrentSpec() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "shushi_expense_insurance", formType: .whiteReturn, fiscalYear: 2025)
+        XCTAssertEqual(xmlTag, "AIG00290")
+    }
+
     func testIsSupportedYear() {
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025))
         XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 1900))

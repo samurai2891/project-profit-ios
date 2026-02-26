@@ -1,0 +1,21 @@
+{
+  "taxYear": 2025,
+  "items": [
+    {
+      "internalKey": "declarant_postal_code",
+      "format": "digits7",
+      "requiredRule": "required"
+    },
+    {
+      "internalKey": "declarant_birth_date",
+      "format": "date",
+      "requiredRule": "required"
+    },
+    {
+      "internalKey": "declarant_my_number_flag",
+      "dataType": "flag",
+      "idref": "declarant_name",
+      "requiredRule": "optional"
+    }
+  ]
+}

@@ -12,6 +12,16 @@
 - [x] `etax_apply_tags.py` が base `TaxYear` に `xmlTag/dataType` を反映できる
 - [x] `--allow-missing` なしで未反映キーがある場合は失敗する
 - [x] 反映後 `xmlTag` が空のフィールドが残らない
+- [x] `etax_apply_cab_overlay.py` が `requiredRule/idref/format` を反映できる
+- [x] `etax_apply_cab_overlay.py --strict` が未知internalKeyを失敗扱いにする
+- [x] `etax_report_taxyear_diff.py` が overlay差分を JSON/Markdown で出力する
+- [x] `etax_generate_cab_overlay.py` が KOA210/KOA110 実データから overlay/report を生成できる
+
+## XSD検証
+- [x] `etax_resolve_xsd.sh` が `TaxYear*.json` の `formId/formVer` からXSDを解決できる
+- [x] `etax_validate_xsd.sh` が KOA210 を検証成功する（実生成XMLまたはfallback）
+- [x] `etax_validate_xsd.sh` が KOA110 を検証成功する（実生成XMLまたはfallback）
+- [ ] CIで `ETAX_XSD_REQUIRE_GENERATED_XML=true` のまま KOA210/KOA110 実生成XML検証が通る
 
 ## ガード動作
 - [ ] 未対応年分でプレビュー生成が失敗し、`unsupportedTaxYear` を返す
@@ -29,9 +39,14 @@
 ## 完了証跡
 - [ ] `etax-ci.yml` の `simulator-health` ジョブ結果をPRに添付
 - [ ] `etax-ci.yml` の `etax-unit` ジョブ結果をPRに添付
+- [x] `etax-unit` ログに overlay / diff / xsd 検証結果が出力される
+- [x] lane成果物（TagDictionary/TaxYear差分/XML）をCI artifactとして収集できる
+- [x] lane成果物に `cab_overlay_2025.generated.report.json` が含まれる
 - [ ] 実行コマンド・結果ログをPRに添付
 - [ ] 監査Todoに完了IDと残リスクを追記
 
 ## 更新メモ（2026-02-26）
-- `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 7/7 success）で確認。
+- `[x]` 項目は `./scripts/run_etax_unit_lane.sh`（Python 12/12 success）と `tools/etax/tests` の追加テストで確認。
+- `ETAX_XSD_REQUIRE_GENERATED_XML=true ./scripts/run_etax_unit_lane.sh` は `No iOS simulator runtime found` 時に実生成XML欠落でFailすることを確認。
+- `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff` を1つのMarkdown要約として出力可能。
 - Swift項目は Simulator異常時に未実行（`skip: swift lane skipped (simulator-health ...)`）。
