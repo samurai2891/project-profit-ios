@@ -152,6 +152,7 @@ jobs:
           ./scripts/run_etax_unit_lane.sh
 
       - name: Guard CAB overlay report
+        if: steps.cab-input.outputs.status == 'ok'
         shell: bash
         env:
           ETAX_OVERLAY_MAX_MISSING_INTERNAL_KEYS: ${{ vars.ETAX_OVERLAY_MAX_MISSING_INTERNAL_KEYS }}
@@ -165,6 +166,28 @@ jobs:
             --max-unresolved-idrefs "$max_unresolved" \
             --out-json /tmp/etax-unit-lane/overlay_guard_summary.json \
             --out-text /tmp/etax-unit-lane/overlay_guard_summary.txt
+
+      - name: Skip CAB overlay guard
+        if: steps.cab-input.outputs.status != 'ok'
+        shell: bash
+        env:
+          CAB_INPUT_STATUS: ${{ steps.cab-input.outputs.status }}
+          CAB_INPUT_REASON: ${{ steps.cab-input.outputs.reason }}
+        run: |
+          mkdir -p /tmp/etax-unit-lane
+          {
+            echo "status=skip"
+            echo "reason=overlay guard skipped (cab-input status=$CAB_INPUT_STATUS)"
+            echo "cabInputReason=$CAB_INPUT_REASON"
+          } > /tmp/etax-unit-lane/overlay_guard_summary.txt
+
+          {
+            echo "### overlay-guard"
+            echo "- status: skip"
+            echo "- reason: CAB input source is unavailable for generated overlay guard"
+            echo "- cab-input status: $CAB_INPUT_STATUS"
+            echo "- cab-input reason: $CAB_INPUT_REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize lane evidence
         if: always()

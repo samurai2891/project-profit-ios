@@ -40,7 +40,8 @@
   - `etax-unit`: `needs: simulator-health`
     - `scripts/fetch_etax_cab_input.sh` で CAB入力を取得（`ETAX_CAB_SOURCE_URL` 未設定時は fixture fallback）
     - Python lane + CAB overlay生成/適用 + 実生成XML XSD検証 + e-Tax最小Swiftテストを実行
-    - `scripts/etax_overlay_guard.py` で `missingInternalKeys/unresolvedIdrefs` を閾値監視（既定: 0）
+    - `cab-input status=ok` の場合のみ `scripts/etax_overlay_guard.py` を実行し、`missingInternalKeys/unresolvedIdrefs` を閾値監視
+    - `cab-input status!=ok` の場合は `overlay guard` を `status=skip` で記録（failさせない）
   - `ETAX_XSD_REQUIRE_GENERATED_XML=true` を固定し、実生成XML欠落時はFail
   - `scripts/etax_ci_evidence_summary.sh` で `xsd + overlay report + overlay diff + overlay guard` を `GITHUB_STEP_SUMMARY` へ集約
 
@@ -131,7 +132,8 @@ xcodebuild test \
 ## 失敗時の分類ルール
 - `cab-input` 失敗: 入力ソース要因（Secrets URL未設定・取得失敗・SHA不一致）
 - `simulator-health` 失敗: 環境要因（CoreSimulatorService / runtime欠落 / device欠落）
-- `overlay-guard` 失敗: 監視要因（`missingInternalKeys/unresolvedIdrefs` 閾値超過）
+- `overlay-guard` 失敗: 監視要因（`missingInternalKeys/unresolvedIdrefs` 閾値超過、または report 欠落）
+- `overlay-guard` skip: 入力未取得要因（`cab-input status!=ok`）
 - `etax-unit` 失敗: 実装修正要因（overlay不整合 / XSD不整合 / JSON不整合 / xmlTag重複 / required key欠落 / Swiftテスト失敗）
 
 ## 環境変数（任意）
