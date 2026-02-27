@@ -13,6 +13,9 @@ struct FilterView: View {
     @State private var projectId: UUID?
     @State private var categoryId: String?
     @State private var type: TransactionType?
+    @State private var amountMinText: String = ""
+    @State private var amountMaxText: String = ""
+    @State private var counterpartyText: String = ""
 
     var body: some View {
         NavigationStack {
@@ -58,6 +61,27 @@ struct FilterView: View {
                     .pickerStyle(.segmented)
                 }
 
+                Section("取引先") {
+                    TextField("取引先名で検索", text: $counterpartyText)
+                }
+
+                Section("金額範囲") {
+                    HStack {
+                        Text("最低金額")
+                            .foregroundStyle(.secondary)
+                        TextField("¥0", text: $amountMinText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("最高金額")
+                            .foregroundStyle(.secondary)
+                        TextField("上限なし", text: $amountMaxText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
                 Section {
                     Button("フィルターをリセット", role: .destructive) {
                         resetFilter()
@@ -90,15 +114,22 @@ struct FilterView: View {
         projectId = filter.projectId
         categoryId = filter.categoryId
         type = filter.type
+        amountMinText = filter.amountMin.map(String.init) ?? ""
+        amountMaxText = filter.amountMax.map(String.init) ?? ""
+        counterpartyText = filter.counterparty ?? ""
     }
 
     private func applyFilter() {
+        let trimmedCounterparty = counterpartyText.trimmingCharacters(in: .whitespaces)
         filter = TransactionFilter(
             startDate: hasStartDate ? startDate : nil,
             endDate: hasEndDate ? endDate : nil,
             projectId: projectId,
             categoryId: categoryId,
-            type: type
+            type: type,
+            amountMin: Int(amountMinText),
+            amountMax: Int(amountMaxText),
+            counterparty: trimmedCounterparty.isEmpty ? nil : trimmedCounterparty
         )
         dismiss()
     }
@@ -109,5 +140,8 @@ struct FilterView: View {
         projectId = nil
         categoryId = nil
         type = nil
+        amountMinText = ""
+        amountMaxText = ""
+        counterpartyText = ""
     }
 }

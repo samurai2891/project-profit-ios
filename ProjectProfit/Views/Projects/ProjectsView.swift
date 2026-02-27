@@ -382,7 +382,7 @@ private extension ProjectCardView {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(formatCurrency(amount))
-                .font(.subheadline)
+                .font(.subheadline.monospacedDigit())
                 .fontWeight(.medium)
                 .foregroundStyle(color)
         }

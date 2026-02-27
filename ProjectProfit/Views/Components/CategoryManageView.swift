@@ -18,11 +18,15 @@ struct CategoryManageView: View {
     @State private var errorMessage: String? = nil
 
     private var expenseCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .expense }
+        dataStore.categories.filter { $0.type == .expense && $0.archivedAt == nil }
     }
 
     private var incomeCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .income }
+        dataStore.categories.filter { $0.type == .income && $0.archivedAt == nil }
+    }
+
+    private var archivedCategories: [PPCategory] {
+        dataStore.categories.filter { $0.archivedAt != nil }
     }
 
     var body: some View {
@@ -30,6 +34,9 @@ struct CategoryManageView: View {
             Form {
                 expenseCategorySection
                 incomeCategorySection
+                if !archivedCategories.isEmpty {
+                    archivedCategorySection
+                }
             }
             .navigationTitle("カテゴリ管理")
             .navigationBarTitleDisplayMode(.inline)
@@ -48,8 +55,8 @@ struct CategoryManageView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-            .alert("カテゴリを削除", isPresented: $showDeleteConfirmation) {
-                Button("削除", role: .destructive) {
+            .alert("カテゴリをアーカイブ", isPresented: $showDeleteConfirmation) {
+                Button("アーカイブ", role: .destructive) {
                     performDelete()
                 }
                 Button("キャンセル", role: .cancel) {
@@ -57,7 +64,7 @@ struct CategoryManageView: View {
                 }
             } message: {
                 if let category = categoryToDelete {
-                    Text("「\(category.name)」を削除しますか？このカテゴリを使用している取引は「その他」カテゴリに移行されます。")
+                    Text("「\(category.name)」をアーカイブしますか？新規取引では選択できなくなりますが、既存の取引はそのまま保持されます。")
                 }
             }
         }
@@ -153,8 +160,8 @@ struct CategoryManageView: View {
                     categoryToDelete = category
                     showDeleteConfirmation = true
                 } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+                    Image(systemName: "archivebox")
+                        .foregroundStyle(.orange)
                 }
                 .buttonStyle(.borderless)
             }
@@ -235,6 +242,38 @@ struct CategoryManageView: View {
         }
     }
 
+    // MARK: - Archived Category Section
+
+    private var archivedCategorySection: some View {
+        Section {
+            ForEach(archivedCategories) { category in
+                HStack(spacing: 12) {
+                    Image(systemName: category.icon)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, alignment: .center)
+
+                    Text(category.name)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                        dataStore.unarchiveCategory(id: category.id)
+                    } label: {
+                        Text("復元")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppColors.primary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.vertical, 2)
+            }
+        } header: {
+            Text("アーカイブ済み")
+        }
+    }
+
     // MARK: - Actions
 
     private func startEditing(_ category: PPCategory) {
@@ -303,12 +342,12 @@ struct CategoryManageView: View {
         guard let category = categoryToDelete else { return }
 
         guard !category.isDefault else {
-            errorMessage = "デフォルトカテゴリは削除できません。"
+            errorMessage = "デフォルトカテゴリはアーカイブできません。"
             categoryToDelete = nil
             return
         }
 
-        dataStore.deleteCategory(id: category.id)
+        dataStore.archiveCategory(id: category.id)
         categoryToDelete = nil
     }
 

@@ -33,21 +33,21 @@ struct EtaxFormPreviewView: View {
                     .font(.subheadline.weight(.medium))
                 Spacer()
                 Text(formatCurrency(form.totalRevenue))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
             HStack {
                 Text("合計経費")
                     .font(.subheadline.weight(.medium))
                 Spacer()
                 Text(formatCurrency(form.totalExpenses))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
             HStack {
                 Text("所得金額")
                     .font(.subheadline.weight(.bold))
                 Spacer()
                 Text(formatCurrency(form.netIncome))
-                    .font(.subheadline.weight(.bold))
+                    .font(.subheadline.weight(.bold).monospacedDigit())
                     .foregroundStyle(form.netIncome >= 0 ? AppColors.success : .red)
             }
         }

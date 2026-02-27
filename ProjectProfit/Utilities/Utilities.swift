@@ -600,6 +600,7 @@ struct CSVParsedTransaction {
     let taxRate: Int?
     let isTaxIncluded: Bool?
     let taxCategory: TaxCategory?
+    let counterparty: String?
 }
 
 func parseCSV(csvString: String) -> [CSVParsedTransaction] {
@@ -665,7 +666,8 @@ func parseCSV(csvString: String) -> [CSVParsedTransaction] {
             taxAmount: parseCSVInt(field(named: "消費税額", in: fields)),
             taxRate: parseCSVInt(field(named: "税率", in: fields)),
             isTaxIncluded: parseCSVBool(field(named: "税込区分", in: fields)),
-            taxCategory: parseCSVTaxCategory(field(named: "税区分", in: fields))
+            taxCategory: parseCSVTaxCategory(field(named: "税区分", in: fields)),
+            counterparty: normalizedCSVText(field(named: "取引先", in: fields))
         ))
     }
 
@@ -784,7 +786,7 @@ func generateCSV(
     getProject: (UUID) -> PPProject?
 ) -> String {
     let bom = "\u{FEFF}"
-    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\""
+    let headers = "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\",\"取引先\""
 
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -834,11 +836,12 @@ func generateCSV(
             isTaxIncludedStr = ""
         }
         let taxCategoryStr = t.taxCategory?.rawValue ?? ""
+        let counterpartyStr = t.counterparty ?? ""
 
         return [dateStr, typeStr, "\(t.amount)", category, projectNames, t.memo,
                 allocationAmounts, recurringIdStr, createdAtStr, updatedAtStr, receiptStr, lineItemsStr,
                 paymentAccountStr, transferToAccountStr, taxDeductibleRateStr, taxAmountStr, taxRateStr,
-                isTaxIncludedStr, taxCategoryStr]
+                isTaxIncludedStr, taxCategoryStr, counterpartyStr]
             .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
             .map { "\"\($0)\"" }
             .joined(separator: ",")

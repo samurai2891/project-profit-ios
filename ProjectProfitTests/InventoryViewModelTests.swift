@@ -9,14 +9,7 @@ final class InventoryViewModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        container = try! ModelContainer(
-            for: PPProject.self, PPTransaction.self, PPCategory.self,
-            PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self,
-            PPJournalLine.self, PPAccountingProfile.self, PPUserRule.self,
-            PPFixedAsset.self, PPInventoryRecord.self,
-            configurations: config
-        )
+        container = try! TestModelContainer.create()
         dataStore = ProjectProfit.DataStore(modelContext: container.mainContext)
         dataStore.loadData()
     }

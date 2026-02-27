@@ -115,7 +115,7 @@ struct JournalDetailView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Text(formatCurrency(line.debit))
-                            .font(.subheadline.weight(.medium))
+                            .font(.subheadline.weight(.medium).monospacedDigit())
                     }
                 }
                 if line.credit > 0 {
@@ -124,7 +124,7 @@ struct JournalDetailView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Text(formatCurrency(line.credit))
-                            .font(.subheadline.weight(.medium))
+                            .font(.subheadline.weight(.medium).monospacedDigit())
                     }
                 }
             }
@@ -143,7 +143,7 @@ struct JournalDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(formatCurrency(debitTotal))
-                    .font(.title3.weight(.semibold))
+                    .font(.title3.weight(.semibold).monospacedDigit())
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
@@ -151,7 +151,7 @@ struct JournalDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(formatCurrency(creditTotal))
-                    .font(.title3.weight(.semibold))
+                    .font(.title3.weight(.semibold).monospacedDigit())
             }
         }
         .padding(16)

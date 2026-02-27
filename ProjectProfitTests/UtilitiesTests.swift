@@ -634,7 +634,7 @@ final class UtilitiesTests: XCTestCase {
         )
 
         let withoutBOM = String(csv.dropFirst())
-        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\"")
+        XCTAssertEqual(withoutBOM, "\"日付\",\"種類\",\"金額\",\"カテゴリ\",\"プロジェクト\",\"メモ\",\"配分額\",\"定期取引ID\",\"作成日\",\"更新日\",\"レシート画像\",\"明細\",\"支払口座\",\"振替先口座\",\"必要経費算入率\",\"消費税額\",\"税率\",\"税込区分\",\"税区分\",\"取引先\"")
     }
 
     func testGenerateCSVEmptyTransactions() {
@@ -834,7 +834,7 @@ final class UtilitiesTests: XCTestCase {
         // The category field should be empty string within quotes
         // Row format: "date","type","amount","","","memo"
         let fields = parseCSVRow(row)
-        XCTAssertEqual(fields.count, 19)
+        XCTAssertEqual(fields.count, 20)
         XCTAssertEqual(fields[3], "", "Nil category should produce empty string")
     }
 
@@ -1104,7 +1104,7 @@ final class UtilitiesTests: XCTestCase {
 
         let row = lines[1]
         let fields = parseCSVRow(row)
-        XCTAssertEqual(fields.count, 19, "Should have 19 fields")
+        XCTAssertEqual(fields.count, 20, "Should have 20 fields")
         XCTAssertTrue(fields[6].contains("TestProject:5000"), "Allocation amounts field")
         XCTAssertEqual(fields[7], recurringId.uuidString, "Recurring ID field")
         XCTAssertTrue(fields[8].contains("2026-02-28"), "Created at field")

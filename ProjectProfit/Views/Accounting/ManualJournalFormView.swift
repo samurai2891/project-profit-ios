@@ -192,7 +192,7 @@ struct ManualJournalFormView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(formatCurrency(debitTotal))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
 
             Spacer()
@@ -207,7 +207,7 @@ struct ManualJournalFormView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(formatCurrency(creditTotal))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
         }
         .padding(16)

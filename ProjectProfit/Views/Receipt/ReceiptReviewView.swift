@@ -26,6 +26,7 @@ struct ReceiptReviewView: View {
     @State private var taxRate: Int = 10
     @State private var isTaxIncluded: Bool = true
     @State private var taxAmountText: String = ""
+    @State private var counterparty: String = ""
 
     init(receiptData: ReceiptData, receiptImage: UIImage? = nil, defaultProjectId: UUID? = nil, onDismiss: @escaping () -> Void) {
         self.receiptData = receiptData
@@ -39,7 +40,7 @@ struct ReceiptReviewView: View {
         case .income: .income
         case .expense, .transfer: .expense
         }
-        return dataStore.categories.filter { $0.type == categoryType }
+        return dataStore.activeCategories.filter { $0.type == categoryType }
     }
 
     private var typeBadgeColor: Color {
@@ -81,6 +82,7 @@ struct ReceiptReviewView: View {
                 if type != .transfer {
                     allocationSection
                 }
+                counterpartySection
                 memoSection
             }
             .padding(20)
@@ -548,6 +550,21 @@ struct ReceiptReviewView: View {
         .accessibilityHint("按分するプロジェクトを追加")
     }
 
+    // MARK: - Counterparty
+
+    private var counterpartySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("取引先")
+                .font(.subheadline.weight(.medium))
+            TextField("取引先名を入力...", text: $counterparty)
+                .padding(14)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("取引先")
+                .accessibilityValue(counterparty.isEmpty ? "未入力" : counterparty)
+        }
+    }
+
     // MARK: - Memo
 
     private var memoSection: some View {
@@ -582,6 +599,7 @@ struct ReceiptReviewView: View {
             taxCategory = .standardRate
             taxAmountText = String(receiptData.taxAmount)
         }
+        counterparty = receiptData.storeName
 
         // Validate category exists for selected transaction type
         ensureValidCategorySelection()
@@ -645,6 +663,7 @@ struct ReceiptReviewView: View {
             resolvedTaxAmount = nil
         }
 
+        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
         let result = dataStore.addTransactionResult(
             type: type,
             amount: amount,
@@ -660,7 +679,8 @@ struct ReceiptReviewView: View {
             taxAmount: resolvedTaxAmount,
             taxRate: resolvedTaxRate,
             isTaxIncluded: resolvedIsTaxIncluded,
-            taxCategory: resolvedTaxCategory
+            taxCategory: resolvedTaxCategory,
+            counterparty: resolvedCounterparty
         )
         switch result {
         case .success:

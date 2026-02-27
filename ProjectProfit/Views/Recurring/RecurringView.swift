@@ -168,7 +168,7 @@ struct RecurringView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.headline)
+                .font(.headline.monospacedDigit())
                 .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity)
@@ -223,7 +223,7 @@ struct RecurringView: View {
                         Spacer()
 
                         Text(formatCurrency(recurring.amount))
-                            .font(.subheadline.weight(.bold))
+                            .font(.subheadline.weight(.bold).monospacedDigit())
                             .foregroundStyle(
                                 recurring.type == .expense ? AppColors.error
                                     : recurring.type == .transfer ? AppColors.warning

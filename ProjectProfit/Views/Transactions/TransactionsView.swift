@@ -13,6 +13,20 @@ private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+// MARK: - Display Mode
+
+enum TransactionDisplayMode: String, CaseIterable {
+    case card
+    case ledger
+
+    var label: String {
+        switch self {
+        case .card: "カード"
+        case .ledger: "帳簿"
+        }
+    }
+}
+
 // MARK: - TransactionsView
 
 struct TransactionsView: View {
@@ -26,6 +40,7 @@ struct TransactionsView: View {
     @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
     @State private var csvText = ""
+    @AppStorage("transactionDisplayMode") private var displayMode: String = TransactionDisplayMode.card.rawValue
 
     // MARK: - Body
 
@@ -103,6 +118,13 @@ struct TransactionsView: View {
         .sheet(isPresented: $showShareSheet) {
             ActivityViewControllerWrapper(items: [csvText])
         }
+        .searchable(
+            text: Binding(
+                get: { viewModel.searchText },
+                set: { viewModel.searchText = $0 }
+            ),
+            prompt: "メモを検索"
+        )
         .alert(
             "取引を削除",
             isPresented: .init(
@@ -126,6 +148,10 @@ struct TransactionsView: View {
 
     // MARK: - Scroll Content
 
+    private var currentDisplayMode: TransactionDisplayMode {
+        TransactionDisplayMode(rawValue: displayMode) ?? .card
+    }
+
     private func scrollContent(viewModel: TransactionsViewModel) -> some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -139,10 +165,13 @@ struct TransactionsView: View {
 
                 summaryBar(viewModel: viewModel)
                 typeSegmentControl(viewModel: viewModel)
+                displayModeToggle
                 filterSortBar(viewModel: viewModel)
 
                 if viewModel.filteredTransactions.isEmpty {
                     emptyState
+                } else if currentDisplayMode == .ledger {
+                    ledgerTable(viewModel: viewModel)
                 } else {
                     groupedTransactionList(viewModel: viewModel)
                 }
@@ -150,6 +179,119 @@ struct TransactionsView: View {
             .padding(.horizontal)
             .padding(.bottom, 80)
         }
+    }
+
+    // MARK: - Display Mode Toggle
+
+    private var displayModeToggle: some View {
+        Picker("表示モード", selection: $displayMode) {
+            ForEach(TransactionDisplayMode.allCases, id: \.rawValue) { mode in
+                Text(mode.label).tag(mode.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("表示モード切替")
+    }
+
+    // MARK: - Ledger Table
+
+    private func ledgerTable(viewModel: TransactionsViewModel) -> some View {
+        VStack(spacing: 0) {
+            // Column headers
+            HStack(spacing: 0) {
+                Text("日付")
+                    .frame(width: 56, alignment: .leading)
+                Text("摘要")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("カテゴリ")
+                    .frame(width: 64, alignment: .leading)
+                Text("借方")
+                    .frame(width: 72, alignment: .trailing)
+                Text("貸方")
+                    .frame(width: 72, alignment: .trailing)
+                Text("残高")
+                    .frame(width: 76, alignment: .trailing)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .background(AppColors.surface)
+
+            Divider()
+
+            // Data rows
+            LazyVStack(spacing: 0) {
+                ForEach(Array(viewModel.ledgerRows.enumerated()), id: \.element.id) { index, row in
+                    Button {
+                        selectedTransaction = row.transaction
+                    } label: {
+                        ledgerRowView(row: row)
+                            .background(
+                                index.isMultiple(of: 2)
+                                    ? Color(.systemBackground)
+                                    : AppColors.surface.opacity(0.5)
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
+                }
+            }
+        }
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
+    }
+
+    private func ledgerRowView(row: LedgerRow) -> some View {
+        HStack(spacing: 0) {
+            Text(formatDateShort(row.date))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 56, alignment: .leading)
+
+            Text(row.memo.isEmpty ? row.categoryName : row.memo)
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(row.categoryName)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(width: 64, alignment: .leading)
+
+            CurrencyText(
+                amount: row.debit,
+                font: .caption.weight(.medium),
+                color: AppColors.error,
+                emptyWhenZero: true
+            )
+            .frame(width: 72, alignment: .trailing)
+
+            CurrencyText(
+                amount: row.credit,
+                font: .caption.weight(.medium),
+                color: AppColors.success,
+                emptyWhenZero: true
+            )
+            .frame(width: 72, alignment: .trailing)
+
+            CurrencyText(
+                amount: row.runningBalance,
+                font: .caption.weight(.semibold),
+                color: row.runningBalance >= 0 ? .primary : AppColors.error
+            )
+            .frame(width: 76, alignment: .trailing)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(formatDateShort(row.date)) \(row.categoryName) 借方\(formatCurrency(row.debit)) 貸方\(formatCurrency(row.credit)) 残高\(formatCurrency(row.runningBalance))")
     }
 
     // MARK: - Type Segment Control
@@ -212,8 +354,7 @@ struct TransactionsView: View {
                 .font(.caption)
                 .foregroundStyle(AppColors.muted)
             Text(formatCurrency(amount))
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(color)
         }
         .frame(maxWidth: .infinity)
@@ -359,15 +500,15 @@ struct TransactionsView: View {
 
             if isTransferFilter {
                 Text("振替: \(formatCurrency(group.transfer))")
-                    .font(.caption)
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(AppColors.warning)
             } else {
                 HStack(spacing: 12) {
                     Text("収益: \(formatCurrency(group.income))")
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(AppColors.success)
                     Text("経費: \(formatCurrency(group.expense))")
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(AppColors.error)
                 }
             }
@@ -600,8 +741,7 @@ private struct TransactionCardView: View {
     private var amountAndActions: some View {
         VStack(alignment: .trailing, spacing: 8) {
             Text(formattedAmount)
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(typeColor)
                 .accessibilityHidden(true)
 

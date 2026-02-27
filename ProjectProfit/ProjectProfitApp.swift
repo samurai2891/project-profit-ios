@@ -31,7 +31,8 @@ struct ProjectProfitApp: App {
             PPFixedAsset.self,
             PPInventoryRecord.self,
             PPDocumentRecord.self,
-            PPComplianceLog.self
+            PPComplianceLog.self,
+            PPTransactionLog.self
         ])
     }
 }

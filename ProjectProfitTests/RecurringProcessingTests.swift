@@ -14,12 +14,7 @@ final class RecurringProcessingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        container = try! ModelContainer(
-            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
-            PPFixedAsset.self,
-            configurations: config
-        )
+        container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
@@ -1150,9 +1145,9 @@ final class RecurringProcessingTests: XCTestCase {
         // Delete the generated transaction
         dataStore.deleteTransaction(id: generatedTx.id)
 
-        // Verify transaction is deleted
+        // Verify transaction is soft-deleted
         let afterDelete = fetchAllTransactions().filter { $0.recurringId == recurring.id }
-        XCTAssertTrue(afterDelete.isEmpty, "Transaction should be deleted")
+        XCTAssertTrue(afterDelete.allSatisfy { $0.deletedAt != nil }, "Transaction should be soft-deleted")
 
         // Verify lastGeneratedDate was rolled back
         let updatedRecurring = fetchRecurring(id: recurring.id)
@@ -1164,7 +1159,7 @@ final class RecurringProcessingTests: XCTestCase {
 
         // Note: processRecurringTransactions inserts into modelContext but doesn't refresh
         // dataStore.transactions, so use fetchAllTransactions() to check context directly
-        let afterRegen = fetchAllTransactions().filter { $0.recurringId == recurring.id }
+        let afterRegen = fetchAllTransactions().filter { $0.recurringId == recurring.id && $0.deletedAt == nil }
         XCTAssertFalse(afterRegen.isEmpty, "Should have regenerated transaction")
     }
 

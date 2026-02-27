@@ -176,7 +176,7 @@ struct DashboardView: View {
                 .foregroundStyle(.white.opacity(0.8))
 
                 Text(formatCurrency(summary.netProfit))
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.system(size: 32, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
 
                 Text("利益率: \(String(format: "%.1f", summary.profitMargin))%")
@@ -210,7 +210,7 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
             Text(formatCurrency(amount))
-                .font(.title3.bold())
+                .font(.title3.bold().monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -334,13 +334,13 @@ struct DashboardView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
                 Text("収益 \(formatCurrency(project.totalIncome)) / 経費 \(formatCurrency(project.totalExpense))")
-                    .font(.caption)
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatCurrency(project.profit))
-                    .font(.subheadline.bold())
+                    .font(.subheadline.bold().monospacedDigit())
                     .foregroundStyle(project.profit >= 0 ? AppColors.success : AppColors.error)
                 Text("\(String(format: "%.1f", project.profitMargin))%")
                     .font(.caption)
@@ -370,7 +370,7 @@ struct DashboardView: View {
                                     .font(.subheadline)
                                 Spacer()
                                 Text(formatCurrency(cat.total))
-                                    .font(.subheadline)
+                                    .font(.subheadline.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                             ProgressView(value: cat.percentage, total: 100)

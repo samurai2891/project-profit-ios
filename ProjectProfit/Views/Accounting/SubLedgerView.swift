@@ -99,9 +99,9 @@ struct SubLedgerView: View {
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
                         Text("借方 \(formatCurrency(summary.debitTotal))")
-                            .font(.caption.weight(.medium))
+                            .font(.caption.weight(.medium).monospacedDigit())
                         Text("貸方 \(formatCurrency(summary.creditTotal))")
-                            .font(.caption.weight(.medium))
+                            .font(.caption.weight(.medium).monospacedDigit())
                     }
                 }
                 .padding(.vertical, 4)
@@ -123,13 +123,13 @@ struct SubLedgerView: View {
                         .lineLimit(1)
                     HStack {
                         Text("借方 \(entry.debit > 0 ? formatCurrency(entry.debit) : "-")")
-                            .font(.caption)
+                            .font(.caption.monospacedDigit())
                         Spacer()
                         Text("貸方 \(entry.credit > 0 ? formatCurrency(entry.credit) : "-")")
-                            .font(.caption)
+                            .font(.caption.monospacedDigit())
                         Spacer()
                         Text("残高 \(formatCurrency(entry.runningBalance))")
-                            .font(.caption.weight(.medium))
+                            .font(.caption.weight(.medium).monospacedDigit())
                     }
                     .foregroundStyle(.secondary)
                 }

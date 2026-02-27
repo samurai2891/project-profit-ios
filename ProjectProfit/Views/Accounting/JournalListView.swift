@@ -20,12 +20,35 @@ struct JournalListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showManualEntryForm = true
-                } label: {
-                    Image(systemName: "plus")
+                HStack(spacing: 12) {
+                    if !sortedEntries.isEmpty {
+                        ExportMenuButton(
+                            csvGenerator: {
+                                CSVExportService.exportJournalCSV(
+                                    entries: dataStore.journalEntries,
+                                    lines: dataStore.journalLines,
+                                    accounts: dataStore.accounts
+                                )
+                            },
+                            pdfGenerator: {
+                                let fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
+                                return PDFExportService.exportJournalPDF(
+                                    entries: dataStore.journalEntries,
+                                    lines: dataStore.journalLines,
+                                    accounts: dataStore.accounts,
+                                    fiscalYear: fiscalYear
+                                )
+                            },
+                            fileNamePrefix: "仕訳帳"
+                        )
+                    }
+                    Button {
+                        showManualEntryForm = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("手動仕訳を追加")
                 }
-                .accessibilityLabel("手動仕訳を追加")
             }
         }
         .sheet(isPresented: $showManualEntryForm) {
@@ -80,7 +103,7 @@ struct JournalListView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text(formatCurrency(debitTotal))
-                        .font(.caption.weight(.medium))
+                        .font(.caption.weight(.medium).monospacedDigit())
                 }
                 Spacer()
                 HStack(spacing: 4) {
@@ -88,7 +111,7 @@ struct JournalListView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text(formatCurrency(creditTotal))
-                        .font(.caption.weight(.medium))
+                        .font(.caption.weight(.medium).monospacedDigit())
                 }
             }
 

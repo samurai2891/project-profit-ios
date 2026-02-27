@@ -13,6 +13,20 @@ struct TransactionGroup: Identifiable {
     var id: String { yearMonth }
 }
 
+// MARK: - LedgerRow
+
+struct LedgerRow: Identifiable {
+    let id: UUID
+    let date: Date
+    let memo: String
+    let categoryName: String
+    let type: TransactionType
+    let debit: Int
+    let credit: Int
+    let runningBalance: Int
+    let transaction: PPTransaction
+}
+
 // MARK: - TransactionsViewModel
 
 @MainActor
@@ -29,7 +43,11 @@ final class TransactionsViewModel {
             endDate: filter.endDate,
             projectId: filter.projectId,
             categoryId: filter.categoryId,
-            type: newValue
+            type: newValue,
+            searchText: filter.searchText,
+            amountMin: filter.amountMin,
+            amountMax: filter.amountMax,
+            counterparty: filter.counterparty
         )}
     }
 
@@ -82,6 +100,60 @@ final class TransactionsViewModel {
             || filter.projectId != nil
             || filter.categoryId != nil
             || filter.type != nil
+            || !filter.searchText.isEmpty
+            || filter.amountMin != nil
+            || filter.amountMax != nil
+            || filter.counterparty != nil
+    }
+
+    var searchText: String {
+        get { filter.searchText }
+        set {
+            filter = TransactionFilter(
+                startDate: filter.startDate,
+                endDate: filter.endDate,
+                projectId: filter.projectId,
+                categoryId: filter.categoryId,
+                type: filter.type,
+                searchText: newValue,
+                amountMin: filter.amountMin,
+                amountMax: filter.amountMax
+            )
+        }
+    }
+
+    /// 帳簿表示用: 日付昇順で累計残高を計算した行配列
+    var ledgerRows: [LedgerRow] {
+        let sorted = filteredTransactions.sorted { $0.date < $1.date }
+        var balance = 0
+        return sorted.map { t in
+            let debit: Int
+            let credit: Int
+            switch t.type {
+            case .income:
+                debit = 0
+                credit = effectiveAmount(for: t)
+            case .expense:
+                debit = effectiveAmount(for: t)
+                credit = 0
+            case .transfer:
+                debit = effectiveAmount(for: t)
+                credit = 0
+            }
+            balance += credit - debit
+            let categoryName = dataStore.getCategory(id: t.categoryId)?.name ?? "未分類"
+            return LedgerRow(
+                id: t.id,
+                date: t.date,
+                memo: t.memo,
+                categoryName: categoryName,
+                type: t.type,
+                debit: debit,
+                credit: credit,
+                runningBalance: balance,
+                transaction: t
+            )
+        }
     }
 
     // MARK: - Actions

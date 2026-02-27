@@ -144,7 +144,7 @@ struct FixedAssetScheduleView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(valueFont)
+                .font(valueFont.monospacedDigit())
         }
     }
 
@@ -161,7 +161,7 @@ struct FixedAssetScheduleView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(formatCurrency(totalCurrentYear))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
 
             HStack {
@@ -170,7 +170,7 @@ struct FixedAssetScheduleView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(formatCurrency(totalBookValue))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
             }
         }
         .padding(14)

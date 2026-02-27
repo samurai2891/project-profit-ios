@@ -79,10 +79,7 @@ final class PPAccountingProfileTests: XCTestCase {
 
     @MainActor
     func testPersistenceRoundTrip() throws {
-        let container = try ModelContainer(
-            for: PPAccountingProfile.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let profile = PPAccountingProfile(
@@ -110,10 +107,7 @@ final class PPAccountingProfileTests: XCTestCase {
 
     @MainActor
     func testUniqueIdConstraint() throws {
-        let container = try ModelContainer(
-            for: PPAccountingProfile.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let profile1 = PPAccountingProfile(fiscalYear: 2025, businessName: "最初")

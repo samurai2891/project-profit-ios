@@ -11,14 +11,7 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        container = try! ModelContainer(
-            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self,
-            PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
-            PPUserRule.self, PPFixedAsset.self, PPInventoryRecord.self,
-            PPDocumentRecord.self, PPComplianceLog.self,
-            configurations: config
-        )
+        container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()

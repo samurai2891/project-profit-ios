@@ -10,12 +10,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        container = try! ModelContainer(
-            for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self, PPAccount.self, PPJournalEntry.self, PPJournalLine.self, PPAccountingProfile.self,
-            PPFixedAsset.self,
-            configurations: config
-        )
+        container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()

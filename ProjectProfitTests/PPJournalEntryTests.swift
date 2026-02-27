@@ -215,10 +215,7 @@ final class PPJournalEntryTests: XCTestCase {
 
     @MainActor
     func testEntryPersistenceRoundTrip() throws {
-        let container = try ModelContainer(
-            for: PPJournalEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let txId = UUID()
@@ -246,10 +243,7 @@ final class PPJournalEntryTests: XCTestCase {
 
     @MainActor
     func testLinePersistenceRoundTrip() throws {
-        let container = try ModelContainer(
-            for: PPJournalLine.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let entryId = UUID()
@@ -279,10 +273,7 @@ final class PPJournalEntryTests: XCTestCase {
 
     @MainActor
     func testMultipleLinesWithSameEntryId() throws {
-        let container = try ModelContainer(
-            for: PPJournalLine.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let entryId = UUID()
@@ -322,10 +313,7 @@ final class PPJournalEntryTests: XCTestCase {
 
     @MainActor
     func testUniqueSourceKeyConstraint() throws {
-        let container = try ModelContainer(
-            for: PPJournalEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let entry1 = PPJournalEntry(sourceKey: "tx:same-key", date: Date(), entryType: .auto, memo: "最初")

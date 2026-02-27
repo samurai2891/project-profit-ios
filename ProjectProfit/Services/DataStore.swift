@@ -8,7 +8,7 @@ class DataStore {
     var modelContext: ModelContext
 
     var projects: [PPProject] = []
-    var transactions: [PPTransaction] = []
+    var allTransactions: [PPTransaction] = []
     var categories: [PPCategory] = []
     var recurringTransactions: [PPRecurringTransaction] = []
     var accounts: [PPAccount] = []
@@ -19,6 +19,16 @@ class DataStore {
     var inventoryRecords: [PPInventoryRecord] = []
     var isLoading = true
     var lastError: AppError?
+
+    /// ソフトデリートされていない有効な取引のみ
+    var transactions: [PPTransaction] {
+        allTransactions.filter { $0.deletedAt == nil }
+    }
+
+    /// アーカイブされていない有効なカテゴリのみ
+    var activeCategories: [PPCategory] {
+        categories.filter { $0.archivedAt == nil }
+    }
 
     /// H2: 定期取引の追加/更新/削除時に通知スケジュールを再構成するためのコールバック
     var onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)?
@@ -35,7 +45,7 @@ class DataStore {
             projects = try modelContext.fetch(projectDescriptor)
 
             let transactionDescriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
-            transactions = try modelContext.fetch(transactionDescriptor)
+            allTransactions = try modelContext.fetch(transactionDescriptor)
 
             let categoryDescriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
             categories = try modelContext.fetch(categoryDescriptor)
@@ -282,7 +292,7 @@ class DataStore {
     private func refreshTransactions() {
         do {
             let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
-            transactions = try modelContext.fetch(descriptor)
+            allTransactions = try modelContext.fetch(descriptor)
         } catch {
             AppLogger.dataStore.error("Failed to refresh transactions: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
@@ -699,7 +709,8 @@ class DataStore {
         taxAmount: Int? = nil,
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil
+        taxCategory: TaxCategory? = nil,
+        counterparty: String? = nil
     ) -> Result<PPTransaction, AppError> {
         // T5: 年度ロックガード
         guard !isYearLocked(for: date) else {
@@ -731,7 +742,8 @@ class DataStore {
             taxAmount: taxAmount,
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory
+            taxCategory: taxCategory,
+            counterparty: counterparty
         )
         modelContext.insert(transaction)
 
@@ -765,7 +777,8 @@ class DataStore {
         taxAmount: Int? = nil,
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil
+        taxCategory: TaxCategory? = nil,
+        counterparty: String? = nil
     ) -> PPTransaction {
         switch addTransactionResult(
             type: type,
@@ -783,7 +796,8 @@ class DataStore {
             taxAmount: taxAmount,
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory
+            taxCategory: taxCategory,
+            counterparty: counterparty
         ) {
         case .success(let transaction):
             return transaction
@@ -808,28 +822,74 @@ class DataStore {
         taxAmount: Int?? = nil,
         taxRate: Int?? = nil,
         isTaxIncluded: Bool?? = nil,
-        taxCategory: TaxCategory?? = nil
+        taxCategory: TaxCategory?? = nil,
+        counterparty: String?? = nil
     ) {
         guard let transaction = transactions.first(where: { $0.id == id }) else { return }
         // T5: 年度ロックガード（変更先の日付と現在の日付の両方をチェック）
         if isYearLocked(for: transaction.date) { return }
         if let date, isYearLocked(for: date) { return }
-        if let type { transaction.type = type }
-        if let date { transaction.date = date }
-        if let categoryId { transaction.categoryId = categoryId }
-        if let memo { transaction.memo = memo }
-        if let receiptImagePath { transaction.receiptImagePath = receiptImagePath }
+        // Phase 9: 監査ログ（変更前の値を記録）
+        let txId = transaction.id
+        if let type {
+            logFieldChange(transactionId: txId, fieldName: "type", oldValue: transaction.type.rawValue, newValue: type.rawValue)
+            transaction.type = type
+        }
+        if let date {
+            logFieldChange(transactionId: txId, fieldName: "date", oldValue: transaction.date.ISO8601Format(), newValue: date.ISO8601Format())
+            transaction.date = date
+        }
+        if let categoryId {
+            logFieldChange(transactionId: txId, fieldName: "categoryId", oldValue: transaction.categoryId, newValue: categoryId)
+            transaction.categoryId = categoryId
+        }
+        if let memo {
+            logFieldChange(transactionId: txId, fieldName: "memo", oldValue: transaction.memo, newValue: memo)
+            transaction.memo = memo
+        }
+        if let receiptImagePath {
+            logFieldChange(transactionId: txId, fieldName: "receiptImagePath", oldValue: transaction.receiptImagePath, newValue: receiptImagePath)
+            transaction.receiptImagePath = receiptImagePath
+        }
         if let lineItems { transaction.lineItems = lineItems }
-        if let paymentAccountId { transaction.paymentAccountId = paymentAccountId }
-        if let transferToAccountId { transaction.transferToAccountId = transferToAccountId }
-        if let taxDeductibleRate { transaction.taxDeductibleRate = taxDeductibleRate }
-        if let taxAmount { transaction.taxAmount = taxAmount }
-        if let taxRate { transaction.taxRate = taxRate }
-        if let isTaxIncluded { transaction.isTaxIncluded = isTaxIncluded }
-        if let taxCategory { transaction.taxCategory = taxCategory }
+        if let paymentAccountId {
+            logFieldChange(transactionId: txId, fieldName: "paymentAccountId", oldValue: transaction.paymentAccountId, newValue: paymentAccountId)
+            transaction.paymentAccountId = paymentAccountId
+        }
+        if let transferToAccountId {
+            logFieldChange(transactionId: txId, fieldName: "transferToAccountId", oldValue: transaction.transferToAccountId, newValue: transferToAccountId)
+            transaction.transferToAccountId = transferToAccountId
+        }
+        if let taxDeductibleRate {
+            logFieldChange(transactionId: txId, fieldName: "taxDeductibleRate", oldValue: transaction.taxDeductibleRate.map(String.init), newValue: taxDeductibleRate.map(String.init))
+            transaction.taxDeductibleRate = taxDeductibleRate
+        }
+        if let taxAmount {
+            logFieldChange(transactionId: txId, fieldName: "taxAmount", oldValue: transaction.taxAmount.map(String.init), newValue: taxAmount.map(String.init))
+            transaction.taxAmount = taxAmount
+        }
+        if let taxRate {
+            logFieldChange(transactionId: txId, fieldName: "taxRate", oldValue: transaction.taxRate.map(String.init), newValue: taxRate.map(String.init))
+            transaction.taxRate = taxRate
+        }
+        if let isTaxIncluded {
+            logFieldChange(transactionId: txId, fieldName: "isTaxIncluded", oldValue: transaction.isTaxIncluded.map(String.init), newValue: isTaxIncluded.map(String.init))
+            transaction.isTaxIncluded = isTaxIncluded
+        }
+        if let taxCategory {
+            logFieldChange(transactionId: txId, fieldName: "taxCategory", oldValue: transaction.taxCategory?.rawValue, newValue: taxCategory?.rawValue)
+            transaction.taxCategory = taxCategory
+        }
+        if let counterparty {
+            logFieldChange(transactionId: txId, fieldName: "counterparty", oldValue: transaction.counterparty, newValue: counterparty)
+            transaction.counterparty = counterparty
+        }
 
         let finalAmount = amount ?? transaction.amount
-        if let amount { transaction.amount = amount }
+        if let amount {
+            logFieldChange(transactionId: txId, fieldName: "amount", oldValue: String(transaction.amount), newValue: String(amount))
+            transaction.amount = amount
+        }
 
         if let allocations {
             transaction.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
@@ -860,38 +920,26 @@ class DataStore {
     }
 
     func deleteTransaction(id: UUID) {
-        guard let transaction = transactions.first(where: { $0.id == id }) else { return }
+        guard let transaction = allTransactions.first(where: { $0.id == id }) else { return }
         // T5: 年度ロックガード
         if isYearLocked(for: transaction.date) { return }
 
-        // C4: save成功後に削除するため画像パスを保持
-        let imageToDelete = transaction.receiptImagePath
-        let attachedDocumentFiles = purgeDocumentRecords(for: transaction.id)
-
-        // Capture recurring info before deletion
-        let recurringId = transaction.recurringId
-        let deletedDate = transaction.date
+        // ソフトデリート: 物理削除ではなく deletedAt を設定
+        transaction.deletedAt = Date()
+        transaction.updatedAt = Date()
 
         // Phase 4B: 対応する仕訳を削除
         let engine = AccountingEngine(modelContext: modelContext)
         engine.deleteJournalEntry(for: transaction.id)
 
-        modelContext.delete(transaction)
-        if save() {
-            if let imagePath = imageToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-            for fileName in attachedDocumentFiles {
-                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
-            }
-        }
+        save()
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
 
         // Roll back recurring generation tracking so the deleted period can be regenerated
-        if let recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
-            rollBackRecurringGenerationState(recurring: recurring, deletedTransactionDate: deletedDate)
+        if let recurringId = transaction.recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
+            rollBackRecurringGenerationState(recurring: recurring, deletedTransactionDate: transaction.date)
         }
     }
 
@@ -1042,7 +1090,8 @@ class DataStore {
         receiptImagePath: String? = nil,
         paymentAccountId: String? = nil,
         transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil
+        taxDeductibleRate: Int? = nil,
+        counterparty: String? = nil
     ) -> PPRecurringTransaction {
         let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         let allocs: [Allocation]
@@ -1068,7 +1117,8 @@ class DataStore {
             receiptImagePath: receiptImagePath,
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate
+            taxDeductibleRate: taxDeductibleRate,
+            counterparty: counterparty
         )
         modelContext.insert(recurring)
         save()
@@ -1099,7 +1149,8 @@ class DataStore {
         receiptImagePath: String?? = nil,
         paymentAccountId: String?? = nil,
         transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil
+        taxDeductibleRate: Int?? = nil,
+        counterparty: String?? = nil
     ) {
         guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
         if let name { recurring.name = name }
@@ -1151,6 +1202,7 @@ class DataStore {
         if let paymentAccountId { recurring.paymentAccountId = paymentAccountId }
         if let transferToAccountId { recurring.transferToAccountId = transferToAccountId }
         if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
+        if let counterparty { recurring.counterparty = counterparty }
 
         let resolvedMode = allocationMode ?? recurring.allocationMode
         let finalAmount = amount ?? recurring.amount
@@ -1488,7 +1540,8 @@ class DataStore {
             recurringId: recurring.id,
             paymentAccountId: recurring.paymentAccountId,
             transferToAccountId: recurring.transferToAccountId,
-            taxDeductibleRate: recurring.taxDeductibleRate
+            taxDeductibleRate: recurring.taxDeductibleRate,
+            counterparty: recurring.counterparty
         ) {
         case .success(let transaction):
             return transaction
@@ -1990,6 +2043,17 @@ class DataStore {
             if let projectId = filter.projectId, !t.allocations.contains(where: { $0.projectId == projectId }) { return false }
             if let categoryId = filter.categoryId, t.categoryId != categoryId { return false }
             if let type = filter.type, t.type != type { return false }
+            if let amountMin = filter.amountMin, t.amount < amountMin { return false }
+            if let amountMax = filter.amountMax, t.amount > amountMax { return false }
+            if let counterparty = filter.counterparty, !counterparty.isEmpty {
+                guard let tc = t.counterparty, tc.lowercased().contains(counterparty.lowercased()) else { return false }
+            }
+            if !filter.searchText.isEmpty {
+                let query = filter.searchText.lowercased()
+                let memoMatch = t.memo.lowercased().contains(query)
+                let counterpartyMatch = t.counterparty?.lowercased().contains(query) ?? false
+                if !memoMatch && !counterpartyMatch { return false }
+            }
             return true
         }
 
@@ -2006,6 +2070,68 @@ class DataStore {
         }
 
         return result
+    }
+
+    // MARK: - Audit Logging
+
+    private func logFieldChange(transactionId: UUID, fieldName: String, oldValue: String?, newValue: String?) {
+        guard oldValue != newValue else { return }
+        let log = PPTransactionLog(
+            transactionId: transactionId,
+            fieldName: fieldName,
+            oldValue: oldValue,
+            newValue: newValue
+        )
+        modelContext.insert(log)
+    }
+
+    func getTransactionLogs(for transactionId: UUID) -> [PPTransactionLog] {
+        do {
+            let descriptor = FetchDescriptor<PPTransactionLog>(
+                predicate: #Predicate { $0.transactionId == transactionId },
+                sortBy: [SortDescriptor(\.changedAt, order: .reverse)]
+            )
+            return try modelContext.fetch(descriptor)
+        } catch {
+            return []
+        }
+    }
+
+    // MARK: - Soft Delete Management
+
+    /// 指定日数以上前にソフトデリートされた取引を物理削除する（7年 = 2555日）
+    func purgeDeletedTransactions(olderThan days: Int = 2555) {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let toDelete = allTransactions.filter { t in
+            guard let deletedAt = t.deletedAt else { return false }
+            return deletedAt < cutoff
+        }
+        for transaction in toDelete {
+            if let imagePath = transaction.receiptImagePath {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+            modelContext.delete(transaction)
+        }
+        if !toDelete.isEmpty {
+            save()
+            refreshTransactions()
+        }
+    }
+
+    // MARK: - Category Archive
+
+    func archiveCategory(id: String) {
+        guard let category = categories.first(where: { $0.id == id }) else { return }
+        category.archivedAt = Date()
+        save()
+        refreshCategories()
+    }
+
+    func unarchiveCategory(id: String) {
+        guard let category = categories.first(where: { $0.id == id }) else { return }
+        category.archivedAt = nil
+        save()
+        refreshCategories()
     }
 
     // MARK: - CSV Import
@@ -2071,7 +2197,8 @@ class DataStore {
                 taxAmount: entry.taxAmount,
                 taxRate: entry.taxRate,
                 isTaxIncluded: entry.isTaxIncluded,
-                taxCategory: entry.taxCategory
+                taxCategory: entry.taxCategory,
+                counterparty: entry.counterparty
             )
 
             if case .failure(let error) = result {
@@ -2116,7 +2243,7 @@ class DataStore {
             }
         }
         projects = []
-        transactions = []
+        allTransactions = []
         categories = []
         recurringTransactions = []
         accounts = []

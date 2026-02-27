@@ -50,7 +50,7 @@ struct LineItemsEditView: View {
                 Spacer()
                 if !items.isEmpty {
                     Text("合計: \(formatCurrency(total))")
-                        .font(.caption.weight(.medium))
+                        .font(.caption.weight(.medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -152,7 +152,7 @@ struct LineItemsEditView: View {
                 Spacer()
 
                 Text(formatCurrency(items[index].subtotal))
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.medium).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("小計 \(formatCurrency(items[index].subtotal))")
             }

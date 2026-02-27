@@ -26,6 +26,33 @@ struct LedgerView: View {
         }
         .navigationTitle("総勘定元帳")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let accountId = selectedAccountId,
+               let account = dataStore.accounts.first(where: { $0.id == accountId }) {
+                ToolbarItem(placement: .primaryAction) {
+                    let entries = dataStore.getLedgerEntries(accountId: accountId)
+                    ExportMenuButton(
+                        csvGenerator: {
+                            CSVExportService.exportLedgerCSV(
+                                accountName: account.name,
+                                accountCode: account.code,
+                                entries: entries
+                            )
+                        },
+                        pdfGenerator: {
+                            let fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
+                            return PDFExportService.exportLedgerPDF(
+                                accountName: account.name,
+                                accountCode: account.code,
+                                entries: entries,
+                                fiscalYear: fiscalYear
+                            )
+                        },
+                        fileNamePrefix: "元帳_\(account.name)"
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Account Selector
@@ -50,7 +77,7 @@ struct LedgerView: View {
 
                                 let balance = dataStore.getAccountBalance(accountId: account.id)
                                 Text(formatCurrency(balance.balance))
-                                    .font(.subheadline.weight(.medium))
+                                    .font(.subheadline.weight(.medium).monospacedDigit())
                                     .foregroundStyle(balance.balance >= 0 ? .primary : AppColors.error)
                             }
                         }
@@ -91,7 +118,7 @@ struct LedgerView: View {
 
                 let balance = dataStore.getAccountBalance(accountId: accountId)
                 Text("残高: \(formatCurrency(balance.balance))")
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.medium).monospacedDigit())
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -112,21 +139,26 @@ struct LedgerView: View {
                     // Column headers
                     HStack {
                         Text("日付")
-                            .frame(width: 60, alignment: .leading)
+                            .frame(width: 70, alignment: .leading)
                         Text("摘要")
                         Spacer()
                         Text("借方")
-                            .frame(width: 65, alignment: .trailing)
+                            .frame(width: 80, alignment: .trailing)
                         Text("貸方")
-                            .frame(width: 65, alignment: .trailing)
+                            .frame(width: 80, alignment: .trailing)
                         Text("残高")
-                            .frame(width: 70, alignment: .trailing)
+                            .frame(width: 85, alignment: .trailing)
                     }
-                    .font(.caption2.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                    ForEach(entries) { entry in
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                         ledgerRow(entry)
+                            .listRowBackground(
+                                index.isMultiple(of: 2)
+                                    ? Color(.systemBackground)
+                                    : AppColors.surface.opacity(0.5)
+                            )
                     }
                 }
                 .listStyle(.plain)
@@ -137,27 +169,35 @@ struct LedgerView: View {
     private func ledgerRow(_ entry: DataStore.LedgerEntry) -> some View {
         HStack {
             Text(shortDate(entry.date))
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 60, alignment: .leading)
+                .frame(width: 70, alignment: .leading)
 
             Text(entry.memo.isEmpty ? entry.entryType.label : entry.memo)
-                .font(.caption)
+                .font(.subheadline)
                 .lineLimit(1)
 
             Spacer()
 
-            Text(entry.debit > 0 ? formatCurrency(entry.debit) : "")
-                .font(.caption)
-                .frame(width: 65, alignment: .trailing)
+            CurrencyText(
+                amount: entry.debit,
+                font: .subheadline,
+                emptyWhenZero: true
+            )
+            .frame(width: 80, alignment: .trailing)
 
-            Text(entry.credit > 0 ? formatCurrency(entry.credit) : "")
-                .font(.caption)
-                .frame(width: 65, alignment: .trailing)
+            CurrencyText(
+                amount: entry.credit,
+                font: .subheadline,
+                emptyWhenZero: true
+            )
+            .frame(width: 80, alignment: .trailing)
 
-            Text(formatCurrency(entry.runningBalance))
-                .font(.caption.weight(.medium))
-                .frame(width: 70, alignment: .trailing)
+            CurrencyText(
+                amount: entry.runningBalance,
+                font: .subheadline.weight(.medium)
+            )
+            .frame(width: 85, alignment: .trailing)
         }
     }
 

@@ -29,6 +29,8 @@ struct RecurringFormView: View {
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
     @State private var taxDeductibleRate: Int
+    // Phase 8: 取引先
+    @State private var counterparty: String
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
@@ -65,6 +67,7 @@ struct RecurringFormView: View {
         self._paymentAccountId = State(initialValue: recurring?.paymentAccountId)
         self._transferToAccountId = State(initialValue: recurring?.transferToAccountId)
         self._taxDeductibleRate = State(initialValue: recurring?.taxDeductibleRate ?? 100)
+        self._counterparty = State(initialValue: recurring?.counterparty ?? "")
     }
 
     // MARK: - Computed Properties
@@ -72,9 +75,9 @@ struct RecurringFormView: View {
     private var filteredCategories: [PPCategory] {
         switch type {
         case .expense, .transfer:
-            return dataStore.categories.filter { $0.type == .expense }
+            return dataStore.activeCategories.filter { $0.type == .expense }
         case .income:
-            return dataStore.categories.filter { $0.type == .income }
+            return dataStore.activeCategories.filter { $0.type == .income }
         }
     }
 
@@ -119,6 +122,7 @@ struct RecurringFormView: View {
                         } else {
                             equalAllInfoSection
                         }
+                        counterpartyField
                         memoField
                         RecurringReceiptImageSection(
                             recurring: recurring,
@@ -440,6 +444,22 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - Counterparty Field
+
+    private var counterpartyField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("取引先")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField("取引先名（任意）", text: $counterparty)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Memo Field
 
     private var memoField: some View {
@@ -580,6 +600,7 @@ struct RecurringFormView: View {
         let resolvedPaymentAccountId: String? = paymentAccountId
         let resolvedTransferToAccountId: String? = transferToAccountId
         let resolvedTaxDeductibleRate: Int? = taxDeductibleRate == 100 ? nil : taxDeductibleRate
+        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
 
         if let existing = recurring {
             if selectedImage != nil {
@@ -604,7 +625,8 @@ struct RecurringFormView: View {
                     receiptImagePath: imagePath,
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterparty: resolvedCounterparty
                 )
             } else if imageRemoved {
                 if let oldPath = existing.receiptImagePath {
@@ -628,7 +650,8 @@ struct RecurringFormView: View {
                     receiptImagePath: .some(nil),
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterparty: resolvedCounterparty
                 )
             } else {
                 dataStore.updateRecurring(
@@ -648,7 +671,8 @@ struct RecurringFormView: View {
                     yearlyAmortizationMode: resolvedAmortizationMode,
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterparty: resolvedCounterparty
                 )
             }
         } else {
@@ -668,7 +692,8 @@ struct RecurringFormView: View {
                 receiptImagePath: imagePath,
                 paymentAccountId: resolvedPaymentAccountId,
                 transferToAccountId: resolvedTransferToAccountId,
-                taxDeductibleRate: resolvedTaxDeductibleRate
+                taxDeductibleRate: resolvedTaxDeductibleRate,
+                counterparty: resolvedCounterparty
             )
         }
 

@@ -66,6 +66,9 @@ struct TransactionDetailView: View {
                         receiptImageSection
                     }
                     documentSection
+                    if let cp = transaction.counterparty, !cp.isEmpty {
+                        counterpartySection
+                    }
                     if !transaction.memo.isEmpty {
                         memoSection
                     }
@@ -130,7 +133,7 @@ struct TransactionDetailView: View {
             }
 
             Text("\(amountPrefix)\(formatCurrency(transaction.amount))")
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(size: 32, weight: .bold).monospacedDigit())
                 .foregroundStyle(typeColor)
 
             Text(formatDate(transaction.date))
@@ -239,7 +242,7 @@ struct TransactionDetailView: View {
                 Spacer()
                 let itemsTotal = transaction.lineItems.reduce(0) { $0 + $1.subtotal }
                 Text(formatCurrency(itemsTotal))
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.medium).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
@@ -252,12 +255,12 @@ struct TransactionDetailView: View {
 
                     if item.quantity > 1 {
                         Text("\(item.quantity)×\(formatCurrency(item.unitPrice))")
-                            .font(.caption)
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
 
                     Text(formatCurrency(item.subtotal))
-                        .font(.subheadline.weight(.medium))
+                        .font(.subheadline.weight(.medium).monospacedDigit())
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -300,7 +303,7 @@ struct TransactionDetailView: View {
                             .foregroundStyle(AppColors.primary)
                             .clipShape(Capsule())
                         Text(formatCurrency(alloc.amount))
-                            .font(.subheadline.weight(.medium))
+                            .font(.subheadline.weight(.medium).monospacedDigit())
                             .foregroundStyle(Color(.label))
                             .frame(width: 80, alignment: .trailing)
                         Image(systemName: "chevron.right")
@@ -421,6 +424,34 @@ struct TransactionDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
+    }
+
+    // MARK: - Counterparty Section
+
+    private var counterpartySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "building.2")
+                    .foregroundStyle(AppColors.primary)
+                Text("取引先")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            Text(transaction.counterparty ?? "")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .padding(16)
         .background(Color(.systemBackground))

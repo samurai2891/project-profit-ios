@@ -31,6 +31,8 @@ struct TransactionFormView: View {
     @State private var taxRate: Int = 10
     @State private var isTaxIncluded: Bool = true
     @State private var taxAmountText: String = ""
+    // Phase 8: 取引先
+    @State private var counterparty: String = ""
 
     private var isEditMode: Bool { transaction != nil }
 
@@ -48,7 +50,7 @@ struct TransactionFormView: View {
         case .income: .income
         case .expense, .transfer: .expense
         }
-        return dataStore.categories.filter { $0.type == categoryType }
+        return dataStore.activeCategories.filter { $0.type == categoryType }
     }
 
     private var totalRatio: Int {
@@ -82,6 +84,7 @@ struct TransactionFormView: View {
                     if type != .transfer {
                         allocationSection
                     }
+                    counterpartySection
                     memoSection
                 }
                 .padding(20)
@@ -271,7 +274,7 @@ struct TransactionFormView: View {
                         }
 
                         Text(formatCurrency(item.subtotal))
-                            .font(.subheadline.weight(.medium))
+                            .font(.subheadline.weight(.medium).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 12)
@@ -608,6 +611,20 @@ struct TransactionFormView: View {
         }
     }
 
+    // MARK: - Counterparty
+    private var counterpartySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("取引先")
+                .font(.subheadline.weight(.medium))
+            TextField("取引先名を入力...", text: $counterparty)
+                .padding(14)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("取引先")
+                .accessibilityValue(counterparty.isEmpty ? "未入力" : counterparty)
+        }
+    }
+
     // MARK: - Memo
     private var memoSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -640,6 +657,7 @@ struct TransactionFormView: View {
             taxRate = t.taxRate ?? 10
             isTaxIncluded = t.isTaxIncluded ?? true
             if let ta = t.taxAmount { taxAmountText = String(ta) }
+            counterparty = t.counterparty ?? ""
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -695,6 +713,7 @@ struct TransactionFormView: View {
         let resolvedCategoryId: String = type == .transfer ? "" : categoryId
 
         // 消費税フィールドの解決
+        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
         let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
         let resolvedConsumptionTaxRate: Int? = resolvedTaxCategory?.isTaxable == true ? taxRate : nil
         let resolvedIsTaxIncluded: Bool? = resolvedTaxCategory?.isTaxable == true ? isTaxIncluded : nil
@@ -724,7 +743,8 @@ struct TransactionFormView: View {
                     taxAmount: resolvedTaxAmount,
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory
+                    taxCategory: resolvedTaxCategory,
+                    counterparty: resolvedCounterparty
                 )
             } else if imageRemoved {
                 if let oldPath = t.receiptImagePath {
@@ -740,7 +760,8 @@ struct TransactionFormView: View {
                     taxAmount: resolvedTaxAmount,
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory
+                    taxCategory: resolvedTaxCategory,
+                    counterparty: resolvedCounterparty
                 )
             } else {
                 dataStore.updateTransaction(
@@ -752,7 +773,8 @@ struct TransactionFormView: View {
                     taxAmount: resolvedTaxAmount,
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory
+                    taxCategory: resolvedTaxCategory,
+                    counterparty: resolvedCounterparty
                 )
             }
             dismiss()
@@ -767,7 +789,8 @@ struct TransactionFormView: View {
                 taxAmount: resolvedTaxAmount,
                 taxRate: resolvedConsumptionTaxRate,
                 isTaxIncluded: resolvedIsTaxIncluded,
-                taxCategory: resolvedTaxCategory
+                taxCategory: resolvedTaxCategory,
+                counterparty: resolvedCounterparty
             )
             switch result {
             case .success:

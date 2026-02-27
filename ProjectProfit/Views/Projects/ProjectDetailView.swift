@@ -191,7 +191,7 @@ private extension ProjectDetailView {
                 .foregroundStyle(.white.opacity(0.8))
 
             Text(formatCurrency(profit))
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white)
 
             if income > 0 {
@@ -249,11 +249,11 @@ private extension ProjectDetailView {
 
                                 VStack(alignment: .trailing, spacing: 2) {
                                     Text(formatCurrency(fy.profit))
-                                        .font(.subheadline.bold())
+                                        .font(.subheadline.bold().monospacedDigit())
                                         .foregroundStyle(fy.profit >= 0 ? AppColors.success : AppColors.error)
 
                                     Text("収入 \(formatCurrency(fy.income)) / 支出 \(formatCurrency(fy.expense))")
-                                        .font(.caption2)
+                                        .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -312,7 +312,7 @@ private extension ProjectDetailView {
             }
 
             Text(formatCurrency(amount))
-                .font(.title3)
+                .font(.title3.monospacedDigit())
                 .fontWeight(.bold)
                 .foregroundStyle(color)
         }
@@ -574,7 +574,7 @@ private extension TransactionRow {
         HStack(spacing: 12) {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatCurrency(allocationAmount ?? transaction.amount))
-                    .font(.subheadline)
+                    .font(.subheadline.monospacedDigit())
                     .fontWeight(.semibold)
                     .foregroundStyle(typeColor)
 
@@ -586,7 +586,7 @@ private extension TransactionRow {
 
                 if allocationAmount != nil {
                     Text("全体: \(formatCurrency(transaction.amount))")
-                        .font(.caption2)
+                        .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }

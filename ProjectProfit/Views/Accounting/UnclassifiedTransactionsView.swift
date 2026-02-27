@@ -117,7 +117,7 @@ struct UnclassifiedTransactionsView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(formatCurrency(transaction.amount))
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.medium).monospacedDigit())
             }
 
             Text(transaction.memo.isEmpty ? "（メモなし）" : transaction.memo)

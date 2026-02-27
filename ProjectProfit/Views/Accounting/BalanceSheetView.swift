@@ -14,6 +14,21 @@ struct BalanceSheetView: View {
         }
         .navigationTitle("貸借対照表")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let viewModel, let report = viewModel.balanceSheet {
+                ToolbarItem(placement: .primaryAction) {
+                    ExportMenuButton(
+                        csvGenerator: {
+                            CSVExportService.exportBalanceSheetCSV(report: report)
+                        },
+                        pdfGenerator: {
+                            PDFExportService.exportBalanceSheetPDF(report: report)
+                        },
+                        fileNamePrefix: "貸借対照表"
+                    )
+                }
+            }
+        }
         .task {
             if viewModel == nil {
                 viewModel = AccountingReportViewModel(dataStore: dataStore)
@@ -65,7 +80,7 @@ struct BalanceSheetView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(formatCurrency(report.totalAssets))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
                 }
                 Text("=")
                     .font(.subheadline)
@@ -75,7 +90,7 @@ struct BalanceSheetView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(formatCurrency(report.liabilitiesAndEquity))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
                 }
             }
         }
@@ -104,7 +119,7 @@ struct BalanceSheetView: View {
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(formatCurrency(total))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(color)
             }
 
@@ -120,7 +135,7 @@ struct BalanceSheetView: View {
                             .font(.subheadline)
                         Spacer()
                         Text(formatCurrency(item.balance))
-                            .font(.subheadline)
+                            .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 12)

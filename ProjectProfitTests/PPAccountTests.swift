@@ -141,10 +141,7 @@ final class PPAccountTests: XCTestCase {
 
     @MainActor
     func testPersistenceRoundTrip() throws {
-        let container = try ModelContainer(
-            for: PPAccount.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let account = PPAccount(
@@ -176,10 +173,7 @@ final class PPAccountTests: XCTestCase {
 
     @MainActor
     func testPersistenceWithNilSubtype() throws {
-        let container = try ModelContainer(
-            for: PPAccount.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let account = PPAccount(
@@ -200,10 +194,7 @@ final class PPAccountTests: XCTestCase {
 
     @MainActor
     func testUniqueIdConstraint() throws {
-        let container = try ModelContainer(
-            for: PPAccount.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let account1 = PPAccount(id: "acct-cash", code: "101", name: "現金", accountType: .asset)

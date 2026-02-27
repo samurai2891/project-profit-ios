@@ -62,8 +62,7 @@ final class JournalValidationTests: XCTestCase {
 
     @MainActor
     func testValidateWithAccounts_MissingAccount() throws {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: PPAccount.self, configurations: config)
+        let container = try TestModelContainer.create()
         let context = container.mainContext
 
         let account = PPAccount(id: "acct-cash", code: "101", name: "現金", accountType: .asset, subtype: .cash, isSystem: true)

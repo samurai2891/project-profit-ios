@@ -109,7 +109,7 @@ struct RecurringHistoryView: View {
 
             // Amount
             Text(formatCurrency(transaction.amount))
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(
                     transaction.type == .expense ? AppColors.error
                         : transaction.type == .transfer ? AppColors.warning

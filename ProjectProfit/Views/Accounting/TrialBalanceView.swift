@@ -14,6 +14,21 @@ struct TrialBalanceView: View {
         }
         .navigationTitle("試算表")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let viewModel, let report = viewModel.trialBalance {
+                ToolbarItem(placement: .primaryAction) {
+                    ExportMenuButton(
+                        csvGenerator: {
+                            CSVExportService.exportTrialBalanceCSV(rows: report.rows)
+                        },
+                        pdfGenerator: {
+                            PDFExportService.exportTrialBalancePDF(report: report)
+                        },
+                        fileNamePrefix: "試算表"
+                    )
+                }
+            }
+        }
         .task {
             if viewModel == nil {
                 viewModel = AccountingReportViewModel(dataStore: dataStore)
@@ -96,13 +111,13 @@ struct TrialBalanceView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     Text(row.debit > 0 ? formatCurrency(row.debit) : "")
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                         .frame(width: 80, alignment: .trailing)
                     Text(row.credit > 0 ? formatCurrency(row.credit) : "")
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                         .frame(width: 80, alignment: .trailing)
                     Text(formatCurrency(row.balance))
-                        .font(.caption.weight(.medium))
+                        .font(.caption.weight(.medium).monospacedDigit())
                         .frame(width: 80, alignment: .trailing)
                 }
                 .padding(.horizontal, 12)
@@ -121,10 +136,10 @@ struct TrialBalanceView: View {
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(formatCurrency(report.debitTotal))
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .frame(width: 80, alignment: .trailing)
             Text(formatCurrency(report.creditTotal))
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
                 .frame(width: 80, alignment: .trailing)
             Spacer()
                 .frame(width: 80)

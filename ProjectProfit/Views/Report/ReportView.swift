@@ -119,7 +119,7 @@ struct ReportView: View {
                 .foregroundStyle(.white.opacity(0.8))
 
                 Text(formatCurrency(summary.netProfit))
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.system(size: 32, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
 
                 Text("利益率: \(String(format: "%.1f", summary.profitMargin))%")
@@ -151,7 +151,7 @@ struct ReportView: View {
                     .foregroundStyle(.secondary)
             }
             Text(formatCurrency(amount))
-                .font(.title3.bold())
+                .font(.title3.bold().monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -190,7 +190,7 @@ struct ReportView: View {
                 Image(systemName: change >= 0 ? "arrow.up.right" : "arrow.down.right")
                     .font(.caption)
                 Text(formatCurrency(change))
-                    .font(.subheadline.bold())
+                    .font(.subheadline.bold().monospacedDigit())
             }
             .foregroundStyle(changeColor(for: change, label: label))
         }
@@ -241,7 +241,7 @@ struct ReportView: View {
                         .frame(height: 12)
 
                         Text(formatCurrency(m.profit))
-                            .font(.caption2)
+                            .font(.caption2.monospacedDigit())
                             .foregroundStyle(m.profit >= 0 ? AppColors.success : AppColors.error)
                             .frame(width: 70, alignment: .trailing)
                     }
@@ -320,7 +320,7 @@ struct ReportView: View {
                             .font(.subheadline)
                         Spacer()
                         Text(formatCurrency(cat.total))
-                            .font(.subheadline)
+                            .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     ProgressView(value: cat.percentage, total: 100)
@@ -366,14 +366,14 @@ struct ReportView: View {
                                     Text("収益 \(formatCurrency(project.totalIncome))")
                                     Text("経費 \(formatCurrency(project.totalExpense))")
                                 }
-                                .font(.caption2)
+                                .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
                             }
 
                             Spacer()
 
                             Text(formatCurrency(project.profit))
-                                .font(.subheadline.bold())
+                                .font(.subheadline.bold().monospacedDigit())
                                 .foregroundStyle(project.profit >= 0 ? AppColors.success : AppColors.error)
                         }
                         .padding(.vertical, 10)

@@ -14,6 +14,21 @@ struct ProfitLossView: View {
         }
         .navigationTitle("損益計算書")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let viewModel, let report = viewModel.profitLoss {
+                ToolbarItem(placement: .primaryAction) {
+                    ExportMenuButton(
+                        csvGenerator: {
+                            CSVExportService.exportProfitLossCSV(report: report)
+                        },
+                        pdfGenerator: {
+                            PDFExportService.exportProfitLossPDF(report: report)
+                        },
+                        fileNamePrefix: "損益計算書"
+                    )
+                }
+            }
+        }
         .task {
             if viewModel == nil {
                 viewModel = AccountingReportViewModel(dataStore: dataStore)
@@ -55,13 +70,13 @@ struct ProfitLossView: View {
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.8))
             Text(formatCurrency(report.netIncome))
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 28, weight: .bold).monospacedDigit())
                 .foregroundStyle(.white)
             HStack(spacing: 16) {
                 Text("収入: \(formatCurrency(report.totalRevenue))")
                 Text("経費: \(formatCurrency(report.totalExpenses))")
             }
-            .font(.caption)
+            .font(.caption.monospacedDigit())
             .foregroundStyle(.white.opacity(0.7))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,7 +111,7 @@ struct ProfitLossView: View {
                 .font(.subheadline.weight(.semibold))
             Spacer()
             Text(formatCurrency(total))
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
         }
     }
 
@@ -106,7 +121,7 @@ struct ProfitLossView: View {
                 .font(.subheadline)
             Spacer()
             Text(formatCurrency(item.amount))
-                .font(.subheadline)
+                .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
