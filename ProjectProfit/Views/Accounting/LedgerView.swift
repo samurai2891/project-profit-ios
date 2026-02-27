@@ -160,6 +160,15 @@ struct LedgerView: View {
                                     : AppColors.surface.opacity(0.5)
                             )
                     }
+
+                    // 消費税マーク凡例
+                    if entries.contains(where: { $0.taxCategory == .reducedRate }) {
+                        Section {
+                            Text("※は軽減税率対象")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -173,7 +182,7 @@ struct LedgerView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 70, alignment: .leading)
 
-            Text(entry.memo.isEmpty ? entry.entryType.label : entry.memo)
+            Text(ledgerDescription(entry))
                 .font(.subheadline)
                 .lineLimit(1)
 
@@ -201,9 +210,27 @@ struct LedgerView: View {
         }
     }
 
+    /// 摘要テキスト: [取引先] メモ ※
+    private func ledgerDescription(_ entry: DataStore.LedgerEntry) -> String {
+        var parts: [String] = []
+        if let cp = entry.counterparty, !cp.isEmpty {
+            parts.append("[\(cp)]")
+        }
+        let memo = entry.memo.isEmpty ? entry.entryType.label : entry.memo
+        parts.append(memo)
+        if entry.taxCategory == .reducedRate {
+            parts.append("※")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM/dd"
+        return f
+    }()
+
     private func shortDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd"
-        return formatter.string(from: date)
+        Self.shortDateFormatter.string(from: date)
     }
 }

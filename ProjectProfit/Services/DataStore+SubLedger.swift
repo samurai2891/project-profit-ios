@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - SubLedgerType
+
 enum SubLedgerType: String, CaseIterable, Identifiable {
     case cashBook
     case accountsReceivableBook
@@ -27,6 +29,8 @@ enum SubLedgerType: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - SubLedgerEntry
+
 struct SubLedgerEntry: Identifiable {
     let id: UUID
     let date: Date
@@ -37,7 +41,12 @@ struct SubLedgerEntry: Identifiable {
     let debit: Int
     let credit: Int
     let runningBalance: Int
+    let counterAccountId: String?
+    let counterparty: String?
+    let taxCategory: TaxCategory?
 }
+
+// MARK: - SubLedgerSummary
 
 struct SubLedgerSummary {
     let count: Int
@@ -47,7 +56,10 @@ struct SubLedgerSummary {
     let periodEnd: Date?
 }
 
+// MARK: - DataStore Sub-Ledger Extension
+
 extension DataStore {
+
     func subLedgerAccountIds(for type: SubLedgerType) -> [String] {
         switch type {
         case .cashBook:
@@ -61,44 +73,155 @@ extension DataStore {
         }
     }
 
+    /// NTA準拠の補助簿エントリを返す
+    /// - Parameters:
+    ///   - type: 帳簿種類
+    ///   - startDate: 開始日
+    ///   - endDate: 終了日
+    ///   - accountFilter: 経費帳の科目フィルタ（特定のaccountIdのみ取得）
+    ///   - counterpartyFilter: 売掛帳/買掛帳の取引先フィルタ（nil=全件、""=不明、"name"=特定取引先）
     func getSubLedgerEntries(
         type: SubLedgerType,
         startDate: Date? = nil,
-        endDate: Date? = nil
+        endDate: Date? = nil,
+        accountFilter: String? = nil,
+        counterpartyFilter: String? = nil
     ) -> [SubLedgerEntry] {
-        let accountIds = subLedgerAccountIds(for: type)
-        guard !accountIds.isEmpty else { return [] }
+        let targetAccountIds: [String]
+        if let accountFilter {
+            targetAccountIds = [accountFilter]
+        } else {
+            targetAccountIds = subLedgerAccountIds(for: type)
+        }
+        guard !targetAccountIds.isEmpty else { return [] }
 
         let accountMap = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        var merged: [SubLedgerEntry] = []
-        merged.reserveCapacity(accountIds.count * 50)
+        let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
+        let entryMap = Dictionary(uniqueKeysWithValues: journalEntries.map { ($0.id, $0) })
+        let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let linesByEntry = Dictionary(grouping: journalLines) { $0.entryId }
+        let targetAccountIdSet = Set(targetAccountIds)
 
-        for accountId in accountIds {
-            let account = accountMap[accountId]
-            let code = account?.code ?? accountId
-            let name = account?.name ?? accountId
-            let rows = getLedgerEntries(accountId: accountId, startDate: startDate, endDate: endDate)
-            merged.append(contentsOf: rows.map { row in
-                SubLedgerEntry(
-                    id: row.id,
-                    date: row.date,
-                    accountId: accountId,
-                    accountCode: code,
-                    accountName: name,
-                    memo: row.memo,
-                    debit: row.debit,
-                    credit: row.credit,
-                    runningBalance: row.runningBalance
-                )
-            })
+        // Collect enriched line data
+        var enrichedLines: [(
+            lineId: UUID,
+            entryDate: Date,
+            accountId: String,
+            accountCode: String,
+            accountName: String,
+            memo: String,
+            debit: Int,
+            credit: Int,
+            counterAccountId: String?,
+            counterparty: String?,
+            taxCategory: TaxCategory?
+        )] = []
+
+        for journalLine in journalLines {
+            guard targetAccountIdSet.contains(journalLine.accountId),
+                  postedEntryIds.contains(journalLine.entryId),
+                  let entry = entryMap[journalLine.entryId] else { continue }
+
+            if let start = startDate, entry.date < start { continue }
+            if let end = endDate, entry.date > end { continue }
+
+            let account = accountMap[journalLine.accountId]
+            let code = account?.code ?? journalLine.accountId
+            let name = account?.name ?? journalLine.accountId
+
+            // 相手勘定の特定: 同一仕訳の他行から最大金額の行を選択（複合仕訳対応）
+            let siblingLines = linesByEntry[entry.id]?.filter { $0.id != journalLine.id } ?? []
+            let counterAccountId = siblingLines
+                .max(by: { $0.amount < $1.amount })?
+                .accountId
+
+            // 元取引から取引先・消費税区分を取得
+            let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
+
+            enrichedLines.append((
+                lineId: journalLine.id,
+                entryDate: entry.date,
+                accountId: journalLine.accountId,
+                accountCode: code,
+                accountName: name,
+                memo: entry.memo,
+                debit: journalLine.debit,
+                credit: journalLine.credit,
+                counterAccountId: counterAccountId,
+                counterparty: transaction?.counterparty,
+                taxCategory: transaction?.taxCategory
+            ))
         }
 
-        return merged.sorted {
-            if $0.date != $1.date { return $0.date < $1.date }
+        // 日付→科目コード→IDでソート
+        enrichedLines.sort {
+            if $0.entryDate != $1.entryDate { return $0.entryDate < $1.entryDate }
             if $0.accountCode != $1.accountCode { return $0.accountCode < $1.accountCode }
-            return $0.id.uuidString < $1.id.uuidString
+            return $0.lineId.uuidString < $1.lineId.uuidString
+        }
+
+        // 取引先フィルタ適用
+        if let filter = counterpartyFilter {
+            enrichedLines = enrichedLines.filter { line in
+                let cp = line.counterparty ?? ""
+                return filter.isEmpty ? cp.isEmpty : cp == filter
+            }
+        }
+
+        // 残高計算: 帳簿種類に応じてグループキーを決定
+        var runningBalances: [String: Int] = [:]
+
+        return enrichedLines.map { line in
+            let account = accountMap[line.accountId]
+            let isDebitNormal = account?.normalBalance == .debit
+
+            // 売掛帳/買掛帳は常に取引先別残高、その他は科目別残高
+            let balanceKey: String
+            switch type {
+            case .accountsReceivableBook, .accountsPayableBook:
+                balanceKey = line.counterparty ?? ""
+            case .cashBook, .expenseBook:
+                balanceKey = line.accountId
+            }
+
+            let prev = runningBalances[balanceKey, default: 0]
+            let newBalance: Int
+            if isDebitNormal {
+                newBalance = prev + line.debit - line.credit
+            } else {
+                newBalance = prev + line.credit - line.debit
+            }
+            runningBalances[balanceKey] = newBalance
+
+            return SubLedgerEntry(
+                id: line.lineId,
+                date: line.entryDate,
+                accountId: line.accountId,
+                accountCode: line.accountCode,
+                accountName: line.accountName,
+                memo: line.memo,
+                debit: line.debit,
+                credit: line.credit,
+                runningBalance: newBalance,
+                counterAccountId: line.counterAccountId,
+                counterparty: line.counterparty,
+                taxCategory: line.taxCategory
+            )
         }
     }
+
+    /// 補助簿の取引先一覧を返す（売掛帳/買掛帳用）
+    func getSubLedgerCounterparties(
+        type: SubLedgerType,
+        startDate: Date? = nil,
+        endDate: Date? = nil
+    ) -> [String] {
+        let entries = getSubLedgerEntries(type: type, startDate: startDate, endDate: endDate)
+        let counterparties = Set(entries.compactMap(\.counterparty).filter { !$0.isEmpty })
+        return counterparties.sorted()
+    }
+
+    // MARK: - Summary
 
     func getSubLedgerSummary(
         type: SubLedgerType,
@@ -115,19 +238,29 @@ extension DataStore {
         )
     }
 
+    // MARK: - CSV Export
+
     func exportSubLedgerCSV(
         type: SubLedgerType,
         startDate: Date? = nil,
         endDate: Date? = nil
     ) -> String {
         let rows = getSubLedgerEntries(type: type, startDate: startDate, endDate: endDate)
-        var lines: [String] = ["date,accountCode,accountName,memo,debit,credit,runningBalance"]
+        var lines: [String] = [
+            "date,accountCode,accountName,memo,counterparty,debit,credit,runningBalance,counterAccountId,taxCategory"
+        ]
         let formatter = ISO8601DateFormatter()
         for row in rows {
             let dateText = formatter.string(from: row.date)
             let memo = row.memo.replacingOccurrences(of: "\"", with: "\"\"")
             let accountName = row.accountName.replacingOccurrences(of: "\"", with: "\"\"")
-            lines.append("\(dateText),\(row.accountCode),\"\(accountName)\",\"\(memo)\",\(row.debit),\(row.credit),\(row.runningBalance)")
+            let counterparty = (row.counterparty ?? "").replacingOccurrences(of: "\"", with: "\"\"")
+            let taxCat = row.taxCategory?.rawValue ?? ""
+            lines.append(
+                "\(dateText),\(row.accountCode),\"\(accountName)\",\"\(memo)\",\"\(counterparty)\","
+                + "\(row.debit),\(row.credit),\(row.runningBalance),"
+                + "\(row.counterAccountId ?? ""),\(taxCat)"
+            )
         }
         return lines.joined(separator: "\n")
     }

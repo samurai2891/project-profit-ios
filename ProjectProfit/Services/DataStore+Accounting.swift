@@ -174,6 +174,30 @@ extension DataStore {
         let debit: Int
         let credit: Int
         let runningBalance: Int
+        let counterparty: String?
+        let taxCategory: TaxCategory?
+
+        init(
+            id: UUID,
+            date: Date,
+            memo: String,
+            entryType: JournalEntryType,
+            debit: Int,
+            credit: Int,
+            runningBalance: Int,
+            counterparty: String? = nil,
+            taxCategory: TaxCategory? = nil
+        ) {
+            self.id = id
+            self.date = date
+            self.memo = memo
+            self.entryType = entryType
+            self.debit = debit
+            self.credit = credit
+            self.runningBalance = runningBalance
+            self.counterparty = counterparty
+            self.taxCategory = taxCategory
+        }
     }
 
     func getLedgerEntries(
@@ -183,6 +207,7 @@ extension DataStore {
     ) -> [LedgerEntry] {
         let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
         let entryMap = Dictionary(uniqueKeysWithValues: journalEntries.map { ($0.id, $0) })
+        let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
 
         let relevantLines = journalLines
             .filter { $0.accountId == accountId && postedEntryIds.contains($0.entryId) }
@@ -204,6 +229,9 @@ extension DataStore {
             } else {
                 runningBalance += pair.line.credit - pair.line.debit
             }
+
+            let transaction = pair.entry.sourceTransactionId.flatMap { transactionMap[$0] }
+
             return LedgerEntry(
                 id: pair.line.id,
                 date: pair.entry.date,
@@ -211,7 +239,9 @@ extension DataStore {
                 entryType: pair.entry.entryType,
                 debit: pair.line.debit,
                 credit: pair.line.credit,
-                runningBalance: runningBalance
+                runningBalance: runningBalance,
+                counterparty: transaction?.counterparty,
+                taxCategory: transaction?.taxCategory
             )
         }
     }

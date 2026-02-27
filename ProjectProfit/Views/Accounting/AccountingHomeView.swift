@@ -120,6 +120,12 @@ struct AccountingHomeView: View {
                 destination: SubLedgerView(type: .expenseBook)
             )
             navigationRow(
+                icon: "calendar.badge.clock",
+                title: "月別総括集計表",
+                subtitle: "月別の売上・仕入・経費集計",
+                destination: MonthlySummaryView()
+            )
+            navigationRow(
                 icon: "tablecells",
                 title: "試算表",
                 subtitle: "勘定科目の残高一覧",
