@@ -1,10 +1,11 @@
 import Foundation
 
-// MARK: - CSVExportService
+// MARK: - ReportCSVExportService
 
 /// 各種帳票データを BOM 付き CSV 文字列に変換する純粋関数群。
 /// DataStore への依存なし。呼び出し側がデータを渡す。
-enum CSVExportService {
+/// Note: 帳簿CSV出力は Ledger/Services/LedgerExportService.swift の CSVExportService を使用
+enum ReportCSVExportService {
 
     // MARK: - Common Helpers
 

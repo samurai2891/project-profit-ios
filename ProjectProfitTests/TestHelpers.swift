@@ -20,6 +20,8 @@ enum TestModelContainer {
                  PPDocumentRecord.self,
                  PPComplianceLog.self,
                  PPTransactionLog.self,
+                 SDLedgerBook.self,
+                 SDLedgerEntry.self,
             configurations: config
         )
     }

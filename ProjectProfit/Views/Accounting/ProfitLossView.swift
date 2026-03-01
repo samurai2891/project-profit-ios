@@ -19,7 +19,7 @@ struct ProfitLossView: View {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         csvGenerator: {
-                            CSVExportService.exportProfitLossCSV(report: report)
+                            ReportCSVExportService.exportProfitLossCSV(report: report)
                         },
                         pdfGenerator: {
                             PDFExportService.exportProfitLossPDF(report: report)

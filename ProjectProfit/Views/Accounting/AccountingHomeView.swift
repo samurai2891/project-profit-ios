@@ -156,6 +156,12 @@ struct AccountingHomeView: View {
                 destination: FixedAssetScheduleView()
             )
             navigationRow(
+                icon: "books.vertical",
+                title: "台帳管理",
+                subtitle: "各種台帳の作成・管理・エクスポート",
+                destination: LedgerHomeView()
+            )
+            navigationRow(
                 icon: "cart",
                 title: "棚卸入力",
                 subtitle: "在庫・仕入高・売上原価の管理",

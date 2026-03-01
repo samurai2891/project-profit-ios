@@ -9,7 +9,7 @@ struct DepreciationScheduleRow: Identifiable {
     let acquisitionDate: Date
     let acquisitionCost: Int
     let usefulLifeYears: Int
-    let depreciationMethod: DepreciationMethod
+    let depreciationMethod: PPDepreciationMethod
     let currentYearAmount: Int      // 当期償却額
     let accumulatedAmount: Int      // 累計償却額
     let bookValue: Int              // 期末帳簿価額

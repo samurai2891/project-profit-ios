@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProjectProfit テスト管理シート v2.0</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;background:#f0f2f5;color:#1a1a2e;line-height:1.6}
+.container{max-width:960px;margin:0 auto;padding:16px}
+header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:24px 0;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+header h1{text-align:center;font-size:1.4em;margin-bottom:8px}
+.progress-wrap{max-width:960px;margin:0 auto;padding:0 16px}
+.progress-bar{background:rgba(255,255,255,.2);border-radius:20px;height:24px;overflow:hidden;position:relative}
+.progress-fill{height:100%;background:linear-gradient(90deg,#00c853,#64dd17);border-radius:20px;transition:width .4s ease}
+.progress-text{position:absolute;top:0;left:0;right:0;text-align:center;font-size:12px;line-height:24px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.stats-row{display:flex;justify-content:center;gap:24px;margin-top:8px;font-size:13px}
+.stats-row span{opacity:.9}
+.stats-row .ok{color:#b9f6ca}.stats-row .ng{color:#ff8a80}.stats-row .pending{color:#fff59d}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.controls button{padding:6px 16px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:20px;cursor:pointer;font-size:12px;transition:all .2s}
+.controls button:hover,.controls button.active{background:rgba(255,255,255,.25);border-color:#fff}
+.tester-info{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.tester-info summary{cursor:pointer;font-weight:600;font-size:15px;color:#667eea}
+.tester-info .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.tester-info label{font-size:13px;color:#666;display:block;margin-bottom:4px}
+.tester-info input{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px}
+.phase-section{margin:16px 0}
+.phase-header{background:#fff;padding:14px 20px;border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.06);transition:all .2s;user-select:none}
+.phase-header:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.phase-header h2{font-size:15px;color:#333}
+.phase-badge{display:flex;gap:6px;align-items:center}
+.phase-badge .count{font-size:12px;padding:2px 10px;border-radius:12px;font-weight:600}
+.phase-badge .ok-count{background:#e8f5e9;color:#2e7d32}
+.phase-badge .ng-count{background:#ffebee;color:#c62828}
+.phase-badge .arrow{font-size:12px;color:#999;transition:transform .2s}
+.phase-section.open .arrow{transform:rotate(180deg)}
+.phase-body{display:none;padding:8px 0}
+.phase-section.open .phase-body{display:block}
+.scenario-card{background:#fff;border-radius:10px;margin:8px 0;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #e0e0e0;transition:border-color .2s}
+.scenario-card.ok{border-left-color:#4caf50}
+.scenario-card.ng{border-left-color:#f44336}
+.scenario-card .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.scenario-card .card-info{flex:1}
+.scenario-card .scenario-id{font-weight:700;color:#667eea;font-size:14px;margin-right:8px}
+.scenario-card .scenario-title{font-weight:600;font-size:14px}
+.radio-group{display:flex;gap:4px;flex-shrink:0}
+.radio-group label{padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid #e0e0e0;transition:all .2s;user-select:none}
+.radio-group input{display:none}
+.radio-group .radio-ok:has(input:checked){background:#4caf50;color:#fff;border-color:#4caf50}
+.radio-group .radio-ng:has(input:checked){background:#f44336;color:#fff;border-color:#f44336}
+.radio-group label:hover{background:#f5f5f5}
+.radio-group .radio-ok:has(input:checked):hover{background:#43a047}
+.radio-group .radio-ng:has(input:checked):hover{background:#e53935}
+.detail-toggle{font-size:12px;color:#667eea;cursor:pointer;margin-top:6px;display:inline-block}
+.detail-toggle:hover{text-decoration:underline}
+.scenario-detail{display:none;margin-top:12px;padding:12px;background:#f8f9fa;border-radius:8px;font-size:13px}
+.scenario-detail.show{display:block}
+.scenario-detail h4{font-size:12px;color:#666;margin:8px 0 4px;font-weight:600}
+.scenario-detail h4:first-child{margin-top:0}
+.scenario-detail ul{padding-left:20px;margin:0}
+.scenario-detail li{margin:2px 0;color:#444}
+.note-input{width:100%;margin-top:8px;padding:8px 10px;border:1px solid #e0e0e0;border-radius:6px;font-size:13px;resize:vertical;min-height:32px;font-family:inherit}
+.note-input:focus{outline:none;border-color:#667eea}
+.summary-section{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.summary-section h2{font-size:16px;margin-bottom:16px;color:#333}
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.summary-card{text-align:center;padding:16px;border-radius:10px}
+.summary-card .num{font-size:28px;font-weight:700}
+.summary-card .label{font-size:12px;margin-top:4px}
+.summary-card.total{background:#f3e5f5;color:#6a1b9a}
+.summary-card.s-ok{background:#e8f5e9;color:#2e7d32}
+.summary-card.s-ng{background:#ffebee;color:#c62828}
+.summary-card.s-pending{background:#fff8e1;color:#f57f17}
+.bug-section{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bug-section h2{font-size:16px;margin-bottom:12px;color:#333}
+.bug-list{margin-bottom:16px}
+.bug-item{background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:12px;margin:8px 0}
+.bug-item .bug-header{display:flex;justify-content:space-between;align-items:center}
+.bug-item .bug-id{font-weight:700;color:#c62828}
+.bug-item .bug-title{font-weight:600;margin:4px 0}
+.bug-item .bug-detail{font-size:13px;color:#666;white-space:pre-wrap}
+.bug-item button.del-bug{background:none;border:none;color:#999;cursor:pointer;font-size:16px}
+.bug-form .row{margin:8px 0}
+.bug-form label{font-size:13px;color:#666;display:block;margin-bottom:4px}
+.bug-form input,.bug-form select,.bug-form textarea{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit}
+.bug-form textarea{min-height:60px;resize:vertical}
+.btn{padding:8px 20px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-primary{background:#667eea;color:#fff}.btn-primary:hover{background:#5a6fd6}
+.btn-danger{background:#f44336;color:#fff}.btn-danger:hover{background:#e53935}
+.btn-outline{background:transparent;border:1px solid #667eea;color:#667eea}.btn-outline:hover{background:#f0f0ff}
+.export-bar{display:flex;gap:8px;justify-content:center;margin:20px 0;flex-wrap:wrap}
+.footer{text-align:center;padding:24px;color:#999;font-size:12px}
+@media print{header{position:static;background:#333!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.controls,.export-bar,.bug-form,.note-input,.detail-toggle,.radio-group{display:none!important}.scenario-card{page-break-inside:avoid}.phase-body{display:block!important}}
+@media(max-width:600px){.summary-grid{grid-template-columns:repeat(2,1fr)}.tester-info .grid{grid-template-columns:1fr}.radio-group label{padding:6px 10px}}
+</style>
+</head>
+<body>
+<header>
+<h1>ProjectProfit テスト管理シート v2.0 — 青色申告対応</h1>
+<div class="progress-wrap">
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div><div class="progress-text" id="progressText">0 / 0 (0%)</div></div>
+<div class="stats-row">
+<span class="ok">✓ OK: <b id="statOk">0</b></span>
+<span class="ng">✗ NG: <b id="statNg">0</b></span>
+<span class="pending">○ 未実施: <b id="statPending">0</b></span>
+</div>
+<div class="controls">
+<button class="active" onclick="filterScenarios('all')">すべて</button>
+<button onclick="filterScenarios('pending')">未実施</button>
+<button onclick="filterScenarios('ok')">OK</button>
+<button onclick="filterScenarios('ng')">NG</button>
+<button onclick="expandAll()">全展開</button>
+<button onclick="collapseAll()">全閉じ</button>
+</div>
+</div>
+</header>
+<div class="container">
+<details class="tester-info" open>
+<summary>テスター情報（ペルソナ: 田中雄一 — TK Web Studio / 青色申告・複式簿記 / 1月始まり）</summary>
+<div class="grid">
+<div><label>テスター名</label><input id="testerName" placeholder="氏名" oninput="saveTesterInfo()"></div>
+<div><label>テスト実施日</label><input id="testDate" type="date" oninput="saveTesterInfo()"></div>
+<div><label>デバイス名</label><input id="deviceName" placeholder="例: iPhone 16 Pro" oninput="saveTesterInfo()"></div>
+<div><label>iOSバージョン</label><input id="iosVersion" placeholder="例: iOS 18.3" oninput="saveTesterInfo()"></div>
+</div>
+</details>
+<div id="phasesContainer"></div>
+<div class="summary-section">
+<h2>テスト結果サマリー</h2>
+<div class="summary-grid">
+<div class="summary-card total"><div class="num" id="sumTotal">0</div><div class="label">総テスト数</div></div>
+<div class="summary-card s-ok"><div class="num" id="sumOk">0</div><div class="label">OK</div></div>
+<div class="summary-card s-ng"><div class="num" id="sumNg">0</div><div class="label">NG</div></div>
+<div class="summary-card s-pending"><div class="num" id="sumPending">0</div><div class="label">未実施</div></div>
+</div>
+<div style="text-align:center">
+<div style="font-size:36px;font-weight:700;color:#667eea" id="sumRate">0%</div>
+<div style="font-size:13px;color:#666">合格率 (OK / 実施済み)</div>
+</div>
+</div>
+<div class="bug-section">
+<h2>不具合報告</h2>
+<div class="bug-list" id="bugList"></div>
+<details>
+<summary style="cursor:pointer;color:#667eea;font-weight:600;font-size:14px">+ 不具合を追加</summary>
+<div class="bug-form" style="margin-top:12px">
+<div class="row"><label>関連シナリオID</label><input id="bugScenario" placeholder="例: SE-01"></div>
+<div class="row"><label>タイトル</label><input id="bugTitle" placeholder="簡潔な不具合タイトル"></div>
+<div class="row"><label>重要度</label><select id="bugSeverity"><option value="致命的">致命的（クラッシュ・データ消失）</option><option value="重大">重大（機能不能・データ不正確）</option><option value="軽微" selected>軽微（表示崩れ・操作感）</option><option value="要改善">要改善（提案）</option></select></div>
+<div class="row"><label>再現手順・詳細</label><textarea id="bugDetail" placeholder="1. 〜をタップ&#10;2. 〜を入力&#10;3. 〜が発生"></textarea></div>
+<button class="btn btn-danger" onclick="addBug()" style="margin-top:8px">不具合を登録</button>
+</div>
+</details>
+</div>
+<div class="export-bar">
+<button class="btn btn-primary" onclick="exportCSV()">CSVエクスポート</button>
+<button class="btn btn-outline" onclick="exportJSON()">JSONバックアップ</button>
+<button class="btn btn-outline" onclick="importJSON()">JSONインポート</button>
+<button class="btn btn-outline" onclick="window.print()">印刷</button>
+<button class="btn btn-danger" onclick="resetAll()">全リセット</button>
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
+</div>
+<div class="footer">ProjectProfit テスト管理シート v2.0 — 青色申告対応 全25フェーズ — データはブラウザのlocalStorageに自動保存されます</div>
+</div>
+<script>
+const SCENARIOS = [
+// Phase 1 (SE): セットアップ・初期設定
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-01",title:"アプリ初回起動・オンボーディング",steps:["アプリを新規インストールして起動","初回起動画面の表示を確認","各タブ（ダッシュボード/プロジェクト/取引履歴/レポート/設定）をタップ"],expected:["アプリがクラッシュせず起動する","5つのタブが正常に表示される","各タブのアイコンとラベルが正しい（house.fill/folder.fill/list.bullet.rectangle/chart.bar.doc.horizontal.fill/gearshape.fill）"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-02",title:"会計プロファイル初期設定",steps:["「設定」タブをタップ","「会計プロファイル」をタップ","申告者名: 田中雄一、屋号: TK Web Studio を入力","申告種別: 青色申告、記帳方式: 複式簿記 を選択","「保存」をタップ"],expected:["会計プロファイル画面が正常に表示される","入力した情報が保存される","青色申告・複式簿記が選択済みと表示される"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-03",title:"会計年度設定（1月始まり）",steps:["「設定」→「会計年度設定」をタップ","開始月を「1月」に設定","「保存」をタップ"],expected:["会計年度開始月が1月に設定される","レポート画面の年度表示が1月〜12月になる"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-04",title:"デフォルトカテゴリ確認",steps:["「設定」→「カテゴリの管理」をタップ","経費カテゴリ一覧を確認","収益カテゴリ一覧を確認"],expected:["経費カテゴリ11件表示（ホスティング/ツール/広告/請負業者/通信費/消耗品/交通費/食費・飲食/接待・会議費/保険料/その他経費）","収益カテゴリ3件表示（売上/サービス収入/その他収入）","各カテゴリにアイコンが表示される"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-05",title:"デフォルト勘定科目確認",steps:["「レポート」タブ→「確定申告」セグメントをタップ","「勘定科目一覧」をタップ","勘定科目の一覧を確認"],expected:["34個のデフォルト勘定科目が表示される","資産: 現金/普通預金/売掛金/前払費用/クレジットカード 等","負債: 買掛金/未払費用 等","資本: 元入金/事業主借/事業主貸","収益: 売上高/雑収入","費用: 地代家賃〜雑費まで16科目"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-06",title:"会計ステータスカード確認",steps:["「レポート」→「確定申告」セグメントの画面を確認","会計ステータスカードの表示を確認"],expected:["ステータスアイコンが表示される（チェックマークまたは警告）","「会計ステータス」ヘッダー表示","勘定科目数と仕訳数のメトリクス表示"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-07",title:"確定申告メニュー全18項目確認",steps:["「確定申告」セグメントをタップ","メニュー一覧をスクロールして全項目確認"],expected:["18メニュー項目がすべて表示される:勘定科目一覧/カテゴリ紐付け/仕訳帳/総勘定元帳/現金出納帳/売掛帳/買掛帳/経費帳/月別総括集計表/試算表/損益計算書/貸借対照表/固定資産台帳/減価償却明細表/棚卸入力/決算仕訳/e-Tax出力/書類台帳","各メニューにアイコン・タイトル・サブタイトル・chevron.rightが表示"]},
+{phase:1,phaseTitle:"Phase 1 (SE): セットアップ・初期設定",id:"SE-08",title:"ダッシュボード初期状態確認",steps:["「ダッシュボード」タブをタップ","初期状態の表示を確認"],expected:["収益¥0/経費¥0/利益¥0が表示","プロジェクトカードは空","月別ナビゲーターが機能する"]},
+// Phase 2 (PR): プロジェクト管理
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-01",title:"プロジェクト1: ECサイト構築 作成",steps:["「プロジェクト」タブ→「+」をタップ","プロジェクト名:ECサイト構築、説明:クライアントA向けEC構築","開始日: 2025/01/15 を入力","「保存」をタップ"],expected:["プロジェクト一覧に「ECサイト構築」が表示","ステータス「進行中」（緑バッジ）","収益・経費ともに¥0"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-02",title:"プロジェクト2: モバイルアプリ開発 作成",steps:["「+」→プロジェクト名:モバイルアプリ開発","説明:スマホアプリ受託開発、開始日: 2025/04/01","「保存」"],expected:["一覧に2件表示","「モバイルアプリ開発」が追加される"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-03",title:"プロジェクト3: コンサルティング 作成（終了予定日あり）",steps:["「+」→プロジェクト名:コンサルティング","説明:IT戦略コンサル、開始日: 2025/07/01","「終了予定日を設定」トグルON → 2025/09/30","「保存」"],expected:["一覧に3件表示","オレンジ色カレンダーアイコンで終了予定日表示","警告テキストが表示される"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-04",title:"プロジェクト4: データ分析ツール 作成",steps:["「+」→プロジェクト名:データ分析ツール","説明:自社プロダクト開発、開始日: 2025/10/01","「保存」"],expected:["一覧に4件のプロジェクト表示","時系列順に並ぶ"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-05",title:"プロジェクト詳細表示確認",steps:["「ECサイト構築」をタップ"],expected:["プロジェクト名・説明が表示","ステータス「進行中」が緑色バッジ","開始日2025/01/15表示","収益¥0/経費¥0/利益¥0","取引一覧は空"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-06",title:"プロジェクト編集",steps:["「ECサイト構築」→編集","説明を「クライアントA向けEC構築（更新）」に変更","「保存」"],expected:["説明が更新される","他の項目は変更なし"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-07",title:"プロジェクト名バリデーション",steps:["「+」で新規作成画面を開く","名前を空のまま保存を試みる","「キャンセル」で閉じる"],expected:["保存ボタンが無効（グレーアウト）で押せない"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-08",title:"プロジェクトステータス変更: 完了",steps:["「コンサルティング」→編集→ステータス「完了」に変更","完了日フィールドを確認→「保存」"],expected:["ステータス「完了」（青色バッジ）","完了日に2025/09/30が自動設定（終了予定日があるため）"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-09",title:"プロジェクトステータス復帰: 進行中",steps:["「コンサルティング」→編集→「進行中」に変更→「保存」"],expected:["ステータス「進行中」に復帰","完了日クリア","終了予定日(2025/09/30)が再表示"]},
+{phase:2,phaseTitle:"Phase 2 (PR): プロジェクト管理",id:"PR-10",title:"プロジェクト一覧の並び順確認",steps:["プロジェクト一覧で4件の並び順を確認"],expected:["4件すべて表示: ECサイト構築/モバイルアプリ開発/コンサルティング/データ分析ツール","各プロジェクトにステータスバッジ表示"]},
+// Phase 3 (TX): 基本取引登録
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-01",title:"収益取引登録: ECサイト着手金",steps:["「取引履歴」タブ→「+」をタップ","種類: 収益(緑)、金額: 500000、日付: 2025/02/01","カテゴリ: 売上、配分: ECサイト構築100%","メモ: EC構築着手金→「保存」"],expected:["取引一覧に¥500,000の収益が表示","カテゴリ「売上」表示","メモ「EC構築着手金」表示"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-02",title:"収益取引登録: アプリ開発初回",steps:["「+」→収益/金額:300000/日付:2025/05/01","カテゴリ:サービス収入/配分:モバイルアプリ開発100%","メモ:アプリ開発初回納品→「保存」"],expected:["取引一覧に2件表示","¥300,000が正しく表示"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-03",title:"収益取引登録: コンサル報酬",steps:["「+」→収益/金額:200000/日付:2025/08/15","カテゴリ:サービス収入/配分:コンサルティング100%","メモ:8月分コンサル報酬→「保存」"],expected:["取引一覧に3件表示"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-04",title:"経費取引登録: サーバー費用",steps:["「+」→経費(赤)/金額:5000/日付:2025/02/15","カテゴリ:ホスティング/配分:ECサイト構築100%","メモ:AWS月額→「保存」"],expected:["経費が正常に保存される","ダッシュボードの経費合計に反映"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-05",title:"経費取引: 複数プロジェクト配分(60/40)",steps:["「+」→経費/金額:10000/日付:2025/03/10","カテゴリ:交通費","配分:ECサイト構築60%→「プロジェクトを追加」→モバイルアプリ開発40%","合計100%(緑)を確認→「保存」"],expected:["保存成功","配分金額: ECサイト構築¥6,000/モバイルアプリ開発¥4,000"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-06",title:"経費取引: 3プロジェクト均等配分",steps:["「+」→経費/金額:9000/日付:2025/06/01","カテゴリ:消耗品/配分:ECサイト34%+アプリ33%+コンサル33%","メモ:備品購入→「保存」"],expected:["保存成功","配分: ¥3,060/¥2,970/¥2,970"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-07",title:"経費取引: 全プロジェクト均等割",steps:["「+」→経費/金額:12000/日付:2025/07/01","カテゴリ:ツール/配分モード:全体（均等割）","メモ:開発ツール年額→「保存」"],expected:["4プロジェクトに¥3,000ずつ配分","配分モード「全体（均等割）」で保存"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-08",title:"配分100%バリデーション",steps:["「+」→経費/金額:1000/カテゴリ:その他経費","配分:ECサイト構築50%(合計50%のまま)","保存ボタンの状態を確認→「キャンセル」"],expected:["合計が50%と赤色で表示","保存ボタンが無効"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-09",title:"金額0バリデーション",steps:["「+」→収益/金額:空or0","保存ボタン確認→「キャンセル」"],expected:["保存ボタンが無効"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-10",title:"取引編集: メモ変更",steps:["「EC構築着手金」の取引をタップ→編集","メモを「EC構築着手金（税込）」に変更→「保存」"],expected:["メモが更新される","金額やカテゴリは変更なし"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-11",title:"取引編集: 金額変更と復帰",steps:["同じ取引を編集→金額を550000に変更→「保存」","ダッシュボードで収益更新を確認","再編集→500000に戻す→「保存」"],expected:["金額変更がダッシュボードに反映","復帰後も正しく反映"]},
+{phase:3,phaseTitle:"Phase 3 (TX): 基本取引登録（収益・経費・振替）",id:"TX-12",title:"取引削除と確認ダイアログ",steps:["テスト用取引を作成: 経費¥999/その他経費/ECサイト100%","作成した取引をタップ→「削除」→確認で「キャンセル」","再度「削除」→確認で「削除」"],expected:["確認ダイアログ表示","キャンセルで削除されない","削除実行で一覧から消える"]},
+// Phase 4 (TA): 取引詳細属性
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-01",title:"税区分: 課税(10%)で取引登録",steps:["「+」→経費/金額:11000/日付:2025/03/15","カテゴリ:通信費/税区分:課税（10%）","配分:ECサイト構築100%/メモ:インターネット回線→「保存」"],expected:["取引が保存される","税区分「課税（10%）」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-02",title:"税区分: 軽減税率(8%)で取引登録",steps:["「+」→経費/金額:1080/日付:2025/03/20","カテゴリ:食費・飲食/税区分:軽減税率（8%）","配分:コンサルティング100%/メモ:会議用お茶→「保存」"],expected:["税区分「軽減税率（8%）」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-03",title:"税区分: 非課税で取引登録",steps:["「+」→経費/金額:30000/日付:2025/04/10","カテゴリ:保険料/税区分:非課税","配分:全体（均等割）/メモ:損害保険料→「保存」"],expected:["税区分「非課税」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-04",title:"税区分: 不課税で取引登録",steps:["「+」→経費/金額:50000/日付:2025/05/15","カテゴリ:その他経費/税区分:不課税","配分:ECサイト構築100%/メモ:租税公課→「保存」"],expected:["税区分「不課税」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-05",title:"支払口座: 現金で登録",steps:["「+」→経費/金額:3000/日付:2025/04/20","カテゴリ:交通費/支払口座:現金","配分:モバイルアプリ開発100%/メモ:タクシー代→「保存」"],expected:["支払口座「現金」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-06",title:"支払口座: 普通預金で登録",steps:["「+」→経費/金額:50000/日付:2025/05/01","カテゴリ:外注工賃/支払口座:普通預金","配分:モバイルアプリ開発100%/メモ:デザイナー外注費→「保存」"],expected:["支払口座「普通預金」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-07",title:"支払口座: クレジットカードで登録",steps:["「+」→経費/金額:8000/日付:2025/06/15","カテゴリ:広告/支払口座:クレジットカード","配分:データ分析ツール100%/メモ:Google広告→「保存」"],expected:["支払口座「クレジットカード」が設定される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-08",title:"相手先を指定して登録",steps:["「+」→収益/金額:150000/日付:2025/09/01","カテゴリ:売上/相手先:株式会社ABC","配分:ECサイト構築100%/メモ:最終納品→「保存」"],expected:["相手先「株式会社ABC」が設定される","取引詳細に相手先が表示される"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-09",title:"全属性を同時に設定",steps:["「+」→経費/金額:20000/日付:2025/10/15","カテゴリ:接待・会議費/税区分:課税(10%)/支払口座:現金/相手先:クライアントB","配分:データ分析ツール100%/メモ:接待会食→「保存」"],expected:["全属性が正しく保存される","取引詳細で税区分・支払口座・相手先がすべて表示"]},
+{phase:4,phaseTitle:"Phase 4 (TA): 取引詳細属性（税区分・支払口座・相手先）",id:"TA-10",title:"取引編集で税区分変更",steps:["TA-01で作成した取引を編集","税区分を「非課税」に変更→「保存」","再編集→「課税（10%）」に戻す→「保存」"],expected:["税区分が正しく変更される","復帰後も正しい値"]},
+// Phase 5 (RE): レシートスキャン・OCR
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-01",title:"レシート画像からの取引作成",steps:["「取引履歴」→「+」またはスキャンボタン","「フォトライブラリから選択」→レシート画像選択","OCR処理完了まで待機"],expected:["レシートプレビュー表示","OCRで金額が自動入力","日付が自動検出される"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-02",title:"OCR結果の修正と保存",steps:["OCR結果を確認","金額が間違っていれば手動修正","カテゴリ選択/配分設定→「保存」"],expected:["取引が正常に保存","レシート画像がアプリ内に保存"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-03",title:"保存済みレシート画像の表示",steps:["保存した取引→詳細→編集","「レシート画像を表示」をタップ"],expected:["サムネイル表示","タップでフルサイズプレビュー","プレビュー閉じて戻れる"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-04",title:"明細（ラインアイテム）検出",steps:["明細のあるレシート画像でスキャン","明細セクションを確認"],expected:["明細あり: 名前・数量・小計が表示","数量2以上: ×2のように表示"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-05",title:"スキャンキャンセル",steps:["スキャン画面を開く","画像選択前に「キャンセル」"],expected:["画面が閉じる","取引は作成されない"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-06",title:"カメラからの直接撮影",steps:["「+」→「カメラで撮影」を選択","レシートを撮影","OCR処理完了を待機"],expected:["カメラが起動する","撮影後にOCR処理が開始","結果が表示される"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-07",title:"不鮮明なレシートのスキャン",steps:["ぼやけた/暗いレシート画像でスキャン","OCR結果を確認"],expected:["エラーメッセージまたは部分的な結果表示","アプリがクラッシュしない","手動修正が可能"]},
+{phase:5,phaseTitle:"Phase 5 (RE): レシートスキャン・OCR",id:"RE-08",title:"レシートなし取引との区別",steps:["レシートあり取引とレシートなし取引を比較","各取引の詳細画面を確認"],expected:["レシートあり: 画像サムネイル表示","レシートなし: 画像セクション非表示"]},
+// Phase 6 (RC): 定期取引・月次分割
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-01",title:"月次定期取引の作成",steps:["「設定」→「定期取引の管理」→「+」","名前:サーバー費用/経費/金額:5000","カテゴリ:ホスティング/毎月/15日/ECサイト構築100%","「保存」"],expected:["一覧に「サーバー費用」表示","¥5,000が赤色表示","「毎月15日」表示","次回登録日バナー表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-02",title:"年次定期取引の作成（一括登録）",steps:["「+」→名前:開発ツール年額/経費/金額:120000","カテゴリ:ツール/毎年/4月1日/一括登録","配分:全体（均等割）→「保存」"],expected:["「開発ツール年額」表示","「毎年4月1日」表示","¥120,000表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-03",title:"年次定期取引の作成（月次分割）",steps:["「+」→名前:クラウドサービス年額/経費/金額:120000","カテゴリ:ツール/毎年/1月1日/「月次分割」選択","配分:モバイルアプリ開発100%→「保存」"],expected:["緑色「月次」バッジ表示","¥120,000表示","ヘルパーテキストに「毎月1日に¥10,000」"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-04",title:"均等割定期取引作成",steps:["「+」→名前:共通経費/経費/金額:8000","カテゴリ:その他経費/毎月/1日","配分モード:全体（均等割）→「保存」"],expected:["「全プロジェクト（均等割）」表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-05",title:"定期取引サマリーカード確認",steps:["定期取引一覧上部のサマリーカードを確認"],expected:["登録数:4","有効数:4","月額合計が表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-06",title:"定期取引一時停止と再開",steps:["「サーバー費用」の「停止」ボタンをタップ","表示確認→「再開」をタップ"],expected:["停止中:「停止中」バッジ表示/有効数3に減る","再開後:バッジ消える/有効数4に戻る"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-07",title:"次回スキップ",steps:["「サーバー費用」の「スキップ」をタップ","確認ダイアログで「スキップ」"],expected:["次回登録日に取り消し線","「次回スキップ」表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-08",title:"月次分割: 割り切れない金額",steps:["「+」→名前:保険料年額/経費/¥100,000","毎年/1月1日/月次分割/ECサイト構築100%→「保存」"],expected:["11ヶ月:¥8,333/最終月:¥8,337","12ヶ月合計¥100,000"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-09",title:"月次→一括切替",steps:["「クラウドサービス年額」→編集→「一括登録」に変更→「保存」","再編集→「月次分割」に戻す→「保存」"],expected:["切替時に「月次」バッジが消える","戻すと「月次」バッジ再表示"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-10",title:"通知設定変更",steps:["「サーバー費用」の「通知」ボタンをタップ","「前日に通知」を選択→「保存」"],expected:["通知設定画面表示","4つの選択肢(当日/前日/両方/なし)","保存後に設定反映"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-11",title:"定期取引履歴表示",steps:["「共通経費」の「履歴」ボタンをタップ"],expected:["「定期取引履歴」画面表示","生成済み取引の一覧/未実行時は空メッセージ"]},
+{phase:6,phaseTitle:"Phase 6 (RC): 定期取引・月次分割",id:"RC-12",title:"定期取引削除",steps:["「保険料年額」の「削除」→確認で「削除」"],expected:["一覧から消える","登録数・有効数が更新"]},
+// Phase 7 (FA): 固定資産・減価償却
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-01",title:"固定資産登録: 定額法（ノートPC）",steps:["「確定申告」→「固定資産台帳」をタップ","「+」→資産名:MacBook Pro/取得日:2025/01/15","取得価額:300000/耐用年数:4年/償却方法:定額法","事業使用割合:100%→「保存」"],expected:["固定資産一覧に「MacBook Pro」表示","ステータス「使用中」","取得価額¥300,000表示"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-02",title:"固定資産登録: 定率法（モニター）",steps:["「+」→資産名:外付けモニター/取得日:2025/04/01","取得価額:150000/耐用年数:5年/償却方法:定率法","事業使用割合:80%→「保存」"],expected:["「外付けモニター」が追加","事業使用割合80%表示"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-03",title:"固定資産登録: 少額一括（10万円未満）",steps:["「+」→資産名:キーボード/取得日:2025/06/01","取得価額:80000/償却方法:少額一括","事業使用割合:100%→「保存」"],expected:["即時費用化される","ステータスが「償却完了」"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-04",title:"固定資産登録: 一括償却（3年均等）",steps:["「+」→資産名:タブレット/取得日:2025/03/01","取得価額:150000/償却方法:一括償却（3年均等）","事業使用割合:100%→「保存」"],expected:["3年均等償却として登録","年間¥50,000ずつ償却"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-05",title:"固定資産登録: 少額減価償却資産特例（30万円未満）",steps:["「+」→資産名:プリンター/取得日:2025/07/01","取得価額:250000/償却方法:少額減価償却資産特例","事業使用割合:100%→「保存」"],expected:["少額減価償却資産特例として登録","青色申告者のため適用可能"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-06",title:"固定資産詳細表示",steps:["「MacBook Pro」をタップ"],expected:["資産名・取得日・取得価額・耐用年数・償却方法が表示","期首簿価・当期償却額・期末簿価が計算表示","残存価額¥1（備忘価額）"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-07",title:"固定資産編集",steps:["「外付けモニター」→編集","事業使用割合を90%に変更→「保存」"],expected:["事業使用割合が90%に更新","償却額が再計算される"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-08",title:"減価償却明細表の確認",steps:["「確定申告」→「減価償却明細表」をタップ"],expected:["全固定資産の一覧表示","各資産の償却スケジュール表示","合計償却額表示"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-09",title:"固定資産除却",steps:["「キーボード」→編集","ステータスを「除却済み」に変更","除却日を入力→「保存」"],expected:["ステータス「除却済み」に変更","除却日が表示される"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-10",title:"固定資産売却",steps:["テスト用資産を作成→ステータス「売却済み」に変更","売却日・売却額を入力→「保存」"],expected:["ステータス「売却済み」に変更","売却額が表示される"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-11",title:"償却方法5種類の選択肢確認",steps:["「+」→償却方法のドロップダウンを開く"],expected:["5種類表示: 定額法/定率法/少額一括/一括償却（3年均等）/少額減価償却資産特例"]},
+{phase:7,phaseTitle:"Phase 7 (FA): 固定資産・減価償却",id:"FA-12",title:"事業使用割合バリデーション",steps:["「+」→事業使用割合を0%に設定","事業使用割合を101%に設定"],expected:["0%: 警告または保存不可","101%: 100%に制限される","有効範囲: 1〜100%"]},
+// Phase 8 (IV): 棚卸・売上原価
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-01",title:"棚卸入力画面の表示",steps:["「確定申告」→「棚卸入力」をタップ"],expected:["棚卸入力画面が正常に表示","期首商品棚卸高・仕入高・期末商品棚卸高の入力欄"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-02",title:"期首商品棚卸高の入力",steps:["期首商品棚卸高: 100000 を入力","「保存」をタップ"],expected:["¥100,000が保存される","勘定科目「期首商品棚卸高」(acct-opening-inventory)に反映"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-03",title:"仕入高の入力",steps:["仕入高: 500000 を入力","「保存」をタップ"],expected:["¥500,000が保存される","勘定科目「仕入高」(acct-purchases)に反映"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-04",title:"期末商品棚卸高の入力",steps:["期末商品棚卸高: 80000 を入力","「保存」をタップ"],expected:["¥80,000が保存される","勘定科目「期末商品棚卸高」(acct-closing-inventory)に反映"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-05",title:"売上原価の自動計算確認",steps:["棚卸入力後、売上原価の表示を確認"],expected:["売上原価 = 期首棚卸高(100,000) + 仕入高(500,000) - 期末棚卸高(80,000) = ¥520,000","損益計算書に売上原価が反映"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-06",title:"棚卸金額の修正",steps:["期末商品棚卸高を120000に変更→「保存」"],expected:["売上原価が¥480,000に再計算","関連する仕訳が更新される"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-07",title:"棚卸データの損益計算書反映",steps:["「確定申告」→「損益計算書」を確認"],expected:["売上原価セクションに棚卸データが表示","期首棚卸高/仕入高/期末棚卸高/差引原価が正しい"]},
+{phase:8,phaseTitle:"Phase 8 (IV): 棚卸・売上原価",id:"IV-08",title:"棚卸ゼロ入力",steps:["全棚卸項目を0に設定→「保存」"],expected:["¥0が正常に保存","売上原価¥0","エラーなし"]},
+// Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-01",title:"仕訳帳画面の表示",steps:["「確定申告」→「仕訳帳」をタップ"],expected:["仕訳一覧が表示される","各仕訳に日付・借方科目・貸方科目・金額表示","自動仕訳には「自動」バッジ"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-02",title:"自動仕訳の確認（収益取引）",steps:["TX-01で作成した収益取引(¥500,000)の仕訳を確認"],expected:["借方: 普通預金(または現金) ¥500,000","貸方: 売上高 ¥500,000","種別: 自動仕訳"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-03",title:"自動仕訳の確認（経費取引）",steps:["TX-04で作成した経費取引(¥5,000)の仕訳を確認"],expected:["借方: 通信費(またはホスティング対応科目) ¥5,000","貸方: 現金(または普通預金) ¥5,000","種別: 自動仕訳"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-04",title:"手動仕訳の作成",steps:["仕訳帳画面の「+」をタップ","日付:2025/12/01/借方:消耗品費/貸方:現金","金額:15000/摘要:文房具購入→「保存」"],expected:["手動仕訳が追加される","「手動」バッジ表示","借方・貸方の金額が一致"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-05",title:"仕訳の貸借一致検証",steps:["仕訳帳の全仕訳を確認","借方合計と貸方合計を比較"],expected:["すべての仕訳で借方金額=貸方金額","不一致の仕訳がない"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-06",title:"仕訳帳のフィルタ・検索",steps:["仕訳帳で期間フィルタを適用","特定の勘定科目でフィルタ"],expected:["フィルタ結果が正しい","該当する仕訳のみ表示"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-07",title:"仕訳種別の区分確認",steps:["仕訳帳で各種別のバッジを確認"],expected:["自動仕訳:「自動」バッジ","手動仕訳:「手動」バッジ","期首残高仕訳:「期首」バッジ（あれば）","決算仕訳:「決算」バッジ（あれば）"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-08",title:"手動仕訳の編集",steps:["JN-04で作成した手動仕訳を編集","金額を20000に変更→「保存」"],expected:["金額が¥20,000に更新","貸借一致が維持される"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-09",title:"手動仕訳の削除",steps:["テスト用手動仕訳を作成→削除"],expected:["仕訳が削除される","関連する勘定残高が更新される"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-10",title:"消費税仕訳の確認",steps:["課税取引(TA-01)の仕訳詳細を確認"],expected:["仮払消費税の仕訳行がある（課税取引の場合）","税額が正しく計算されている"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-11",title:"事業主貸/事業主借の仕訳確認",steps:["個人使用経費がある場合の仕訳を確認"],expected:["事業主貸（個人使用分）の仕訳が正しい","事業主借（個人資金の事業使用）の仕訳が正しい"]},
+{phase:9,phaseTitle:"Phase 9 (JN): 仕訳帳・手動仕訳・複式簿記検証",id:"JN-12",title:"仕訳帳の日付順表示",steps:["仕訳帳の並び順を確認"],expected:["日付の昇順（または降順）で正しくソートされている","同日の仕訳は登録順"]},
+// Phase 10 (GL): 総勘定元帳・補助帳簿
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-01",title:"総勘定元帳画面の表示",steps:["「確定申告」→「総勘定元帳」をタップ"],expected:["勘定科目別の元帳が表示される","各科目に取引履歴と残高表示"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-02",title:"売上高の元帳確認",steps:["総勘定元帳で「売上高」科目を表示"],expected:["TX-01,TX-02,TX-03,TA-08の収益取引が表示","各取引の日付・相手科目・借方/貸方・残高","期末残高が正しい"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-03",title:"現金出納帳の表示",steps:["「確定申告」→「現金出納帳」をタップ"],expected:["現金勘定の増減明細が表示","入金（収入）と出金（支出）が区分表示","残高が各行で計算表示"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-04",title:"現金出納帳の残高推移確認",steps:["現金出納帳の残高列を上から確認"],expected:["各行の残高が前行残高±入出金で正しい","マイナス残高がないことを確認（あれば警告）"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-05",title:"売掛帳の表示",steps:["「確定申告」→「売掛帳」をタップ"],expected:["売掛金の増減明細が表示","売上計上（増加）と入金（減少）が記録","相手先別に表示（あれば）"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-06",title:"買掛帳の表示",steps:["「確定申告」→「買掛帳」をタップ"],expected:["買掛金の増減明細が表示","仕入計上（増加）と支払（減少）が記録"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-07",title:"経費帳の表示",steps:["「確定申告」→「経費帳」をタップ"],expected:["費用科目の明細が表示","科目別に経費が分類表示","合計金額表示"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-08",title:"経費帳の科目別集計確認",steps:["経費帳で各費用科目の合計を確認"],expected:["通信費/交通費/消耗品費/接待交際費等の各科目合計が正しい","総合計が試算表の費用合計と一致"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-09",title:"帳簿間の整合性確認: 現金",steps:["現金出納帳の期末残高を確認","総勘定元帳の現金科目の残高を確認","試算表の現金残高を確認"],expected:["3箇所の現金残高がすべて一致"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-10",title:"帳簿の期間フィルタ",steps:["現金出納帳で期間を2025年上半期に絞る","全期間に戻す"],expected:["フィルタした期間の取引のみ表示","全期間で全取引復帰"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-11",title:"帳簿のエクスポート",steps:["現金出納帳のエクスポートボタンをタップ","CSV/PDF形式を選択"],expected:["共有シートが表示","ファイルが生成される","内容が画面表示と一致"]},
+{phase:10,phaseTitle:"Phase 10 (GL): 総勘定元帳・補助帳簿",id:"GL-12",title:"帳簿レイアウト: 国税庁準拠確認",steps:["現金出納帳のレイアウトを確認","経費帳のレイアウトを確認"],expected:["国税庁「帳簿の記帳のしかた」準拠のレイアウト","日付/勘定科目/摘要/収入(入金)/支出(出金)/残高の列構成"]},
+// Phase 11 (TB): 試算表・損益計算書・貸借対照表
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-01",title:"試算表画面の表示",steps:["「確定申告」→「試算表」をタップ"],expected:["勘定科目の残高一覧が表示","借方合計と貸方合計が表示","貸借が一致（差額0）"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-02",title:"試算表の貸借一致確認",steps:["試算表の借方合計と貸方合計を確認"],expected:["借方合計 = 貸方合計","差額が¥0と表示"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-03",title:"試算表の科目別残高確認",steps:["試算表で主要科目の残高を確認","現金/売上高/各費用科目"],expected:["各科目の残高が仕訳帳の集計と一致","資産科目は借方残高","負債・資本・収益科目は貸方残高"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-04",title:"損益計算書画面の表示",steps:["「確定申告」→「損益計算書」をタップ"],expected:["収益と費用の集計が表示","売上高/売上原価/経費の各セクション","当期純利益（または純損失）の算出"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-05",title:"損益計算書の計算検証",steps:["損益計算書の各項目を確認","売上総利益 = 売上高 - 売上原価","営業利益 = 売上総利益 - 経費合計"],expected:["各小計・合計が正しく計算","当期純利益が試算表の損益と一致"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-06",title:"貸借対照表画面の表示",steps:["「確定申告」→「貸借対照表」をタップ"],expected:["資産・負債・資本の状況が表示","資産の部/負債の部/資本の部のセクション","資産合計 = 負債合計 + 資本合計"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-07",title:"貸借対照表の均衡確認",steps:["貸借対照表の資産合計と負債+資本合計を比較"],expected:["資産合計 = 負債合計 + 資本合計（貸借均衡）","差額が¥0"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-08",title:"貸借対照表: 事業主貸/事業主借の表示",steps:["貸借対照表で資本の部を確認"],expected:["元入金が表示","事業主貸は資産の部に表示","事業主借は資本の部に表示"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-09",title:"財務諸表間の整合性",steps:["損益計算書の当期純利益を記録","貸借対照表の利益剰余金（または当期利益）を確認","試算表の損益残高を確認"],expected:["3つの報告書の利益額が一致"]},
+{phase:11,phaseTitle:"Phase 11 (TB): 試算表・損益計算書・貸借対照表",id:"TB-10",title:"財務諸表のエクスポート",steps:["損益計算書のエクスポートを実行","貸借対照表のエクスポートを実行"],expected:["PDF/CSVが生成される","内容が画面表示と一致"]},
+// Phase 12 (MS): 月別総括集計表
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-01",title:"月別総括集計表画面の表示",steps:["「確定申告」→「月別総括集計表」をタップ"],expected:["月別の売上・仕入・経費の集計表が表示","1月〜12月の行が表示","各列に金額が表示"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-02",title:"月別売上集計の確認",steps:["各月の売上列を確認"],expected:["2月:¥500,000(TX-01)","5月:¥300,000(TX-02)","8月:¥200,000(TX-03)","9月:¥150,000(TA-08)","他の月は¥0"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-03",title:"月別経費集計の確認",steps:["各月の経費列を確認"],expected:["取引登録した月に正しい経費金額","定期取引の月次分割が反映"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-04",title:"年間合計行の確認",steps:["月別総括集計表の年間合計行を確認"],expected:["売上合計=各月売上の合計","経費合計=各月経費の合計","利益合計=売上合計-経費合計"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-05",title:"月別集計と損益計算書の一致",steps:["月別総括の年間合計と損益計算書を比較"],expected:["売上合計が損益計算書の売上高と一致","経費合計が損益計算書の経費合計と一致"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-06",title:"経費科目別内訳の確認",steps:["月別総括集計表の経費内訳を確認"],expected:["費用科目ごとの月別金額表示","科目別合計が試算表と一致"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-07",title:"仕入・売上原価の月別表示",steps:["棚卸データ入力後、月別総括集計表を確認"],expected:["仕入高の月別推移が表示","売上原価セクションがあれば正しい値"]},
+{phase:12,phaseTitle:"Phase 12 (MS): 月別総括集計表",id:"MS-08",title:"月別総括集計表のエクスポート",steps:["エクスポートボタンをタップ"],expected:["CSV/PDF形式でエクスポート可能","12ヶ月分のデータが含まれる"]},
+// Phase 13 (CE): 決算仕訳・年度ロック
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-01",title:"決算仕訳画面の表示",steps:["「確定申告」→「決算仕訳」をタップ"],expected:["決算仕訳画面が正常に表示","年度末の収益・費用勘定の振替メニュー"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-02",title:"減価償却の決算仕訳生成",steps:["決算仕訳画面で「減価償却費計上」を実行"],expected:["借方:減価償却費/貸方:減価償却累計額の仕訳が生成","金額が減価償却明細表の合計と一致","仕訳種別:決算仕訳"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-03",title:"棚卸の決算仕訳確認",steps:["決算仕訳画面で棚卸関連仕訳を確認"],expected:["期首棚卸高の振替仕訳","期末棚卸高の振替仕訳","売上原価の算出仕訳"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-04",title:"消費税の決算仕訳",steps:["決算仕訳画面で消費税精算仕訳を確認"],expected:["仮払消費税と仮受消費税の相殺","未払消費税の計上（仮受>仮払の場合）","還付消費税の計上（仮払>仮受の場合）"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-05",title:"収益・費用の損益振替仕訳",steps:["決算仕訳で損益振替を実行"],expected:["収益勘定の残高がゼロになる振替","費用勘定の残高がゼロになる振替","損益勘定に当期純利益が集約"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-06",title:"決算仕訳後の試算表確認",steps:["決算仕訳生成後、試算表を確認"],expected:["試算表の貸借が一致","決算仕訳が反映されている"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-07",title:"決算仕訳後の貸借対照表確認",steps:["決算仕訳後、貸借対照表を確認"],expected:["資産=負債+資本が均衡","当期純利益が資本の部に反映"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-08",title:"年度ロック機能",steps:["記帳モードを「ロック」に変更","ロック状態で取引追加を試みる"],expected:["ロック中は仕訳の自動再生成が停止","ロック状態が表示される"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-09",title:"年度ロック解除",steps:["記帳モードを「自動」に戻す"],expected:["ロックが解除される","仕訳の自動再生成が再開"]},
+{phase:13,phaseTitle:"Phase 13 (CE): 決算仕訳・年度ロック",id:"CE-10",title:"決算仕訳の仕訳帳表示",steps:["仕訳帳で決算仕訳を確認"],expected:["決算仕訳に「決算」バッジ表示","日付が年度末日","借方・貸方が正しい"]},
+// Phase 14 (CT): 消費税レポート
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-01",title:"課税売上の集計確認",steps:["消費税関連の仕訳を確認","仮受消費税の合計を算出"],expected:["課税売上に対する仮受消費税が正しく計上","税率10%と8%が区分されている"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-02",title:"課税仕入の集計確認",steps:["課税仕入の仕訳を確認","仮払消費税の合計を算出"],expected:["課税仕入に対する仮払消費税が正しく計上","税率別に区分されている"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-03",title:"非課税・不課税取引の除外確認",steps:["TA-03(非課税)とTA-04(不課税)の消費税処理を確認"],expected:["非課税取引: 消費税計上なし","不課税取引: 消費税計上なし","仮払/仮受消費税に含まれない"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-04",title:"消費税納付額/還付額の計算",steps:["仮受消費税合計と仮払消費税合計を比較"],expected:["納付額 = 仮受消費税 - 仮払消費税（正の場合）","還付額 = 仮払消費税 - 仮受消費税（正の場合）"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-05",title:"軽減税率(8%)の区分確認",steps:["TA-02で作成した軽減税率取引の消費税処理を確認"],expected:["8%の税率で消費税が計算","10%取引と区分されている"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-06",title:"消費税勘定科目残高確認",steps:["試算表で消費税関連科目を確認"],expected:["仮払消費税(acct-input-tax)の残高が正しい","仮受消費税(acct-output-tax)の残高が正しい","未払消費税(acct-tax-payable)は決算仕訳後に表示"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-07",title:"税区分変更時の再計算",steps:["既存取引の税区分を変更","消費税関連の仕訳が更新されることを確認"],expected:["税区分変更後に仮払/仮受消費税が再計算","試算表の消費税残高が更新"]},
+{phase:14,phaseTitle:"Phase 14 (CT): 消費税レポート",id:"CT-08",title:"消費税データの年間サマリー",steps:["年間の消費税サマリーを確認"],expected:["課税売上合計/課税仕入合計/消費税額が表示","月別の消費税推移（あれば）"]},
+// Phase 15 (AI): AI自動分類・ユーザールール
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-01",title:"自動分類画面の表示",steps:["自動分類画面（UnclassifiedTransactionsView）を開く"],expected:["分類済/未分類のカウント表示","分類済: 緑色の数値","未分類: 黄色の数値（0件なら灰色）"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-02",title:"全取引分類済みの場合",steps:["全取引にカテゴリが設定された状態で画面を確認"],expected:["「すべての取引が分類されています」メッセージ","チェックマーク(緑)アイコン表示"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-03",title:"未分類取引の表示",steps:["カテゴリ未設定の取引を作成","自動分類画面を確認"],expected:["未分類取引が一覧表示","日付・金額・メモが表示","推定カテゴリがバッジ表示"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-04",title:"信頼度バッジの表示",steps:["未分類取引の信頼度バッジを確認"],expected:["高信頼度: 緑色の%表示","中信頼度: 黄色の%表示","低信頼度: 赤色の%表示"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-05",title:"「要確認」フラグ表示",steps:["needsReviewフラグのある取引を確認"],expected:["赤色「要確認」バッジ表示","要確認取引が目立つ表示"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-06",title:"分類修正メニュー",steps:["未分類取引の「分類を修正」ボタンをタップ","メニューからカテゴリを選択"],expected:["TaxLine.allCasesのメニュー表示","選択したカテゴリに分類変更","画面が更新される"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-07",title:"分類修正後の反映確認",steps:["分類修正後、取引一覧で確認","仕訳帳で対応する仕訳を確認"],expected:["取引のカテゴリが更新","対応する仕訳の勘定科目が更新"]},
+{phase:15,phaseTitle:"Phase 15 (AI): AI自動分類・ユーザールール",id:"AI-08",title:"メモなし取引の表示",steps:["メモ空の未分類取引を確認"],expected:["「（メモなし）」と表示される","分類機能は正常動作"]},
+// Phase 16 (AC): 勘定科目管理・カテゴリ紐付け
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-01",title:"勘定科目一覧画面",steps:["「確定申告」→「勘定科目一覧」をタップ"],expected:["34個のデフォルト勘定科目が一覧表示","科目コード/科目名/区分(資産/負債/資本/収益/費用)が表示","正常残高(借方/貸方)が表示"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-02",title:"勘定科目の区分別表示",steps:["勘定科目一覧を区分別に確認"],expected:["資産: 101現金/102普通預金/103売掛金 等","負債: 201買掛金/202未払費用 等","資本: 301元入金/302事業主借","収益: 401売上高/402雑収入","費用: 501〜516の各科目"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-03",title:"カテゴリ紐付け画面",steps:["「確定申告」→「カテゴリ紐付け」をタップ"],expected:["カテゴリと勘定科目の対応設定画面が表示","各カテゴリに紐付けられた勘定科目が表示"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-04",title:"デフォルトマッピングの確認",steps:["カテゴリ紐付けの各行を確認"],expected:["ホスティング→通信費(504)","ツール→消耗品費(509)","広告→広告宣伝費(505)","交通費→旅費交通費(503)","食費・飲食→接待交際費(506)","売上→売上高(401)"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-05",title:"カテゴリ紐付けの変更",steps:["「ホスティング」の紐付け先を「消耗品費」に変更","「保存」をタップ"],expected:["紐付けが変更される","以降のホスティング取引は消耗品費に計上"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-06",title:"カテゴリ紐付けの復帰",steps:["「ホスティング」を「通信費」に戻す→「保存」"],expected:["元のマッピングに復帰"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-07",title:"仕訳への影響確認",steps:["カテゴリ紐付け変更前後の仕訳を確認"],expected:["変更後の取引は新しい勘定科目で仕訳生成","既存仕訳の扱い（再生成or維持）を確認"]},
+{phase:16,phaseTitle:"Phase 16 (AC): 勘定科目管理・カテゴリ紐付け",id:"AC-08",title:"特殊科目の確認",steps:["仮勘定(900)の用途を確認","減価償却累計額(106)の表示を確認"],expected:["仮勘定: 未分類取引の一時科目","減価償却累計額: 資産のマイナス（contra-asset）として表示"]},
+// Phase 17 (ET): e-Tax出力
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-01",title:"e-Tax出力画面の表示",steps:["「確定申告」→「e-Tax出力」をタップ"],expected:["e-Tax出力画面が表示","青色申告/白色申告の選択","出力オプションの表示"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-02",title:"青色申告決算書の出力",steps:["申告種別:青色申告を選択","「出力」をタップ"],expected:["青色申告決算書データが生成","損益計算書セクション含む","貸借対照表セクション含む"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-03",title:"損益計算書データの検証",steps:["出力された損益計算書データを確認"],expected:["売上(収入)金額が正しい","各経費科目の金額が正しい","差引金額(所得金額)が正しい"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-04",title:"貸借対照表データの検証",steps:["出力された貸借対照表データを確認"],expected:["期首/期末の資産・負債が正しい","事業主貸/事業主借が正しい","元入金が正しい"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-05",title:"減価償却の計算明細書",steps:["e-Tax出力の減価償却セクションを確認"],expected:["各固定資産の償却明細が含まれる","取得価額/償却方法/耐用年数/償却額が正しい"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-06",title:"月別売上・仕入金額",steps:["e-Tax出力の月別データを確認"],expected:["12ヶ月分の売上金額","12ヶ月分の仕入金額","合計が損益計算書と一致"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-07",title:"白色申告の出力",steps:["申告種別:白色申告に切替","「出力」をタップ"],expected:["収支内訳書データが生成","貸借対照表なし（白色は不要）"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-08",title:"申告者情報の反映",steps:["e-Tax出力データの申告者情報を確認"],expected:["氏名:田中雄一が反映","屋号:TK Web Studioが反映","SE-02で設定した情報が正しく使用"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-09",title:"e-Tax経費区分の確認",steps:["出力データの経費科目区分を確認"],expected:["地代家賃/水道光熱費/旅費交通費/通信費/広告宣伝費/接待交際費/減価償却費/利子割引料/消耗品費/租税公課/損害保険料/外注工賃/雑費の区分","各区分の金額が正しい"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-10",title:"e-Taxファイルの共有",steps:["出力完了後、共有ボタンをタップ"],expected:["共有シートが表示","ファイルを保存/送信可能"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-11",title:"データなしでのe-Tax出力",steps:["取引データなしの状態でe-Tax出力を試みる"],expected:["空のデータで出力 or 適切な警告メッセージ","クラッシュしない"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-12",title:"棚卸データのe-Tax反映",steps:["e-Tax出力データで棚卸関連を確認"],expected:["期首商品棚卸高が反映","仕入金額が反映","期末商品棚卸高が反映"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-13",title:"65万円控除の要件確認",steps:["青色申告の控除額表示を確認"],expected:["複式簿記+e-Tax=65万円控除対象","要件が満たされているか表示"]},
+{phase:17,phaseTitle:"Phase 17 (ET): e-Tax出力（青色・白色）",id:"ET-14",title:"e-Tax出力の再実行",steps:["e-Tax出力を2回実行","2回目の出力を確認"],expected:["2回目も正常に出力","データの重複なし"]},
+// Phase 18 (DL): 書類台帳・保存期間管理
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-01",title:"書類台帳画面の表示",steps:["「確定申告」→「書類台帳」をタップ"],expected:["書類台帳画面が正常に表示","法定書類の一覧表示"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-02",title:"レシート画像の書類台帳登録確認",steps:["レシート付き取引の書類台帳登録を確認"],expected:["レシート画像が書類台帳に登録されている","取引との紐付けが表示"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-03",title:"書類の保存期間表示",steps:["書類台帳の保存期間列を確認"],expected:["青色申告:帳簿7年/書類5年の保存期間","保存期限日が計算表示"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-04",title:"書類のフィルタ・検索",steps:["書類台帳で種別フィルタを適用","キーワード検索を実行"],expected:["フィルタ結果が正しい","検索結果が正しい"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-05",title:"書類のプレビュー",steps:["書類台帳から書類をタップ","プレビューを確認"],expected:["書類のプレビューが表示","画像の場合フルサイズ表示可能"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-06",title:"書類台帳のエクスポート",steps:["書類台帳のエクスポートを実行"],expected:["書類一覧がCSV/PDFで出力","保存期間情報含む"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-07",title:"レガシーレシートのバックフィル確認",steps:["書類台帳機能実装前のレシート取引を確認"],expected:["既存レシートが書類台帳に自動登録されている","バックフィル処理が完了"]},
+{phase:18,phaseTitle:"Phase 18 (DL): 書類台帳・保存期間管理",id:"DL-08",title:"書類台帳の統計表示",steps:["書類台帳のサマリー情報を確認"],expected:["総書類数の表示","種別ごとの件数","保存期限が近い書類の警告（あれば）"]},
+// Phase 19 (PL): プロラタ計算・終了予定日
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-01",title:"終了予定日プロジェクトの取引配分",steps:["コンサルティング(終了予定日9/30)に経費を配分","「+」→経費/金額:60000/日付:2025/08/15","配分:コンサルティング50%+ECサイト構築50%→「保存」"],expected:["コンサルティングへの配分¥30,000","ECサイト構築への配分¥30,000","プロラタ効果の確認"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-02",title:"終了予定日後の取引配分",steps:["「+」→経費/金額:40000/日付:2025/11/01","配分にコンサルティング(終了予定日9/30過ぎ)を含む"],expected:["終了予定日後の配分処理を確認","プロラタ計算が適用される"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-03",title:"均等割での終了予定日プロラタ",steps:["「+」→経費/金額:40000/日付:2025/09/15","配分モード:全体（均等割）→「保存」"],expected:["4プロジェクトに均等配分","コンサルティングの配分にプロラタ適用"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-04",title:"プロジェクト詳細で配分確認",steps:["「コンサルティング」プロジェクト詳細を表示","取引一覧と配分金額を確認"],expected:["各取引の配分金額が正しい","プロラタ計算された金額がある"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-05",title:"終了予定日の変更",steps:["「コンサルティング」→編集→終了予定日を2025/12/31に変更","「保存」"],expected:["終了予定日が更新","プロラタ計算に影響"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-06",title:"終了予定日の削除",steps:["「コンサルティング」→編集→終了予定日トグルOFF→「保存」"],expected:["終了予定日が削除","プロラタ計算が無効化"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-07",title:"終了予定日の再設定",steps:["「コンサルティング」→編集→終了予定日トグルON→2025/09/30→「保存」"],expected:["終了予定日が再設定される"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-08",title:"完了プロジェクトへの配分確認",steps:["「コンサルティング」を「完了」に変更","新しい取引で配分を試みる"],expected:["完了プロジェクトへの配分の扱いを確認"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-09",title:"定期取引とプロラタの組合せ",steps:["均等割定期取引がコンサルティング(終了予定日あり)に配分","生成された取引を確認"],expected:["終了予定日前: 4分割配分","終了予定日後: 3分割配分（コンサル除外）"]},
+{phase:19,phaseTitle:"Phase 19 (PL): プロラタ計算・終了予定日",id:"PL-10",title:"プロラタ後のダッシュボード確認",steps:["ダッシュボードのプロジェクト別集計を確認"],expected:["各プロジェクトの収益・経費がプロラタ反映","合計値が取引合計と一致"]},
+// Phase 20 (DA): ダッシュボード・レポート画面
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-01",title:"ダッシュボード集計確認",steps:["「ダッシュボード」タブをタップ","全プロジェクトの収益・経費・利益を確認"],expected:["収益合計が全収益取引の合計と一致","経費合計が全経費取引の合計と一致","純利益 = 収益 - 経費"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-02",title:"プロジェクト別カード確認",steps:["ダッシュボードの各プロジェクトカードを確認"],expected:["4プロジェクトのカード表示","各カードに収益・経費・利益表示","配分金額が正しい"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-03",title:"月別フィルタ確認",steps:["月ナビゲーターで各月を切替","データのある月とない月を確認"],expected:["データのある月: 正しい集計表示","データのない月: ¥0表示"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-04",title:"年次レポート表示",steps:["「レポート」タブ→「年次レポート」セグメント"],expected:["年間純利益カード（黒字:緑/赤字:赤）","収益合計・経費合計カード","利益率表示"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-05",title:"年次レポート: 年度ナビゲーション",steps:["「◀」で前年度に移動","「▶」で元の年度に戻る"],expected:["前年度: データなしなら0表示","現在年度より先は進めない（ボタン無効）"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-06",title:"年次レポート: 前年比較",steps:["「前年比較」セクションを確認"],expected:["収益・経費・利益の前年比表示","矢印アイコンで方向表示","経費増=赤、経費減=緑"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-07",title:"年次レポート: 月別推移チャート",steps:["「月別推移」セクションを確認"],expected:["12ヶ月分の横棒グラフ","緑=収益、赤=経費","各月の利益金額が右側に表示"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-08",title:"年次レポート: カテゴリ内訳",steps:["「経費カテゴリ内訳」「収益カテゴリ内訳」を確認"],expected:["各カテゴリの金額と%とプログレスバー","合計が100%"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-09",title:"年次レポート: プロジェクト別損益",steps:["「プロジェクト別損益」セクションを確認"],expected:["利益順にランキング表示","4プロジェクトの収益・経費・利益","利益正=緑/負=赤"]},
+{phase:20,phaseTitle:"Phase 20 (DA): ダッシュボード・レポート画面",id:"DA-10",title:"レポートのプルダウン更新",steps:["年次レポート画面でプルダウン更新操作"],expected:["データがリフレッシュされる","最新の取引データが反映"]},
+// Phase 21 (AP): 会計プロファイル・申告者情報
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-01",title:"会計プロファイル表示確認",steps:["「設定」→「会計プロファイル」をタップ"],expected:["SE-02で設定した情報が表示","田中雄一/TK Web Studio/青色申告/複式簿記"]},
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-02",title:"申告種別の変更テスト",steps:["申告種別を「白色申告」に変更→「保存」","e-Tax出力画面で反映を確認"],expected:["白色申告に変更","e-Tax出力が収支内訳書モードになる"]},
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-03",title:"申告種別の復帰",steps:["申告種別を「青色申告」に戻す→「保存」"],expected:["青色申告に復帰","65万円控除対象に戻る"]},
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-04",title:"記帳方式の変更テスト",steps:["記帳方式を「簡易簿記」に変更→「保存」"],expected:["簡易簿記に変更","10万円控除に変更される表示"]},
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-05",title:"記帳方式の復帰",steps:["記帳方式を「複式簿記」に戻す→「保存」"],expected:["複式簿記に復帰","65万円控除に戻る"]},
+{phase:21,phaseTitle:"Phase 21 (AP): 会計プロファイル・申告者情報",id:"AP-06",title:"会計プロファイルの各フィールド確認",steps:["プロファイル画面の全フィールドを確認"],expected:["氏名/屋号/申告種別/記帳方式フィールドがある","各フィールドが正しく保存・表示"]},
+// Phase 22 (EX): CSV/PDFエクスポート・インポート
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-01",title:"取引CSVエクスポート",steps:["「設定」→「データ管理」→「CSVエクスポート」"],expected:["共有シート表示","CSVファイル生成","ファイルに全取引データ含む"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-02",title:"CSVファイルの内容確認",steps:["エクスポートしたCSVをテキストエディタで確認"],expected:["ヘッダー行あり","全取引のデータ行","日付/金額/カテゴリ/メモ等の列"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-03",title:"CSVインポート",steps:["「CSVインポート」→エクスポートしたCSVを選択"],expected:["インポート処理開始","重複はスキップ","結果表示"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-04",title:"帳簿CSVエクスポート",steps:["現金出納帳のエクスポートを実行","経費帳のエクスポートを実行"],expected:["各帳簿のCSVが生成","内容が画面表示と一致"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-05",title:"帳簿PDFエクスポート",steps:["現金出納帳のPDFエクスポートを実行"],expected:["PDFファイルが生成","レイアウトが国税庁準拠"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-06",title:"試算表・財務諸表のエクスポート",steps:["試算表/損益計算書/貸借対照表のエクスポート"],expected:["各表のCSV/PDFが生成","数値が画面表示と一致"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-07",title:"月別総括集計表のエクスポート",steps:["月別総括集計表のエクスポートを実行"],expected:["12ヶ月分のデータ含む","合計行含む"]},
+{phase:22,phaseTitle:"Phase 22 (EX): CSV/PDFエクスポート・インポート",id:"EX-08",title:"空データのエクスポート",steps:["データなし状態でエクスポートを試行"],expected:["空のCSVまたは適切なメッセージ","クラッシュしない"]},
+// Phase 23 (AU): 取引監査ログ
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-01",title:"取引作成の監査ログ確認",steps:["新しい取引を作成","監査ログを確認"],expected:["取引作成の記録がある","日時/操作種別/金額が記録"]},
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-02",title:"取引編集の監査ログ確認",steps:["既存取引を編集（金額変更）","監査ログを確認"],expected:["編集操作の記録がある","変更前/変更後の値が記録"]},
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-03",title:"取引削除の監査ログ確認",steps:["取引を削除","監査ログを確認"],expected:["削除操作の記録がある","削除された取引の情報が記録"]},
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-04",title:"仕訳の自動生成ログ",steps:["自動仕訳の生成ログを確認"],expected:["取引→仕訳の自動生成記録","対応する取引IDが記録"]},
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-05",title:"手動仕訳の監査ログ",steps:["手動仕訳を作成・編集","監査ログを確認"],expected:["手動仕訳の操作記録","作成/編集の区分"]},
+{phase:23,phaseTitle:"Phase 23 (AU): 取引監査ログ",id:"AU-06",title:"決算仕訳の監査ログ",steps:["決算仕訳を生成","監査ログを確認"],expected:["決算仕訳生成の記録","一括生成された仕訳の件数"]},
+// Phase 24 (CF): 複合機能・年次ワークフロー統合テスト
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-01",title:"年次ワークフロー: 期中取引→決算→e-Tax",steps:["全取引が入力済みであることを確認","決算仕訳を生成","e-Tax出力を実行"],expected:["決算仕訳が正常生成","e-Tax出力が正常生成","全データの整合性確認"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-02",title:"全帳簿間の整合性検証",steps:["現金出納帳の期末残高","総勘定元帳の各科目残高","試算表の残高","貸借対照表の残高をすべて比較"],expected:["全帳簿の残高が一致","不整合がない"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-03",title:"終了予定日+月次分割+均等割の組合せ",steps:["コンサルティング(終了予定日9/30)がある状態で","月次分割定期取引を均等割で配分","生成された取引を確認"],expected:["終了予定日前: 4プロジェクト配分","終了予定日後: 3プロジェクト配分","月次分割額が正しい"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-04",title:"固定資産+減価償却+決算仕訳の連携",steps:["固定資産台帳の償却額を確認","決算仕訳の減価償却費を確認","損益計算書の減価償却費を確認"],expected:["3箇所の減価償却費が一致","減価償却累計額が正しく計上"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-05",title:"棚卸+売上原価+損益計算書の連携",steps:["棚卸入力データを確認","決算仕訳の棚卸関連を確認","損益計算書の売上原価を確認"],expected:["棚卸データ→決算仕訳→損益計算書の一貫性","売上原価が正しく計算"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-06",title:"パフォーマンス確認",steps:["全画面の表示速度を確認","スクロール操作確認","大量データでの動作確認"],expected:["各画面2秒以内で表示","スクロールが滑らか","集計値が正しい"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-07",title:"アプリ再起動後のデータ保持",steps:["全データの状態をメモ","アプリをタスクキル（完全終了）","再起動→全データ確認"],expected:["全データが保持","プロジェクト/取引/定期取引/固定資産/棚卸/仕訳がすべて存在","集計値が一致"]},
+{phase:24,phaseTitle:"Phase 24 (CF): 複合機能・年次ワークフロー統合テスト",id:"CF-08",title:"エクスポート一括確認",steps:["取引CSV/帳簿CSV/帳簿PDF/試算表/損益計算書/貸借対照表/e-Taxをすべてエクスポート"],expected:["全エクスポートが正常完了","各ファイルの内容が正しい","整合性あり"]},
+// Phase 25 (CL): クリーンアップ・データリセット
+{phase:25,phaseTitle:"Phase 25 (CL): クリーンアップ・データリセット",id:"CL-01",title:"テストデータ最終確認",steps:["全プロジェクト一覧を確認","全取引一覧を確認","全定期取引一覧を確認","固定資産台帳を確認"],expected:["テスト中作成の全データが保持","削除したデータは表示されない"]},
+{phase:25,phaseTitle:"Phase 25 (CL): クリーンアップ・データリセット",id:"CL-02",title:"全帳簿の最終整合性確認",steps:["試算表の貸借一致","損益計算書の利益","貸借対照表の均衡","e-Tax出力の正確性"],expected:["全報告書が整合","テストペルソナの1年間データが正しく処理"]},
+{phase:25,phaseTitle:"Phase 25 (CL): クリーンアップ・データリセット",id:"CL-03",title:"バックアップ取得",steps:["CSVエクスポートで全データバックアップ","JSONバックアップ（あれば）"],expected:["バックアップファイルが生成","テスト結果の保存完了"]},
+{phase:25,phaseTitle:"Phase 25 (CL): クリーンアップ・データリセット",id:"CL-04",title:"環境リセット",steps:["テスト完了後、アプリ削除→再インストール","またはデータ管理からリセット"],expected:["テスト完了後のクリーンアップ完了","初期状態に戻る"]},
+];
+
+const STORAGE_KEY = 'pp-test-sheet-v2';
+let state = loadState();
+
+function loadState() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    return s ? JSON.parse(s) : {results:{},notes:{},tester:{},bugs:[]};
+  } catch(e) { return {results:{},notes:{},tester:{},bugs:[]}; }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  updateStats();
+}
+
+function saveTesterInfo() {
+  state.tester = {
+    name: document.getElementById('testerName').value,
+    date: document.getElementById('testDate').value,
+    device: document.getElementById('deviceName').value,
+    ios: document.getElementById('iosVersion').value
+  };
+  saveState();
+}
+
+function setResult(id, result) {
+  state.results[id] = result;
+  const card = document.querySelector(`[data-id="${id}"]`);
+  if (card) {
+    card.classList.remove('ok','ng');
+    if (result) card.classList.add(result);
+  }
+  saveState();
+}
+
+function setNote(id, note) {
+  state.notes[id] = note;
+  saveState();
+}
+
+function updateStats() {
+  let ok=0, ng=0;
+  SCENARIOS.forEach(s => {
+    const r = state.results[s.id];
+    if (r === 'ok') ok++;
+    else if (r === 'ng') ng++;
+  });
+  const total = SCENARIOS.length;
+  const pending = total - ok - ng;
+  const done = ok + ng;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const rate = done > 0 ? Math.round((ok / done) * 100) : 0;
+
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${total} (${pct}%)`;
+  document.getElementById('statOk').textContent = ok;
+  document.getElementById('statNg').textContent = ng;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('sumTotal').textContent = total;
+  document.getElementById('sumOk').textContent = ok;
+  document.getElementById('sumNg').textContent = ng;
+  document.getElementById('sumPending').textContent = pending;
+  document.getElementById('sumRate').textContent = rate + '%';
+
+  const phases = [...new Set(SCENARIOS.map(s => s.phase))];
+  phases.forEach(p => {
+    const pScenarios = SCENARIOS.filter(s => s.phase === p);
+    let pOk=0, pNg=0;
+    pScenarios.forEach(s => {
+      const r = state.results[s.id];
+      if (r === 'ok') pOk++;
+      else if (r === 'ng') pNg++;
+    });
+    const okEl = document.getElementById(`phase-ok-${p}`);
+    const ngEl = document.getElementById(`phase-ng-${p}`);
+    if (okEl) okEl.textContent = `✓${pOk}`;
+    if (ngEl) ngEl.textContent = `✗${pNg}`;
+    if (ngEl) ngEl.style.display = pNg > 0 ? 'inline' : 'none';
+  });
+}
+
+function filterScenarios(filter) {
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.scenario-card').forEach(card => {
+    const id = card.dataset.id;
+    const r = state.results[id] || 'pending';
+    card.style.display = (filter === 'all' || r === filter) ? '' : 'none';
+  });
+}
+
+function expandAll() {
+  document.querySelectorAll('.phase-section').forEach(s => s.classList.add('open'));
+}
+function collapseAll() {
+  document.querySelectorAll('.phase-section').forEach(s => s.classList.remove('open'));
+}
+
+function togglePhase(el) {
+  el.closest('.phase-section').classList.toggle('open');
+}
+
+function toggleDetail(el) {
+  const detail = el.nextElementSibling;
+  detail.classList.toggle('show');
+  el.textContent = detail.classList.contains('show') ? '▲ 詳細を閉じる' : '▼ 詳細を表示';
+}
+
+function renderPhases() {
+  const container = document.getElementById('phasesContainer');
+  const phases = [...new Set(SCENARIOS.map(s => s.phase))];
+  let html = '';
+
+  phases.forEach(p => {
+    const pScenarios = SCENARIOS.filter(s => s.phase === p);
+    const title = pScenarios[0].phaseTitle;
+    html += `<div class="phase-section">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <h2>${title} (${pScenarios.length}件)</h2>
+        <div class="phase-badge">
+          <span class="count ok-count" id="phase-ok-${p}">✓0</span>
+          <span class="count ng-count" id="phase-ng-${p}" style="display:none">✗0</span>
+          <span class="arrow">▼</span>
+        </div>
+      </div>
+      <div class="phase-body">`;
+
+    pScenarios.forEach(s => {
+      const r = state.results[s.id] || '';
+      const note = state.notes[s.id] || '';
+      html += `<div class="scenario-card ${r}" data-id="${s.id}">
+        <div class="card-top">
+          <div class="card-info">
+            <span class="scenario-id">${s.id}</span>
+            <span class="scenario-title">${s.title}</span>
+          </div>
+          <div class="radio-group">
+            <label class="radio-ok"><input type="radio" name="r-${s.id}" value="ok" ${r==='ok'?'checked':''} onchange="setResult('${s.id}','ok')">OK</label>
+            <label class="radio-ng"><input type="radio" name="r-${s.id}" value="ng" ${r==='ng'?'checked':''} onchange="setResult('${s.id}','ng')">NG</label>
+          </div>
+        </div>
+        <span class="detail-toggle" onclick="toggleDetail(this)">▼ 詳細を表示</span>
+        <div class="scenario-detail">
+          <h4>手順</h4><ul>${s.steps.map(st=>`<li>${st}</li>`).join('')}</ul>
+          <h4>期待結果</h4><ul>${s.expected.map(e=>`<li>✅ ${e}</li>`).join('')}</ul>
+        </div>
+        <input class="note-input" placeholder="備考・不具合メモ" value="${note.replace(/"/g,'&quot;')}" oninput="setNote('${s.id}',this.value)">
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function addBug() {
+  const scenario = document.getElementById('bugScenario').value;
+  const title = document.getElementById('bugTitle').value;
+  const severity = document.getElementById('bugSeverity').value;
+  const detail = document.getElementById('bugDetail').value;
+  if (!title) { alert('タイトルを入力してください'); return; }
+  state.bugs.push({id: Date.now(), scenario, title, severity, detail, date: new Date().toLocaleDateString('ja-JP')});
+  saveState();
+  renderBugs();
+  document.getElementById('bugScenario').value = '';
+  document.getElementById('bugTitle').value = '';
+  document.getElementById('bugDetail').value = '';
+}
+
+function deleteBug(id) {
+  state.bugs = state.bugs.filter(b => b.id !== id);
+  saveState();
+  renderBugs();
+}
+
+function renderBugs() {
+  const list = document.getElementById('bugList');
+  if (state.bugs.length === 0) { list.innerHTML = '<p style="color:#999;font-size:13px">不具合報告はまだありません</p>'; return; }
+  list.innerHTML = state.bugs.map(b => `
+    <div class="bug-item">
+      <div class="bug-header">
+        <span class="bug-id">#${b.scenario || '---'} [${b.severity}]</span>
+        <button class="del-bug" onclick="deleteBug(${b.id})">✕</button>
+      </div>
+      <div class="bug-title">${b.title}</div>
+      <div class="bug-detail">${b.detail}</div>
+      <div style="font-size:11px;color:#999;margin-top:4px">${b.date}</div>
+    </div>`).join('');
+}
+
+function exportCSV() {
+  let csv = '\uFEFF"#","Phase","シナリオID","テスト内容","結果","備考"\n';
+  SCENARIOS.forEach((s,i) => {
+    const r = state.results[s.id] || '未実施';
+    const n = (state.notes[s.id] || '').replace(/"/g,'""');
+    csv += `"${i+1}","${s.phaseTitle}","${s.id}","${s.title}","${r}","${n}"\n`;
+  });
+  if (state.bugs.length > 0) {
+    csv += '\n"不具合報告"\n"シナリオ","タイトル","重要度","詳細","日付"\n';
+    state.bugs.forEach(b => {
+      csv += `"${b.scenario}","${b.title}","${b.severity}","${b.detail.replace(/"/g,'""')}","${b.date}"\n`;
+    });
+  }
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `テスト結果_v2_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `テスト管理バックアップ_v2_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importJSON() {
+  document.getElementById('importFile').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (imported.results) {
+        state = imported;
+        saveState();
+        init();
+        alert('インポート完了');
+      }
+    } catch(err) { alert('無効なJSONファイルです'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function resetAll() {
+  if (!confirm('すべてのテスト結果をリセットしますか？この操作は取り消せません。')) return;
+  state = {results:{},notes:{},tester:{},bugs:[]};
+  saveState();
+  init();
+}
+
+function init() {
+  renderPhases();
+  renderBugs();
+  if (state.tester) {
+    document.getElementById('testerName').value = state.tester.name || '';
+    document.getElementById('testDate').value = state.tester.date || '';
+    document.getElementById('deviceName').value = state.tester.device || '';
+    document.getElementById('iosVersion').value = state.tester.ios || '';
+  }
+  updateStats();
+}
+
+init();
+</script>
+</body>
+</html>

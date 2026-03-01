@@ -12,9 +12,9 @@ final class PPFixedAsset {
     var acquisitionDate: Date                 // 取得日
     var acquisitionCost: Int                  // 取得価額（円）
     var usefulLifeYears: Int                  // 耐用年数
-    var depreciationMethod: DepreciationMethod
+    var depreciationMethod: PPDepreciationMethod
     var salvageValue: Int                     // 残存価額（通常¥1）
-    var assetStatus: AssetStatus
+    var assetStatus: PPAssetStatus
     var disposalDate: Date?                   // 除却/売却日
     var disposalAmount: Int?                  // 売却額
     var memo: String?
@@ -28,9 +28,9 @@ final class PPFixedAsset {
         acquisitionDate: Date,
         acquisitionCost: Int,
         usefulLifeYears: Int,
-        depreciationMethod: DepreciationMethod = .straightLine,
+        depreciationMethod: PPDepreciationMethod = .straightLine,
         salvageValue: Int = 1,
-        assetStatus: AssetStatus = .active,
+        assetStatus: PPAssetStatus = .active,
         disposalDate: Date? = nil,
         disposalAmount: Int? = nil,
         memo: String? = nil,

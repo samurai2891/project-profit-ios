@@ -10,7 +10,7 @@ struct FixedAssetFormView: View {
     @State private var acquisitionDate: Date = Date()
     @State private var acquisitionCostText: String = ""
     @State private var usefulLifeYears: Int = 4
-    @State private var depreciationMethod: DepreciationMethod = .straightLine
+    @State private var depreciationMethod: PPDepreciationMethod = .straightLine
     @State private var salvageValue: Int = 1
     @State private var businessUsePercent: Int = 100
     @State private var memo: String = ""
@@ -28,7 +28,7 @@ struct FixedAssetFormView: View {
     }
 
     /// 金額に応じた推奨償却方法
-    private var suggestedMethod: DepreciationMethod {
+    private var suggestedMethod: PPDepreciationMethod {
         let cost = acquisitionCost
         if cost < 100_000 { return .immediateExpense }
         if cost < 200_000 { return .threeYearEqual }
@@ -55,7 +55,7 @@ struct FixedAssetFormView: View {
 
             Section("償却設定") {
                 Picker("償却方法", selection: $depreciationMethod) {
-                    ForEach(DepreciationMethod.allCases, id: \.self) { method in
+                    ForEach(PPDepreciationMethod.allCases, id: \.self) { method in
                         Text(method.label).tag(method)
                     }
                 }

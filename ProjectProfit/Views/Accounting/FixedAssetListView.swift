@@ -26,7 +26,7 @@ struct FixedAssetListView: View {
                     if !dataStore.fixedAssets.isEmpty {
                         ExportMenuButton(
                             csvGenerator: {
-                                CSVExportService.exportFixedAssetsCSV(
+                                ReportCSVExportService.exportFixedAssetsCSV(
                                     assets: dataStore.fixedAssets,
                                     calculateAccumulated: { asset in
                                         dataStore.calculatePriorAccumulatedDepreciation(
@@ -164,7 +164,7 @@ struct FixedAssetListView: View {
         .padding(.vertical, 2)
     }
 
-    private func statusBadge(_ status: AssetStatus) -> some View {
+    private func statusBadge(_ status: PPAssetStatus) -> some View {
         Text(status.label)
             .font(.caption2)
             .padding(.horizontal, 6)
@@ -174,7 +174,7 @@ struct FixedAssetListView: View {
             .clipShape(Capsule())
     }
 
-    private func statusColor(_ status: AssetStatus) -> Color {
+    private func statusColor(_ status: PPAssetStatus) -> Color {
         switch status {
         case .active: AppColors.success
         case .fullyDepreciated: .secondary

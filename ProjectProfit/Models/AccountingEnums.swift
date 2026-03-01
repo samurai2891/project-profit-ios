@@ -184,10 +184,10 @@ enum JournalEntryType: String, Codable, CaseIterable {
     }
 }
 
-// MARK: - DepreciationMethod
+// MARK: - PPDepreciationMethod
 
 /// 減価償却方法
-enum DepreciationMethod: String, Codable, CaseIterable {
+enum PPDepreciationMethod: String, Codable, CaseIterable {
     case straightLine      // 定額法（個人事業主デフォルト）
     case decliningBalance  // 定率法（届出が必要）
     case immediateExpense  // 少額一括（10万円未満）
@@ -205,10 +205,10 @@ enum DepreciationMethod: String, Codable, CaseIterable {
     }
 }
 
-// MARK: - AssetStatus
+// MARK: - PPAssetStatus
 
 /// 固定資産のステータス
-enum AssetStatus: String, Codable, CaseIterable {
+enum PPAssetStatus: String, Codable, CaseIterable {
     case active            // 使用中（償却中）
     case fullyDepreciated  // 償却完了
     case disposed          // 除却済み

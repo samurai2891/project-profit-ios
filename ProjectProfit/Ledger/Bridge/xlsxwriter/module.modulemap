@@ -1,0 +1,4 @@
+module xlsxwriter {
+    header "shim.h"
+    export *
+}

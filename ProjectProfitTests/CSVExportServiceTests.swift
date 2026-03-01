@@ -1,7 +1,7 @@
 import XCTest
 @testable import ProjectProfit
 
-final class CSVExportServiceTests: XCTestCase {
+final class ReportCSVExportServiceTests: XCTestCase {
 
     // MARK: - Helpers
 
@@ -15,56 +15,56 @@ final class CSVExportServiceTests: XCTestCase {
     // MARK: - BOM Prefix
 
     func testCSVHasBOMPrefix() {
-        let csv = CSVExportService.buildCSV(headers: ["A"], rows: [["1"]])
+        let csv = ReportCSVExportService.buildCSV(headers: ["A"], rows: [["1"]])
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"), "CSV should start with BOM prefix")
     }
 
     func testCSVHasBOMPrefixEmptyRows() {
-        let csv = CSVExportService.buildCSV(headers: ["A", "B"], rows: [])
+        let csv = ReportCSVExportService.buildCSV(headers: ["A", "B"], rows: [])
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"), "CSV with empty rows should still have BOM prefix")
     }
 
     // MARK: - escapeField
 
     func testEscapeFieldPlainText() {
-        let result = CSVExportService.escapeField("hello")
+        let result = ReportCSVExportService.escapeField("hello")
         XCTAssertEqual(result, "hello")
     }
 
     func testEscapeFieldWithComma() {
-        let result = CSVExportService.escapeField("hello,world")
+        let result = ReportCSVExportService.escapeField("hello,world")
         XCTAssertEqual(result, "\"hello,world\"")
     }
 
     func testEscapeFieldWithQuotes() {
-        let result = CSVExportService.escapeField("say \"hello\"")
+        let result = ReportCSVExportService.escapeField("say \"hello\"")
         XCTAssertEqual(result, "\"say \"\"hello\"\"\"")
     }
 
     func testEscapeFieldWithNewline() {
-        let result = CSVExportService.escapeField("line1\nline2")
+        let result = ReportCSVExportService.escapeField("line1\nline2")
         XCTAssertEqual(result, "\"line1\nline2\"")
     }
 
     func testEscapeFieldWithCarriageReturn() {
-        let result = CSVExportService.escapeField("line1\rline2")
+        let result = ReportCSVExportService.escapeField("line1\rline2")
         XCTAssertEqual(result, "\"line1\rline2\"")
     }
 
     func testEscapeFieldWithCommaAndQuotes() {
-        let result = CSVExportService.escapeField("a,\"b\"")
+        let result = ReportCSVExportService.escapeField("a,\"b\"")
         XCTAssertEqual(result, "\"a,\"\"b\"\"\"")
     }
 
     func testEscapeFieldEmptyString() {
-        let result = CSVExportService.escapeField("")
+        let result = ReportCSVExportService.escapeField("")
         XCTAssertEqual(result, "")
     }
 
     // MARK: - buildCSV
 
     func testBuildCSVStructure() {
-        let csv = CSVExportService.buildCSV(
+        let csv = ReportCSVExportService.buildCSV(
             headers: ["Name", "Amount"],
             rows: [["Item1", "100"], ["Item2", "200"]]
         )
@@ -78,7 +78,7 @@ final class CSVExportServiceTests: XCTestCase {
     }
 
     func testBuildCSVUsesWindowsLineEndings() {
-        let csv = CSVExportService.buildCSV(
+        let csv = ReportCSVExportService.buildCSV(
             headers: ["A"],
             rows: [["1"], ["2"]]
         )
@@ -110,7 +110,7 @@ final class CSVExportServiceTests: XCTestCase {
             ),
         ]
 
-        let csv = CSVExportService.exportTrialBalanceCSV(rows: rows)
+        let csv = ReportCSVExportService.exportTrialBalanceCSV(rows: rows)
 
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"))
 
@@ -147,7 +147,7 @@ final class CSVExportServiceTests: XCTestCase {
             ),
         ]
 
-        let csv = CSVExportService.exportLedgerCSV(
+        let csv = ReportCSVExportService.exportLedgerCSV(
             accountName: "現金",
             accountCode: "101",
             entries: entries
@@ -179,7 +179,7 @@ final class CSVExportServiceTests: XCTestCase {
             ]
         )
 
-        let csv = CSVExportService.exportProfitLossCSV(report: report)
+        let csv = ReportCSVExportService.exportProfitLossCSV(report: report)
 
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"))
 
@@ -216,7 +216,7 @@ final class CSVExportServiceTests: XCTestCase {
             ]
         )
 
-        let csv = CSVExportService.exportProfitLossCSV(report: report)
+        let csv = ReportCSVExportService.exportProfitLossCSV(report: report)
         let content = String(csv.dropFirst())
         let lines = content.components(separatedBy: "\r\n")
 
@@ -241,7 +241,7 @@ final class CSVExportServiceTests: XCTestCase {
             ]
         )
 
-        let csv = CSVExportService.exportBalanceSheetCSV(report: report)
+        let csv = ReportCSVExportService.exportBalanceSheetCSV(report: report)
 
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"))
 
@@ -295,7 +295,7 @@ final class CSVExportServiceTests: XCTestCase {
             PPAccount(id: "acct-sales", code: "401", name: "売上高", accountType: .revenue),
         ]
 
-        let csv = CSVExportService.exportJournalCSV(
+        let csv = ReportCSVExportService.exportJournalCSV(
             entries: entries,
             lines: lines,
             accounts: accounts
@@ -342,7 +342,7 @@ final class CSVExportServiceTests: XCTestCase {
             PPAccount(id: "acct-supplies", code: "501", name: "消耗品費", accountType: .expense),
         ]
 
-        let csv = CSVExportService.exportJournalCSV(
+        let csv = ReportCSVExportService.exportJournalCSV(
             entries: entries,
             lines: journalLines,
             accounts: accounts
@@ -385,7 +385,7 @@ final class CSVExportServiceTests: XCTestCase {
             PPAccount(id: "acct-cash", code: "101", name: "現金", accountType: .asset),
         ]
 
-        let csv = CSVExportService.exportJournalCSV(
+        let csv = ReportCSVExportService.exportJournalCSV(
             entries: entries,
             lines: journalLines,
             accounts: accounts
@@ -410,7 +410,7 @@ final class CSVExportServiceTests: XCTestCase {
             salvageValue: 1
         )
 
-        let csv = CSVExportService.exportFixedAssetsCSV(
+        let csv = ReportCSVExportService.exportFixedAssetsCSV(
             assets: [asset],
             calculateAccumulated: { _ in 75000 },
             calculateCurrentYear: { _ in 75000 }
@@ -445,7 +445,7 @@ final class CSVExportServiceTests: XCTestCase {
             salvageValue: 1
         )
 
-        let csv = CSVExportService.exportFixedAssetsCSV(
+        let csv = ReportCSVExportService.exportFixedAssetsCSV(
             assets: [asset],
             calculateAccumulated: { _ in 200000 },
             calculateCurrentYear: { _ in 120000 }
@@ -475,7 +475,7 @@ final class CSVExportServiceTests: XCTestCase {
             depreciationMethod: .straightLine
         )
 
-        let csv = CSVExportService.exportFixedAssetsCSV(
+        let csv = ReportCSVExportService.exportFixedAssetsCSV(
             assets: [asset1, asset2],
             calculateAccumulated: { $0.name == "デスク" ? 12500 : 5000 },
             calculateCurrentYear: { $0.name == "デスク" ? 12500 : 5000 }
@@ -492,7 +492,7 @@ final class CSVExportServiceTests: XCTestCase {
     // MARK: - Edge Cases
 
     func testExportTrialBalanceCSVEmpty() {
-        let csv = CSVExportService.exportTrialBalanceCSV(rows: [])
+        let csv = ReportCSVExportService.exportTrialBalanceCSV(rows: [])
 
         XCTAssertTrue(csv.hasPrefix("\u{FEFF}"))
 
@@ -504,7 +504,7 @@ final class CSVExportServiceTests: XCTestCase {
     }
 
     func testExportLedgerCSVEmpty() {
-        let csv = CSVExportService.exportLedgerCSV(
+        let csv = ReportCSVExportService.exportLedgerCSV(
             accountName: "現金",
             accountCode: "101",
             entries: []
@@ -517,7 +517,7 @@ final class CSVExportServiceTests: XCTestCase {
     }
 
     func testExportFixedAssetsCSVEmpty() {
-        let csv = CSVExportService.exportFixedAssetsCSV(
+        let csv = ReportCSVExportService.exportFixedAssetsCSV(
             assets: [],
             calculateAccumulated: { _ in 0 },
             calculateCurrentYear: { _ in 0 }
@@ -537,7 +537,7 @@ final class CSVExportServiceTests: XCTestCase {
             expenseItems: []
         )
 
-        let csv = CSVExportService.exportProfitLossCSV(report: report)
+        let csv = ReportCSVExportService.exportProfitLossCSV(report: report)
         let content = String(csv.dropFirst())
         let lines = content.components(separatedBy: "\r\n")
 
@@ -556,7 +556,7 @@ final class CSVExportServiceTests: XCTestCase {
             equityItems: []
         )
 
-        let csv = CSVExportService.exportBalanceSheetCSV(report: report)
+        let csv = ReportCSVExportService.exportBalanceSheetCSV(report: report)
         let content = String(csv.dropFirst())
         let lines = content.components(separatedBy: "\r\n")
 

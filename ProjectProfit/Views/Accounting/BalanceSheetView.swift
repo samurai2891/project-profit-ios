@@ -19,7 +19,7 @@ struct BalanceSheetView: View {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         csvGenerator: {
-                            CSVExportService.exportBalanceSheetCSV(report: report)
+                            ReportCSVExportService.exportBalanceSheetCSV(report: report)
                         },
                         pdfGenerator: {
                             PDFExportService.exportBalanceSheetPDF(report: report)

@@ -24,7 +24,7 @@ struct JournalListView: View {
                     if !sortedEntries.isEmpty {
                         ExportMenuButton(
                             csvGenerator: {
-                                CSVExportService.exportJournalCSV(
+                                ReportCSVExportService.exportJournalCSV(
                                     entries: dataStore.journalEntries,
                                     lines: dataStore.journalLines,
                                     accounts: dataStore.accounts

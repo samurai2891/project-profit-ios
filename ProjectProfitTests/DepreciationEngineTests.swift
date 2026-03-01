@@ -328,7 +328,7 @@ final class DepreciationEngineTests: XCTestCase {
         acquisitionDate: Date,
         acquisitionCost: Int,
         usefulLifeYears: Int,
-        method: DepreciationMethod,
+        method: PPDepreciationMethod,
         salvageValue: Int = 1,
         businessUsePercent: Int = 100
     ) -> PPFixedAsset {

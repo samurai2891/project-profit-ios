@@ -1,0 +1,2 @@
+﻿date,destination,purpose,transport_method,route_from,route_to,trip_type,amount
+日付,行先,目的（用件）,交通機関（手段）,区間（起点）,区間（終点）,片/往,金額

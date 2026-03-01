@@ -32,7 +32,9 @@ struct ProjectProfitApp: App {
             PPInventoryRecord.self,
             PPDocumentRecord.self,
             PPComplianceLog.self,
-            PPTransactionLog.self
+            PPTransactionLog.self,
+            SDLedgerBook.self,
+            SDLedgerEntry.self
         ])
     }
 }

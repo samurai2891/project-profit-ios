@@ -6,12 +6,24 @@ options:
   xcodeVersion: "16.0"
   developmentLanguage: ja
 
+packages:
+  libxlsxwriter:
+    url: https://github.com/jmcnamara/libxlsxwriter
+    from: "1.1.5"
+
 targets:
   ProjectProfit:
     type: application
     platform: iOS
+    dependencies:
+      - package: libxlsxwriter
     sources:
-      - ProjectProfit
+      - path: ProjectProfit
+        excludes:
+          - "Ledger/Bridge/xlsxwriter"
+    resources:
+      - path: ProjectProfit/Ledger/Resources
+        buildPhase: resources
     settings:
       base:
         INFOPLIST_KEY_CFBundleDisplayName: "Project Profit"
@@ -32,6 +44,9 @@ targets:
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "レシート・請求書・領収書の画像を選択するためにフォトライブラリを使用します"
         DEVELOPMENT_ASSET_PATHS: "\"ProjectProfit/Preview Content\""
         ENABLE_PREVIEWS: YES
+        OTHER_SWIFT_FLAGS: "-Xfrontend -solver-expression-time-threshold=60"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/ProjectProfit/Ledger/Bridge/xlsxwriter"
+        HEADER_SEARCH_PATHS: "$(BUILD_DIR)/../../SourcePackages/checkouts/libxlsxwriter/include"
 
   ProjectProfitTests:
     type: bundle.unit-test
@@ -48,3 +63,5 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ProjectProfit.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ProjectProfit"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/ProjectProfit/Ledger/Bridge/xlsxwriter"
+        HEADER_SEARCH_PATHS: "$(BUILD_DIR)/../../SourcePackages/checkouts/libxlsxwriter/include"

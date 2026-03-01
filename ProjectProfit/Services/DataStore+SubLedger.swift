@@ -60,6 +60,14 @@ struct SubLedgerSummary {
 
 extension DataStore {
 
+    /// 経費帳から除外する勘定科目ID（仕入・売上原価セクションに属する科目）
+    /// NTA p.15: 仕入高・期首棚卸高・売上原価は経費帳ではなく仕入帳に記載
+    static let expenseBookExcludedAccountIds: Set<String> = [
+        AccountingConstants.purchasesAccountId,
+        AccountingConstants.openingInventoryAccountId,
+        AccountingConstants.cogsAccountId,
+    ]
+
     func subLedgerAccountIds(for type: SubLedgerType) -> [String] {
         switch type {
         case .cashBook:
@@ -69,7 +77,8 @@ extension DataStore {
         case .accountsPayableBook:
             return [AccountingConstants.accountsPayableAccountId]
         case .expenseBook:
-            return accounts.filter { $0.isActive && $0.accountType == .expense }.map(\.id)
+            return accounts.filter { $0.isActive && $0.accountType == .expense
+                && !Self.expenseBookExcludedAccountIds.contains($0.id) }.map(\.id)
         }
     }
 

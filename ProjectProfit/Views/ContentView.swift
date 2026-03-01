@@ -5,12 +5,14 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(NotificationService.self) private var notificationService
     @State private var dataStore: DataStore?
+    @State private var ledgerDataStore: LedgerDataStore?
 
     var body: some View {
         Group {
-            if let store = dataStore {
+            if let store = dataStore, let ledgerStore = ledgerDataStore {
                 MainTabView()
                     .environment(store)
+                    .environment(ledgerStore)
             } else {
                 ProgressView("読み込み中...")
             }
@@ -26,6 +28,7 @@ struct ContentView: View {
             _ = store.processRecurringTransactions()
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store
+            self.ledgerDataStore = LedgerDataStore(modelContext: modelContext)
         }
     }
 }

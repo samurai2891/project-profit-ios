@@ -259,9 +259,9 @@ final class DepreciationScheduleBuilderTests: XCTestCase {
         acquisitionDate: Date,
         acquisitionCost: Int,
         usefulLifeYears: Int,
-        method: DepreciationMethod,
+        method: PPDepreciationMethod,
         salvageValue: Int = 1,
-        assetStatus: AssetStatus = .active,
+        assetStatus: PPAssetStatus = .active,
         businessUsePercent: Int = 100
     ) -> PPFixedAsset {
         let asset = PPFixedAsset(

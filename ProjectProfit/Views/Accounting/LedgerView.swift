@@ -33,7 +33,7 @@ struct LedgerView: View {
                     let entries = dataStore.getLedgerEntries(accountId: accountId)
                     ExportMenuButton(
                         csvGenerator: {
-                            CSVExportService.exportLedgerCSV(
+                            ReportCSVExportService.exportLedgerCSV(
                                 accountName: account.name,
                                 accountCode: account.code,
                                 entries: entries

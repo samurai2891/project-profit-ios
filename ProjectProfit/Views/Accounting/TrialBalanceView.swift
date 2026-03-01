@@ -19,7 +19,7 @@ struct TrialBalanceView: View {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         csvGenerator: {
-                            CSVExportService.exportTrialBalanceCSV(rows: report.rows)
+                            ReportCSVExportService.exportTrialBalanceCSV(rows: report.rows)
                         },
                         pdfGenerator: {
                             PDFExportService.exportTrialBalancePDF(report: report)
