@@ -1,7 +1,0 @@
-[agent-1-plan] scope fixed: todo+reports+evidence+meta+specs
-[agent-2-research] source counts: reports=30 extracted_txt=5 specs_md=4
-[agent-3-synthesis] packed counts: reports=30 extracted_txt=5 specs_md=4 copied_files=46 total_files_in_pack=48
-[consistency] reports_match=yes
-[consistency] extracted_match=yes
-[consistency] specs_match=yes
-[notes] no source files edited; copy-only packaging

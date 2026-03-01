@@ -1,2 +1,0 @@
-﻿account,asset_code,asset_name,asset_type,status,quantity,acquisition_date,acquisition_cost,depreciation_method,useful_life,depreciation_rate,depreciation_months,opening_book_value,mid_year_change,depreciation_expense,special_depreciation,total_depreciation,business_use_ratio,deductible_amount,year_end_balance,remarks
-勘定科目,資産コード,資産名,資産の種類,状態,数量,取得日,取得価額,償却方法,耐用年数,償却率,償却月数,期首帳簿価額,期中増減,減価償却費,特別(割増)償却費,償却費合計,事業専用割合,必要経費算入額,本年末残高,摘要
