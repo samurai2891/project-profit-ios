@@ -1,0 +1,25 @@
+{
+  "taxYear": 2025,
+  "version": "2025-v1",
+  "consumptionTaxStandardRate": "0.10",
+  "consumptionTaxReducedRate": "0.08",
+  "nationalRateStandard": "0.078",
+  "localRateStandard": "0.022",
+  "nationalRateReduced": "0.0624",
+  "localRateReduced": "0.0176",
+  "smallAmountThreshold": "10000",
+  "transitionalCreditRate": "0.8",
+  "twoTenthsSpecialAvailable": true,
+  "filingDeadlineMonth": 3,
+  "filingDeadlineDay": 17,
+  "incomeTaxRateBrackets": [
+    { "lowerBound": "0", "upperBound": "1950000", "rate": "0.05", "deduction": "0" },
+    { "lowerBound": "1950000", "upperBound": "3300000", "rate": "0.10", "deduction": "97500" },
+    { "lowerBound": "3300000", "upperBound": "6950000", "rate": "0.20", "deduction": "427500" },
+    { "lowerBound": "6950000", "upperBound": "9000000", "rate": "0.23", "deduction": "636000" },
+    { "lowerBound": "9000000", "upperBound": "18000000", "rate": "0.33", "deduction": "1536000" },
+    { "lowerBound": "18000000", "upperBound": "40000000", "rate": "0.40", "deduction": "2796000" },
+    { "lowerBound": "40000000", "rate": "0.45", "deduction": "4796000" }
+  ],
+  "blueDeductionOptions": ["none", "ten", "fiftyFive", "sixtyFive"]
+}
