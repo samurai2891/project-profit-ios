@@ -37,8 +37,13 @@ enum ReceiptScanError: LocalizedError {
 enum ReceiptScanState {
     case idle
     case processing
-    case completed(ReceiptData)
+    case completed(ReceiptScanOutput)
     case failed(String)
+}
+
+struct ReceiptScanOutput {
+    let ocrText: String
+    let receiptData: ReceiptData
 }
 
 // MARK: - Scanner Service
@@ -72,7 +77,12 @@ final class ReceiptScannerService {
             AppLogger.receipt.info("OCR extracted \(text.count) characters")
             let receiptData = try await extractReceiptData(from: text)
             AppLogger.receipt.info("OCR inferred document=\(receiptData.documentType.rawValue) type=\(receiptData.suggestedTransactionType.rawValue) confidence=\(receiptData.confidence)")
-            state = .completed(receiptData)
+            state = .completed(
+                ReceiptScanOutput(
+                    ocrText: text,
+                    receiptData: receiptData
+                )
+            )
         } catch {
             AppLogger.receipt.error("Scan failed: \(error.localizedDescription)")
             state = .failed(error.localizedDescription)

@@ -1,0 +1,56 @@
+{
+  "creditTotal" : 2569876,
+  "debitTotal" : 2569876,
+  "fiscalYear" : 2025,
+  "isBalanced" : true,
+  "rows" : [
+    {
+      "accountType" : "asset",
+      "balance" : 25124,
+      "code" : "100",
+      "credit" : 474876,
+      "debit" : 500000,
+      "name" : "現金"
+    },
+    {
+      "accountType" : "asset",
+      "balance" : -500000,
+      "code" : "102",
+      "credit" : 500000,
+      "debit" : 0,
+      "name" : "普通預金"
+    },
+    {
+      "accountType" : "asset",
+      "balance" : 1595000,
+      "code" : "120",
+      "credit" : 0,
+      "debit" : 1595000,
+      "name" : "売掛金"
+    },
+    {
+      "accountType" : "revenue",
+      "balance" : 1595000,
+      "code" : "401",
+      "credit" : 1595000,
+      "debit" : 0,
+      "name" : "売上高"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 468396,
+      "code" : "512",
+      "credit" : 0,
+      "debit" : 468396,
+      "name" : "雑費"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 6480,
+      "code" : "523",
+      "credit" : 0,
+      "debit" : 6480,
+      "name" : "消耗品費"
+    }
+  ]
+}

@@ -1,20 +1,34 @@
+import SwiftData
 import SwiftUI
 
 struct LegalDocumentLedgerView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedCategory: RetentionCategory?
+    @State private var searchForm = EvidenceSearchFormState()
     @State private var records: [PPDocumentRecord] = []
     @State private var logs: [PPComplianceLog] = []
+    @State private var matchingStoredFileNames: Set<String>?
     @State private var alertMessage: String?
     @State private var pendingWarningDeleteId: UUID?
     @State private var pendingWarningMessage: String?
     @State private var showShareSheet = false
+    @State private var showSearchFilters = false
     @State private var shareItem: Any = ""
+    @State private var isLoading = false
+    @State private var isReindexing = false
 
     private var filteredRecords: [PPDocumentRecord] {
-        guard let selectedCategory else { return records }
-        return records.filter { $0.retentionCategory == selectedCategory }
+        records.filter { record in
+            if let selectedCategory, record.retentionCategory != selectedCategory {
+                return false
+            }
+            if let matchingStoredFileNames, !matchingStoredFileNames.contains(record.storedFileName) {
+                return false
+            }
+            return true
+        }
     }
 
     var body: some View {
@@ -33,8 +47,11 @@ struct LegalDocumentLedgerView: View {
             }
 
             Section("書類一覧 (\(filteredRecords.count))") {
-                if filteredRecords.isEmpty {
-                    Text("該当する書類はありません")
+                if isLoading || isReindexing {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else if filteredRecords.isEmpty {
+                    Text(searchForm.hasActiveFilters ? "検索条件に一致する書類はありません" : "該当する書類はありません")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -113,7 +130,37 @@ struct LegalDocumentLedgerView: View {
         }
         .navigationTitle("書類台帳")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: refresh)
+        .task(id: reloadKey) {
+            await refresh()
+        }
+        .searchable(
+            text: Binding(
+                get: { searchForm.textQuery },
+                set: { searchForm.textQuery = $0 }
+            ),
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "ファイル名 / OCR / 取引先 / ハッシュ"
+        )
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("検索条件") {
+                        showSearchFilters = true
+                    }
+                    Button("再索引") {
+                        Task { await rebuildEvidenceIndex() }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showSearchFilters) {
+            EvidenceSearchFilterSheet(
+                form: $searchForm,
+                projects: dataStore.projects
+            )
+        }
         .sheet(isPresented: $showShareSheet) {
             ShareSheetView(activityItems: [shareItem])
         }
@@ -145,11 +192,19 @@ struct LegalDocumentLedgerView: View {
         }
     }
 
+    private var reloadKey: String {
+        [
+            dataStore.businessProfile?.id.uuidString ?? "none",
+            selectedCategory?.rawValue ?? "all",
+            searchForm.reloadToken
+        ].joined(separator: ":")
+    }
+
     private func handleDeleteAttempt(_ attempt: DocumentDeleteAttempt) {
         switch attempt {
         case .deleted:
             alertMessage = "書類を削除しました"
-            refresh()
+            Task { await refresh() }
         case .warningRequired(let message):
             pendingWarningMessage = message
         case .failed(let message):
@@ -157,8 +212,39 @@ struct LegalDocumentLedgerView: View {
         }
     }
 
-    private func refresh() {
+    private func refresh() async {
         records = dataStore.listDocumentRecords()
         logs = dataStore.listComplianceLogs(limit: 10)
+
+        guard let businessId = dataStore.businessProfile?.id, searchForm.hasActiveFilters else {
+            matchingStoredFileNames = nil
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let evidences = try await EvidenceCatalogUseCase(modelContext: modelContext)
+                .search(searchForm.makeCriteria(businessId: businessId))
+            matchingStoredFileNames = Set(evidences.map(\.originalFilePath))
+        } catch {
+            matchingStoredFileNames = nil
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func rebuildEvidenceIndex() async {
+        guard let businessId = dataStore.businessProfile?.id else { return }
+        isReindexing = true
+        defer { isReindexing = false }
+
+        do {
+            try SearchIndexRebuilder(modelContext: modelContext)
+                .rebuildEvidenceIndex(businessId: businessId)
+            await refresh()
+        } catch {
+            alertMessage = error.localizedDescription
+        }
     }
 }

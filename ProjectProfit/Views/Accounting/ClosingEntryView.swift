@@ -6,8 +6,9 @@ struct ClosingEntryView: View {
     @State private var selectedYear: Int
     @State private var showDeleteConfirmation = false
     @State private var showRegenerateConfirmation = false
-    @State private var showLockConfirmation = false
-    @State private var showUnlockConfirmation = false
+    @State private var pendingStateTransition: YearLockState?
+    @State private var preflightReport: FilingPreflightReport?
+    @State private var stateTransitionErrorMessage: String?
 
     init() {
         let currentYear = Calendar.current.component(.year, from: Date())
@@ -26,8 +27,19 @@ struct ClosingEntryView: View {
             .sorted { $0.displayOrder < $1.displayOrder }
     }
 
-    private var isYearLocked: Bool {
-        dataStore.accountingProfile?.isYearLocked(selectedYear) ?? false
+    private var currentYearState: YearLockState {
+        dataStore.yearLockState(for: selectedYear)
+    }
+
+    private var availableStateTransitions: [YearLockState] {
+        YearLockState.allCases.filter { candidate in
+            candidate != currentYearState &&
+                TaxStatusMachine.isValidLockTransition(from: currentYearState, to: candidate)
+        }
+    }
+
+    private var canEditClosingEntry: Bool {
+        currentYearState.allowsAdjustingEntries
     }
 
     var body: some View {
@@ -35,6 +47,7 @@ struct ClosingEntryView: View {
             VStack(alignment: .leading, spacing: 16) {
                 yearPicker
                 statusSection
+                preflightSection
                 if closingEntry != nil {
                     closingLinesSection
                 }
@@ -44,9 +57,13 @@ struct ClosingEntryView: View {
             .padding(.vertical, 12)
         }
         .navigationTitle("決算仕訳")
+        .task(id: selectedYear) {
+            refreshPreflightReport()
+        }
         .alert("決算仕訳を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
                 dataStore.deleteClosingEntry(for: selectedYear)
+                refreshPreflightReport()
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -55,26 +72,61 @@ struct ClosingEntryView: View {
         .alert("決算仕訳を再生成しますか？", isPresented: $showRegenerateConfirmation) {
             Button("再生成", role: .destructive) {
                 dataStore.regenerateClosingEntry(for: selectedYear)
+                refreshPreflightReport()
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("既存の決算仕訳を削除して、最新データで再生成します。")
         }
-        .alert("\(selectedYear)年度をロックしますか？", isPresented: $showLockConfirmation) {
-            Button("ロック", role: .destructive) {
-                dataStore.lockFiscalYear(selectedYear)
+        .alert(
+            pendingStateTransitionTitle,
+            isPresented: Binding(
+                get: { pendingStateTransition != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingStateTransition = nil
+                    }
+                }
+            )
+        ) {
+            Button("変更", role: .destructive) {
+                guard let pendingStateTransition else { return }
+                if shouldRunPreflight(for: pendingStateTransition),
+                   let report = closingPreflightReport(for: pendingStateTransition),
+                   report.isBlocking
+                {
+                    preflightReport = report
+                    stateTransitionErrorMessage = report.blockingIssues.map(\.message).joined(separator: "\n")
+                    self.pendingStateTransition = nil
+                    return
+                }
+                if !dataStore.transitionFiscalYearState(pendingStateTransition, for: selectedYear) {
+                    stateTransitionErrorMessage = dataStore.lastError?.localizedDescription ?? "年度状態の更新に失敗しました"
+                } else {
+                    refreshPreflightReport()
+                }
+                self.pendingStateTransition = nil
             }
-            Button("キャンセル", role: .cancel) {}
+            Button("キャンセル", role: .cancel) {
+                pendingStateTransition = nil
+            }
         } message: {
-            Text("ロック中は、この年度の取引・仕訳・固定資産・棚卸の更新ができません。")
+            Text(pendingStateTransitionMessage)
         }
-        .alert("\(selectedYear)年度のロックを解除しますか？", isPresented: $showUnlockConfirmation) {
-            Button("解除") {
-                dataStore.unlockFiscalYear(selectedYear)
-            }
-            Button("キャンセル", role: .cancel) {}
+        .alert(
+            "年度状態を更新できません",
+            isPresented: Binding(
+                get: { stateTransitionErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        stateTransitionErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
         } message: {
-            Text("ロック解除後は、この年度の更新が可能になります。")
+            Text(stateTransitionErrorMessage ?? "")
         }
     }
 
@@ -110,10 +162,47 @@ struct ClosingEntryView: View {
                     .font(.headline)
             }
 
-            if isYearLocked {
-                Label("この年度はロック済みです", systemImage: "lock.fill")
+            Label(currentYearState.displayName, systemImage: currentYearState == .open ? "lock.open" : "lock.fill")
+                .font(.caption)
+                .foregroundStyle(currentYearState == .open ? .secondary : AppColors.warning)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var preflightSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("締め前チェック")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if let report = preflightReport, report.isBlocking {
+                    Label("要対応", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.warning)
+                } else {
+                    Label("問題なし", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.success)
+                }
+            }
+
+            if let report = preflightReport, !report.issues.isEmpty {
+                ForEach(report.issues, id: \.id) { issue in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: issue.severity == .error ? "xmark.octagon.fill" : "info.circle.fill")
+                            .foregroundStyle(issue.severity == .error ? AppColors.error : AppColors.warning)
+                        Text(issue.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Text("税務締め前の blocking issue はありません。")
                     .font(.caption)
-                    .foregroundStyle(AppColors.warning)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -166,30 +255,36 @@ struct ClosingEntryView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 8) {
-            Button {
-                if isYearLocked {
-                    showUnlockConfirmation = true
+            ForEach(Array(availableStateTransitions.enumerated()), id: \.element) { index, targetState in
+                if index == 0 {
+                    Button {
+                        pendingStateTransition = targetState
+                    } label: {
+                        Label("\(targetState.displayName)へ変更", systemImage: transitionSystemImage(for: targetState))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
                 } else {
-                    showLockConfirmation = true
+                    Button {
+                        pendingStateTransition = targetState
+                    } label: {
+                        Label("\(targetState.displayName)へ変更", systemImage: transitionSystemImage(for: targetState))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-            } label: {
-                Label(
-                    isYearLocked ? "年度ロックを解除" : "この年度をロック",
-                    systemImage: isYearLocked ? "lock.open" : "lock"
-                )
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
 
             if closingEntry == nil {
                 Button {
                     dataStore.generateClosingEntry(for: selectedYear)
+                    refreshPreflightReport()
                 } label: {
                     Label("決算仕訳を生成", systemImage: "plus.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isYearLocked)
+                .disabled(!canEditClosingEntry)
             } else {
                 Button {
                     showRegenerateConfirmation = true
@@ -198,7 +293,7 @@ struct ClosingEntryView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(isYearLocked)
+                .disabled(!canEditClosingEntry)
 
                 Button(role: .destructive) {
                     showDeleteConfirmation = true
@@ -207,8 +302,66 @@ struct ClosingEntryView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(isYearLocked)
+                .disabled(!canEditClosingEntry)
             }
+        }
+    }
+
+    private var pendingStateTransitionTitle: String {
+        guard let pendingStateTransition else {
+            return ""
+        }
+        return "\(selectedYear)年度を\(pendingStateTransition.displayName)に変更しますか？"
+    }
+
+    private var pendingStateTransitionMessage: String {
+        guard let pendingStateTransition else {
+            return ""
+        }
+        return "現在の状態は\(currentYearState.displayName)です。\(pendingStateTransition.displayName)へ変更します。"
+    }
+
+    private func transitionSystemImage(for state: YearLockState) -> String {
+        switch state {
+        case .open:
+            return "lock.open"
+        case .softClose:
+            return "lock"
+        case .taxClose:
+            return "checkmark.seal"
+        case .filed:
+            return "doc.text"
+        case .finalLock:
+            return "lock.shield"
+        }
+    }
+
+    private func refreshPreflightReport() {
+        preflightReport = closingPreflightReport(for: .taxClose)
+    }
+
+    private func closingPreflightReport(for state: YearLockState) -> FilingPreflightReport? {
+        guard let businessId = dataStore.businessProfile?.id else {
+            return nil
+        }
+        do {
+            return try FilingPreflightUseCase(modelContext: dataStore.modelContext).preflightReport(
+                businessId: businessId,
+                taxYear: selectedYear,
+                context: .closing(targetState: state)
+            )
+        } catch {
+            stateTransitionErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func shouldRunPreflight(for state: YearLockState) -> Bool {
+        switch state {
+        case .taxClose, .filed, .finalLock:
+            return true
+        case .open, .softClose:
+            return false
         }
     }
 }

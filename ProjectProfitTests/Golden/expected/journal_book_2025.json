@@ -1,0 +1,285 @@
+{
+  "entries" : [
+    {
+      "date" : "2025-01-25",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 110000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 110000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "事務所家賃 1月分"
+    },
+    {
+      "date" : "2025-01-31",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-ar",
+          "credit" : 0,
+          "debit" : 550000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-sales",
+          "credit" : 550000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "Webアプリ開発 1月分"
+    },
+    {
+      "date" : "2025-02-10",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 8640,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 8640,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "電気代 1月分"
+    },
+    {
+      "date" : "2025-02-28",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-ar",
+          "credit" : 0,
+          "debit" : 330000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-sales",
+          "credit" : 330000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "モバイルアプリ保守 2月分"
+    },
+    {
+      "date" : "2025-03-05",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 1296,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 1296,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "渋谷→新宿 打ち合わせ往復"
+    },
+    {
+      "date" : "2025-03-15",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-supplies",
+          "credit" : 0,
+          "debit" : 4320,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 4320,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "コンビニ 文房具・飲料"
+    },
+    {
+      "date" : "2025-04-01",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 220000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 220000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "デザイン外注 LP制作"
+    },
+    {
+      "date" : "2025-04-30",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-ar",
+          "credit" : 0,
+          "debit" : 550000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-sales",
+          "credit" : 550000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "Webアプリ開発 4月分"
+    },
+    {
+      "date" : "2025-05-01",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 5500,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 5500,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "携帯電話料金 4月分"
+    },
+    {
+      "date" : "2025-06-15",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 12960,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 12960,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "Adobe CC 年間ライセンス（月額按分）"
+    },
+    {
+      "date" : "2025-06-25",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 110000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 110000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "事務所家賃 6月分（全プロジェクト均等配賦）"
+    },
+    {
+      "date" : "2025-07-31",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-ar",
+          "credit" : 0,
+          "debit" : 165000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-sales",
+          "credit" : 165000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "コンサルティング 7月分"
+    },
+    {
+      "date" : "2025-08-01",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-cash",
+          "credit" : 0,
+          "debit" : 500000,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-bank",
+          "credit" : 500000,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "事業用口座から現金引出"
+    },
+    {
+      "date" : "2025-09-20",
+      "entryType" : "auto",
+      "isPosted" : true,
+      "lines" : [
+        {
+          "accountId" : "acct-supplies",
+          "credit" : 0,
+          "debit" : 2160,
+          "displayOrder" : 0
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 2160,
+          "debit" : 0,
+          "displayOrder" : 1
+        }
+      ],
+      "memo" : "スーパー 会議用お茶菓子"
+    }
+  ],
+  "fiscalYear" : 2025
+}

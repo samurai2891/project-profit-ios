@@ -69,6 +69,26 @@ struct TransactionsView: View {
         .navigationTitle("取引履歴")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    EvidenceInboxView()
+                } label: {
+                    Image(systemName: "tray.full")
+                }
+                .accessibilityLabel("証憑Inbox")
+                .accessibilityHint("登録済みの証憑を確認します")
+            }
+
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    ApprovalQueueView()
+                } label: {
+                    Image(systemName: "checklist")
+                }
+                .accessibilityLabel("Approval Queue")
+                .accessibilityHint("承認待ちの仕訳候補を確認します")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showReceiptScanner = true
@@ -76,7 +96,7 @@ struct TransactionsView: View {
                     Image(systemName: "doc.text.viewfinder")
                 }
                 .accessibilityLabel("書類読取")
-                .accessibilityHint("タップして書類を読み取り取引を自動入力")
+                .accessibilityHint("タップして書類を読み取り証憑を取り込みます")
             }
 
             ToolbarItem(placement: .topBarTrailing) {

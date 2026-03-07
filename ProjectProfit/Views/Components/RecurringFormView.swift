@@ -4,6 +4,7 @@ import SwiftUI
 
 struct RecurringFormView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let recurring: PPRecurringTransaction?
@@ -40,6 +41,11 @@ struct RecurringFormView: View {
     @State private var showReceiptPreview = false
     @State private var showRemoveImageAlert = false
     @State private var imageRemoved = false
+    @State private var distributionTemplates: [DistributionRule] = []
+    @State private var selectedDistributionTemplateId: UUID?
+    @State private var isLoadingDistributionTemplates = false
+    @State private var distributionTemplateErrorMessage: String?
+    @State private var unavailableDistributionTemplateCount = 0
 
     private var isEditMode: Bool { recurring != nil }
 
@@ -93,6 +99,24 @@ struct RecurringFormView: View {
             && dayOfMonth <= 28
     }
 
+    private var templateReferenceDate: Date {
+        let calendar = Calendar.current
+        let today = todayDate()
+        let currentYear = calendar.component(.year, from: today)
+        let month = frequency == .yearly ? monthOfYear : calendar.component(.month, from: today)
+        return calendar.date(from: DateComponents(year: currentYear, month: month, day: dayOfMonth)) ?? today
+    }
+
+    private var distributionTemplateLoadKey: String {
+        let businessId = dataStore.businessProfile?.id.uuidString ?? "none"
+        let referenceDay = Int(Calendar.current.startOfDay(for: templateReferenceDate).timeIntervalSince1970)
+        return "\(businessId)-\(referenceDay)"
+    }
+
+    private var distributionTemplateAllocationPeriod: DistributionTemplateApplicationUseCase.AllocationPeriod {
+        frequency == .yearly ? .year : .month
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -113,6 +137,7 @@ struct RecurringFormView: View {
                         }
                         categorySection
                         accountingSection
+                        distributionTemplateSection
                         allocationModeSection
                         if allocationMode == .manual {
                             RecurringProjectAllocationSection(
@@ -174,6 +199,9 @@ struct RecurringFormView: View {
             }
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
+            }
+            .task(id: distributionTemplateLoadKey) {
+                await loadDistributionTemplates()
             }
             .alert("画像を削除", isPresented: $showRemoveImageAlert) {
                 Button("キャンセル", role: .cancel) {}
@@ -321,7 +349,7 @@ struct RecurringFormView: View {
             .pickerStyle(.segmented)
 
             if yearlyAmortizationMode == .monthlySpread {
-                Text("年額を12ヶ月で分割し、毎月\(dayOfMonth)日に登録します")
+                Text("年額を開始月から年末までの対象月数で分割し、毎月\(dayOfMonth)日に登録します")
                     .font(.caption)
                     .foregroundStyle(AppColors.primary)
             }
@@ -427,6 +455,62 @@ struct RecurringFormView: View {
             if newMode == .equalAll {
                 allocations = []
             }
+        }
+    }
+
+    @ViewBuilder
+    private var distributionTemplateSection: some View {
+        if isLoadingDistributionTemplates
+            || !distributionTemplates.isEmpty
+            || distributionTemplateErrorMessage != nil
+            || unavailableDistributionTemplateCount > 0
+        {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("配賦テンプレート")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if isLoadingDistributionTemplates {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if !distributionTemplates.isEmpty {
+                    Picker("配賦テンプレート", selection: $selectedDistributionTemplateId) {
+                        Text("選択しない").tag(UUID?.none)
+                        ForEach(distributionTemplates, id: \.id) { rule in
+                            Text(rule.name).tag(UUID?.some(rule.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Button("テンプレートを適用") {
+                        applySelectedDistributionTemplate()
+                    }
+                    .disabled(selectedDistributionTemplateId == nil)
+                } else if !isLoadingDistributionTemplates {
+                    Text("適用できるテンプレートはありません。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if unavailableDistributionTemplateCount > 0 {
+                    Text("未対応テンプレート \(unavailableDistributionTemplateCount) 件はこの画面では適用できません。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let distributionTemplateErrorMessage {
+                    Text(distributionTemplateErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.error)
+                }
+            }
+            .padding(16)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -538,6 +622,75 @@ struct RecurringFormView: View {
                 selectedImage = uiImage
                 imageRemoved = false
             }
+        }
+    }
+
+    private func loadDistributionTemplates() async {
+        guard let businessId = dataStore.businessProfile?.id else {
+            distributionTemplates = []
+            selectedDistributionTemplateId = nil
+            distributionTemplateErrorMessage = nil
+            unavailableDistributionTemplateCount = 0
+            return
+        }
+
+        isLoadingDistributionTemplates = true
+        defer { isLoadingDistributionTemplates = false }
+
+        do {
+            let useCase = DistributionTemplateUseCase(modelContext: modelContext)
+            let applier = DistributionTemplateApplicationUseCase()
+            let activeRules = try await useCase.activeRules(businessId: businessId, at: templateReferenceDate)
+            distributionTemplates = activeRules
+                .filter {
+                    applier.isSupported($0, allocationPeriod: distributionTemplateAllocationPeriod)
+                        || applier.shouldUseDynamicEqualAll(for: $0)
+                }
+                .sorted { lhs, rhs in
+                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+            unavailableDistributionTemplateCount = activeRules.count - distributionTemplates.count
+            if let selectedDistributionTemplateId,
+               distributionTemplates.contains(where: { $0.id == selectedDistributionTemplateId }) == false
+            {
+                self.selectedDistributionTemplateId = nil
+            }
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplates = []
+            selectedDistributionTemplateId = nil
+            unavailableDistributionTemplateCount = 0
+            distributionTemplateErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applySelectedDistributionTemplate() {
+        guard let selectedDistributionTemplateId,
+              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
+        else {
+            return
+        }
+
+        let applier = DistributionTemplateApplicationUseCase()
+        if applier.shouldUseDynamicEqualAll(for: rule) {
+            allocationMode = .equalAll
+            allocations = []
+            distributionTemplateErrorMessage = nil
+            return
+        }
+
+        do {
+            let ratios = try applier.buildRatioAllocations(
+                rule: rule,
+                projects: dataStore.projects,
+                referenceDate: templateReferenceDate,
+                allocationPeriod: distributionTemplateAllocationPeriod
+            )
+            allocationMode = .manual
+            allocations = ratios.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
         }
     }
 
@@ -703,5 +856,18 @@ struct RecurringFormView: View {
 
 #Preview {
     RecurringFormView()
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
+        .modelContainer(try! ModelContainer(
+            for: PPProject.self,
+            PPTransaction.self,
+            PPCategory.self,
+            PPRecurringTransaction.self,
+            DistributionRuleEntity.self
+        ))
+        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(
+            for: PPProject.self,
+            PPTransaction.self,
+            PPCategory.self,
+            PPRecurringTransaction.self,
+            DistributionRuleEntity.self
+        ))))
 }

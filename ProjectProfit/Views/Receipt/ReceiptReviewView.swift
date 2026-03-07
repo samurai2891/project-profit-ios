@@ -2,9 +2,12 @@ import SwiftUI
 
 struct ReceiptReviewView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     let receiptData: ReceiptData
+    let ocrText: String
     let receiptImage: UIImage?
+    let evidenceSourceType: EvidenceSourceType
     let defaultProjectId: UUID?
     let onDismiss: () -> Void
 
@@ -28,9 +31,18 @@ struct ReceiptReviewView: View {
     @State private var taxAmountText: String = ""
     @State private var counterparty: String = ""
 
-    init(receiptData: ReceiptData, receiptImage: UIImage? = nil, defaultProjectId: UUID? = nil, onDismiss: @escaping () -> Void) {
+    init(
+        receiptData: ReceiptData,
+        ocrText: String,
+        receiptImage: UIImage? = nil,
+        evidenceSourceType: EvidenceSourceType = .manualNoFile,
+        defaultProjectId: UUID? = nil,
+        onDismiss: @escaping () -> Void
+    ) {
         self.receiptData = receiptData
+        self.ocrText = ocrText
         self.receiptImage = receiptImage
+        self.evidenceSourceType = evidenceSourceType
         self.defaultProjectId = defaultProjectId
         self.onDismiss = onDismiss
     }
@@ -92,7 +104,7 @@ struct ReceiptReviewView: View {
                 Button("登録") { save() }
                     .disabled(!isValid || isSubmitting)
                     .accessibilityLabel("登録")
-                    .accessibilityHint(isValid ? "タップして取引を登録" : "すべての必須項目を入力してください")
+                    .accessibilityHint(isValid ? "タップして証憑を登録" : "すべての必須項目を入力してください")
             }
         }
         .onAppear { setupFromReceiptData() }
@@ -593,7 +605,7 @@ struct ReceiptReviewView: View {
         categoryId = receiptData.categoryId
         memo = receiptData.formattedMemo
         editableLineItems = receiptData.lineItems.map { EditableLineItem(from: $0) }
-        paymentAccountId = dataStore.accountingProfile?.defaultPaymentAccountId
+        paymentAccountId = dataStore.defaultPaymentAccountPreference
             ?? dataStore.accounts.first(where: { $0.isPaymentAccount && $0.isActive })?.id
         if receiptData.taxAmount > 0 {
             taxCategory = .standardRate
@@ -615,79 +627,98 @@ struct ReceiptReviewView: View {
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
-        defer { isSubmitting = false }
         saveError = nil
+        Task { @MainActor in
+            defer { isSubmitting = false }
 
-        // Validate amount is positive
-        guard amount > 0 else { return }
+            guard amount > 0 else { return }
 
-        // Validate date is not in the future
-        let validDate = min(date, Date())
-
-        // Save receipt image with error handling
-        var imagePath: String?
-        if let image = receiptImage {
-            do {
-                imagePath = try ReceiptImageStore.saveImage(image)
-                // Verify the image was actually saved
-                if let path = imagePath, !ReceiptImageStore.imageExists(fileName: path) {
-                    AppLogger.receipt.error("Receipt image save verification failed")
-                    imagePath = nil
+            let validDate = min(date, Date())
+            let lineItems = editableLineItems
+                .filter { !$0.name.isEmpty && $0.unitPrice > 0 }
+                .map {
+                    LineItem(
+                        name: $0.name,
+                        quantity: $0.quantity,
+                        unitPrice: $0.unitPrice,
+                        subtotal: $0.quantity * $0.unitPrice
+                    )
                 }
-            } catch {
-                AppLogger.receipt.error("Failed to save receipt image: \(error.localizedDescription)")
-                // Continue without image - don't block transaction save
-            }
-        }
-
-        // Convert line items
-        let lineItems = editableLineItems
-            .filter { !$0.name.isEmpty && $0.unitPrice > 0 }
-            .map { $0.toReceiptLineItem() }
-
-        let allocs = type == .transfer ? [] : allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        let resolvedCategoryId = type == .transfer ? "" : categoryId
-        let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
-        let resolvedTaxDeductibleRate: Int? = type == .expense ? (taxDeductibleRate == 100 ? nil : taxDeductibleRate) : nil
-        let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
-        let resolvedTaxRate: Int? = resolvedTaxCategory?.isTaxable == true ? taxRate : nil
-        let resolvedIsTaxIncluded: Bool? = resolvedTaxCategory?.isTaxable == true ? isTaxIncluded : nil
-        let resolvedTaxAmount: Int?
-        if let tc = resolvedTaxCategory, tc.isTaxable {
-            if isTaxIncluded {
-                resolvedTaxAmount = amount * taxRate / (100 + taxRate)
+            let linkedProjectIds = type == .transfer ? [] : allocations.map(\.projectId)
+            let resolvedCategoryId = type == .transfer ? "" : categoryId
+            let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
+            let resolvedTaxCategory: TaxCategory? = type != .transfer ? taxCategory : nil
+            let resolvedTaxRate = resolvedTaxCategory?.isTaxable == true ? taxRate : 0
+            let resolvedIsTaxIncluded = resolvedTaxCategory?.isTaxable == true ? isTaxIncluded : false
+            let resolvedTaxAmount: Int?
+            if let tc = resolvedTaxCategory, tc.isTaxable {
+                if isTaxIncluded {
+                    resolvedTaxAmount = amount * taxRate / (100 + taxRate)
+                } else {
+                    resolvedTaxAmount = Int(taxAmountText)
+                }
             } else {
-                resolvedTaxAmount = Int(taxAmountText)
+                resolvedTaxAmount = nil
             }
-        } else {
-            resolvedTaxAmount = nil
-        }
+            let resolvedCounterparty = counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            let originalFileName = generatedOriginalFileName()
 
-        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
-        let result = dataStore.addTransactionResult(
-            type: type,
-            amount: amount,
-            date: validDate,
-            categoryId: resolvedCategoryId,
-            memo: memo,
-            allocations: allocs,
-            receiptImagePath: imagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: resolvedTransferTo,
-            taxDeductibleRate: resolvedTaxDeductibleRate,
-            taxAmount: resolvedTaxAmount,
-            taxRate: resolvedTaxRate,
-            isTaxIncluded: resolvedIsTaxIncluded,
-            taxCategory: resolvedTaxCategory,
-            counterparty: resolvedCounterparty
-        )
-        switch result {
-        case .success:
-            onDismiss()
-        case .failure(let error):
-            saveError = error.localizedDescription
+            do {
+                guard let receiptImage else {
+                    throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+                }
+                let fileData = try ReceiptImageStore.jpegData(for: receiptImage)
+                let request = ReceiptEvidenceIntakeRequest(
+                    receiptData: receiptData,
+                    ocrText: ocrText,
+                    sourceType: evidenceSourceType,
+                    fileData: fileData,
+                    originalFileName: originalFileName,
+                    mimeType: "image/jpeg",
+                    reviewedAmount: amount,
+                    reviewedDate: validDate,
+                    transactionType: type,
+                    categoryId: resolvedCategoryId,
+                    memo: memo,
+                    lineItems: lineItems,
+                    linkedProjectIds: linkedProjectIds,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: resolvedTransferTo,
+                    taxDeductibleRate: type == .expense ? taxDeductibleRate : 100,
+                    taxCategory: resolvedTaxCategory,
+                    taxRate: resolvedTaxRate,
+                    isTaxIncluded: resolvedIsTaxIncluded,
+                    taxAmount: resolvedTaxAmount,
+                    counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty
+                )
+                _ = try await ReceiptEvidenceIntakeUseCase(modelContext: modelContext).intake(request)
+                onDismiss()
+            } catch {
+                saveError = error.localizedDescription
+            }
         }
+    }
+
+    private func generatedOriginalFileName() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = formatter.string(from: Date())
+        let prefix: String
+        switch evidenceSourceType {
+        case .camera:
+            prefix = "camera"
+        case .photoLibrary:
+            prefix = "photo"
+        case .scannedPDF:
+            prefix = "scan"
+        case .emailAttachment:
+            prefix = "mail"
+        case .importedPDF:
+            prefix = "import"
+        case .manualNoFile:
+            prefix = "manual"
+        }
+        return "\(prefix)-receipt-\(timestamp).jpg"
     }
 
     private func ensureValidCategorySelection() {

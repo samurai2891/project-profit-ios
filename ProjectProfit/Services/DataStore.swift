@@ -1,3 +1,4 @@
+import CryptoKit
 import os
 import SwiftData
 import SwiftUI
@@ -5,6 +6,44 @@ import SwiftUI
 @MainActor
 @Observable
 class DataStore {
+    struct LegacyLedgerDiagnostics: Equatable, Sendable {
+        let legacyBookCount: Int
+        let legacyEntryCount: Int
+        let legacyJournalBookCount: Int
+        let legacyJournalEntryCount: Int
+        let canonicalJournalEntryCount: Int
+
+        var hasLegacyData: Bool {
+            legacyBookCount > 0 || legacyEntryCount > 0
+        }
+
+        var journalEntryDelta: Int {
+            canonicalJournalEntryCount - legacyJournalEntryCount
+        }
+    }
+
+    enum CanonicalCounterpartySyncStatus: Equatable, Sendable {
+        case synced(UUID)
+        case skippedSourceNotFound
+        case skippedBusinessProfileUnavailable
+        case skippedBlankName
+        case failed(String)
+    }
+
+    enum CanonicalPostingSyncStatus: Equatable, Sendable {
+        case synced(candidateId: UUID, journalId: UUID)
+        case skippedSourceNotFound
+        case skippedBusinessProfileUnavailable
+        case skippedLegacyJournalUnavailable
+        case skippedUnmappableAccountIds([String])
+        case failed(String)
+    }
+
+    struct CanonicalTransactionSyncResult: Equatable, Sendable {
+        let counterpartyStatus: CanonicalCounterpartySyncStatus
+        let postingStatus: CanonicalPostingSyncStatus
+    }
+
     var modelContext: ModelContext
 
     var projects: [PPProject] = []
@@ -15,6 +54,8 @@ class DataStore {
     var journalEntries: [PPJournalEntry] = []
     var journalLines: [PPJournalLine] = []
     var accountingProfile: PPAccountingProfile?
+    var businessProfile: BusinessProfile?
+    var currentTaxYearProfile: TaxYearProfile?
     var fixedAssets: [PPFixedAsset] = []
     var inventoryRecords: [PPInventoryRecord] = []
     var isLoading = true
@@ -35,6 +76,282 @@ class DataStore {
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+    }
+
+    private var profileSettingsUseCase: ProfileSettingsUseCase {
+        ProfileSettingsUseCase(modelContext: modelContext)
+    }
+
+    private var counterpartyMasterUseCase: CounterpartyMasterUseCase {
+        CounterpartyMasterUseCase(modelContext: modelContext)
+    }
+
+    private var postingWorkflowUseCase: PostingWorkflowUseCase {
+        PostingWorkflowUseCase(modelContext: modelContext)
+    }
+
+    var profileSensitivePayload: ProfileSensitivePayload? {
+        loadSensitivePayload()
+    }
+
+    private var canonicalProfileSecureStoreId: String? {
+        businessProfile?.id.uuidString
+    }
+
+    private var legacyProfileSecureStoreId: String? {
+        accountingProfile?.id
+    }
+
+    var isAccountingBootstrapped: Bool {
+        businessProfile != nil || accountingProfile != nil
+    }
+
+    var defaultPaymentAccountPreference: String? {
+        businessProfile?.defaultPaymentAccountId ?? accountingProfile?.defaultPaymentAccountId
+    }
+
+    var profileOpeningDate: Date? {
+        businessProfile?.openingDate ?? accountingProfile?.openingDate
+    }
+
+    private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
+        guard let businessId = businessProfile?.id else {
+            return
+        }
+
+        do {
+            let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+            let existingEntities = try modelContext.fetch(descriptor)
+            var entitiesByLegacyId: [String: CanonicalAccountEntity] = [:]
+            var entitiesByAccountId: [UUID: CanonicalAccountEntity] = [:]
+            var entitiesByCode: [String: CanonicalAccountEntity] = [:]
+
+            for entity in existingEntities {
+                entitiesByAccountId[entity.accountId] = entity
+                if let legacyAccountId = entity.legacyAccountId {
+                    entitiesByLegacyId[legacyAccountId] = entity
+                }
+                entitiesByCode[entity.code] = entitiesByCode[entity.code] ?? entity
+            }
+
+            var changed = false
+            for legacyAccount in accounts {
+                let canonicalId = LegacyAccountCanonicalMapper.canonicalAccountId(
+                    businessId: businessId,
+                    legacyAccountId: legacyAccount.id
+                )
+                let existingEntity = entitiesByLegacyId[legacyAccount.id]
+                    ?? entitiesByAccountId[canonicalId]
+                    ?? entitiesByCode[legacyAccount.code]
+                let existingAccount = existingEntity.map(CanonicalAccountEntityMapper.toDomain)
+                let canonicalAccount = LegacyAccountCanonicalMapper.canonicalAccount(
+                    from: legacyAccount,
+                    businessId: businessId,
+                    existing: existingAccount
+                )
+
+                if let existingEntity {
+                    if CanonicalAccountEntityMapper.toDomain(existingEntity) != canonicalAccount {
+                        CanonicalAccountEntityMapper.update(existingEntity, from: canonicalAccount)
+                        changed = true
+                    }
+                } else {
+                    modelContext.insert(CanonicalAccountEntityMapper.toEntity(canonicalAccount))
+                    changed = true
+                }
+            }
+
+            if changed {
+                try modelContext.save()
+            }
+        } catch {
+            AppLogger.dataStore.warning("Canonical account sync failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func canonicalAccountIdsByLegacyId(businessId: UUID) -> [String: UUID] {
+        do {
+            let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+            let entities = try modelContext.fetch(descriptor)
+            return Dictionary(
+                uniqueKeysWithValues: entities.compactMap { entity in
+                    guard let legacyAccountId = entity.legacyAccountId else {
+                        return nil
+                    }
+                    return (legacyAccountId, entity.accountId)
+                }
+            )
+        } catch {
+            AppLogger.dataStore.warning("Canonical account lookup failed: \(error.localizedDescription)")
+            return [:]
+        }
+    }
+
+    private func canonicalAccountsByLegacyId(businessId: UUID) -> [String: CanonicalAccount] {
+        do {
+            let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+            let entities = try modelContext.fetch(descriptor)
+            return Dictionary(
+                uniqueKeysWithValues: entities.compactMap { entity in
+                    guard let legacyAccountId = entity.legacyAccountId else {
+                        return nil
+                    }
+                    return (legacyAccountId, CanonicalAccountEntityMapper.toDomain(entity))
+                }
+            )
+        } catch {
+            AppLogger.dataStore.warning("Canonical account domain lookup failed: \(error.localizedDescription)")
+            return [:]
+        }
+    }
+
+    private func canonicalAccountId(
+        for legacyAccountId: String,
+        canonicalIdsByLegacyId: [String: UUID]
+    ) -> UUID? {
+        if let mappedId = canonicalIdsByLegacyId[legacyAccountId] {
+            return mappedId
+        }
+        if let uuid = UUID(uuidString: legacyAccountId) {
+            return uuid
+        }
+        return nil
+    }
+
+    private func canonicalCounterparty(id: UUID) -> Counterparty? {
+        do {
+            let descriptor = FetchDescriptor<CounterpartyEntity>(
+                predicate: #Predicate { $0.counterpartyId == id }
+            )
+            return try modelContext.fetch(descriptor).first.map(CounterpartyEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical counterparty lookup failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
+        do {
+            let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [
+                    SortDescriptor(\.displayOrder),
+                    SortDescriptor(\.code)
+                ]
+            )
+            return try modelContext.fetch(descriptor).map(CanonicalAccountEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical accounts fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
+        do {
+            let descriptor: FetchDescriptor<JournalEntryEntity>
+            if let taxYear {
+                descriptor = FetchDescriptor<JournalEntryEntity>(
+                    predicate: #Predicate {
+                        $0.businessId == businessId && $0.taxYear == taxYear
+                    },
+                    sortBy: [
+                        SortDescriptor(\.journalDate, order: .reverse),
+                        SortDescriptor(\.voucherNo, order: .reverse)
+                    ]
+                )
+            } else {
+                descriptor = FetchDescriptor<JournalEntryEntity>(
+                    predicate: #Predicate { $0.businessId == businessId },
+                    sortBy: [
+                        SortDescriptor(\.journalDate, order: .reverse),
+                        SortDescriptor(\.voucherNo, order: .reverse)
+                    ]
+                )
+            }
+            return try modelContext.fetch(descriptor).map(CanonicalJournalEntryEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical journals fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func fetchCanonicalJournalEntries(evidenceId: UUID) -> [CanonicalJournalEntry] {
+        do {
+            let descriptor = FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.sourceEvidenceId == evidenceId },
+                sortBy: [
+                    SortDescriptor(\.journalDate, order: .reverse),
+                    SortDescriptor(\.voucherNo, order: .reverse)
+                ]
+            )
+            return try modelContext.fetch(descriptor).map(CanonicalJournalEntryEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical evidence journals fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    func legacyLedgerDiagnostics() -> LegacyLedgerDiagnostics {
+        do {
+            let books = try modelContext.fetch(FetchDescriptor<SDLedgerBook>())
+            let entries = try modelContext.fetch(FetchDescriptor<SDLedgerEntry>())
+            let journalBookIds = Set(
+                books
+                    .filter { $0.ledgerTypeRaw == LedgerType.journal.rawValue }
+                    .map(\.id)
+            )
+            let legacyJournalEntryCount = entries.reduce(into: 0) { count, entry in
+                if journalBookIds.contains(entry.bookId) {
+                    count += 1
+                }
+            }
+
+            return LegacyLedgerDiagnostics(
+                legacyBookCount: books.count,
+                legacyEntryCount: entries.count,
+                legacyJournalBookCount: journalBookIds.count,
+                legacyJournalEntryCount: legacyJournalEntryCount,
+                canonicalJournalEntryCount: journalEntries.count
+            )
+        } catch {
+            AppLogger.dataStore.warning("Legacy ledger diagnostics failed: \(error.localizedDescription)")
+            return LegacyLedgerDiagnostics(
+                legacyBookCount: 0,
+                legacyEntryCount: 0,
+                legacyJournalBookCount: 0,
+                legacyJournalEntryCount: 0,
+                canonicalJournalEntryCount: journalEntries.count
+            )
+        }
+    }
+
+    private func logLegacyLedgerDiagnosticsIfNeeded() {
+        let diagnostics = legacyLedgerDiagnostics()
+        guard diagnostics.hasLegacyData else {
+            return
+        }
+
+        AppLogger.dataStore.info(
+            """
+            Legacy ledger diagnostics:
+              books=\(diagnostics.legacyBookCount)
+              entries=\(diagnostics.legacyEntryCount)
+              legacyJournalBooks=\(diagnostics.legacyJournalBookCount)
+              legacyJournalEntries=\(diagnostics.legacyJournalEntryCount)
+              canonicalJournalEntries=\(diagnostics.canonicalJournalEntryCount)
+              journalEntryDelta=\(diagnostics.journalEntryDelta)
+            """
+        )
+
+        if !FeatureFlags.useLegacyLedger {
+            AppLogger.dataStore.warning("Legacy ledger UI is disabled while legacy ledger data remains in store")
+        }
     }
 
     // MARK: - Initialization
@@ -73,6 +390,9 @@ class DataStore {
 
             let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
             accountingProfile = try modelContext.fetch(profileDescriptor).first
+            runLegacyProfileMigrationIfNeeded()
+            refreshCanonicalProfileCache()
+            _ = loadSensitivePayload()
 
             let fixedAssetDescriptor = FetchDescriptor<PPFixedAsset>(sortBy: [SortDescriptor(\.acquisitionDate, order: .reverse)])
             fixedAssets = try modelContext.fetch(fixedAssetDescriptor)
@@ -92,6 +412,8 @@ class DataStore {
                 refreshTransactions()
                 let profileDesc = FetchDescriptor<PPAccountingProfile>()
                 accountingProfile = try? modelContext.fetch(profileDesc).first
+                runLegacyProfileMigrationIfNeeded()
+                refreshCanonicalProfileCache()
                 AppLogger.dataStore.info("Bootstrap完了: accounts=\(result.accountsCreated), journals=\(result.journalEntriesGenerated)")
                 if !result.integrityIssues.isEmpty {
                     AppLogger.dataStore.warning("Bootstrap整合性チェック: \(result.integrityIssues.count)件の問題あり")
@@ -103,11 +425,66 @@ class DataStore {
 
             // 既存ユーザーに新しいデフォルト勘定科目を追加（減価償却累計額等）
             seedMissingDefaultAccounts()
+            syncCanonicalAccountsFromLegacyAccountsIfNeeded()
+            persistCanonicalProfileStateIfNeeded()
+            logLegacyLedgerDiagnosticsIfNeeded()
         } catch {
             AppLogger.dataStore.error("Failed to load data: \(error.localizedDescription)")
             lastError = .dataLoadFailed(underlying: error)
         }
         isLoading = false
+    }
+
+    @discardableResult
+    func reloadProfileSettings() async -> Bool {
+        let payload = loadSensitivePayload()
+        do {
+            let defaultTaxYear = currentTaxYearProfile?.taxYear ?? accountingProfile?.fiscalYear ?? currentFiscalYear()
+            let state = try await profileSettingsUseCase.load(
+                defaultTaxYear: defaultTaxYear,
+                legacyProfile: accountingProfile,
+                sensitivePayload: payload
+            )
+            applyProfileSettingsState(state)
+            return true
+        } catch {
+            AppLogger.dataStore.error("Failed to reload profile settings: \(error.localizedDescription)")
+            lastError = .dataLoadFailed(underlying: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func saveProfileSettings(
+        command: SaveProfileSettingsCommand,
+        sensitivePayload: ProfileSensitivePayload
+    ) async -> Result<Void, Error> {
+        do {
+            let state = try await profileSettingsUseCase.load(
+                defaultTaxYear: command.taxYear,
+                legacyProfile: accountingProfile,
+                sensitivePayload: sensitivePayload
+            )
+            guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
+                return .failure(AppError.saveFailed(underlying: NSError(domain: "ProfileSecureStore", code: 1)))
+            }
+            let savedState = try await profileSettingsUseCase.save(
+                command: command,
+                currentState: state
+            )
+
+            persistLegacyFiscalYearIfNeeded(savedState.taxYearProfile.taxYear)
+            applyProfileSettingsState(savedState)
+
+            if save() {
+                return .success(())
+            }
+            return .failure(lastError ?? AppError.saveFailed(underlying: NSError(domain: "ProfileSettings", code: 2)))
+        } catch {
+            AppLogger.dataStore.error("Failed to save profile settings: \(error.localizedDescription)")
+            lastError = .saveFailed(underlying: error)
+            return .failure(error)
+        }
     }
 
     /// マイグレーション: SwiftDataスキーマ変更後の整合性チェック
@@ -116,6 +493,601 @@ class DataStore {
     private func migrateNilOptionalFields() {
         // SwiftData handles schema migration with default values from init.
         // This method is retained as a hook for future migrations.
+    }
+
+    func refreshCanonicalProfileCache() {
+        let payload = loadSensitivePayload()
+
+        do {
+            let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
+                sortBy: [SortDescriptor(\.createdAt)]
+            )
+            let businessEntities = try modelContext.fetch(businessDescriptor)
+            if let entity = businessEntities.first {
+                businessProfile = BusinessProfileEntityMapper.toDomain(entity)
+            } else if let accountingProfile {
+                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
+                    from: accountingProfile,
+                    sensitivePayload: payload
+                )
+            } else {
+                businessProfile = nil
+            }
+
+            if let businessProfile {
+                let defaultTaxYear = accountingProfile?.fiscalYear ?? currentFiscalYear()
+                let businessId = businessProfile.id
+                let taxDescriptor = FetchDescriptor<TaxYearProfileEntity>(
+                    predicate: #Predicate {
+                        $0.businessId == businessId && $0.taxYear == defaultTaxYear
+                    }
+                )
+                let taxEntities = try modelContext.fetch(taxDescriptor)
+                if let entity = taxEntities.first {
+                    currentTaxYearProfile = TaxYearProfileEntityMapper.toDomain(entity)
+                } else if let accountingProfile {
+                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
+                        from: accountingProfile,
+                        businessId: businessProfile.id,
+                        taxPackVersion: "\(defaultTaxYear)-v1"
+                    )
+                } else {
+                    currentTaxYearProfile = TaxYearProfile(
+                        businessId: businessProfile.id,
+                        taxYear: defaultTaxYear,
+                        taxPackVersion: "\(defaultTaxYear)-v1"
+                    )
+                }
+            } else {
+                currentTaxYearProfile = nil
+            }
+        } catch {
+            AppLogger.dataStore.warning("Canonical profile cache refresh skipped: \(error.localizedDescription)")
+            if let accountingProfile {
+                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
+                    from: accountingProfile,
+                    sensitivePayload: payload
+                )
+                if let businessProfile {
+                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
+                        from: accountingProfile,
+                        businessId: businessProfile.id,
+                        taxPackVersion: "\(accountingProfile.fiscalYear)-v1"
+                    )
+                }
+            }
+        }
+    }
+
+    func persistCanonicalProfileStateIfNeeded() {
+        guard let businessProfile, let currentTaxYearProfile else { return }
+
+        do {
+            let businessId = businessProfile.id
+            let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+            let businessEntities = try modelContext.fetch(businessDescriptor)
+            if let entity = businessEntities.first {
+                BusinessProfileEntityMapper.update(entity, from: businessProfile)
+            } else {
+                modelContext.insert(BusinessProfileEntityMapper.toEntity(businessProfile))
+            }
+
+            let taxProfileId = currentTaxYearProfile.id
+            let taxDescriptor = FetchDescriptor<TaxYearProfileEntity>(
+                predicate: #Predicate { $0.profileId == taxProfileId }
+            )
+            let taxEntities = try modelContext.fetch(taxDescriptor)
+            if let entity = taxEntities.first {
+                TaxYearProfileEntityMapper.update(entity, from: currentTaxYearProfile)
+            } else {
+                modelContext.insert(TaxYearProfileEntityMapper.toEntity(currentTaxYearProfile))
+            }
+
+            try modelContext.save()
+        } catch {
+            AppLogger.dataStore.warning("Canonical profile persistence skipped: \(error.localizedDescription)")
+            modelContext.rollback()
+        }
+    }
+
+    private func applyProfileSettingsState(_ state: ProfileSettingsState) {
+        businessProfile = state.businessProfile
+        currentTaxYearProfile = state.taxYearProfile
+    }
+
+    private func loadSensitivePayload() -> ProfileSensitivePayload? {
+        if let canonicalProfileSecureStoreId,
+           let payload = ProfileSecureStore.load(profileId: canonicalProfileSecureStoreId) {
+            return payload
+        }
+
+        if let legacyProfileSecureStoreId,
+           let payload = ProfileSecureStore.load(profileId: legacyProfileSecureStoreId) {
+            if let canonicalProfileSecureStoreId,
+               canonicalProfileSecureStoreId != legacyProfileSecureStoreId {
+                _ = ProfileSecureStore.save(payload, profileId: canonicalProfileSecureStoreId)
+            }
+            return payload
+        }
+
+        guard let legacyPayload = fallbackSensitivePayloadFromLegacyProfile() else {
+            return nil
+        }
+        if let canonicalProfileSecureStoreId {
+            _ = ProfileSecureStore.save(legacyPayload, profileId: canonicalProfileSecureStoreId)
+        }
+        if let legacyProfileSecureStoreId {
+            _ = ProfileSecureStore.save(legacyPayload, profileId: legacyProfileSecureStoreId)
+        }
+        return legacyPayload
+    }
+
+    private func fallbackSensitivePayloadFromLegacyProfile() -> ProfileSensitivePayload? {
+        guard let accountingProfile else {
+            return nil
+        }
+
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: accountingProfile.ownerNameKana,
+            postalCode: accountingProfile.postalCode,
+            address: accountingProfile.address,
+            phoneNumber: accountingProfile.phoneNumber,
+            dateOfBirth: accountingProfile.dateOfBirth,
+            businessCategory: accountingProfile.businessCategory,
+            myNumberFlag: accountingProfile.myNumberFlag
+        )
+
+        let hasLegacySensitiveValue =
+            payload.ownerNameKana != nil ||
+            payload.postalCode != nil ||
+            payload.address != nil ||
+            payload.phoneNumber != nil ||
+            payload.dateOfBirth != nil ||
+            payload.businessCategory != nil ||
+            payload.myNumberFlag != nil
+
+        if hasLegacySensitiveValue {
+            AppLogger.dataStore.info("Profile sensitive payload backfilled from legacy profile")
+            return payload
+        }
+        return nil
+    }
+
+    private func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
+        let canonicalId = businessProfileId.uuidString
+        guard ProfileSecureStore.save(payload, profileId: canonicalId) else {
+            return false
+        }
+        if let legacyProfileSecureStoreId,
+           legacyProfileSecureStoreId != canonicalId {
+            _ = ProfileSecureStore.save(payload, profileId: legacyProfileSecureStoreId)
+        }
+        return true
+    }
+
+    private func persistLegacyFiscalYearIfNeeded(_ taxYear: Int) {
+        guard let accountingProfile, accountingProfile.fiscalYear != taxYear else {
+            return
+        }
+        accountingProfile.fiscalYear = taxYear
+        accountingProfile.updatedAt = Date()
+    }
+
+    func etaxExportProfile(for fiscalYear: Int) -> PPAccountingProfile? {
+        guard let businessProfile else {
+            return accountingProfile
+        }
+
+        let payload = loadSensitivePayload()
+        let taxYearProfile = resolvedTaxYearProfileForExport(
+            fiscalYear: fiscalYear,
+            businessId: businessProfile.id
+        )
+
+        return PPAccountingProfile(
+            id: businessProfile.id.uuidString,
+            fiscalYear: fiscalYear,
+            bookkeepingMode: bookkeepingModeForExport(taxYearProfile.bookkeepingBasis),
+            businessName: businessProfile.businessName,
+            ownerName: businessProfile.ownerName,
+            taxOfficeCode: normalizedOptionalString(businessProfile.taxOfficeCode),
+            isBlueReturn: taxYearProfile.filingStyle.isBlue,
+            defaultPaymentAccountId: businessProfile.defaultPaymentAccountId,
+            openingDate: businessProfile.openingDate,
+            lockedYears: taxYearProfile.yearLockState == .open ? [] : [fiscalYear],
+            ownerNameKana: normalizedOptionalString(payload?.ownerNameKana ?? businessProfile.ownerNameKana),
+            postalCode: normalizedOptionalString(payload?.postalCode ?? businessProfile.postalCode),
+            address: normalizedOptionalString(payload?.address ?? businessProfile.businessAddress),
+            phoneNumber: normalizedOptionalString(payload?.phoneNumber ?? businessProfile.phoneNumber),
+            dateOfBirth: payload?.dateOfBirth,
+            businessCategory: normalizedOptionalString(payload?.businessCategory),
+            myNumberFlag: payload?.myNumberFlag
+        )
+    }
+
+    private func taxYearProfileForExport(fiscalYear: Int, businessId: UUID) -> TaxYearProfile? {
+        if let currentTaxYearProfile, currentTaxYearProfile.taxYear == fiscalYear {
+            return currentTaxYearProfile
+        }
+
+        do {
+            let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == fiscalYear
+                }
+            )
+            return try modelContext.fetch(descriptor).first.map(TaxYearProfileEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("e-Tax export profile lookup failed: year=\(fiscalYear), error=\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func resolvedTaxYearProfileForExport(fiscalYear: Int, businessId: UUID) -> TaxYearProfile {
+        if let profile = taxYearProfileForExport(fiscalYear: fiscalYear, businessId: businessId) {
+            return profile
+        }
+
+        if let currentTaxYearProfile, currentTaxYearProfile.businessId == businessId {
+            return TaxYearProfile(
+                businessId: businessId,
+                taxYear: fiscalYear,
+                filingStyle: currentTaxYearProfile.filingStyle,
+                blueDeductionLevel: currentTaxYearProfile.blueDeductionLevel,
+                bookkeepingBasis: currentTaxYearProfile.bookkeepingBasis,
+                vatStatus: currentTaxYearProfile.vatStatus,
+                vatMethod: currentTaxYearProfile.vatMethod,
+                simplifiedBusinessCategory: currentTaxYearProfile.simplifiedBusinessCategory,
+                invoiceIssuerStatusAtYear: currentTaxYearProfile.invoiceIssuerStatusAtYear,
+                electronicBookLevel: currentTaxYearProfile.electronicBookLevel,
+                etaxSubmissionPlanned: currentTaxYearProfile.etaxSubmissionPlanned,
+                yearLockState: currentTaxYearProfile.yearLockState,
+                taxPackVersion: "\(fiscalYear)-v1"
+            )
+        }
+
+        return TaxYearProfile(
+            businessId: businessId,
+            taxYear: fiscalYear,
+            taxPackVersion: "\(fiscalYear)-v1"
+        )
+    }
+
+    private func bookkeepingModeForExport(_ bookkeepingBasis: BookkeepingBasis) -> BookkeepingMode {
+        switch bookkeepingBasis {
+        case .singleEntry:
+            return .singleEntry
+        case .doubleEntry, .cashBasis:
+            return .doubleEntry
+        }
+    }
+
+    private func normalizedOptionalString(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func currentFiscalYear() -> Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    private func enqueueCanonicalTransactionSync(for transactionId: UUID, source: CandidateSource?) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.syncCanonicalArtifacts(forTransactionId: transactionId, source: source)
+        }
+    }
+
+    private func enqueueCanonicalRecurringCounterpartySync(for recurringId: UUID) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.syncCanonicalCounterparty(forRecurringId: recurringId)
+        }
+    }
+
+    func syncCanonicalArtifacts(
+        forTransactionId transactionId: UUID,
+        source: CandidateSource? = nil
+    ) async -> CanonicalTransactionSyncResult {
+        guard let transaction = allTransactions.first(where: { $0.id == transactionId }) else {
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: .skippedSourceNotFound,
+                postingStatus: .skippedSourceNotFound
+            )
+        }
+
+        let explicitTaxCodeId = TaxCode.resolve(
+            legacyCategory: transaction.taxCategory,
+            taxRate: transaction.taxRate
+        )?.rawValue
+        let counterpartyStatus = await syncCanonicalCounterparty(
+            named: transaction.counterparty,
+            defaultTaxCodeId: explicitTaxCodeId
+        )
+        let counterpartyId: UUID?
+        switch counterpartyStatus {
+        case .synced(let id):
+            counterpartyId = id
+        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
+            counterpartyId = nil
+        }
+        let postingStatus = await syncCanonicalPosting(
+            for: transaction,
+            counterpartyId: counterpartyId,
+            source: source
+        )
+
+        return CanonicalTransactionSyncResult(
+            counterpartyStatus: counterpartyStatus,
+            postingStatus: postingStatus
+        )
+    }
+
+    func syncCanonicalCounterparty(forRecurringId recurringId: UUID) async -> CanonicalCounterpartySyncStatus {
+        guard let recurring = recurringTransactions.first(where: { $0.id == recurringId }) else {
+            return .skippedSourceNotFound
+        }
+        return await syncCanonicalCounterparty(named: recurring.counterparty, defaultTaxCodeId: nil)
+    }
+
+    private func syncCanonicalCounterparty(
+        named rawName: String?,
+        defaultTaxCodeId: String?
+    ) async -> CanonicalCounterpartySyncStatus {
+        guard let businessId = businessProfile?.id else {
+            return .skippedBusinessProfileUnavailable
+        }
+        guard let displayName = normalizedOptionalString(rawName) else {
+            return .skippedBlankName
+        }
+        let stableId = stableCounterpartyId(businessId: businessId, displayName: displayName)
+
+        do {
+            let matches = try await counterpartyMasterUseCase.searchCounterparties(
+                businessId: businessId,
+                query: displayName
+            )
+            let existing = matches.first {
+                $0.displayName.compare(displayName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            }
+            let resolvedDefaultTaxCodeId = defaultTaxCodeId ?? existing?.defaultTaxCodeId
+            let counterparty = existing?.updated(
+                displayName: displayName,
+                defaultTaxCodeId: .some(resolvedDefaultTaxCodeId)
+            )
+                ?? Counterparty(
+                    id: stableId,
+                    businessId: businessId,
+                    displayName: displayName,
+                    defaultTaxCodeId: resolvedDefaultTaxCodeId,
+                    createdAt: Date(),
+                    updatedAt: Date()
+                )
+            try await counterpartyMasterUseCase.save(counterparty)
+            return .synced(counterparty.id)
+        } catch {
+            AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {
+        let normalizedName = displayName
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let seed = "\(businessId.uuidString.lowercased())|\(normalizedName)"
+        var bytes = Array(SHA256.hash(data: Data(seed.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let uuid = uuid_t(
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        )
+        return UUID(uuid: uuid)
+    }
+
+    private func syncCanonicalPosting(
+        for transaction: PPTransaction,
+        counterpartyId: UUID?,
+        source: CandidateSource?
+    ) async -> CanonicalPostingSyncStatus {
+        guard let businessId = businessProfile?.id else {
+            return .skippedBusinessProfileUnavailable
+        }
+        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
+        guard let legacyJournalId = transaction.journalEntryId,
+              let legacyEntry = journalEntries.first(where: { $0.id == legacyJournalId })
+        else {
+            return .skippedLegacyJournalUnavailable
+        }
+
+        let legacyLines = journalLines
+            .filter { $0.entryId == legacyJournalId }
+            .sorted { $0.displayOrder < $1.displayOrder }
+        guard !legacyLines.isEmpty else {
+            return .skippedLegacyJournalUnavailable
+        }
+
+        let canonicalIdsByLegacyId = canonicalAccountIdsByLegacyId(businessId: businessId)
+        let canonicalAccountsByLegacyId = canonicalAccountsByLegacyId(businessId: businessId)
+
+        let unmappableAccountIds = Array(
+            Set(
+                legacyLines.compactMap { line in
+                    canonicalAccountId(
+                        for: line.accountId,
+                        canonicalIdsByLegacyId: canonicalIdsByLegacyId
+                    ) == nil ? line.accountId : nil
+                }
+            )
+        ).sorted()
+        guard unmappableAccountIds.isEmpty else {
+            let unmappableList = unmappableAccountIds.joined(separator: ", ")
+            AppLogger.dataStore.info(
+                "Canonical posting sync skipped for transaction \(transaction.id.uuidString): unmappable legacy account ids = \(unmappableList)"
+            )
+            return .skippedUnmappableAccountIds(unmappableAccountIds)
+        }
+
+        let counterparty = counterpartyId.flatMap { canonicalCounterparty(id: $0) }
+        let resolvedTaxCodeId = resolvedCanonicalTaxCodeId(
+            for: transaction,
+            counterparty: counterparty,
+            legacyLines: legacyLines,
+            canonicalAccountsByLegacyId: canonicalAccountsByLegacyId
+        )
+        let taxYear = fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
+        let taxYearProfile = resolvedTaxYearProfileForExport(
+            fiscalYear: taxYear,
+            businessId: businessId
+        )
+        let pack = try? await BundledTaxYearPackProvider(bundle: .main).pack(for: taxYear)
+        let resolvedTaxAnalysis = makeCanonicalTaxAnalysis(
+            for: transaction,
+            taxCodeId: resolvedTaxCodeId,
+            counterparty: counterparty,
+            taxYearProfile: taxYearProfile,
+            pack: pack
+        )
+
+        let candidateLines = legacyLines.compactMap { line -> PostingCandidateLine? in
+            guard let accountId = canonicalAccountId(
+                for: line.accountId,
+                canonicalIdsByLegacyId: canonicalIdsByLegacyId
+            ) else {
+                return nil
+            }
+            return PostingCandidateLine(
+                debitAccountId: line.debit > 0 ? accountId : nil,
+                creditAccountId: line.credit > 0 ? accountId : nil,
+                amount: Decimal(line.amount),
+                taxCodeId: resolvedTaxCodeId,
+                memo: normalizedOptionalString(line.memo)
+            )
+        }
+
+        guard !candidateLines.isEmpty else {
+            return .skippedLegacyJournalUnavailable
+        }
+
+        let description = normalizedOptionalString(legacyEntry.memo)
+            ?? normalizedOptionalString(transaction.memo)
+            ?? ""
+        let inferredSource: CandidateSource = source ?? (transaction.recurringId == nil ? .manual : .recurring)
+        let candidate = PostingCandidate(
+            id: transaction.id,
+            evidenceId: nil,
+            businessId: businessId,
+            taxYear: taxYear,
+            candidateDate: transaction.date,
+            counterpartyId: counterpartyId,
+            proposedLines: candidateLines,
+            taxAnalysis: resolvedTaxAnalysis,
+            confidenceScore: 1.0,
+            status: .approved,
+            source: inferredSource,
+            memo: description,
+            createdAt: transaction.createdAt,
+            updatedAt: transaction.updatedAt
+        )
+
+        do {
+            let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
+                candidate,
+                journalId: legacyJournalId,
+                entryType: transaction.recurringId == nil ? .normal : .recurring,
+                description: description,
+                approvedAt: transaction.updatedAt
+            )
+            return .synced(candidateId: candidate.id, journalId: journal.id)
+        } catch {
+            AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func resolvedCanonicalTaxCodeId(
+        for transaction: PPTransaction,
+        counterparty: Counterparty?,
+        legacyLines: [PPJournalLine],
+        canonicalAccountsByLegacyId: [String: CanonicalAccount]
+    ) -> String? {
+        if let explicitTaxCodeId = TaxCode.resolve(
+            legacyCategory: transaction.taxCategory,
+            taxRate: transaction.taxRate
+        )?.rawValue {
+            return explicitTaxCodeId
+        }
+
+        if let counterpartyDefault = counterparty?.defaultTaxCodeId {
+            return counterpartyDefault
+        }
+
+        for legacyLine in legacyLines {
+            guard let account = canonicalAccountsByLegacyId[legacyLine.accountId] else {
+                continue
+            }
+            guard account.accountType == .expense || account.accountType == .revenue else {
+                continue
+            }
+            if let defaultTaxCodeId = account.defaultTaxCodeId {
+                return defaultTaxCodeId
+            }
+        }
+
+        return nil
+    }
+
+    private func makeCanonicalTaxAnalysis(
+        for transaction: PPTransaction,
+        taxCodeId: String?,
+        counterparty: Counterparty?,
+        taxYearProfile: TaxYearProfile,
+        pack: TaxYearPack?
+    ) -> TaxAnalysis? {
+        guard let taxCode = TaxCode.resolve(id: taxCodeId), taxCode.isTaxable else {
+            return nil
+        }
+        guard let taxAmount = transaction.taxAmount, taxAmount > 0 else {
+            return nil
+        }
+
+        let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
+        let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
+        let grossAmount = Decimal(transaction.amount)
+        let creditMethod: InputTaxCreditMethod
+        if transaction.type == .expense {
+            creditMethod = evaluator.evaluateInputTaxCreditMethod(
+                transactionDate: transaction.date,
+                counterpartyInvoiceStatus: counterpartyInvoiceStatus,
+                amount: grossAmount
+            )
+        } else {
+            creditMethod = .notApplicable
+        }
+
+        let deductibleTaxAmount: Decimal
+        if transaction.type == .expense {
+            deductibleTaxAmount = Decimal(taxAmount) * creditMethod.creditRate
+        } else {
+            deductibleTaxAmount = Decimal(0)
+        }
+
+        return TaxAnalysis(
+            creditMethod: creditMethod,
+            taxRateBreakdown: taxCode.rateBreakdown(using: pack),
+            taxableAmount: Decimal(transaction.netAmount),
+            taxAmount: Decimal(taxAmount),
+            deductibleTaxAmount: deductibleTaxAmount
+        )
     }
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
@@ -710,7 +1682,8 @@ class DataStore {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
-        counterparty: String? = nil
+        counterparty: String? = nil,
+        candidateSource: CandidateSource? = nil
     ) -> Result<PPTransaction, AppError> {
         // T5: 年度ロックガード
         guard !isYearLocked(for: date) else {
@@ -757,6 +1730,7 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
+        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
         return .success(transaction)
     }
 
@@ -778,7 +1752,8 @@ class DataStore {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
-        counterparty: String? = nil
+        counterparty: String? = nil,
+        candidateSource: CandidateSource? = nil
     ) -> PPTransaction {
         switch addTransactionResult(
             type: type,
@@ -797,7 +1772,8 @@ class DataStore {
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
-            counterparty: counterparty
+            counterparty: counterparty,
+            candidateSource: candidateSource
         ) {
         case .success(let transaction):
             return transaction
@@ -806,6 +1782,7 @@ class DataStore {
         }
     }
 
+    @discardableResult
     func updateTransaction(
         id: UUID,
         type: TransactionType? = nil,
@@ -823,12 +1800,23 @@ class DataStore {
         taxRate: Int?? = nil,
         isTaxIncluded: Bool?? = nil,
         taxCategory: TaxCategory?? = nil,
-        counterparty: String?? = nil
-    ) {
-        guard let transaction = transactions.first(where: { $0.id == id }) else { return }
+        counterparty: String?? = nil,
+        candidateSource: CandidateSource? = nil
+    ) -> Bool {
+        guard let transaction = transactions.first(where: { $0.id == id }) else {
+            lastError = .transactionNotFound(id: id)
+            return false
+        }
         // T5: 年度ロックガード（変更先の日付と現在の日付の両方をチェック）
-        if isYearLocked(for: transaction.date) { return }
-        if let date, isYearLocked(for: date) { return }
+        if isYearLocked(for: transaction.date) {
+            lastError = .yearLocked(year: fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth))
+            return false
+        }
+        if let date, isYearLocked(for: date) {
+            lastError = .yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth))
+            return false
+        }
+        lastError = nil
         // Phase 9: 監査ログ（変更前の値を記録）
         let txId = transaction.id
         if let type {
@@ -917,6 +1905,8 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
+        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
+        return true
     }
 
     func deleteTransaction(id: UUID) {
@@ -1126,6 +2116,7 @@ class DataStore {
         processRecurringTransactions()
         refreshTransactions()
         onRecurringScheduleChanged?(recurringTransactions)
+        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
         return recurring
     }
 
@@ -1225,6 +2216,7 @@ class DataStore {
         processRecurringTransactions()
         refreshTransactions()
         onRecurringScheduleChanged?(recurringTransactions)
+        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
     }
 
     func deleteRecurring(id: UUID) {
@@ -1541,9 +2533,12 @@ class DataStore {
             paymentAccountId: recurring.paymentAccountId,
             transferToAccountId: recurring.transferToAccountId,
             taxDeductibleRate: recurring.taxDeductibleRate,
-            counterparty: recurring.counterparty
+            counterparty: recurring.counterparty,
+            candidateSource: .recurring
         ) {
         case .success(let transaction):
+            transaction.allocations = txAllocations
+            transaction.updatedAt = Date()
             return transaction
         case .failure:
             return nil
@@ -1839,10 +2834,13 @@ class DataStore {
                 recurringId: recurring.id,
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,
-                taxDeductibleRate: recurring.taxDeductibleRate
+                taxDeductibleRate: recurring.taxDeductibleRate,
+                counterparty: recurring.counterparty,
+                candidateSource: .recurring
             ) {
-            case .success:
-                break
+            case .success(let transaction):
+                transaction.allocations = txAllocations
+                transaction.updatedAt = Date()
             case .failure:
                 continue
             }
@@ -2198,7 +3196,8 @@ class DataStore {
                 taxRate: entry.taxRate,
                 isTaxIncluded: entry.isTaxIncluded,
                 taxCategory: entry.taxCategory,
-                counterparty: entry.counterparty
+                counterparty: entry.counterparty,
+                candidateSource: .importFile
             )
 
             if case .failure(let error) = result {
@@ -2221,6 +3220,10 @@ class DataStore {
         let documentRecords = listDocumentRecords()
         let documentFilesToDelete = documentRecords.map(\.storedFileName)
         let complianceLogs = listComplianceLogs(limit: Int.max)
+        let secureStoreIds = Set([
+            canonicalProfileSecureStoreId,
+            legacyProfileSecureStoreId
+        ].compactMap { $0 })
 
         for p in projects { modelContext.delete(p) }
         for t in transactions { modelContext.delete(t) }
@@ -2231,6 +3234,16 @@ class DataStore {
         for je in journalEntries { modelContext.delete(je) }
         for jl in journalLines { modelContext.delete(jl) }
         if let profile = accountingProfile { modelContext.delete(profile) }
+        if let businessProfiles = try? modelContext.fetch(FetchDescriptor<BusinessProfileEntity>()) {
+            for profile in businessProfiles {
+                modelContext.delete(profile)
+            }
+        }
+        if let taxYearProfiles = try? modelContext.fetch(FetchDescriptor<TaxYearProfileEntity>()) {
+            for profile in taxYearProfiles {
+                modelContext.delete(profile)
+            }
+        }
         for fa in fixedAssets { modelContext.delete(fa) }
         for document in documentRecords { modelContext.delete(document) }
         for log in complianceLogs { modelContext.delete(log) }
@@ -2242,6 +3255,9 @@ class DataStore {
                 ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             }
         }
+        for profileId in secureStoreIds {
+            _ = ProfileSecureStore.delete(profileId: profileId)
+        }
         projects = []
         allTransactions = []
         categories = []
@@ -2250,6 +3266,8 @@ class DataStore {
         journalEntries = []
         journalLines = []
         accountingProfile = nil
+        businessProfile = nil
+        currentTaxYearProfile = nil
         fixedAssets = []
         seedDefaultCategories()
     }
@@ -2258,6 +3276,122 @@ class DataStore {
 
     func getAccount(id: String) -> PPAccount? {
         accounts.first { $0.id == id }
+    }
+
+    func canonicalAccounts() -> [CanonicalAccount] {
+        guard let businessId = businessProfile?.id else {
+            return []
+        }
+        return fetchCanonicalAccounts(businessId: businessId)
+    }
+
+    func canonicalAccount(id: UUID) -> CanonicalAccount? {
+        canonicalAccounts().first { $0.id == id }
+    }
+
+    func legacyAccountId(for canonicalAccountId: UUID) -> String? {
+        canonicalAccount(id: canonicalAccountId)?.legacyAccountId
+    }
+
+    func canonicalAccountId(for legacyAccountId: String) -> UUID? {
+        guard let businessId = businessProfile?.id else {
+            return UUID(uuidString: legacyAccountId)
+        }
+        return canonicalAccountId(
+            for: legacyAccountId,
+            canonicalIdsByLegacyId: canonicalAccountIdsByLegacyId(businessId: businessId)
+        )
+    }
+
+    func canonicalJournalEntries(fiscalYear: Int? = nil) -> [CanonicalJournalEntry] {
+        guard let businessId = businessProfile?.id else {
+            return []
+        }
+        return fetchCanonicalJournalEntries(businessId: businessId, taxYear: fiscalYear)
+    }
+
+    func canonicalJournalEntries(evidenceId: UUID) -> [CanonicalJournalEntry] {
+        fetchCanonicalJournalEntries(evidenceId: evidenceId)
+    }
+
+    func projectedCanonicalJournals(fiscalYear requestedFiscalYear: Int? = nil) -> (entries: [PPJournalEntry], lines: [PPJournalLine]) {
+        guard let businessId = businessProfile?.id else {
+            return ([], [])
+        }
+
+        let canonicalAccounts = fetchCanonicalAccounts(businessId: businessId)
+        let accountsById = Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) })
+        let journals = fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear)
+
+        let projectedEntries = journals.map { entry in
+            PPJournalEntry(
+                id: entry.id,
+                sourceKey: "canonical:\(entry.id.uuidString)",
+                date: entry.journalDate,
+                entryType: projectedLegacyEntryType(for: entry),
+                memo: entry.description,
+                isPosted: entry.approvedAt != nil,
+                createdAt: entry.createdAt,
+                updatedAt: entry.updatedAt
+            )
+        }
+
+        let projectedLines = journals.flatMap { entry in
+            entry.lines.sorted { $0.sortOrder < $1.sortOrder }.map { line in
+                let legacyAccountId = accountsById[line.accountId]?.legacyAccountId ?? line.accountId.uuidString
+                return PPJournalLine(
+                    id: line.id,
+                    entryId: entry.id,
+                    accountId: legacyAccountId,
+                    debit: NSDecimalNumber(decimal: line.debitAmount).intValue,
+                    credit: NSDecimalNumber(decimal: line.creditAmount).intValue,
+                    memo: "",
+                    displayOrder: line.sortOrder,
+                    createdAt: entry.createdAt,
+                    updatedAt: entry.updatedAt
+                )
+            }
+        }
+
+        let legacySupplementalEntries = journalEntries.filter { entry in
+            guard !projectedEntries.contains(where: { $0.id == entry.id }) else {
+                return false
+            }
+            let isSupplemental = entry.sourceKey.hasPrefix("manual:")
+                || entry.sourceKey.hasPrefix("opening:")
+                || entry.sourceKey.hasPrefix("closing:")
+            guard isSupplemental else {
+                return false
+            }
+            guard let requestedFiscalYear else {
+                return true
+            }
+            return fiscalYear(for: entry.date, startMonth: FiscalYearSettings.startMonth) == requestedFiscalYear
+        }
+        let legacySupplementalLines = journalLines.filter { line in
+            legacySupplementalEntries.contains { $0.id == line.entryId }
+        }
+
+        let mergedEntries = (projectedEntries + legacySupplementalEntries)
+            .sorted { lhs, rhs in
+                if lhs.date == rhs.date {
+                    return lhs.createdAt > rhs.createdAt
+                }
+                return lhs.date > rhs.date
+            }
+        let mergedLines = projectedLines + legacySupplementalLines
+        return (mergedEntries, mergedLines)
+    }
+
+    private func projectedLegacyEntryType(for entry: CanonicalJournalEntry) -> JournalEntryType {
+        switch entry.entryType {
+        case .opening:
+            return .opening
+        case .closing:
+            return .closing
+        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+            return .auto
+        }
     }
 
     func getJournalEntry(id: UUID) -> PPJournalEntry? {

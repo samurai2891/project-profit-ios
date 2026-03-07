@@ -1,0 +1,241 @@
+{
+  "businessProfile": {
+    "businessName": "田中ソフトウェア開発",
+    "ownerName": "田中太郎",
+    "ownerNameKana": "タナカタロウ",
+    "fiscalYear": 2025,
+    "isBlueReturn": true,
+    "bookkeepingMode": "doubleEntry",
+    "address": "東京都渋谷区神宮前1-2-3",
+    "postalCode": "1500001",
+    "phoneNumber": "03-1234-5678",
+    "taxOfficeCode": "01234"
+  },
+  "projects": [
+    {
+      "id": "proj-001",
+      "name": "Webアプリ開発案件A",
+      "status": "active",
+      "startDate": "2025-01-15"
+    },
+    {
+      "id": "proj-002",
+      "name": "モバイルアプリ保守B",
+      "status": "completed",
+      "startDate": "2025-02-01",
+      "completedAt": "2025-09-30"
+    },
+    {
+      "id": "proj-003",
+      "name": "コンサルティング案件C",
+      "status": "paused",
+      "startDate": "2025-04-01"
+    }
+  ],
+  "categories": [
+    { "id": "cat-sales", "name": "売上", "type": "income" },
+    { "id": "cat-rent", "name": "地代家賃", "type": "expense" },
+    { "id": "cat-utilities", "name": "水道光熱費", "type": "expense" },
+    { "id": "cat-travel", "name": "旅費交通費", "type": "expense" },
+    { "id": "cat-supplies", "name": "消耗品費", "type": "expense" },
+    { "id": "cat-outsource", "name": "外注費", "type": "expense" },
+    { "id": "cat-comms", "name": "通信費", "type": "expense" },
+    { "id": "cat-software", "name": "ソフトウェア", "type": "expense" }
+  ],
+  "accounts": [
+    { "id": "acct-cash", "code": "100", "name": "現金", "accountType": "asset" },
+    { "id": "acct-bank-main", "code": "102", "name": "普通預金（メイン）", "accountType": "asset" },
+    { "id": "acct-ar", "code": "120", "name": "売掛金", "accountType": "asset" },
+    { "id": "acct-sales", "code": "401", "name": "売上高", "accountType": "revenue" },
+    { "id": "acct-rent", "code": "520", "name": "地代家賃", "accountType": "expense" },
+    { "id": "acct-utilities", "code": "521", "name": "水道光熱費", "accountType": "expense" },
+    { "id": "acct-travel", "code": "522", "name": "旅費交通費", "accountType": "expense" },
+    { "id": "acct-supplies", "code": "523", "name": "消耗品費", "accountType": "expense" },
+    { "id": "acct-outsource", "code": "524", "name": "外注費", "accountType": "expense" },
+    { "id": "acct-comms", "code": "525", "name": "通信費", "accountType": "expense" },
+    { "id": "acct-depreciation", "code": "530", "name": "減価償却費", "accountType": "expense" }
+  ],
+  "transactions": [
+    {
+      "id": "tx-001",
+      "type": "income",
+      "amount": 550000,
+      "date": "2025-01-31",
+      "categoryId": "cat-sales",
+      "memo": "Webアプリ開発 1月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "株式会社クライアントA",
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 100, "amount": 550000 }
+      ]
+    },
+    {
+      "id": "tx-002",
+      "type": "income",
+      "amount": 330000,
+      "date": "2025-02-28",
+      "categoryId": "cat-sales",
+      "memo": "モバイルアプリ保守 2月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "合同会社クライアントB",
+      "allocations": [
+        { "projectId": "proj-002", "ratio": 100, "amount": 330000 }
+      ]
+    },
+    {
+      "id": "tx-003",
+      "type": "expense",
+      "amount": 110000,
+      "date": "2025-01-25",
+      "categoryId": "cat-rent",
+      "memo": "事務所家賃 1月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "不動産管理株式会社",
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 50, "amount": 55000 },
+        { "projectId": "proj-002", "ratio": 50, "amount": 55000 }
+      ]
+    },
+    {
+      "id": "tx-004",
+      "type": "expense",
+      "amount": 8640,
+      "date": "2025-02-10",
+      "categoryId": "cat-utilities",
+      "memo": "電気代 1月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "東京電力"
+    },
+    {
+      "id": "tx-005",
+      "type": "expense",
+      "amount": 1296,
+      "date": "2025-03-05",
+      "categoryId": "cat-travel",
+      "memo": "渋谷→新宿 打ち合わせ往復",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": null,
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 100, "amount": 1296 }
+      ]
+    },
+    {
+      "id": "tx-006",
+      "type": "expense",
+      "amount": 4320,
+      "date": "2025-03-15",
+      "categoryId": "cat-supplies",
+      "memo": "コンビニ 文房具・飲料",
+      "taxRate": 8,
+      "isTaxIncluded": true,
+      "counterparty": "セブンイレブン渋谷店"
+    },
+    {
+      "id": "tx-007",
+      "type": "expense",
+      "amount": 220000,
+      "date": "2025-04-01",
+      "categoryId": "cat-outsource",
+      "memo": "デザイン外注 LP制作",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "フリーランスデザイナー山田",
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 100, "amount": 220000 }
+      ]
+    },
+    {
+      "id": "tx-008",
+      "type": "income",
+      "amount": 550000,
+      "date": "2025-04-30",
+      "categoryId": "cat-sales",
+      "memo": "Webアプリ開発 4月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "株式会社クライアントA",
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 100, "amount": 550000 }
+      ]
+    },
+    {
+      "id": "tx-009",
+      "type": "expense",
+      "amount": 5500,
+      "date": "2025-05-01",
+      "categoryId": "cat-comms",
+      "memo": "携帯電話料金 4月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "NTTドコモ"
+    },
+    {
+      "id": "tx-010",
+      "type": "expense",
+      "amount": 12960,
+      "date": "2025-06-15",
+      "categoryId": "cat-software",
+      "memo": "Adobe CC 年間ライセンス（月額按分）",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "Adobe Inc."
+    },
+    {
+      "id": "tx-011",
+      "type": "income",
+      "amount": 165000,
+      "date": "2025-07-31",
+      "categoryId": "cat-sales",
+      "memo": "コンサルティング 7月分",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "株式会社クライアントC",
+      "allocations": [
+        { "projectId": "proj-003", "ratio": 100, "amount": 165000 }
+      ]
+    },
+    {
+      "id": "tx-012",
+      "type": "transfer",
+      "amount": 500000,
+      "date": "2025-08-01",
+      "categoryId": "cat-sales",
+      "memo": "事業用口座から現金引出",
+      "taxRate": null,
+      "isTaxIncluded": null,
+      "counterparty": null
+    },
+    {
+      "id": "tx-013",
+      "type": "expense",
+      "amount": 110000,
+      "date": "2025-06-25",
+      "categoryId": "cat-rent",
+      "memo": "事務所家賃 6月分（全プロジェクト均等配賦）",
+      "taxRate": 10,
+      "isTaxIncluded": true,
+      "counterparty": "不動産管理株式会社",
+      "allocations": [
+        { "projectId": "proj-001", "ratio": 34, "amount": 37400 },
+        { "projectId": "proj-002", "ratio": 33, "amount": 36300 },
+        { "projectId": "proj-003", "ratio": 33, "amount": 36300 }
+      ]
+    },
+    {
+      "id": "tx-014",
+      "type": "expense",
+      "amount": 2160,
+      "date": "2025-09-20",
+      "categoryId": "cat-supplies",
+      "memo": "スーパー 会議用お茶菓子",
+      "taxRate": 8,
+      "isTaxIncluded": true,
+      "counterparty": "イオン渋谷店"
+    }
+  ]
+}

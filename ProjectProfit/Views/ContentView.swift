@@ -5,30 +5,32 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(NotificationService.self) private var notificationService
     @State private var dataStore: DataStore?
-    @State private var ledgerDataStore: LedgerDataStore?
+    @State private var hasInitialized = false
 
     var body: some View {
         Group {
-            if let store = dataStore, let ledgerStore = ledgerDataStore {
+            if let store = dataStore {
                 MainTabView()
                     .environment(store)
-                    .environment(ledgerStore)
             } else {
                 ProgressView("読み込み中...")
             }
         }
         .task {
+            guard !hasInitialized else { return }
+            hasInitialized = true
+
             let store = DataStore(modelContext: modelContext)
             let notifService = notificationService
             store.onRecurringScheduleChanged = { recurrings in
                 Task { @MainActor in await notifService.rescheduleAll(recurringTransactions: recurrings) }
             }
             store.loadData()
+            _ = await store.reloadProfileSettings()
             store.recalculateAllPartialPeriodProjects()
             _ = store.processRecurringTransactions()
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store
-            self.ledgerDataStore = LedgerDataStore(modelContext: modelContext)
         }
     }
 }

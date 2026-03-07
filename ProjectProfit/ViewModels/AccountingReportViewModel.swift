@@ -25,25 +25,26 @@ final class AccountingReportViewModel {
 
     func refresh() {
         let startMonth = FiscalYearSettings.startMonth
+        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
         trialBalance = AccountingReportService.generateTrialBalance(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: startMonth
         )
         profitLoss = AccountingReportService.generateProfitLoss(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: startMonth
         )
         balanceSheet = AccountingReportService.generateBalanceSheet(
             fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: startMonth
         )
     }

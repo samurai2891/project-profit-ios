@@ -37,6 +37,13 @@ struct LedgerBookCreateView: View {
 
     var body: some View {
         Form {
+            if ledgerStore.isReadOnly {
+                Section {
+                    Text("旧台帳は読み取り専用です")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("台帳の種類") {
                 Picker("種類", selection: $selectedType) {
                     ForEach(Self.baseTypes, id: \.self) { type in
@@ -69,7 +76,7 @@ struct LedgerBookCreateView: View {
                     createBook()
                     dismiss()
                 }
-                .disabled(!isValid)
+                .disabled(!isValid || ledgerStore.isReadOnly)
             }
         }
         .onAppear { updateDefaultTitle() }
@@ -178,7 +185,7 @@ struct LedgerBookCreateView: View {
         let ledgerType = resolvedLedgerType()
         let metadataJSON = buildMetadataJSON()
 
-        ledgerStore.createBook(
+        _ = ledgerStore.createBook(
             ledgerType: ledgerType,
             title: title,
             metadataJSON: metadataJSON,

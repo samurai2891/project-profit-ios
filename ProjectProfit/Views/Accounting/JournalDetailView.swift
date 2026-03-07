@@ -1,11 +1,21 @@
+import SwiftData
 import SwiftUI
 
 struct JournalDetailView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     let entry: PPJournalEntry
 
+    @State private var canonicalEntry: CanonicalJournalEntry?
+    @State private var reversalEntry: CanonicalJournalEntry?
+    @State private var reopenedCandidate: PostingCandidate?
+    @State private var showCancelConfirmation = false
+    @State private var actionErrorMessage: String?
+
     private var lines: [PPJournalLine] {
-        dataStore.getJournalLines(for: entry.id)
+        dataStore.projectedCanonicalJournals().lines
+            .filter { $0.entryId == entry.id }
+            .sorted { $0.displayOrder < $1.displayOrder }
     }
 
     private var debitTotal: Int {
@@ -31,6 +41,37 @@ struct JournalDetailView: View {
         }
         .navigationTitle("仕訳詳細")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: entry.id) {
+            await loadCanonicalEntry()
+        }
+        .toolbar {
+            if canCancelEntry {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("取消") {
+                        showCancelConfirmation = true
+                    }
+                }
+            }
+        }
+        .alert("この仕訳を取消して再レビューへ戻しますか？", isPresented: $showCancelConfirmation) {
+            Button("取消して戻す", role: .destructive) {
+                Task { await cancelAndReopen() }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("反対仕訳を作成し、承認待ち候補を新しく作成します。")
+        }
+        .alert(
+            "取消できません",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     // MARK: - Header
@@ -61,6 +102,27 @@ struct JournalDetailView: View {
                            color: entry.isPosted ? AppColors.success : AppColors.warning)
                 statusLabel("貸借", value: isBalanced ? "一致" : "不一致",
                            color: isBalanced ? AppColors.success : AppColors.error)
+                if canonicalEntry?.lockedAt != nil {
+                    statusLabel("取消", value: "済み", color: AppColors.warning)
+                }
+            }
+
+            if let reversalEntry {
+                NavigationLink {
+                    JournalDetailView(entry: projectedEntry(for: reversalEntry))
+                } label: {
+                    Label("取消仕訳 \(reversalEntry.voucherNo)", systemImage: "arrow.uturn.backward.circle")
+                        .font(.caption.weight(.medium))
+                }
+            }
+
+            if let reopenedCandidate {
+                NavigationLink {
+                    ApprovalCandidateDetailView(candidateId: reopenedCandidate.id)
+                } label: {
+                    Label("再レビュー候補", systemImage: "checklist")
+                        .font(.caption.weight(.medium))
+                }
             }
         }
         .padding(16)
@@ -157,5 +219,48 @@ struct JournalDetailView: View {
         .padding(16)
         .background(isBalanced ? AppColors.success.opacity(0.1) : AppColors.error.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var canCancelEntry: Bool {
+        guard let canonicalEntry else {
+            return false
+        }
+        return canonicalEntry.approvedAt != nil && canonicalEntry.lockedAt == nil
+    }
+
+    private func loadCanonicalEntry() async {
+        do {
+            canonicalEntry = try await PostingWorkflowUseCase(modelContext: modelContext).journal(entry.id)
+        } catch {
+            actionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelAndReopen() async {
+        do {
+            let workflow = PostingWorkflowUseCase(modelContext: modelContext)
+            let result = try await workflow.cancelAndReopenJournal(
+                journalId: entry.id,
+                reason: entry.memo
+            )
+            reversalEntry = result.reversal
+            reopenedCandidate = result.reopened
+            canonicalEntry = try await workflow.journal(entry.id)
+        } catch {
+            actionErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func projectedEntry(for journal: CanonicalJournalEntry) -> PPJournalEntry {
+        PPJournalEntry(
+            id: journal.id,
+            sourceKey: "canonical:\(journal.id.uuidString)",
+            date: journal.journalDate,
+            entryType: journal.entryType == .closing ? .closing : (journal.entryType == .opening ? .opening : .auto),
+            memo: journal.description,
+            isPosted: journal.approvedAt != nil,
+            createdAt: journal.createdAt,
+            updatedAt: journal.updatedAt
+        )
     }
 }

@@ -1,8 +1,10 @@
 import PhotosUI
+import SwiftData
 import SwiftUI
 
 struct TransactionFormView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let transaction: PPTransaction?
@@ -22,6 +24,11 @@ struct TransactionFormView: View {
     @State private var showRemoveImageAlert = false
     @State private var imageRemoved = false
     @State private var saveError: String?
+    @State private var distributionTemplates: [DistributionRule] = []
+    @State private var selectedDistributionTemplateId: UUID?
+    @State private var isLoadingDistributionTemplates = false
+    @State private var distributionTemplateErrorMessage: String?
+    @State private var unavailableDistributionTemplateCount = 0
     // Phase 4C: 会計フィールド
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
@@ -65,6 +72,12 @@ struct TransactionFormView: View {
             return from != to
         }
         return !categoryId.isEmpty && !allocations.isEmpty && totalRatio == 100
+    }
+
+    private var distributionTemplateLoadKey: String {
+        let businessId = dataStore.businessProfile?.id.uuidString ?? "none"
+        let day = Int(Calendar.current.startOfDay(for: date).timeIntervalSince1970)
+        return "\(businessId)-\(day)"
     }
 
     var body: some View {
@@ -140,6 +153,9 @@ struct TransactionFormView: View {
             }
             .onAppear { setupInitialValues() }
             .onChange(of: type) { _, _ in autoSelectCategory() }
+            .task(id: distributionTemplateLoadKey) {
+                await loadDistributionTemplates()
+            }
         }
     }
 
@@ -522,6 +538,8 @@ struct TransactionFormView: View {
                     .accessibilityValue(totalRatio == 100 ? "正常" : "合計が100%になるよう調整してください")
             }
 
+            distributionTemplateSection
+
             ForEach(Array(allocations.enumerated()), id: \.element.id) { index, alloc in
                 let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
                 HStack {
@@ -611,6 +629,62 @@ struct TransactionFormView: View {
         }
     }
 
+    @ViewBuilder
+    private var distributionTemplateSection: some View {
+        if isLoadingDistributionTemplates
+            || !distributionTemplates.isEmpty
+            || distributionTemplateErrorMessage != nil
+            || unavailableDistributionTemplateCount > 0
+        {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("配賦テンプレート")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if isLoadingDistributionTemplates {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if !distributionTemplates.isEmpty {
+                    Picker("配賦テンプレート", selection: $selectedDistributionTemplateId) {
+                        Text("選択しない").tag(UUID?.none)
+                        ForEach(distributionTemplates, id: \.id) { rule in
+                            Text(rule.name).tag(UUID?.some(rule.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Button("テンプレートを適用") {
+                        applySelectedDistributionTemplate()
+                    }
+                    .disabled(selectedDistributionTemplateId == nil)
+                } else if !isLoadingDistributionTemplates {
+                    Text("適用できるテンプレートはありません。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if unavailableDistributionTemplateCount > 0 {
+                    Text("未対応テンプレート \(unavailableDistributionTemplateCount) 件はこの画面では適用できません。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let distributionTemplateErrorMessage {
+                    Text(distributionTemplateErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.error)
+                }
+            }
+            .padding(12)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     // MARK: - Counterparty
     private var counterpartySection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -664,7 +738,7 @@ struct TransactionFormView: View {
             } else if let first = dataStore.projects.first(where: { $0.isArchived != true }) {
                 allocations = [(id: UUID(), projectId: first.id, ratio: 100)]
             }
-            paymentAccountId = dataStore.accountingProfile?.defaultPaymentAccountId ?? paymentAccounts.first?.id
+            paymentAccountId = dataStore.defaultPaymentAccountPreference ?? paymentAccounts.first?.id
             autoSelectCategory()
         }
     }
@@ -688,6 +762,63 @@ struct TransactionFormView: View {
                 selectedImage = uiImage
                 imageRemoved = false
             }
+        }
+    }
+
+    private func loadDistributionTemplates() async {
+        guard let businessId = dataStore.businessProfile?.id else {
+            distributionTemplates = []
+            selectedDistributionTemplateId = nil
+            distributionTemplateErrorMessage = nil
+            unavailableDistributionTemplateCount = 0
+            return
+        }
+
+        isLoadingDistributionTemplates = true
+        defer { isLoadingDistributionTemplates = false }
+
+        do {
+            let useCase = DistributionTemplateUseCase(modelContext: modelContext)
+            let applier = DistributionTemplateApplicationUseCase()
+            let activeRules = try await useCase.activeRules(businessId: businessId, at: date)
+            distributionTemplates = activeRules
+                .filter { applier.isSupported($0, allocationPeriod: .month) }
+                .sorted { lhs, rhs in
+                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+            unavailableDistributionTemplateCount = activeRules.count - distributionTemplates.count
+            if let selectedDistributionTemplateId,
+               distributionTemplates.contains(where: { $0.id == selectedDistributionTemplateId }) == false
+            {
+                self.selectedDistributionTemplateId = nil
+            }
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplates = []
+            selectedDistributionTemplateId = nil
+            unavailableDistributionTemplateCount = 0
+            distributionTemplateErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applySelectedDistributionTemplate() {
+        guard let selectedDistributionTemplateId,
+              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
+        else {
+            return
+        }
+
+        do {
+            let ratios = try DistributionTemplateApplicationUseCase().buildRatioAllocations(
+                rule: rule,
+                projects: dataStore.projects,
+                referenceDate: date,
+                allocationPeriod: .month
+            )
+            allocations = ratios.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
         }
     }
 
@@ -729,11 +860,9 @@ struct TransactionFormView: View {
         }
 
         if let t = transaction {
+            let didUpdate: Bool
             if selectedImage != nil {
-                if let oldPath = t.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-                dataStore.updateTransaction(
+                didUpdate = dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
                     categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     receiptImagePath: imagePath,
@@ -744,13 +873,14 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
-                    counterparty: resolvedCounterparty
+                    counterparty: resolvedCounterparty,
+                    candidateSource: .manual
                 )
-            } else if imageRemoved {
-                if let oldPath = t.receiptImagePath {
+                if didUpdate, let oldPath = t.receiptImagePath {
                     ReceiptImageStore.deleteImage(fileName: oldPath)
                 }
-                dataStore.updateTransaction(
+            } else if imageRemoved {
+                didUpdate = dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
                     categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     receiptImagePath: .some(nil),
@@ -761,10 +891,14 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
-                    counterparty: resolvedCounterparty
+                    counterparty: resolvedCounterparty,
+                    candidateSource: .manual
                 )
+                if didUpdate, let oldPath = t.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
             } else {
-                dataStore.updateTransaction(
+                didUpdate = dataStore.updateTransaction(
                     id: t.id, type: type, amount: amount, date: date,
                     categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
                     paymentAccountId: paymentAccountId,
@@ -774,10 +908,15 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
-                    counterparty: resolvedCounterparty
+                    counterparty: resolvedCounterparty,
+                    candidateSource: .manual
                 )
             }
-            dismiss()
+            if didUpdate {
+                dismiss()
+            } else {
+                saveError = dataStore.lastError?.errorDescription ?? "保存に失敗しました"
+            }
         } else {
             let result = dataStore.addTransactionResult(
                 type: type, amount: amount, date: date,
@@ -790,7 +929,8 @@ struct TransactionFormView: View {
                 taxRate: resolvedConsumptionTaxRate,
                 isTaxIncluded: resolvedIsTaxIncluded,
                 taxCategory: resolvedTaxCategory,
-                counterparty: resolvedCounterparty
+                counterparty: resolvedCounterparty,
+                candidateSource: .manual
             )
             switch result {
             case .success:

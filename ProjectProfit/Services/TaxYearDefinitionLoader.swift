@@ -7,7 +7,9 @@ enum TaxYearDefinitionLoader {
     // MARK: - Cache
 
     private static var cache: [Int: TaxYearDefinition] = [:]
+    private static var packYearsCache: [Int]?
     private static let commonFormKey = "common"
+    private static let taxYearPackProvider = BundledTaxYearPackProvider(bundle: .main)
 
     /// 指定年度のTaxLine用フィールドラベルを返す
     /// JSON未定義またはロード失敗時は `taxLine.label` にフォールバック
@@ -112,7 +114,7 @@ enum TaxYearDefinitionLoader {
 
     /// 対応済み年分かどうかを返す
     static func isSupported(year fiscalYear: Int) -> Bool {
-        loadDefinition(for: fiscalYear) != nil
+        loadDefinition(for: fiscalYear) != nil || supportedPackYears().contains(fiscalYear)
     }
 
     /// 指定様式が対応済みかどうかを返す
@@ -137,21 +139,8 @@ enum TaxYearDefinitionLoader {
 
     /// 指定様式で利用可能な対応年分一覧を返す
     static func supportedYears(formType: EtaxFormType?) -> [Int] {
-        let filePaths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
-        let prefix = "TaxYear"
-        let suffix = ".json"
-
-        var years = Set(cache.keys)
-        for path in filePaths {
-            let fileName = URL(fileURLWithPath: path).lastPathComponent
-            guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else { continue }
-            let raw = fileName
-                .replacingOccurrences(of: prefix, with: "")
-                .replacingOccurrences(of: suffix, with: "")
-            if let year = Int(raw) {
-                years.insert(year)
-            }
-        }
+        var years = jsonSupportedYears()
+        years.formUnion(supportedPackYears())
 
         let sorted = years.sorted()
         guard let formType else {
@@ -163,6 +152,7 @@ enum TaxYearDefinitionLoader {
     /// キャッシュをクリアする（テスト用）
     static func clearCache() {
         cache = [:]
+        packYearsCache = nil
     }
 
     /// 全TaxLineのラベルが定義されているか検証する
@@ -192,5 +182,33 @@ enum TaxYearDefinitionLoader {
             return commonFormKey
         }
         return "blue_general"
+    }
+
+    private static func jsonSupportedYears() -> Set<Int> {
+        let filePaths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
+        let prefix = "TaxYear"
+        let suffix = ".json"
+
+        var years = Set(cache.keys)
+        for path in filePaths {
+            let fileName = URL(fileURLWithPath: path).lastPathComponent
+            guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else { continue }
+            let raw = fileName
+                .replacingOccurrences(of: prefix, with: "")
+                .replacingOccurrences(of: suffix, with: "")
+            if let year = Int(raw) {
+                years.insert(year)
+            }
+        }
+        return years
+    }
+
+    private static func supportedPackYears() -> [Int] {
+        if let cached = packYearsCache {
+            return cached
+        }
+        let years = taxYearPackProvider.availableYearsSync()
+        packYearsCache = years
+        return years
     }
 }

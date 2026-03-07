@@ -1,0 +1,117 @@
+{
+  "fields" : [
+    {
+      "fieldLabel" : "売掛金",
+      "id" : "bs_asset_acct-ar",
+      "section" : "貸借対照表",
+      "value" : "1595000",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "普通預金",
+      "id" : "bs_asset_acct-bank",
+      "section" : "貸借対照表",
+      "value" : "-500000",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "現金",
+      "id" : "bs_asset_acct-cash",
+      "section" : "貸借対照表",
+      "value" : "25124",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "当期純利益",
+      "id" : "bs_equity_retained-earnings",
+      "section" : "貸借対照表",
+      "value" : "1120124",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "資産合計",
+      "id" : "bs_total_assets",
+      "section" : "貸借対照表",
+      "value" : "1120124",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "資本合計",
+      "id" : "bs_total_equity",
+      "section" : "貸借対照表",
+      "value" : "1120124",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "負債合計",
+      "id" : "bs_total_liabilities",
+      "section" : "貸借対照表",
+      "value" : "0",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "屋号",
+      "id" : "declarant_business_name",
+      "section" : "申告者情報",
+      "value" : "田中ソフトウェア開発",
+      "valueType" : "text"
+    },
+    {
+      "fieldLabel" : "氏名",
+      "id" : "declarant_name",
+      "section" : "申告者情報",
+      "value" : "田中太郎",
+      "valueType" : "text"
+    },
+    {
+      "fieldLabel" : "雑費",
+      "id" : "expense_misc",
+      "section" : "必要経費",
+      "taxLine" : "misc",
+      "value" : "468396",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "消耗品費",
+      "id" : "expense_supplies",
+      "section" : "必要経費",
+      "taxLine" : "supplies",
+      "value" : "6480",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "所得金額",
+      "id" : "income_net",
+      "section" : "所得金額",
+      "value" : "1120124",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "必要経費合計",
+      "id" : "income_total_expenses",
+      "section" : "所得金額",
+      "value" : "474876",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "収入金額合計",
+      "id" : "income_total_revenue",
+      "section" : "所得金額",
+      "value" : "1595000",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "ア 売上（収入）金額",
+      "id" : "revenue_sales_revenue",
+      "section" : "収入金額",
+      "taxLine" : "sales_revenue",
+      "value" : "1595000",
+      "valueType" : "number"
+    }
+  ],
+  "fiscalYear" : 2025,
+  "formType" : "青色申告決算書",
+  "netIncome" : 1120124,
+  "totalExpenses" : 474876,
+  "totalRevenue" : 1595000
+}

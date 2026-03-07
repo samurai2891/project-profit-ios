@@ -1,0 +1,100 @@
+{
+  "deltas" : [
+    {
+      "canonicalCount" : 36,
+      "executeSupported" : false,
+      "legacyCount" : 37,
+      "modelName" : "Account"
+    },
+    {
+      "canonicalCount" : 55,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "AuditEvent"
+    },
+    {
+      "canonicalCount" : 20,
+      "executeSupported" : false,
+      "legacyCount" : 20,
+      "modelName" : "Category"
+    },
+    {
+      "canonicalCount" : 10,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "Counterparty"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "DistributionRule"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "Document"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "FixedAsset"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "Inventory"
+    },
+    {
+      "canonicalCount" : 42,
+      "executeSupported" : false,
+      "legacyCount" : 42,
+      "modelName" : "Journal"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "LegacyLedger"
+    },
+    {
+      "canonicalCount" : 3,
+      "executeSupported" : true,
+      "legacyCount" : 1,
+      "modelName" : "Profile"
+    },
+    {
+      "canonicalCount" : 3,
+      "executeSupported" : false,
+      "legacyCount" : 3,
+      "modelName" : "Project"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "RecurringRule"
+    },
+    {
+      "canonicalCount" : 28,
+      "executeSupported" : false,
+      "legacyCount" : 14,
+      "modelName" : "Transaction"
+    },
+    {
+      "canonicalCount" : 0,
+      "executeSupported" : false,
+      "legacyCount" : 0,
+      "modelName" : "UserRule"
+    }
+  ],
+  "orphanRecords" : [
+
+  ],
+  "warnings" : [
+
+  ]
+}
