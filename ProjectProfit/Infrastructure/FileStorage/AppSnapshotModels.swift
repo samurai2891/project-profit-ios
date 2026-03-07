@@ -210,6 +210,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
     let paymentAccountId: String?
     let transferToAccountId: String?
     let taxDeductibleRate: Int?
+    let counterpartyId: UUID?
     let counterparty: String?
     let createdAt: Date
     let updatedAt: Date
@@ -237,6 +238,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
         self.paymentAccountId = recurring.paymentAccountId
         self.transferToAccountId = recurring.transferToAccountId
         self.taxDeductibleRate = recurring.taxDeductibleRate
+        self.counterpartyId = recurring.counterpartyId
         self.counterparty = recurring.counterparty
         self.createdAt = recurring.createdAt
         self.updatedAt = recurring.updatedAt
@@ -266,6 +268,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
             taxDeductibleRate: taxDeductibleRate,
+            counterpartyId: counterpartyId,
             counterparty: counterparty,
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -294,6 +297,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     let taxRate: Int?
     let isTaxIncluded: Bool?
     let taxCategory: TaxCategory?
+    let counterpartyId: UUID?
     let counterparty: String?
     let deletedAt: Date?
     let createdAt: Date
@@ -320,6 +324,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
         self.taxRate = transaction.taxRate
         self.isTaxIncluded = transaction.isTaxIncluded
         self.taxCategory = transaction.taxCategory
+        self.counterpartyId = transaction.counterpartyId
         self.counterparty = transaction.counterparty
         self.deletedAt = transaction.deletedAt
         self.createdAt = transaction.createdAt
@@ -348,6 +353,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
             counterparty: counterparty,
             deletedAt: deletedAt,
             createdAt: createdAt,

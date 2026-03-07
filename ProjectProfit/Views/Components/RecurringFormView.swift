@@ -31,6 +31,7 @@ struct RecurringFormView: View {
     @State private var transferToAccountId: String?
     @State private var taxDeductibleRate: Int
     // Phase 8: 取引先
+    @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String
 
     @State private var showValidationError = false
@@ -73,6 +74,7 @@ struct RecurringFormView: View {
         self._paymentAccountId = State(initialValue: recurring?.paymentAccountId)
         self._transferToAccountId = State(initialValue: recurring?.transferToAccountId)
         self._taxDeductibleRate = State(initialValue: recurring?.taxDeductibleRate ?? 100)
+        self._selectedCounterpartyId = State(initialValue: recurring?.counterpartyId)
         self._counterparty = State(initialValue: recurring?.counterparty ?? "")
     }
 
@@ -89,6 +91,25 @@ struct RecurringFormView: View {
 
     private var parsedAmount: Int? {
         Int(amountText)
+    }
+
+    private var counterparties: [Counterparty] {
+        dataStore.canonicalCounterparties()
+    }
+
+    private var selectedCounterparty: Counterparty? {
+        guard let selectedCounterpartyId else { return nil }
+        return counterparties.first { $0.id == selectedCounterpartyId }
+    }
+
+    private var counterpartyPickerSelection: Binding<UUID?> {
+        Binding(
+            get: { selectedCounterpartyId },
+            set: { newValue in
+                selectedCounterpartyId = newValue
+                applySelectedCounterpartyDefaults()
+            }
+        )
     }
 
     private var isFormValid: Bool {
@@ -199,6 +220,11 @@ struct RecurringFormView: View {
             }
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
+            }
+            .onAppear {
+                if counterparty.isEmpty, let selectedCounterparty {
+                    counterparty = selectedCounterparty.displayName
+                }
             }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
@@ -536,7 +562,24 @@ struct RecurringFormView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if !counterparties.isEmpty {
+                Picker("登録済み取引先", selection: counterpartyPickerSelection) {
+                    Text("選択しない").tag(UUID?.none)
+                    ForEach(counterparties, id: \.id) { counterparty in
+                        Text(counterparty.displayName).tag(UUID?.some(counterparty.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             TextField("取引先名（任意）", text: $counterparty)
+                .onChange(of: counterparty) { _, newValue in
+                    guard let selectedCounterparty else { return }
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty || trimmed != selectedCounterparty.displayName {
+                        selectedCounterpartyId = nil
+                    }
+                }
                 .textFieldStyle(.roundedBorder)
         }
         .padding(16)
@@ -694,6 +737,22 @@ struct RecurringFormView: View {
         }
     }
 
+    private func applySelectedCounterpartyDefaults() {
+        guard let selectedCounterparty else { return }
+
+        counterparty = selectedCounterparty.displayName
+        if let defaultAccountId = selectedCounterparty.defaultAccountId,
+           let legacyAccountId = dataStore.legacyAccountId(for: defaultAccountId) {
+            paymentAccountId = legacyAccountId
+        }
+        if type != .transfer,
+           let defaultProjectId = selectedCounterparty.defaultProjectId,
+           dataStore.projects.contains(where: { $0.id == defaultProjectId && $0.isArchived != true }) {
+            allocationMode = .manual
+            allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+        }
+    }
+
     // MARK: - Save
 
     private func save() {
@@ -753,7 +812,9 @@ struct RecurringFormView: View {
         let resolvedPaymentAccountId: String? = paymentAccountId
         let resolvedTransferToAccountId: String? = transferToAccountId
         let resolvedTaxDeductibleRate: Int? = taxDeductibleRate == 100 ? nil : taxDeductibleRate
-        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
+        let resolvedCounterpartyName = selectedCounterparty?.displayName
+            ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
 
         if let existing = recurring {
             if selectedImage != nil {
@@ -779,6 +840,7 @@ struct RecurringFormView: View {
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
                     taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterpartyId: .some(selectedCounterpartyId),
                     counterparty: resolvedCounterparty
                 )
             } else if imageRemoved {
@@ -804,6 +866,7 @@ struct RecurringFormView: View {
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
                     taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterpartyId: .some(selectedCounterpartyId),
                     counterparty: resolvedCounterparty
                 )
             } else {
@@ -825,6 +888,7 @@ struct RecurringFormView: View {
                     paymentAccountId: resolvedPaymentAccountId,
                     transferToAccountId: resolvedTransferToAccountId,
                     taxDeductibleRate: resolvedTaxDeductibleRate,
+                    counterpartyId: .some(selectedCounterpartyId),
                     counterparty: resolvedCounterparty
                 )
             }
@@ -846,6 +910,7 @@ struct RecurringFormView: View {
                 paymentAccountId: resolvedPaymentAccountId,
                 transferToAccountId: resolvedTransferToAccountId,
                 taxDeductibleRate: resolvedTaxDeductibleRate,
+                counterpartyId: selectedCounterpartyId,
                 counterparty: resolvedCounterparty
             )
         }

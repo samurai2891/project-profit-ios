@@ -116,8 +116,7 @@ final class FormEngineTests: XCTestCase {
         XCTAssertThrowsError(
             try CashBasisReturnBuilder.build(
                 fiscalYear: 2025,
-                dataStore: dataStore,
-                profile: nil
+                dataStore: dataStore
             )
         ) { error in
             XCTAssertTrue(error is CashBasisReturnBuilder.BuildError)
@@ -160,8 +159,7 @@ final class FormEngineTests: XCTestCase {
 
         let form = try? CashBasisReturnBuilder.build(
             fiscalYear: 2025,
-            dataStore: dataStore,
-            profile: nil
+            dataStore: dataStore
         )
 
         XCTAssertNotNil(form)
@@ -205,16 +203,16 @@ final class FormEngineTests: XCTestCase {
         try! context.save()
         dataStore.loadData()
 
-        let profile = PPAccountingProfile(
-            fiscalYear: 2025,
-            businessName: "テスト屋号",
-            ownerName: "山田太郎"
+        let businessProfile = BusinessProfile(
+            id: UUID(),
+            ownerName: "山田太郎",
+            businessName: "テスト屋号"
         )
 
         let form = try? CashBasisReturnBuilder.build(
             fiscalYear: 2025,
             dataStore: dataStore,
-            profile: profile
+            businessProfile: businessProfile
         )
 
         XCTAssertNotNil(form)
@@ -246,12 +244,11 @@ final class FormEngineTests: XCTestCase {
 
         let form = try? CashBasisReturnBuilder.build(
             fiscalYear: 2025,
-            dataStore: dataStore,
-            profile: nil
+            dataStore: dataStore
         )
 
         XCTAssertNotNil(form)
-        let declarantFields = form?.fields.filter { $0.section == .declarantInfo } ?? []
+        let declarantFields = form?.fields.filter { $0.section == EtaxSection.declarantInfo } ?? []
         XCTAssertTrue(declarantFields.isEmpty)
     }
 
@@ -305,15 +302,14 @@ final class FormEngineTests: XCTestCase {
 
         let form = try? CashBasisReturnBuilder.build(
             fiscalYear: 2025,
-            dataStore: dataStore,
-            profile: nil
+            dataStore: dataStore
         )
 
         XCTAssertNotNil(form)
 
         // 経費はカテゴリ別にグループ化され、金額降順でソートされる
-        let expenseFields = form?.fields.filter {
-            $0.section == .expenses && $0.id != "cash_basis_expense_total"
+        let expenseFields = form?.fields.filter { field in
+            field.section == EtaxSection.expenses && field.id != "cash_basis_expense_total"
         } ?? []
         XCTAssertEqual(expenseFields.count, 2)
 

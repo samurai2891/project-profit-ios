@@ -29,6 +29,7 @@ struct ReceiptReviewView: View {
     @State private var selectedTaxCode: TaxCode?
     @State private var isTaxIncluded: Bool = true
     @State private var taxAmountText: String = ""
+    @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String = ""
 
     init(
@@ -67,6 +68,25 @@ struct ReceiptReviewView: View {
 
     private var totalRatio: Int {
         allocations.reduce(0) { $0 + $1.ratio }
+    }
+
+    private var counterparties: [Counterparty] {
+        dataStore.canonicalCounterparties()
+    }
+
+    private var selectedCounterparty: Counterparty? {
+        guard let selectedCounterpartyId else { return nil }
+        return counterparties.first { $0.id == selectedCounterpartyId }
+    }
+
+    private var counterpartyPickerSelection: Binding<UUID?> {
+        Binding(
+            get: { selectedCounterpartyId },
+            set: { newValue in
+                selectedCounterpartyId = newValue
+                applySelectedCounterpartyDefaults(preserveExternalProjectSelection: false)
+            }
+        )
     }
 
     private var isValid: Bool {
@@ -529,7 +549,23 @@ struct ReceiptReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("取引先")
                 .font(.subheadline.weight(.medium))
+            if !counterparties.isEmpty {
+                Picker("登録済み取引先", selection: counterpartyPickerSelection) {
+                    Text("選択しない").tag(UUID?.none)
+                    ForEach(counterparties, id: \.id) { counterparty in
+                        Text(counterparty.displayName).tag(UUID?.some(counterparty.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             TextField("取引先名を入力...", text: $counterparty)
+                .onChange(of: counterparty) { _, newValue in
+                    guard let selectedCounterparty else { return }
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty || trimmed != selectedCounterparty.displayName {
+                        selectedCounterpartyId = nil
+                    }
+                }
                 .padding(14)
                 .background(AppColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -555,6 +591,40 @@ struct ReceiptReviewView: View {
     }
 
     // MARK: - Logic
+
+    private func applySelectedCounterpartyDefaults(preserveExternalProjectSelection: Bool) {
+        guard let selectedCounterparty else { return }
+
+        counterparty = selectedCounterparty.displayName
+        if let defaultTaxCodeId = selectedCounterparty.defaultTaxCodeId,
+           let taxCode = TaxCode.resolve(id: defaultTaxCodeId) {
+            selectedTaxCode = taxCode
+        }
+        if let defaultAccountId = selectedCounterparty.defaultAccountId,
+           let legacyAccountId = dataStore.legacyAccountId(for: defaultAccountId) {
+            paymentAccountId = legacyAccountId
+        }
+        if type != .transfer,
+           !preserveExternalProjectSelection,
+           let defaultProjectId = selectedCounterparty.defaultProjectId,
+           dataStore.projects.contains(where: { $0.id == defaultProjectId && $0.isArchived != true }) {
+            allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+        }
+    }
+
+    private func initialMatchedCounterparty() -> Counterparty? {
+        if let registrationNumber = RegistrationNumberNormalizer.normalize(receiptData.registrationNumber) {
+            return counterparties.first { $0.normalizedInvoiceRegistrationNumber == registrationNumber }
+        }
+        let normalizedStoreName = receiptData.storeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedStoreName.isEmpty else { return nil }
+        return counterparties.first {
+            $0.displayName.compare(
+                normalizedStoreName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }
+    }
 
     private func setupFromReceiptData() {
         guard !isInitialized else { return }
@@ -582,6 +652,11 @@ struct ReceiptReviewView: View {
             allocations = [(id: UUID(), projectId: projectId, ratio: 100)]
         } else if let firstProject = dataStore.projects.first {
             allocations = [(id: UUID(), projectId: firstProject.id, ratio: 100)]
+        }
+
+        if let matchedCounterparty = initialMatchedCounterparty() {
+            selectedCounterpartyId = matchedCounterparty.id
+            applySelectedCounterpartyDefaults(preserveExternalProjectSelection: defaultProjectId != nil)
         }
     }
 
@@ -621,7 +696,9 @@ struct ReceiptReviewView: View {
             } else {
                 resolvedTaxAmount = nil
             }
-            let resolvedCounterparty = counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedCounterpartyName = selectedCounterparty?.displayName
+                ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedCounterparty = resolvedCounterpartyName.trimmingCharacters(in: .whitespacesAndNewlines)
             let originalFileName = generatedOriginalFileName()
 
             do {
@@ -662,6 +739,8 @@ struct ReceiptReviewView: View {
                     taxRate: resolvedTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxAmount: resolvedTaxAmount,
+                    registrationNumber: receiptData.registrationNumber,
+                    counterpartyId: selectedCounterpartyId,
                     counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty
                 )
                 _ = try await ReceiptEvidenceIntakeUseCase(modelContext: modelContext).intake(request)

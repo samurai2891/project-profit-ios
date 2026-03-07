@@ -146,6 +146,9 @@ extension DataStore {
 
             // 元取引から取引先・消費税区分を取得
             let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
+            let resolvedCounterparty = transaction?.counterpartyId
+                .flatMap { canonicalCounterparty(id: $0)?.displayName }
+                ?? transaction?.counterparty
 
             enrichedLines.append((
                 lineId: journalLine.id,
@@ -157,7 +160,7 @@ extension DataStore {
                 debit: journalLine.debit,
                 credit: journalLine.credit,
                 counterAccountId: counterAccountId,
-                counterparty: transaction?.counterparty,
+                counterparty: resolvedCounterparty,
                 taxCategory: transaction?.taxCategory
             ))
         }

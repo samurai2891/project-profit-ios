@@ -10,6 +10,7 @@ final class DataStoreAccountingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -17,6 +18,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         dataStore = nil
         context = nil
         container = nil
@@ -370,11 +372,11 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(diagnostics.legacyEntryCount, 1)
         XCTAssertEqual(diagnostics.legacyJournalBookCount, 1)
         XCTAssertEqual(diagnostics.legacyJournalEntryCount, 1)
-        XCTAssertEqual(diagnostics.canonicalJournalEntryCount, dataStore.journalEntries.count)
-        XCTAssertEqual(diagnostics.journalEntryDelta, diagnostics.canonicalJournalEntryCount - 1)
+        XCTAssertEqual(diagnostics.canonicalJournalEntryCount, 0)
+        XCTAssertEqual(diagnostics.journalEntryDelta, -1)
     }
 
-    func testDataStoreMutationsDoNotModifyLegacyLedgerCounts() throws {
+    func testDataStoreMutationsDoNotModifyLegacyLedgerCounts() async throws {
         let legacyCashBook = SDLedgerBook(
             ledgerType: .cashBook,
             title: "Legacy Cash Book"
@@ -391,7 +393,7 @@ final class DataStoreAccountingTests: XCTestCase {
 
         let before = dataStore.legacyLedgerDiagnostics()
         let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let transaction = dataStore.addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -400,6 +402,7 @@ final class DataStoreAccountingTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-cash"
         )
+        _ = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         let after = dataStore.legacyLedgerDiagnostics()
 
         XCTAssertEqual(after.legacyBookCount, before.legacyBookCount)
@@ -579,6 +582,89 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(counterparties.map(\.id), [counterpartyId])
     }
 
+    func testAddTransactionStoresCounterpartyIdAndCanonicalDisplayName() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "登録先株式会社",
+            defaultTaxCodeId: TaxCode.standard10.rawValue
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let project = dataStore.addProject(name: "P1", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "counterparty id",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            counterpartyId: counterparty.id,
+            counterparty: "任意入力値",
+            candidateSource: .manual
+        )
+
+        XCTAssertEqual(transaction.counterpartyId, counterparty.id)
+        XCTAssertEqual(transaction.counterparty, "登録先株式会社")
+    }
+
+    func testAddRecurringStoresCounterpartyIdAndCanonicalDisplayName() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "定期登録先株式会社"
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let project = dataStore.addProject(name: "Recurring Project", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "月額費用",
+            type: .expense,
+            amount: 2000,
+            categoryId: "cat-tools",
+            memo: "recurring counterparty id",
+            allocationMode: .manual,
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            counterpartyId: counterparty.id,
+            counterparty: "任意入力値"
+        )
+
+        XCTAssertEqual(recurring.counterpartyId, counterparty.id)
+        XCTAssertEqual(recurring.counterparty, "定期登録先株式会社")
+    }
+
+    func testLedgerAndSubLedgerPreferCounterpartyDisplayNameResolvedById() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "マスタ優先表示"
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let project = dataStore.addProject(name: "Ledger Project", description: "")
+        _ = dataStore.addTransaction(
+            type: .expense,
+            amount: 1500,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "ledger display",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            counterpartyId: counterparty.id,
+            counterparty: "旧表示名",
+            candidateSource: .manual
+        )
+
+        let ledgerEntries = dataStore.getLedgerEntries(accountId: "acct-cash")
+        let subLedgerEntries = dataStore.getSubLedgerEntries(type: .expenseBook, accountFilter: "acct-supplies")
+
+        XCTAssertEqual(ledgerEntries.first?.counterparty, "マスタ優先表示")
+        XCTAssertEqual(subLedgerEntries.first?.counterparty, "マスタ優先表示")
+    }
+
     func testSyncCanonicalArtifactsStoresExplicitTaxCodeOnCandidateAndCounterparty() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let project = dataStore.addProject(name: "Tax Project", description: "")
@@ -702,6 +788,7 @@ final class DataStoreAccountingTests: XCTestCase {
                 totalAmount: 1200,
                 date: "2026-03-07",
                 storeName: "文具センター",
+                registrationNumber: nil,
                 estimatedCategory: "tools",
                 itemSummary: "ノート"
             ),
@@ -724,6 +811,8 @@ final class DataStoreAccountingTests: XCTestCase {
             taxRate: 0,
             isTaxIncluded: false,
             taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
             counterpartyName: "文具センター"
         )
 

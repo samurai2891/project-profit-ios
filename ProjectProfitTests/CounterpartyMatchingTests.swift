@@ -47,7 +47,12 @@ final class MockCounterpartyRepository: CounterpartyRepository {
         }
     }
 
-    func findByRegistrationNumber(_ number: String) async throws -> Counterparty? { nil }
+    func findByRegistrationNumber(_ number: String) async throws -> Counterparty? {
+        guard let normalized = RegistrationNumberNormalizer.normalize(number) else { return nil }
+        return counterparties.first {
+            RegistrationNumberNormalizer.normalize($0.invoiceRegistrationNumber) == normalized
+        }
+    }
     func save(_ counterparty: Counterparty) async throws {}
     func delete(_ id: UUID) async throws {}
 }
@@ -153,5 +158,18 @@ final class CounterpartyMatchingTests: XCTestCase {
         )
 
         XCTAssertNil(result, "一致する取引先がなければnilを返すべき")
+    }
+
+    func testFindByRegistrationNumberNormalizesLeadingTPrefix() async throws {
+        let registered = Counterparty(
+            businessId: businessId,
+            displayName: "登録済み商事",
+            invoiceRegistrationNumber: "T1234567890123"
+        )
+        mockRepo.counterparties = [registered]
+
+        let result = try await useCase.findByRegistrationNumber("1234567890123")
+
+        XCTAssertEqual(result?.id, registered.id)
     }
 }

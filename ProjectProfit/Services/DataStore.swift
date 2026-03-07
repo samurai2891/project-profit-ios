@@ -6,6 +6,17 @@ import SwiftUI
 @MainActor
 @Observable
 class DataStore {
+    private struct LegacyPostingLineSnapshot: Sendable {
+        let accountId: String
+        let debit: Int
+        let credit: Int
+        let memo: String
+
+        var amount: Int {
+            max(debit, credit)
+        }
+    }
+
     struct LegacyLedgerDiagnostics: Equatable, Sendable {
         let legacyBookCount: Int
         let legacyEntryCount: Int
@@ -219,7 +230,7 @@ class DataStore {
         return nil
     }
 
-    private func canonicalCounterparty(id: UUID) -> Counterparty? {
+    func canonicalCounterparty(id: UUID) -> Counterparty? {
         do {
             let descriptor = FetchDescriptor<CounterpartyEntity>(
                 predicate: #Predicate { $0.counterpartyId == id }
@@ -229,6 +240,13 @@ class DataStore {
             AppLogger.dataStore.warning("Canonical counterparty lookup failed: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    func canonicalCounterparties() -> [Counterparty] {
+        guard let businessId = businessProfile?.id else {
+            return []
+        }
+        return fetchCanonicalCounterparties(businessId: businessId)
     }
 
     private func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
@@ -245,6 +263,74 @@ class DataStore {
             AppLogger.dataStore.warning("Canonical accounts fetch failed: \(error.localizedDescription)")
             return []
         }
+    }
+
+    private func fetchCanonicalCounterparties(businessId: UUID) -> [Counterparty] {
+        do {
+            let descriptor = FetchDescriptor<CounterpartyEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [SortDescriptor(\.displayName)]
+            )
+            return try modelContext.fetch(descriptor).map(CounterpartyEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical counterparties fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func upsertCanonicalCounterparty(_ counterparty: Counterparty) {
+        let descriptor = FetchDescriptor<CounterpartyEntity>(
+            predicate: #Predicate { $0.counterpartyId == counterparty.id }
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            CounterpartyEntityMapper.update(existing, from: counterparty)
+        } else {
+            modelContext.insert(CounterpartyEntityMapper.toEntity(counterparty))
+        }
+    }
+
+    private func resolveLegacyCounterpartyReference(
+        explicitId: UUID?,
+        rawName: String?,
+        defaultTaxCodeId: String?
+    ) -> (id: UUID?, displayName: String?) {
+        if let explicitId, let existing = canonicalCounterparty(id: explicitId) {
+            if defaultTaxCodeId != nil, existing.defaultTaxCodeId != defaultTaxCodeId {
+                upsertCanonicalCounterparty(existing.updated(defaultTaxCodeId: .some(defaultTaxCodeId)))
+            }
+            return (existing.id, existing.displayName)
+        }
+
+        guard let businessId = businessProfile?.id else {
+            return (nil, normalizedOptionalString(rawName))
+        }
+        guard let displayName = normalizedOptionalString(rawName) else {
+            return (nil, nil)
+        }
+
+        let counterparties = fetchCanonicalCounterparties(businessId: businessId)
+        if let exactMatch = counterparties.first(where: {
+            $0.displayName.compare(
+                displayName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }) {
+            if defaultTaxCodeId != nil, exactMatch.defaultTaxCodeId != defaultTaxCodeId {
+                upsertCanonicalCounterparty(exactMatch.updated(defaultTaxCodeId: .some(defaultTaxCodeId)))
+            }
+            return (exactMatch.id, exactMatch.displayName)
+        }
+
+        let counterparty = Counterparty(
+            id: stableCounterpartyId(businessId: businessId, displayName: displayName),
+            businessId: businessId,
+            displayName: displayName,
+            defaultTaxCodeId: defaultTaxCodeId,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        upsertCanonicalCounterparty(counterparty)
+        return (counterparty.id, counterparty.displayName)
     }
 
     private func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
@@ -296,6 +382,7 @@ class DataStore {
         do {
             let books = try modelContext.fetch(FetchDescriptor<SDLedgerBook>())
             let entries = try modelContext.fetch(FetchDescriptor<SDLedgerEntry>())
+            let canonicalEntries = try modelContext.fetch(FetchDescriptor<JournalEntryEntity>())
             let journalBookIds = Set(
                 books
                     .filter { $0.ledgerTypeRaw == LedgerType.journal.rawValue }
@@ -312,7 +399,7 @@ class DataStore {
                 legacyEntryCount: entries.count,
                 legacyJournalBookCount: journalBookIds.count,
                 legacyJournalEntryCount: legacyJournalEntryCount,
-                canonicalJournalEntryCount: journalEntries.count
+                canonicalJournalEntryCount: canonicalEntries.count
             )
         } catch {
             AppLogger.dataStore.warning("Legacy ledger diagnostics failed: \(error.localizedDescription)")
@@ -321,7 +408,7 @@ class DataStore {
                 legacyEntryCount: 0,
                 legacyJournalBookCount: 0,
                 legacyJournalEntryCount: 0,
-                canonicalJournalEntryCount: journalEntries.count
+                canonicalJournalEntryCount: canonicalJournalEntries().count
             )
         }
     }
@@ -679,6 +766,7 @@ class DataStore {
             taxRate: transaction.taxRate
         )?.rawValue
         let counterpartyStatus = await syncCanonicalCounterparty(
+            id: transaction.counterpartyId,
             named: transaction.counterparty,
             defaultTaxCodeId: explicitTaxCodeId
         )
@@ -705,44 +793,32 @@ class DataStore {
         guard let recurring = recurringTransactions.first(where: { $0.id == recurringId }) else {
             return .skippedSourceNotFound
         }
-        return await syncCanonicalCounterparty(named: recurring.counterparty, defaultTaxCodeId: nil)
+        return await syncCanonicalCounterparty(
+            id: recurring.counterpartyId,
+            named: recurring.counterparty,
+            defaultTaxCodeId: nil
+        )
     }
 
     private func syncCanonicalCounterparty(
+        id explicitId: UUID?,
         named rawName: String?,
         defaultTaxCodeId: String?
     ) async -> CanonicalCounterpartySyncStatus {
-        guard let businessId = businessProfile?.id else {
-            return .skippedBusinessProfileUnavailable
-        }
-        guard let displayName = normalizedOptionalString(rawName) else {
-            return .skippedBlankName
-        }
-        let stableId = stableCounterpartyId(businessId: businessId, displayName: displayName)
-
         do {
-            let matches = try await counterpartyMasterUseCase.searchCounterparties(
-                businessId: businessId,
-                query: displayName
+            let resolved = resolveLegacyCounterpartyReference(
+                explicitId: explicitId,
+                rawName: rawName,
+                defaultTaxCodeId: defaultTaxCodeId
             )
-            let existing = matches.first {
-                $0.displayName.compare(displayName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            guard let counterpartyId = resolved.id else {
+                if explicitId != nil || businessProfile == nil {
+                    return .skippedBusinessProfileUnavailable
+                }
+                return .skippedBlankName
             }
-            let resolvedDefaultTaxCodeId = defaultTaxCodeId ?? existing?.defaultTaxCodeId
-            let counterparty = existing?.updated(
-                displayName: displayName,
-                defaultTaxCodeId: .some(resolvedDefaultTaxCodeId)
-            )
-                ?? Counterparty(
-                    id: stableId,
-                    businessId: businessId,
-                    displayName: displayName,
-                    defaultTaxCodeId: resolvedDefaultTaxCodeId,
-                    createdAt: Date(),
-                    updatedAt: Date()
-                )
-            try await counterpartyMasterUseCase.save(counterparty)
-            return .synced(counterparty.id)
+            try modelContext.save()
+            return .synced(counterpartyId)
         } catch {
             AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
@@ -776,15 +852,12 @@ class DataStore {
             return .skippedBusinessProfileUnavailable
         }
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        guard let legacyJournalId = transaction.journalEntryId,
-              let legacyEntry = journalEntries.first(where: { $0.id == legacyJournalId })
-        else {
-            return .skippedLegacyJournalUnavailable
-        }
-
-        let legacyLines = journalLines
-            .filter { $0.entryId == legacyJournalId }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        let resolvedPosting = resolvedLegacyPostingSnapshot(for: transaction)
+        let journalId = resolvedPosting?.journalId ?? transaction.journalEntryId ?? UUID()
+        let legacyLines = resolvedPosting?.lines ?? []
+        let description = resolvedPosting?.description
+            ?? normalizedOptionalString(transaction.memo)
+            ?? ""
         guard !legacyLines.isEmpty else {
             return .skippedLegacyJournalUnavailable
         }
@@ -851,9 +924,6 @@ class DataStore {
             return .skippedLegacyJournalUnavailable
         }
 
-        let description = normalizedOptionalString(legacyEntry.memo)
-            ?? normalizedOptionalString(transaction.memo)
-            ?? ""
         let inferredSource: CandidateSource = source ?? (transaction.recurringId == nil ? .manual : .recurring)
         let candidate = PostingCandidate(
             id: transaction.id,
@@ -875,11 +945,16 @@ class DataStore {
         do {
             let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
                 candidate,
-                journalId: legacyJournalId,
+                journalId: journalId,
                 entryType: transaction.recurringId == nil ? .normal : .recurring,
                 description: description,
                 approvedAt: transaction.updatedAt
             )
+            if transaction.journalEntryId != journal.id {
+                transaction.journalEntryId = journal.id
+                save()
+                refreshTransactions()
+            }
             return .synced(candidateId: candidate.id, journalId: journal.id)
         } catch {
             AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
@@ -887,10 +962,196 @@ class DataStore {
         }
     }
 
+    private func resolvedLegacyPostingSnapshot(
+        for transaction: PPTransaction
+    ) -> (journalId: UUID, lines: [LegacyPostingLineSnapshot], description: String?)? {
+        if let legacyJournalId = transaction.journalEntryId,
+           let legacyEntry = journalEntries.first(where: { $0.id == legacyJournalId }) {
+            let legacyLines = journalLines
+                .filter { $0.entryId == legacyJournalId }
+                .sorted { $0.displayOrder < $1.displayOrder }
+                .map {
+                    LegacyPostingLineSnapshot(
+                        accountId: $0.accountId,
+                        debit: $0.debit,
+                        credit: $0.credit,
+                        memo: $0.memo
+                    )
+                }
+            if !legacyLines.isEmpty {
+                return (
+                    journalId: legacyJournalId,
+                    lines: legacyLines,
+                    description: normalizedOptionalString(legacyEntry.memo)
+                )
+            }
+        }
+
+        guard let synthesizedLines = synthesizeLegacyPostingLines(for: transaction),
+              !synthesizedLines.isEmpty else {
+            return nil
+        }
+        return (
+            journalId: transaction.journalEntryId ?? UUID(),
+            lines: synthesizedLines,
+            description: normalizedOptionalString(transaction.memo)
+        )
+    }
+
+    private func synthesizeLegacyPostingLines(
+        for transaction: PPTransaction
+    ) -> [LegacyPostingLineSnapshot]? {
+        switch transaction.type {
+        case .income:
+            return synthesizeIncomePostingLines(for: transaction)
+        case .expense:
+            return synthesizeExpensePostingLines(for: transaction)
+        case .transfer:
+            return synthesizeTransferPostingLines(for: transaction)
+        }
+    }
+
+    private func synthesizeIncomePostingLines(
+        for transaction: PPTransaction
+    ) -> [LegacyPostingLineSnapshot] {
+        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let revenueAccountId = resolvedLegacyLinkedAccountId(
+            categoryId: transaction.categoryId,
+            fallback: AccountingConstants.salesAccountId
+        )
+
+        if let taxAmount = transaction.taxAmount, taxAmount > 0,
+           transaction.taxCategory?.isTaxable == true {
+            let netAmount = transaction.amount - taxAmount
+            return [
+                LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
+                LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: netAmount, memo: ""),
+                LegacyPostingLineSnapshot(accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: taxAmount, memo: "仮受消費税")
+            ]
+        }
+
+        return [
+            LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
+            LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: transaction.amount, memo: "")
+        ]
+    }
+
+    private func synthesizeExpensePostingLines(
+        for transaction: PPTransaction
+    ) -> [LegacyPostingLineSnapshot] {
+        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let expenseAccountId = resolvedLegacyLinkedAccountId(
+            categoryId: transaction.categoryId,
+            fallback: AccountingConstants.miscExpenseAccountId
+        )
+
+        let rate = transaction.effectiveTaxDeductibleRate
+        let amount = transaction.amount
+        let hasTax = (transaction.taxAmount ?? 0) > 0 && transaction.taxCategory?.isTaxable == true
+        let taxAmount = hasTax ? (transaction.taxAmount ?? 0) : 0
+        let expenseBase = hasTax ? (amount - taxAmount) : amount
+
+        if rate >= 100 {
+            var lines = [
+                LegacyPostingLineSnapshot(accountId: expenseAccountId, debit: expenseBase, credit: 0, memo: "")
+            ]
+            if taxAmount > 0 {
+                lines.append(
+                    LegacyPostingLineSnapshot(
+                        accountId: AccountingConstants.inputTaxAccountId,
+                        debit: taxAmount,
+                        credit: 0,
+                        memo: "仮払消費税"
+                    )
+                )
+            }
+            lines.append(LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: 0, credit: amount, memo: ""))
+            return lines
+        }
+
+        let deductibleAmount = expenseBase * rate / 100
+        let personalAmount = expenseBase - deductibleAmount
+        var lines: [LegacyPostingLineSnapshot] = []
+
+        if deductibleAmount > 0 {
+            lines.append(LegacyPostingLineSnapshot(accountId: expenseAccountId, debit: deductibleAmount, credit: 0, memo: ""))
+        }
+        if taxAmount > 0 {
+            let deductibleTax = taxAmount * rate / 100
+            let personalTax = taxAmount - deductibleTax
+            if deductibleTax > 0 {
+                lines.append(
+                    LegacyPostingLineSnapshot(
+                        accountId: AccountingConstants.inputTaxAccountId,
+                        debit: deductibleTax,
+                        credit: 0,
+                        memo: "仮払消費税"
+                    )
+                )
+            }
+            if personalTax > 0 {
+                lines.append(
+                    LegacyPostingLineSnapshot(
+                        accountId: AccountingConstants.ownerDrawingsAccountId,
+                        debit: personalAmount + personalTax,
+                        credit: 0,
+                        memo: ""
+                    )
+                )
+            } else if personalAmount > 0 {
+                lines.append(
+                    LegacyPostingLineSnapshot(
+                        accountId: AccountingConstants.ownerDrawingsAccountId,
+                        debit: personalAmount,
+                        credit: 0,
+                        memo: ""
+                    )
+                )
+            }
+        } else if personalAmount > 0 {
+            lines.append(
+                LegacyPostingLineSnapshot(
+                    accountId: AccountingConstants.ownerDrawingsAccountId,
+                    debit: personalAmount,
+                    credit: 0,
+                    memo: ""
+                )
+            )
+        }
+
+        lines.append(LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: 0, credit: amount, memo: ""))
+        return lines
+    }
+
+    private func synthesizeTransferPostingLines(
+        for transaction: PPTransaction
+    ) -> [LegacyPostingLineSnapshot] {
+        let fromAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let toAccountId = transaction.transferToAccountId ?? AccountingConstants.suspenseAccountId
+        return [
+            LegacyPostingLineSnapshot(accountId: toAccountId, debit: transaction.amount, credit: 0, memo: ""),
+            LegacyPostingLineSnapshot(accountId: fromAccountId, debit: 0, credit: transaction.amount, memo: "")
+        ]
+    }
+
+    private func resolvedLegacyLinkedAccountId(
+        categoryId: String,
+        fallback: String
+    ) -> String {
+        if let category = categories.first(where: { $0.id == categoryId }),
+           let linkedAccountId = category.linkedAccountId {
+            return linkedAccountId
+        }
+        if let mappedAccountId = AccountingConstants.categoryToAccountMapping[categoryId] {
+            return mappedAccountId
+        }
+        return fallback
+    }
+
     private func resolvedCanonicalTaxCodeId(
         for transaction: PPTransaction,
         counterparty: Counterparty?,
-        legacyLines: [PPJournalLine],
+        legacyLines: [LegacyPostingLineSnapshot],
         canonicalAccountsByLegacyId: [String: CanonicalAccount]
     ) -> String? {
         if let explicitTaxCodeId = TaxCode.resolve(
@@ -1555,6 +1816,7 @@ class DataStore {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) -> Result<PPTransaction, AppError> {
@@ -1572,6 +1834,15 @@ class DataStore {
         }
         let baseAllocations = type == .transfer ? [] : allocations
         let allocs = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
+        let explicitTaxCodeId = TaxCode.resolve(
+            legacyCategory: taxCategory,
+            taxRate: taxRate
+        )?.rawValue
+        let resolvedCounterparty = resolveLegacyCounterpartyReference(
+            explicitId: counterpartyId,
+            rawName: counterparty,
+            defaultTaxCodeId: explicitTaxCodeId
+        )
         let transaction = PPTransaction(
             type: type,
             amount: amount,
@@ -1589,7 +1860,8 @@ class DataStore {
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
-            counterparty: counterparty
+            counterpartyId: resolvedCounterparty.id,
+            counterparty: resolvedCounterparty.displayName
         )
         modelContext.insert(transaction)
 
@@ -1627,6 +1899,7 @@ class DataStore {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) -> PPTransaction {
@@ -1647,6 +1920,7 @@ class DataStore {
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
             counterparty: counterparty,
             candidateSource: candidateSource
         ) {
@@ -1675,6 +1949,7 @@ class DataStore {
         taxRate: Int?? = nil,
         isTaxIncluded: Bool?? = nil,
         taxCategory: TaxCategory?? = nil,
+        counterpartyId: UUID?? = nil,
         counterparty: String?? = nil,
         candidateSource: CandidateSource? = nil
     ) -> Bool {
@@ -1741,9 +2016,32 @@ class DataStore {
             logFieldChange(transactionId: txId, fieldName: "taxCategory", oldValue: transaction.taxCategory?.rawValue, newValue: taxCategory?.rawValue)
             transaction.taxCategory = taxCategory
         }
+        if let counterpartyId {
+            logFieldChange(
+                transactionId: txId,
+                fieldName: "counterpartyId",
+                oldValue: transaction.counterpartyId?.uuidString,
+                newValue: counterpartyId?.uuidString
+            )
+            transaction.counterpartyId = counterpartyId
+        }
         if let counterparty {
             logFieldChange(transactionId: txId, fieldName: "counterparty", oldValue: transaction.counterparty, newValue: counterparty)
             transaction.counterparty = counterparty
+        }
+
+        if counterpartyId != nil || counterparty != nil {
+            let explicitTaxCodeId = TaxCode.resolve(
+                legacyCategory: taxCategory ?? transaction.taxCategory,
+                taxRate: taxRate ?? transaction.taxRate
+            )?.rawValue
+            let resolvedCounterparty = resolveLegacyCounterpartyReference(
+                explicitId: transaction.counterpartyId,
+                rawName: transaction.counterparty,
+                defaultTaxCodeId: explicitTaxCodeId
+            )
+            transaction.counterpartyId = resolvedCounterparty.id
+            transaction.counterparty = resolvedCounterparty.displayName
         }
 
         let finalAmount = amount ?? transaction.amount
@@ -1958,6 +2256,7 @@ class DataStore {
         paymentAccountId: String? = nil,
         transferToAccountId: String? = nil,
         taxDeductibleRate: Int? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil
     ) -> PPRecurringTransaction {
         let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
@@ -1968,6 +2267,11 @@ class DataStore {
         case .manual:
             allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
         }
+        let resolvedCounterparty = resolveLegacyCounterpartyReference(
+            explicitId: counterpartyId,
+            rawName: counterparty,
+            defaultTaxCodeId: nil
+        )
         let recurring = PPRecurringTransaction(
             name: name,
             type: type,
@@ -1985,7 +2289,8 @@ class DataStore {
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
             taxDeductibleRate: taxDeductibleRate,
-            counterparty: counterparty
+            counterpartyId: resolvedCounterparty.id,
+            counterparty: resolvedCounterparty.displayName
         )
         modelContext.insert(recurring)
         save()
@@ -2018,6 +2323,7 @@ class DataStore {
         paymentAccountId: String?? = nil,
         transferToAccountId: String?? = nil,
         taxDeductibleRate: Int?? = nil,
+        counterpartyId: UUID?? = nil,
         counterparty: String?? = nil
     ) {
         guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
@@ -2070,7 +2376,17 @@ class DataStore {
         if let paymentAccountId { recurring.paymentAccountId = paymentAccountId }
         if let transferToAccountId { recurring.transferToAccountId = transferToAccountId }
         if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
+        if let counterpartyId { recurring.counterpartyId = counterpartyId }
         if let counterparty { recurring.counterparty = counterparty }
+        if counterpartyId != nil || counterparty != nil {
+            let resolvedCounterparty = resolveLegacyCounterpartyReference(
+                explicitId: recurring.counterpartyId,
+                rawName: recurring.counterparty,
+                defaultTaxCodeId: nil
+            )
+            recurring.counterpartyId = resolvedCounterparty.id
+            recurring.counterparty = resolvedCounterparty.displayName
+        }
 
         let resolvedMode = allocationMode ?? recurring.allocationMode
         let finalAmount = amount ?? recurring.amount
@@ -2410,6 +2726,7 @@ class DataStore {
             paymentAccountId: recurring.paymentAccountId,
             transferToAccountId: recurring.transferToAccountId,
             taxDeductibleRate: recurring.taxDeductibleRate,
+            counterpartyId: recurring.counterpartyId,
             counterparty: recurring.counterparty,
             candidateSource: .recurring
         ) {
@@ -2591,6 +2908,7 @@ class DataStore {
                     paymentAccountId: recurring.paymentAccountId,
                     transferToAccountId: recurring.transferToAccountId,
                     taxDeductibleRate: recurring.taxDeductibleRate,
+                    counterpartyId: recurring.counterpartyId,
                     counterparty: recurring.counterparty,
                     candidateSource: .recurring
                 ) {
@@ -2924,6 +3242,7 @@ class DataStore {
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,
                 taxDeductibleRate: recurring.taxDeductibleRate,
+                counterpartyId: recurring.counterpartyId,
                 counterparty: recurring.counterparty,
                 candidateSource: .recurring
             ) {

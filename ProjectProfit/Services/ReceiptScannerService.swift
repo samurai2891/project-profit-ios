@@ -222,6 +222,7 @@ final class ReceiptScannerService {
         - taxAmount: 消費税額を整数で（「消費税」「内税」「外税」行の金額。不明なら0）
         - date: yyyy-MM-dd形式（「2026/01/15」→「2026-01-15」）
         - storeName: 店舗名・発行者名
+        - registrationNumber: 適格請求書発行事業者の登録番号（T + 13桁数字）。見つからない場合は空文字
         - documentType: receipt / invoice / expense-receipt / unknown から選択
         - transactionType: income / expense のどちらかを選択（請求書は原則 income、領収書・レシートは原則 expense）
         - estimatedCategory: 以下から最適なものを1つ選択:
@@ -271,6 +272,8 @@ final class ReceiptScannerService {
         let normalizedStoreName = extraction.storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? RegexReceiptParser.extractStoreName(from: text)
             : extraction.storeName
+        let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(extraction.registrationNumber)
+            ?? RegexReceiptParser.extractRegistrationNumber(from: text)
         let normalizedLineItems = lineItems.isEmpty
             ? RegexReceiptParser.extractLineItems(from: text)
             : lineItems
@@ -282,6 +285,7 @@ final class ReceiptScannerService {
             subtotalAmount: subtotalAmount,
             date: normalizedDate,
             storeName: normalizedStoreName,
+            registrationNumber: normalizedRegistrationNumber,
             estimatedCategory: inferredCategory,
             itemSummary: extraction.itemSummary,
             lineItems: normalizedLineItems,
@@ -355,6 +359,7 @@ final class ReceiptScannerService {
             subtotalAmount: subtotalAmount,
             date: RegexReceiptParser.extractDate(from: text),
             storeName: RegexReceiptParser.extractStoreName(from: text),
+            registrationNumber: RegexReceiptParser.extractRegistrationNumber(from: text),
             estimatedCategory: RegexReceiptParser.estimateCategory(from: text, type: transactionType),
             itemSummary: RegexReceiptParser.extractSummary(from: text),
             lineItems: RegexReceiptParser.extractLineItems(from: text),
@@ -403,6 +408,7 @@ enum RegexReceiptParser {
     private static let yenSuffixPattern = try? NSRegularExpression(pattern: "([\\d,]+)\\s*円")
     private static let dateSlashPattern = try? NSRegularExpression(pattern: "(20\\d{2})[/\\-](\\d{1,2})[/\\-](\\d{1,2})")
     private static let dateJPPattern = try? NSRegularExpression(pattern: "(20\\d{2})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日")
+    private static let registrationNumberPattern = try? NSRegularExpression(pattern: "\\bT\\s*([0-9]{13})\\b", options: [.caseInsensitive])
     private static let numberFirstPatterns: [NSRegularExpression] = [
         "[¥￥]\\s*([\\d,]+)",
         "([\\d,]+)\\s*円",
@@ -578,6 +584,15 @@ enum RegexReceiptParser {
         }
 
         return ""
+    }
+
+    static func extractRegistrationNumber(from text: String) -> String? {
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = registrationNumberPattern?.firstMatch(in: text, range: range),
+              let digitsRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return RegistrationNumberNormalizer.normalize("T\(text[digitsRange])")
     }
 
     static func detectDocumentType(from text: String) -> ScannedDocumentType {

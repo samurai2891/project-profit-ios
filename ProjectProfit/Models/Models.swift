@@ -195,6 +195,7 @@ final class PPTransaction {
     var taxRate: Int?                   // 税率（%: 8 or 10）
     var isTaxIncluded: Bool?            // 税込金額かどうか（true = amount は税込）
     var taxCategory: TaxCategory?       // 消費税区分
+    var counterpartyId: UUID?           // 取引先マスタID（FK -> Counterparty.id）
     var counterparty: String?            // 取引先名
     var deletedAt: Date?                 // ソフトデリート日時（nil = 有効）
     var createdAt: Date
@@ -221,6 +222,7 @@ final class PPTransaction {
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         deletedAt: Date? = nil,
         createdAt: Date = Date(),
@@ -246,6 +248,7 @@ final class PPTransaction {
         self.taxRate = taxRate
         self.isTaxIncluded = isTaxIncluded
         self.taxCategory = taxCategory
+        self.counterpartyId = counterpartyId
         self.counterparty = counterparty
         self.deletedAt = deletedAt
         self.createdAt = createdAt
@@ -334,6 +337,7 @@ final class PPRecurringTransaction {
     var paymentAccountId: String?
     var transferToAccountId: String?
     var taxDeductibleRate: Int?
+    var counterpartyId: UUID?
     var counterparty: String?
     var createdAt: Date
     var updatedAt: Date
@@ -361,6 +365,7 @@ final class PPRecurringTransaction {
         paymentAccountId: String? = nil,
         transferToAccountId: String? = nil,
         taxDeductibleRate: Int? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -387,6 +392,7 @@ final class PPRecurringTransaction {
         self.paymentAccountId = paymentAccountId
         self.transferToAccountId = transferToAccountId
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
+        self.counterpartyId = counterpartyId
         self.counterparty = counterparty
         self.createdAt = createdAt
         self.updatedAt = updatedAt

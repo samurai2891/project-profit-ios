@@ -231,6 +231,9 @@ extension DataStore {
             }
 
             let transaction = pair.entry.sourceTransactionId.flatMap { transactionMap[$0] }
+            let resolvedCounterparty = transaction?.counterpartyId
+                .flatMap { canonicalCounterparty(id: $0)?.displayName }
+                ?? transaction?.counterparty
 
             return LedgerEntry(
                 id: pair.line.id,
@@ -240,7 +243,7 @@ extension DataStore {
                 debit: pair.line.debit,
                 credit: pair.line.credit,
                 runningBalance: runningBalance,
-                counterparty: transaction?.counterparty,
+                counterparty: resolvedCounterparty,
                 taxCategory: transaction?.taxCategory
             )
         }

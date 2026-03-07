@@ -37,6 +37,8 @@ struct ReceiptEvidenceIntakeRequest {
     let taxRate: Int
     let isTaxIncluded: Bool
     let taxAmount: Int?
+    let registrationNumber: String?
+    let counterpartyId: UUID?
     let counterpartyName: String?
 }
 
@@ -103,7 +105,10 @@ struct ReceiptEvidenceIntakeUseCase {
         let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
         let counterpartyId = try await matchedCounterpartyId(
             businessId: businessId,
-            name: request.counterpartyName
+            explicitId: request.counterpartyId,
+            registrationNumber: request.registrationNumber,
+            name: request.counterpartyName,
+            defaultTaxCodeId: resolvedTaxCodeId(for: request)
         )
         let evidence = EvidenceDocument(
             businessId: businessId,
@@ -484,13 +489,56 @@ struct ReceiptEvidenceIntakeUseCase {
         )
     }
 
-    private func matchedCounterpartyId(businessId: UUID, name: String?) async throws -> UUID? {
+    private func matchedCounterpartyId(
+        businessId: UUID,
+        explicitId: UUID?,
+        registrationNumber: String?,
+        name: String?,
+        defaultTaxCodeId: String?
+    ) async throws -> UUID? {
+        if let explicitId {
+            return explicitId
+        }
+
+        let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(registrationNumber)
+        if let normalizedRegistrationNumber,
+           let matchedByRegistration = try await counterpartyMasterUseCase.findByRegistrationNumber(normalizedRegistrationNumber) {
+            return matchedByRegistration.id
+        }
+
         guard let normalizedName = normalizedOptionalString(name) else { return nil }
-        let matched = try await counterpartyMasterUseCase.suggestCounterparty(
+
+        let exactMatches = try await counterpartyMasterUseCase.searchCounterparties(
+            businessId: businessId,
+            query: normalizedName
+        )
+        if let exactMatch = exactMatches.first(where: {
+            $0.displayName.compare(
+                normalizedName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }) {
+            return exactMatch.id
+        }
+
+        if let suggested = try await counterpartyMasterUseCase.suggestCounterparty(
             storeName: normalizedName,
             businessId: businessId
+        ) {
+            return suggested.id
+        }
+
+        let newCounterparty = Counterparty(
+            id: stableCounterpartyId(businessId: businessId, displayName: normalizedName),
+            businessId: businessId,
+            displayName: normalizedName,
+            invoiceRegistrationNumber: normalizedRegistrationNumber,
+            defaultTaxCodeId: defaultTaxCodeId,
+            createdAt: Date(),
+            updatedAt: Date()
         )
-        return matched?.id
+        try await counterpartyMasterUseCase.save(newCounterparty)
+        return newCounterparty.id
     }
 
     private func makeStructuredFields(from request: ReceiptEvidenceIntakeRequest) -> EvidenceStructuredFields {
@@ -509,12 +557,14 @@ struct ReceiptEvidenceIntakeUseCase {
             )
         }
         let normalizedCounterpartyName = normalizedOptionalString(request.counterpartyName)
+        let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(request.registrationNumber)
         let subtotalDecimal = subtotal > 0 ? Decimal(subtotal) : nil
 
         switch request.taxRate {
         case 8 where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 subtotalReducedRate: subtotalDecimal,
                 taxReducedRate: taxAmount > 0 ? taxAmount : nil,
@@ -525,6 +575,7 @@ struct ReceiptEvidenceIntakeUseCase {
         case 10 where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 subtotalStandardRate: subtotalDecimal,
                 taxStandardRate: taxAmount > 0 ? taxAmount : nil,
@@ -535,6 +586,7 @@ struct ReceiptEvidenceIntakeUseCase {
         default:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 totalAmount: totalAmount,
                 lineItems: evidenceLineItems,
@@ -552,6 +604,7 @@ struct ReceiptEvidenceIntakeUseCase {
             request.receiptData.estimatedCategory,
             String(request.reviewedAmount),
             String(request.taxRate),
+            request.registrationNumber ?? request.receiptData.registrationNumber ?? "",
         ]
         tokens.append(contentsOf: request.lineItems.map(\.name))
         tokens.append(contentsOf: request.linkedProjectIds.map(\.uuidString))
@@ -603,6 +656,24 @@ struct ReceiptEvidenceIntakeUseCase {
     private func normalizedOptionalString(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {
+        let normalizedName = displayName
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let seed = "\(businessId.uuidString.lowercased())|\(normalizedName)"
+        var bytes = Array(SHA256.hash(data: Data(seed.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let uuid = uuid_t(
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        )
+        return UUID(uuid: uuid)
     }
 
     private func stateHash<T: Encodable>(_ value: T) -> String? {

@@ -195,6 +195,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
                 subtotalAmount: amount - (amount / 11),
                 date: "\(fiscalYear)-04-10",
                 storeName: counterpartyName,
+                registrationNumber: nil,
                 estimatedCategory: "tools",
                 itemSummary: "監査証憑"
             ),
@@ -217,6 +218,8 @@ final class CanonicalFlowE2ETests: XCTestCase {
             taxRate: 10,
             isTaxIncluded: false,
             taxAmount: amount / 11,
+            registrationNumber: nil,
+            counterpartyId: nil,
             counterpartyName: counterpartyName
         )
 

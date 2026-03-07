@@ -125,8 +125,8 @@ struct CounterpartyListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if let regNum = counterparty.invoiceRegistrationNumber, !regNum.isEmpty {
-                Text("T\(regNum)")
+            if let regNum = counterparty.normalizedInvoiceRegistrationNumber {
+                Text(regNum)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }

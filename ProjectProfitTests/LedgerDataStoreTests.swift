@@ -11,6 +11,7 @@ final class LedgerDataStoreTests: XCTestCase {
     override func setUp() {
         super.setUp()
         container = try! TestModelContainer.create()
+        FeatureFlags.useLegacyLedger = true
         context = container.mainContext
         store = LedgerDataStore(modelContext: context, accessMode: .readWrite)
     }
@@ -19,6 +20,7 @@ final class LedgerDataStoreTests: XCTestCase {
         store = nil
         context = nil
         container = nil
+        FeatureFlags.clearOverrides()
         super.tearDown()
     }
 

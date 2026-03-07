@@ -1,5 +1,21 @@
 import Foundation
 
+enum RegistrationNumberNormalizer {
+    static func normalize(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+
+        let uppercased = trimmed.uppercased()
+        let digits = uppercased.hasPrefix("T") ? String(uppercased.dropFirst()) : uppercased
+        guard digits.count == 13, digits.allSatisfy(\.isNumber) else {
+            return nil
+        }
+        return "T\(digits)"
+    }
+}
+
 /// 取引先マスタ（独立したエンティティ）
 /// 現行の PPTransaction.counterparty: String → マスタに昇格
 struct Counterparty: Identifiable, Codable, Sendable, Equatable {
@@ -102,5 +118,9 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
             createdAt: self.createdAt,
             updatedAt: Date()
         )
+    }
+
+    var normalizedInvoiceRegistrationNumber: String? {
+        RegistrationNumberNormalizer.normalize(invoiceRegistrationNumber)
     }
 }

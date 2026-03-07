@@ -18,7 +18,9 @@ struct CounterpartyFormView: View {
     @State private var phone = ""
     @State private var email = ""
     @State private var notes = ""
+    @State private var selectedDefaultAccountId: UUID?
     @State private var selectedTaxCodeId: String?
+    @State private var selectedDefaultProjectId: UUID?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var registrationNumberError: String?
@@ -27,6 +29,12 @@ struct CounterpartyFormView: View {
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && registrationNumberError == nil
+    }
+    private var availableAccounts: [CanonicalAccount] {
+        dataStore.canonicalAccounts().filter { $0.archivedAt == nil }
+    }
+    private var availableProjects: [PPProject] {
+        dataStore.projects.filter { $0.isArchived != true }
     }
 
     init(counterparty: Counterparty?, onSaved: (() -> Void)? = nil) {
@@ -74,10 +82,24 @@ struct CounterpartyFormView: View {
             }
 
             Section("デフォルト設定") {
+                Picker("勘定科目", selection: $selectedDefaultAccountId) {
+                    Text("未設定").tag(UUID?.none)
+                    ForEach(availableAccounts, id: \.id) { account in
+                        Text("\(account.code) \(account.name)").tag(UUID?.some(account.id))
+                    }
+                }
+
                 Picker("税区分", selection: $selectedTaxCodeId) {
                     Text("未設定").tag(String?.none)
                     ForEach(TaxCode.allCases, id: \.rawValue) { code in
                         Text(code.displayName).tag(String?.some(code.rawValue))
+                    }
+                }
+
+                Picker("プロジェクト", selection: $selectedDefaultProjectId) {
+                    Text("未設定").tag(UUID?.none)
+                    ForEach(availableProjects) { project in
+                        Text(project.name).tag(UUID?.some(project.id))
                     }
                 }
             }
@@ -116,13 +138,15 @@ struct CounterpartyFormView: View {
         displayName = cp.displayName
         kana = cp.kana ?? ""
         legalName = cp.legalName ?? ""
-        invoiceRegistrationNumber = cp.invoiceRegistrationNumber ?? ""
+        invoiceRegistrationNumber = cp.normalizedInvoiceRegistrationNumber ?? cp.invoiceRegistrationNumber ?? ""
         invoiceIssuerStatus = cp.invoiceIssuerStatus
         address = cp.address ?? ""
         phone = cp.phone ?? ""
         email = cp.email ?? ""
         notes = cp.notes ?? ""
+        selectedDefaultAccountId = cp.defaultAccountId
         selectedTaxCodeId = cp.defaultTaxCodeId
+        selectedDefaultProjectId = cp.defaultProjectId
     }
 
     private func validateRegistrationNumber(_ value: String) {
@@ -150,7 +174,7 @@ struct CounterpartyFormView: View {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKana = kana.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLegalName = legalName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedRegNum = invoiceRegistrationNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRegNum = RegistrationNumberNormalizer.normalize(invoiceRegistrationNumber)
         let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -165,16 +189,16 @@ struct CounterpartyFormView: View {
                 kana: trimmedKana.isEmpty ? nil : trimmedKana,
                 legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
                 corporateNumber: existing.corporateNumber,
-                invoiceRegistrationNumber: trimmedRegNum.isEmpty ? nil : trimmedRegNum,
+                invoiceRegistrationNumber: trimmedRegNum,
                 invoiceIssuerStatus: invoiceIssuerStatus,
                 statusEffectiveFrom: existing.statusEffectiveFrom,
                 statusEffectiveTo: existing.statusEffectiveTo,
                 address: trimmedAddress.isEmpty ? nil : trimmedAddress,
                 phone: trimmedPhone.isEmpty ? nil : trimmedPhone,
                 email: trimmedEmail.isEmpty ? nil : trimmedEmail,
-                defaultAccountId: existing.defaultAccountId,
+                defaultAccountId: selectedDefaultAccountId,
                 defaultTaxCodeId: selectedTaxCodeId,
-                defaultProjectId: existing.defaultProjectId,
+                defaultProjectId: selectedDefaultProjectId,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
                 createdAt: existing.createdAt,
                 updatedAt: Date()
@@ -185,12 +209,14 @@ struct CounterpartyFormView: View {
                 displayName: trimmedName,
                 kana: trimmedKana.isEmpty ? nil : trimmedKana,
                 legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
-                invoiceRegistrationNumber: trimmedRegNum.isEmpty ? nil : trimmedRegNum,
+                invoiceRegistrationNumber: trimmedRegNum,
                 invoiceIssuerStatus: invoiceIssuerStatus,
                 address: trimmedAddress.isEmpty ? nil : trimmedAddress,
                 phone: trimmedPhone.isEmpty ? nil : trimmedPhone,
                 email: trimmedEmail.isEmpty ? nil : trimmedEmail,
+                defaultAccountId: selectedDefaultAccountId,
                 defaultTaxCodeId: selectedTaxCodeId,
+                defaultProjectId: selectedDefaultProjectId,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes
             )
         }

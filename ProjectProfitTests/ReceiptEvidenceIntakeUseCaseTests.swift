@@ -46,6 +46,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
                 totalAmount: 1200,
                 date: "2026-03-07",
                 storeName: "文具センター",
+                registrationNumber: nil,
                 estimatedCategory: "tools",
                 itemSummary: "ノート"
             ),
@@ -68,6 +69,8 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxRate: 0,
             isTaxIncluded: false,
             taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
             counterpartyName: "文具センター"
         )
 
@@ -131,7 +134,9 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
 
         let counterparty = Counterparty(
             businessId: businessId,
-            displayName: "登録済み商事"
+            displayName: "登録済み商事",
+            invoiceRegistrationNumber: "T1234567890123",
+            invoiceIssuerStatus: .registered
         )
         try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
 
@@ -143,6 +148,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
                 subtotalAmount: 1000,
                 date: "2026-03-07",
                 storeName: "登録済み商事",
+                registrationNumber: "T1234567890123",
                 estimatedCategory: "tools",
                 itemSummary: "消耗品"
             ),
@@ -165,6 +171,8 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxRate: 10,
             isTaxIncluded: false,
             taxAmount: 100,
+            registrationNumber: "T1234567890123",
+            counterpartyId: nil,
             counterpartyName: "登録済み商事"
         )
 
@@ -173,6 +181,8 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(result.evidence.linkedCounterpartyId, counterparty.id)
         XCTAssertEqual(result.candidate.counterpartyId, counterparty.id)
+        XCTAssertEqual(result.evidence.structuredFields?.registrationNumber, "T1234567890123")
+        XCTAssertTrue(result.evidence.searchTokens.contains("T1234567890123"))
         XCTAssertEqual(result.candidate.proposedLines.count, 3)
         XCTAssertEqual(
             result.candidate.proposedLines.compactMap(\.taxCodeId),

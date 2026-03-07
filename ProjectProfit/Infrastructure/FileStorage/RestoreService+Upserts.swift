@@ -62,6 +62,7 @@ extension RestoreService {
                 existing.paymentAccountId = snapshot.paymentAccountId
                 existing.transferToAccountId = snapshot.transferToAccountId
                 existing.taxDeductibleRate = snapshot.taxDeductibleRate
+                existing.counterpartyId = snapshot.counterpartyId
                 existing.counterparty = snapshot.counterparty
                 existing.createdAt = snapshot.createdAt
                 existing.updatedAt = snapshot.updatedAt
@@ -94,6 +95,7 @@ extension RestoreService {
                 existing.taxRate = snapshot.taxRate
                 existing.isTaxIncluded = snapshot.isTaxIncluded
                 existing.taxCategory = snapshot.taxCategory
+                existing.counterpartyId = snapshot.counterpartyId
                 existing.counterparty = snapshot.counterparty
                 existing.deletedAt = snapshot.deletedAt
                 existing.createdAt = snapshot.createdAt

@@ -260,7 +260,7 @@
 
 ### REL-P1-01 取引先マスタと T番号照合を実装する
 - 関連既存チケット: `PP-006`, `PP-025`
-- 状態: **部分実装**
+- 状態: **完了**
 - 根拠:
   - `SwiftDataCounterpartyRepository.swift`、`CounterpartyMasterUseCase.swift`、`CounterpartyListView.swift`、`CounterpartyFormView.swift` は存在する。
   - `ReceiptEvidenceIntakeUseCase.swift` は OCR 抽出名から取引先候補解決を行っている。
@@ -388,19 +388,19 @@
 
 ### REL-P2-01 銀行 / カード照合を実装する
 - 関連既存チケット: `PP-038`
-- 状態: **未着手**
+- 状態: **未実装**
 - 根拠: 銀行/カード明細の取り込み・照合画面・一致判定基盤がリポジトリ内に無い。
 - 完了条件: 明細取込、候補一致、未照合一覧、消込ができる。
 
 ### REL-P2-02 User Rule Engine とローカル学習メモリを実装する
 - 関連既存チケット: `PP-037`
-- 状態: **未着手**
+- 状態: **部分実装**
 - 根拠: `ClassificationLearningService.swift` はあるが rule engine / memory store / candidate feedback loop までは無い。
 - 完了条件: ユーザーの承認結果が次回候補生成へ反映される。
 
 ### REL-P2-03 源泉徴収 / 支払調書の基礎モデルを入れる
 - 関連既存チケット: `PP-021`
-- 状態: **未着手**
+- 状態: **部分実装**
 - 根拠: 源泉対象支払や支払調書に必要な payee 属性・税額保持モデルが無い。
 - 完了条件: 源泉対象支払の記帳に必要な属性を保持できる。
 

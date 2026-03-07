@@ -38,12 +38,32 @@ struct TransactionFormView: View {
     @State private var isTaxIncluded: Bool = true
     @State private var taxAmountText: String = ""
     // Phase 8: 取引先
+    @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String = ""
 
     private var isEditMode: Bool { transaction != nil }
 
     private var paymentAccounts: [PPAccount] {
         dataStore.accounts.filter { $0.isPaymentAccount && $0.isActive }
+    }
+
+    private var counterparties: [Counterparty] {
+        dataStore.canonicalCounterparties()
+    }
+
+    private var selectedCounterparty: Counterparty? {
+        guard let selectedCounterpartyId else { return nil }
+        return counterparties.first { $0.id == selectedCounterpartyId }
+    }
+
+    private var counterpartyPickerSelection: Binding<UUID?> {
+        Binding(
+            get: { selectedCounterpartyId },
+            set: { newValue in
+                selectedCounterpartyId = newValue
+                applySelectedCounterpartyDefaults()
+            }
+        )
     }
 
     init(transaction: PPTransaction? = nil, defaultProjectId: UUID? = nil) {
@@ -644,7 +664,23 @@ struct TransactionFormView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("取引先")
                 .font(.subheadline.weight(.medium))
+            if !counterparties.isEmpty {
+                Picker("登録済み取引先", selection: counterpartyPickerSelection) {
+                    Text("選択しない").tag(UUID?.none)
+                    ForEach(counterparties, id: \.id) { counterparty in
+                        Text(counterparty.displayName).tag(UUID?.some(counterparty.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             TextField("取引先名を入力...", text: $counterparty)
+                .onChange(of: counterparty) { _, newValue in
+                    guard let selectedCounterparty else { return }
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty || trimmed != selectedCounterparty.displayName {
+                        selectedCounterpartyId = nil
+                    }
+                }
                 .padding(14)
                 .background(AppColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -684,7 +720,10 @@ struct TransactionFormView: View {
             selectedTaxCode = TaxCode.resolve(legacyCategory: t.taxCategory, taxRate: t.taxRate)
             isTaxIncluded = t.isTaxIncluded ?? true
             if let ta = t.taxAmount { taxAmountText = String(ta) }
-            counterparty = t.counterparty ?? ""
+            selectedCounterpartyId = t.counterpartyId
+            counterparty = t.counterparty
+                ?? t.counterpartyId.flatMap { dataStore.canonicalCounterparty(id: $0)?.displayName }
+                ?? ""
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -775,6 +814,25 @@ struct TransactionFormView: View {
         }
     }
 
+    private func applySelectedCounterpartyDefaults() {
+        guard let selectedCounterparty else { return }
+
+        counterparty = selectedCounterparty.displayName
+        if let defaultTaxCodeId = selectedCounterparty.defaultTaxCodeId,
+           let taxCode = TaxCode.resolve(id: defaultTaxCodeId) {
+            selectedTaxCode = taxCode
+        }
+        if let defaultAccountId = selectedCounterparty.defaultAccountId,
+           let legacyAccountId = dataStore.legacyAccountId(for: defaultAccountId) {
+            paymentAccountId = legacyAccountId
+        }
+        if type != .transfer,
+           let defaultProjectId = selectedCounterparty.defaultProjectId,
+           dataStore.projects.contains(where: { $0.id == defaultProjectId && $0.isArchived != true }) {
+            allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+        }
+    }
+
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
@@ -797,7 +855,9 @@ struct TransactionFormView: View {
         let resolvedCategoryId: String = type == .transfer ? "" : categoryId
 
         // 消費税フィールドの解決
-        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
+        let resolvedCounterpartyName = selectedCounterparty?.displayName
+            ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
         let resolvedTaxCategory: TaxCategory? = type != .transfer ? selectedTaxCode?.legacyCategory : nil
         let resolvedConsumptionTaxRate: Int? = selectedTaxCode?.isTaxable == true ? selectedTaxCode?.taxRatePercent : nil
         let resolvedIsTaxIncluded: Bool? = selectedTaxCode?.isTaxable == true ? isTaxIncluded : nil
@@ -826,6 +886,7 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
+                    counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
                     candidateSource: .manual
                 )
@@ -844,6 +905,7 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
+                    counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
                     candidateSource: .manual
                 )
@@ -861,6 +923,7 @@ struct TransactionFormView: View {
                     taxRate: resolvedConsumptionTaxRate,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxCategory: resolvedTaxCategory,
+                    counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
                     candidateSource: .manual
                 )
@@ -882,6 +945,7 @@ struct TransactionFormView: View {
                 taxRate: resolvedConsumptionTaxRate,
                 isTaxIncluded: resolvedIsTaxIncluded,
                 taxCategory: resolvedTaxCategory,
+                counterpartyId: selectedCounterpartyId,
                 counterparty: resolvedCounterparty,
                 candidateSource: .manual
             )
