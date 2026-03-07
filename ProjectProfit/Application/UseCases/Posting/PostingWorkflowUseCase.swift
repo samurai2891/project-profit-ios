@@ -6,7 +6,9 @@ enum PostingWorkflowUseCaseError: LocalizedError {
     case candidateNotFound(UUID)
     case candidateHasNoLines(UUID)
     case missingAccount(UUID)
+    case accountNotFound(UUID)
     case invalidAmount(UUID)
+    case missingLegalReportLine(UUID)
     case journalNotBalanced(UUID)
     case journalNotFound(UUID)
     case journalAlreadyCancelled(UUID)
@@ -22,8 +24,12 @@ enum PostingWorkflowUseCaseError: LocalizedError {
             return "仕訳候補に明細がありません"
         case .missingAccount:
             return "仕訳候補に勘定科目が設定されていません"
+        case .accountNotFound:
+            return "勘定科目が見つかりません"
         case .invalidAmount:
             return "仕訳候補の金額が不正です"
+        case .missingLegalReportLine:
+            return "勘定科目に決算書表示行が設定されていません"
         case .journalNotBalanced:
             return "仕訳候補から生成した仕訳が借貸不一致です"
         case .journalNotFound:
@@ -44,17 +50,20 @@ enum PostingWorkflowUseCaseError: LocalizedError {
 struct PostingWorkflowUseCase {
     private let postingCandidateRepository: any PostingCandidateRepository
     private let journalEntryRepository: any CanonicalJournalEntryRepository
+    private let chartOfAccountsRepository: any ChartOfAccountsRepository
     private let auditRepository: (any AuditRepository)?
     private let journalSearchIndex: LocalJournalSearchIndex?
 
     init(
         postingCandidateRepository: any PostingCandidateRepository,
         journalEntryRepository: any CanonicalJournalEntryRepository,
+        chartOfAccountsRepository: any ChartOfAccountsRepository,
         auditRepository: (any AuditRepository)? = nil,
         journalSearchIndex: LocalJournalSearchIndex? = nil
     ) {
         self.postingCandidateRepository = postingCandidateRepository
         self.journalEntryRepository = journalEntryRepository
+        self.chartOfAccountsRepository = chartOfAccountsRepository
         self.auditRepository = auditRepository
         self.journalSearchIndex = journalSearchIndex
     }
@@ -63,6 +72,7 @@ struct PostingWorkflowUseCase {
         self.init(
             postingCandidateRepository: SwiftDataPostingCandidateRepository(modelContext: modelContext),
             journalEntryRepository: SwiftDataCanonicalJournalEntryRepository(modelContext: modelContext),
+            chartOfAccountsRepository: SwiftDataChartOfAccountsRepository(modelContext: modelContext),
             auditRepository: SwiftDataAuditRepository(modelContext: modelContext),
             journalSearchIndex: LocalJournalSearchIndex(modelContext: modelContext)
         )
@@ -133,7 +143,7 @@ struct PostingWorkflowUseCase {
             month: voucherMonth
         )
         let journalId = UUID()
-        let journalLines = try makeJournalLines(from: approvedCandidate, journalId: journalId)
+        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
         let entry = CanonicalJournalEntry(
             id: journalId,
             businessId: candidate.businessId,
@@ -191,7 +201,7 @@ struct PostingWorkflowUseCase {
             ).value
         }
 
-        let journalLines = try makeJournalLines(from: approvedCandidate, journalId: journalId)
+        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
         let entry = CanonicalJournalEntry(
             id: journalId,
             businessId: candidate.businessId,
@@ -490,7 +500,7 @@ struct PostingWorkflowUseCase {
         )
     }
 
-    private func makeJournalLines(from candidate: PostingCandidate, journalId: UUID) throws -> [JournalLine] {
+    private func makeJournalLines(from candidate: PostingCandidate, journalId: UUID) async throws -> [JournalLine] {
         var journalLines: [JournalLine] = []
         var sortOrder = 0
 
@@ -503,6 +513,10 @@ struct PostingWorkflowUseCase {
             }
 
             if let debitAccountId = line.debitAccountId {
+                let legalReportLineId = try await resolvedLegalReportLineId(
+                    accountId: debitAccountId,
+                    fallback: line.legalReportLineId
+                )
                 journalLines.append(
                     JournalLine(
                         journalId: journalId,
@@ -510,7 +524,7 @@ struct PostingWorkflowUseCase {
                         debitAmount: line.amount,
                         creditAmount: 0,
                         taxCodeId: line.taxCodeId,
-                        legalReportLineId: line.legalReportLineId,
+                        legalReportLineId: legalReportLineId,
                         counterpartyId: candidate.counterpartyId,
                         projectAllocationId: line.projectAllocationId,
                         genreTagIds: [],
@@ -522,6 +536,10 @@ struct PostingWorkflowUseCase {
             }
 
             if let creditAccountId = line.creditAccountId {
+                let legalReportLineId = try await resolvedLegalReportLineId(
+                    accountId: creditAccountId,
+                    fallback: line.legalReportLineId
+                )
                 journalLines.append(
                     JournalLine(
                         journalId: journalId,
@@ -529,7 +547,7 @@ struct PostingWorkflowUseCase {
                         debitAmount: 0,
                         creditAmount: line.amount,
                         taxCodeId: line.taxCodeId,
-                        legalReportLineId: line.legalReportLineId,
+                        legalReportLineId: legalReportLineId,
                         counterpartyId: candidate.counterpartyId,
                         projectAllocationId: line.projectAllocationId,
                         genreTagIds: [],
@@ -542,6 +560,26 @@ struct PostingWorkflowUseCase {
         }
 
         return journalLines
+    }
+
+    private func resolvedLegalReportLineId(
+        accountId: UUID,
+        fallback: String?
+    ) async throws -> String {
+        guard let account = try await chartOfAccountsRepository.findById(accountId) else {
+            throw PostingWorkflowUseCaseError.accountNotFound(accountId)
+        }
+
+        if let accountLineId = account.defaultLegalReportLineId,
+           LegalReportLine(rawValue: accountLineId) != nil {
+            return accountLineId
+        }
+
+        if let fallback, LegalReportLine(rawValue: fallback) != nil {
+            return fallback
+        }
+
+        throw PostingWorkflowUseCaseError.missingLegalReportLine(accountId)
     }
 
     private func saveApprovalAuditEvents(

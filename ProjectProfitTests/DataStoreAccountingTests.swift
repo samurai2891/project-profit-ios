@@ -427,8 +427,10 @@ final class DataStoreAccountingTests: XCTestCase {
 
         XCTAssertEqual(cash?.code, "101")
         XCTAssertEqual(cash?.name, "現金")
+        XCTAssertEqual(cash?.defaultLegalReportLineId, LegalReportLine.cash.rawValue)
         XCTAssertEqual(supplies?.code, "509")
         XCTAssertEqual(supplies?.name, "消耗品費")
+        XCTAssertEqual(supplies?.defaultLegalReportLineId, LegalReportLine.consumables.rawValue)
     }
 
     func testSyncCanonicalArtifactsCreatesPostingForDefaultLegacyAccountIds() async throws {
@@ -486,6 +488,8 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(candidateId, transaction.id)
         XCTAssertEqual(journal.id, try XCTUnwrap(transaction.journalEntryId))
         XCTAssertEqual(candidateAccountIds, Set([try XCTUnwrap(suppliesAccount?.id), try XCTUnwrap(cashAccount?.id)]))
+        XCTAssertEqual(Set(candidate?.proposedLines.compactMap(\.legalReportLineId) ?? []), Set([LegalReportLine.consumables.rawValue, LegalReportLine.cash.rawValue]))
+        XCTAssertEqual(Set(journal.lines.compactMap(\.legalReportLineId)), Set([LegalReportLine.consumables.rawValue, LegalReportLine.cash.rawValue]))
         XCTAssertEqual(Set(journal.lines.map(\.accountId)), Set([try XCTUnwrap(suppliesAccount?.id), try XCTUnwrap(cashAccount?.id)]))
     }
 
@@ -865,6 +869,7 @@ final class DataStoreAccountingTests: XCTestCase {
                 code: "992",
                 name: "UUID経費",
                 accountType: .expense,
+                subtype: .miscExpense,
                 isSystem: false,
                 displayOrder: 992
             )

@@ -184,6 +184,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(result.evidence.structuredFields?.registrationNumber, "T1234567890123")
         XCTAssertTrue(result.evidence.searchTokens.contains("T1234567890123"))
         XCTAssertEqual(result.candidate.proposedLines.count, 3)
+        XCTAssertEqual(result.candidate.proposedLines.compactMap(\.legalReportLineId).count, 3)
         XCTAssertEqual(
             result.candidate.proposedLines.compactMap(\.taxCodeId),
             [TaxCode.standard10.rawValue]
@@ -218,6 +219,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             name: name,
             accountType: accountType,
             normalBalance: normalBalance,
+            defaultLegalReportLineId: AccountingConstants.defaultLegalReportLineId(forLegacyAccountId: legacyAccountId),
             displayOrder: displayOrder
         )
         try await ChartOfAccountsUseCase(modelContext: context).save(account)

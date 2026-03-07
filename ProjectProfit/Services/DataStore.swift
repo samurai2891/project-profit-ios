@@ -916,6 +916,7 @@ class DataStore {
                 creditAccountId: line.credit > 0 ? accountId : nil,
                 amount: Decimal(line.amount),
                 taxCodeId: resolvedTaxCodeId,
+                legalReportLineId: canonicalAccountsByLegacyId[line.accountId]?.defaultLegalReportLineId,
                 memo: normalizedOptionalString(line.memo)
             )
         }
@@ -1818,7 +1819,8 @@ class DataStore {
         taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil
+        candidateSource: CandidateSource? = nil,
+        enqueueCanonicalSync: Bool = true
     ) -> Result<PPTransaction, AppError> {
         // T5: 年度ロックガード（段階的チェック）
         guard !cannotPostNormalEntry(for: date) else {
@@ -1877,7 +1879,9 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
-        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
+        if enqueueCanonicalSync {
+            enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
+        }
         return .success(transaction)
     }
 
@@ -1901,7 +1905,8 @@ class DataStore {
         taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil
+        candidateSource: CandidateSource? = nil,
+        enqueueCanonicalSync: Bool = true
     ) -> PPTransaction {
         switch addTransactionResult(
             type: type,
@@ -1922,7 +1927,8 @@ class DataStore {
             taxCategory: taxCategory,
             counterpartyId: counterpartyId,
             counterparty: counterparty,
-            candidateSource: candidateSource
+            candidateSource: candidateSource,
+            enqueueCanonicalSync: enqueueCanonicalSync
         ) {
         case .success(let transaction):
             return transaction

@@ -79,6 +79,7 @@ final class CanonicalUseCasesTests: XCTestCase {
             name: "広告宣伝費",
             accountType: .expense,
             normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.advertising.rawValue,
             displayOrder: 1
         )
         let assetAccount = CanonicalAccount(
@@ -87,6 +88,7 @@ final class CanonicalUseCasesTests: XCTestCase {
             name: "現金",
             accountType: .asset,
             normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue,
             displayOrder: 2
         )
 
@@ -98,6 +100,22 @@ final class CanonicalUseCasesTests: XCTestCase {
 
         XCTAssertEqual(loaded.map(\.id), [expenseAccount.id])
         XCTAssertEqual(byCode?.id, assetAccount.id)
+    }
+
+    func testChartOfAccountsUseCaseRejectsMissingLegalReportLine() async {
+        let useCase = ChartOfAccountsUseCase(modelContext: context)
+        let account = CanonicalAccount(
+            businessId: UUID(),
+            code: "999",
+            name: "未設定科目",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+
+        await XCTAssertThrowsErrorAsync {
+            try await useCase.save(account)
+        }
     }
 
     func testDistributionTemplateUseCaseReturnsOnlyActiveRules() async throws {
@@ -137,6 +155,24 @@ final class CanonicalUseCasesTests: XCTestCase {
         let businessId = UUID()
         let debitAccountId = UUID()
         let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "501",
+            name: "接待交際費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.entertainment.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let candidate = PostingCandidate(
             businessId: businessId,
             taxYear: 2025,
@@ -164,6 +200,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(entry.lines.count, 2)
         XCTAssertTrue(entry.isBalanced)
         XCTAssertEqual(entry.voucherNo, "2025-003-00001")
+        XCTAssertEqual(Set(entry.lines.compactMap(\.legalReportLineId)), Set([LegalReportLine.entertainment.rawValue, LegalReportLine.cash.rawValue]))
         XCTAssertEqual(approvedCandidates.map(\.id), [candidate.id])
         XCTAssertEqual(journals.map(\.id), [entry.id])
         XCTAssertEqual(
@@ -203,14 +240,34 @@ final class CanonicalUseCasesTests: XCTestCase {
     func testPostingWorkflowUseCaseCancelJournalCreatesReversalAndAuditEvent() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "502",
+            name: "通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.communication.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let candidate = PostingCandidate(
             businessId: businessId,
             taxYear: 2025,
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "4200")!,
                     memo: "cancel"
                 )
@@ -239,14 +296,34 @@ final class CanonicalUseCasesTests: XCTestCase {
     func testPostingWorkflowUseCaseReopenCandidateCreatesNeedsReviewCopy() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "503",
+            name: "旅費交通費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.travelTransport.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let candidate = PostingCandidate(
             businessId: businessId,
             taxYear: 2025,
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "7300")!,
                     taxCodeId: "TAX-10",
                     memo: "reopen"
@@ -277,14 +354,34 @@ final class CanonicalUseCasesTests: XCTestCase {
     func testPostingWorkflowUseCaseCancelAndReopenJournalCreatesReversalAndCandidateTogether() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "504",
+            name: "通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.communication.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "102",
+            name: "普通預金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.deposits.rawValue
+        )
         let candidate = PostingCandidate(
             businessId: businessId,
             taxYear: 2025,
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "5100")!,
                     memo: "atomic"
                 )
@@ -310,14 +407,16 @@ final class CanonicalUseCasesTests: XCTestCase {
 
     func testPostingWorkflowUseCaseSyncApprovedCandidateRollsBackStatusWhenJournalSaveFails() async throws {
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
         let candidate = PostingCandidate(
             businessId: businessId,
             taxYear: 2025,
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "1200")!,
                     memo: "rollback"
                 )
@@ -328,9 +427,33 @@ final class CanonicalUseCasesTests: XCTestCase {
         )
         let candidateRepository = InMemoryPostingCandidateRepository(initialCandidates: [candidate])
         let journalRepository = FailingCanonicalJournalEntryRepository()
+        let chartRepository = InMemoryChartOfAccountsRepository(
+            initialAccounts: [
+                seededAccount(
+                    id: debitAccountId,
+                    businessId: businessId,
+                    code: "505",
+                    name: "広告宣伝費",
+                    accountType: .expense,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.advertising.rawValue
+                ),
+                seededAccount(
+                    id: creditAccountId,
+                    businessId: businessId,
+                    code: "101",
+                    name: "現金",
+                    accountType: .asset,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.cash.rawValue
+                ),
+            ]
+        )
         let useCase = PostingWorkflowUseCase(
             postingCandidateRepository: candidateRepository,
             journalEntryRepository: journalRepository
+            ,
+            chartOfAccountsRepository: chartRepository
         )
 
         await XCTAssertThrowsErrorAsync {
@@ -341,6 +464,49 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(persisted?.status, .needsReview)
         let savedEntryCount = await journalRepository.savedEntryCount()
         XCTAssertEqual(savedEntryCount, 0)
+    }
+
+    private func seedAccount(
+        id: UUID,
+        businessId: UUID,
+        code: String,
+        name: String,
+        accountType: CanonicalAccountType,
+        normalBalance: NormalBalance,
+        defaultLegalReportLineId: String
+    ) async throws {
+        try await SwiftDataChartOfAccountsRepository(modelContext: context).save(
+            seededAccount(
+                id: id,
+                businessId: businessId,
+                code: code,
+                name: name,
+                accountType: accountType,
+                normalBalance: normalBalance,
+                defaultLegalReportLineId: defaultLegalReportLineId
+            )
+        )
+    }
+
+    private func seededAccount(
+        id: UUID,
+        businessId: UUID,
+        code: String,
+        name: String,
+        accountType: CanonicalAccountType,
+        normalBalance: NormalBalance,
+        defaultLegalReportLineId: String
+    ) -> CanonicalAccount {
+        CanonicalAccount(
+            id: id,
+            businessId: businessId,
+            code: code,
+            name: name,
+            accountType: accountType,
+            normalBalance: normalBalance,
+            defaultLegalReportLineId: defaultLegalReportLineId,
+            displayOrder: 0
+        )
     }
 }
 
@@ -409,6 +575,42 @@ private actor FailingCanonicalJournalEntryRepository: CanonicalJournalEntryRepos
 
     func nextVoucherNumber(businessId: UUID, taxYear: Int, month: Int) async throws -> VoucherNumber {
         VoucherNumber(taxYear: taxYear, month: month, sequence: 1)
+    }
+}
+
+private actor InMemoryChartOfAccountsRepository: ChartOfAccountsRepository {
+    private var storage: [UUID: CanonicalAccount]
+
+    init(initialAccounts: [CanonicalAccount] = []) {
+        storage = Dictionary(uniqueKeysWithValues: initialAccounts.map { ($0.id, $0) })
+    }
+
+    func findById(_ id: UUID) async throws -> CanonicalAccount? {
+        storage[id]
+    }
+
+    func findByLegacyId(businessId: UUID, legacyAccountId: String) async throws -> CanonicalAccount? {
+        storage.values.first { $0.businessId == businessId && $0.legacyAccountId == legacyAccountId }
+    }
+
+    func findByCode(businessId: UUID, code: String) async throws -> CanonicalAccount? {
+        storage.values.first { $0.businessId == businessId && $0.code == code }
+    }
+
+    func findAllByBusiness(businessId: UUID) async throws -> [CanonicalAccount] {
+        storage.values.filter { $0.businessId == businessId }
+    }
+
+    func findByType(businessId: UUID, accountType: CanonicalAccountType) async throws -> [CanonicalAccount] {
+        storage.values.filter { $0.businessId == businessId && $0.accountType == accountType }
+    }
+
+    func save(_ account: CanonicalAccount) async throws {
+        storage[account.id] = account
+    }
+
+    func delete(_ id: UUID) async throws {
+        storage[id] = nil
     }
 }
 

@@ -271,6 +271,7 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: request.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
             )
+            let paymentAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: paymentAccountId)
             let revenueAccountId = try await canonicalAccountId(
                 businessId: businessId,
                 legacyAccountId: resolveLinkedLegacyAccountId(
@@ -278,27 +279,32 @@ struct ReceiptEvidenceIntakeUseCase {
                     fallback: AccountingConstants.salesAccountId
                 )
             )
+            let revenueAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: revenueAccountId)
             if taxAmount > 0, let taxCodeId {
                 let outputTaxAccountId = try await canonicalAccountId(
                     businessId: businessId,
                     legacyAccountId: AccountingConstants.outputTaxAccountId
                 )
+                let outputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: outputTaxAccountId)
                 let netAmount = amount - taxAmount
                 return [
                     PostingCandidateLine(
                         debitAccountId: paymentAccountId,
                         amount: Decimal(amount),
+                        legalReportLineId: paymentAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                     PostingCandidateLine(
                         creditAccountId: revenueAccountId,
                         amount: Decimal(netAmount),
                         taxCodeId: taxCodeId,
+                        legalReportLineId: revenueAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                     PostingCandidateLine(
                         creditAccountId: outputTaxAccountId,
                         amount: Decimal(taxAmount),
+                        legalReportLineId: outputTaxLegalReportLineId,
                         memo: "仮受消費税"
                     ),
                 ]
@@ -318,6 +324,7 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: request.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
             )
+            let paymentAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: paymentAccountId)
             let expenseAccountId = try await canonicalAccountId(
                 businessId: businessId,
                 legacyAccountId: resolveLinkedLegacyAccountId(
@@ -325,6 +332,7 @@ struct ReceiptEvidenceIntakeUseCase {
                     fallback: AccountingConstants.miscExpenseAccountId
                 )
             )
+            let expenseAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: expenseAccountId)
             let rate = min(100, max(0, request.taxDeductibleRate))
             let expenseBase = taxAmount > 0 ? (amount - taxAmount) : amount
 
@@ -334,6 +342,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         debitAccountId: expenseAccountId,
                         amount: Decimal(expenseBase),
                         taxCodeId: taxCodeId,
+                        legalReportLineId: expenseAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                 ]
@@ -342,10 +351,12 @@ struct ReceiptEvidenceIntakeUseCase {
                         businessId: businessId,
                         legacyAccountId: AccountingConstants.inputTaxAccountId
                     )
+                    let inputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: inputTaxAccountId)
                     lines.append(
                         PostingCandidateLine(
                             debitAccountId: inputTaxAccountId,
                             amount: Decimal(taxAmount),
+                            legalReportLineId: inputTaxLegalReportLineId,
                             memo: "仮払消費税"
                         )
                     )
@@ -354,6 +365,7 @@ struct ReceiptEvidenceIntakeUseCase {
                     PostingCandidateLine(
                         creditAccountId: paymentAccountId,
                         amount: Decimal(amount),
+                        legalReportLineId: paymentAccountLegalReportLineId,
                         memo: primaryMemo
                     )
                 )
@@ -378,12 +390,14 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: AccountingConstants.ownerDrawingsAccountId
             )
+            let ownerDrawingsLegalReportLineId = try await defaultLegalReportLineId(accountId: ownerDrawingsAccountId)
 
             if taxAmount > 0 {
                 let inputTaxAccountId = try await canonicalAccountId(
                     businessId: businessId,
                     legacyAccountId: AccountingConstants.inputTaxAccountId
                 )
+                let inputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: inputTaxAccountId)
                 let deductibleTax = taxAmount * rate / 100
                 let personalTax = taxAmount - deductibleTax
                 if deductibleTax > 0 {
@@ -391,6 +405,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         PostingCandidateLine(
                             debitAccountId: inputTaxAccountId,
                             amount: Decimal(deductibleTax),
+                            legalReportLineId: inputTaxLegalReportLineId,
                             memo: "仮払消費税"
                         )
                     )
@@ -401,6 +416,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         PostingCandidateLine(
                             debitAccountId: ownerDrawingsAccountId,
                             amount: Decimal(ownerDrawingsAmount),
+                            legalReportLineId: ownerDrawingsLegalReportLineId,
                             memo: primaryMemo
                         )
                     )
@@ -410,6 +426,7 @@ struct ReceiptEvidenceIntakeUseCase {
                     PostingCandidateLine(
                         debitAccountId: ownerDrawingsAccountId,
                         amount: Decimal(personalAmount),
+                        legalReportLineId: ownerDrawingsLegalReportLineId,
                         memo: primaryMemo
                     )
                 )
@@ -419,6 +436,7 @@ struct ReceiptEvidenceIntakeUseCase {
                 PostingCandidateLine(
                     creditAccountId: paymentAccountId,
                     amount: Decimal(amount),
+                    legalReportLineId: paymentAccountLegalReportLineId,
                     memo: primaryMemo
                 )
             )
@@ -442,6 +460,11 @@ struct ReceiptEvidenceIntakeUseCase {
                 ),
             ]
         }
+    }
+
+    private func defaultLegalReportLineId(accountId: UUID) async throws -> String? {
+        let account = try await chartOfAccountsUseCase.account(accountId)
+        return account?.defaultLegalReportLineId
     }
 
     private func resolvedTaxAmount(for request: ReceiptEvidenceIntakeRequest) -> Int {

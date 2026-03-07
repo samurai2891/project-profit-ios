@@ -29,6 +29,7 @@ struct AccountFormView: View {
     private var isValid: Bool {
         !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedLegalReportLineId != nil
     }
 
     init(account: CanonicalAccount? = nil, onSaved: (() -> Void)? = nil) {

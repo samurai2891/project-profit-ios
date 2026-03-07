@@ -12,7 +12,32 @@ struct DefaultAccountDefinition {
     let accountType: AccountType
     let normalBalance: NormalBalance
     let subtype: AccountSubtype
+    let defaultLegalReportLineId: String
     let displayOrder: Int
+
+    init(
+        id: String,
+        code: String,
+        name: String,
+        accountType: AccountType,
+        normalBalance: NormalBalance,
+        subtype: AccountSubtype,
+        defaultLegalReportLineId: String? = nil,
+        displayOrder: Int
+    ) {
+        self.id = id
+        self.code = code
+        self.name = name
+        self.accountType = accountType
+        self.normalBalance = normalBalance
+        self.subtype = subtype
+        if let lineId = defaultLegalReportLineId ?? LegalReportLine.defaultLine(for: subtype)?.rawValue {
+            self.defaultLegalReportLineId = lineId
+        } else {
+            preconditionFailure("Default legal report line is missing for subtype \(subtype.rawValue)")
+        }
+        self.displayOrder = displayOrder
+    }
 }
 
 enum AccountingConstants {
@@ -79,6 +104,10 @@ enum AccountingConstants {
     static let defaultAccountsById: [String: DefaultAccountDefinition] = {
         Dictionary(uniqueKeysWithValues: defaultAccounts.map { ($0.id, $0) })
     }()
+
+    static func defaultLegalReportLineId(forLegacyAccountId legacyAccountId: String) -> String? {
+        defaultAccountsById[legacyAccountId]?.defaultLegalReportLineId
+    }
 
     // MARK: - Category → Account Mapping
 

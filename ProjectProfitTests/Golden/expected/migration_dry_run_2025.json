@@ -7,7 +7,7 @@
       "modelName" : "Account"
     },
     {
-      "canonicalCount" : 55,
+      "canonicalCount" : 28,
       "executeSupported" : false,
       "legacyCount" : 0,
       "modelName" : "AuditEvent"

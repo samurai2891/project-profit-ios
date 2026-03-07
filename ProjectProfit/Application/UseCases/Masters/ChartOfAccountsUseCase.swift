@@ -1,6 +1,20 @@
 import Foundation
 import SwiftData
 
+enum ChartOfAccountsUseCaseError: LocalizedError {
+    case missingLegalReportLine
+    case invalidLegalReportLine(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingLegalReportLine:
+            return "決算書表示行を設定してください"
+        case .invalidLegalReportLine:
+            return "決算書表示行の値が不正です"
+        }
+    }
+}
+
 @MainActor
 struct ChartOfAccountsUseCase {
     private let chartOfAccountsRepository: any ChartOfAccountsRepository
@@ -34,6 +48,12 @@ struct ChartOfAccountsUseCase {
     }
 
     func save(_ account: CanonicalAccount) async throws {
+        guard let legalReportLineId = account.defaultLegalReportLineId else {
+            throw ChartOfAccountsUseCaseError.missingLegalReportLine
+        }
+        guard LegalReportLine(rawValue: legalReportLineId) != nil else {
+            throw ChartOfAccountsUseCaseError.invalidLegalReportLine(legalReportLineId)
+        }
         try await chartOfAccountsRepository.save(account)
     }
 

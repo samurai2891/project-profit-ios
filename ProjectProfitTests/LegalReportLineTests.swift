@@ -25,6 +25,7 @@ final class LegalReportLineTests: XCTestCase {
         XCTAssertEqual(LegalReportLine.openingInventory.section, .costOfSales)
         XCTAssertEqual(LegalReportLine.purchases.section, .costOfSales)
         XCTAssertEqual(LegalReportLine.closingInventory.section, .costOfSales)
+        XCTAssertEqual(LegalReportLine.costOfGoodsSold.section, .costOfSales)
     }
 
     func testExpenseLinesBelongToExpenseSection() {
@@ -37,6 +38,8 @@ final class LegalReportLineTests: XCTestCase {
         XCTAssertEqual(LegalReportLine.cash.section, .balanceSheet)
         XCTAssertEqual(LegalReportLine.accountsPayable.section, .balanceSheet)
         XCTAssertEqual(LegalReportLine.capital.section, .balanceSheet)
+        XCTAssertEqual(LegalReportLine.ownerDrawings.section, .balanceSheet)
+        XCTAssertEqual(LegalReportLine.inputTax.section, .balanceSheet)
     }
 
     func testRawValuesAreUnique() {

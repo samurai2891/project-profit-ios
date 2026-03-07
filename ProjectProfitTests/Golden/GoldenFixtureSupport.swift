@@ -192,7 +192,8 @@ struct GoldenFixtureLoader {
                 taxRate: fixtureTransaction.taxRate,
                 isTaxIncluded: fixtureTransaction.isTaxIncluded,
                 counterparty: fixtureTransaction.counterparty,
-                candidateSource: .manual
+                candidateSource: .manual,
+                enqueueCanonicalSync: false
             )
             _ = await dataStore.syncCanonicalArtifacts(
                 forTransactionId: transaction.id,

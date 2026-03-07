@@ -114,6 +114,26 @@ final class SearchIndexTests: XCTestCase {
 
     func testJournalSearchUseCaseSearchesEvidenceBackedJournalsAndRebuildsIndex() async throws {
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let evidence = makeEvidence(
             businessId: businessId,
             fileHash: "JOURNAL-HASH",
@@ -132,8 +152,8 @@ final class SearchIndexTests: XCTestCase {
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "8800")!,
                     memo: "検索テスト"
                 )
@@ -179,6 +199,26 @@ final class SearchIndexTests: XCTestCase {
 
     func testJournalSearchUseCaseExcludesCancelledEntriesWhenRequested() async throws {
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let evidence = makeEvidence(
             businessId: businessId,
             fileHash: "CANCELLED-HASH",
@@ -197,8 +237,8 @@ final class SearchIndexTests: XCTestCase {
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "5000")!,
                     memo: "取消検索"
                 )
@@ -265,5 +305,26 @@ final class SearchIndexTests: XCTestCase {
             linkedProjectIds: [projectId],
             complianceStatus: .pendingReview
         )
+    }
+
+    private func seedAccount(
+        id: UUID,
+        businessId: UUID,
+        code: String,
+        name: String,
+        accountType: CanonicalAccountType,
+        normalBalance: NormalBalance,
+        defaultLegalReportLineId: String
+    ) async throws {
+        let account = CanonicalAccount(
+            id: id,
+            businessId: businessId,
+            code: code,
+            name: name,
+            accountType: accountType,
+            normalBalance: normalBalance,
+            defaultLegalReportLineId: defaultLegalReportLineId
+        )
+        try await ChartOfAccountsUseCase(modelContext: context).save(account)
     }
 }
