@@ -12,6 +12,11 @@
 - 添付資料: `収支内訳書.pdf`
 - 添付資料: `消費税集計表.png`
 
+> 現況注記（2026-03-07）
+> この文書は委託向けの目標ディレクトリ構成・責務分離仕様書として維持する。現行 repo はここに記載した最終ディレクトリ構成へはまだ到達していないが、`EvidenceInbox`、`ApprovalQueue`、TaxYearPack provider、検索 index、migration dry-run、backup / restore など一部は先行して存在する。
+> 一方で、`Features/Filing`、`Features/Journals`、`Features/Reports` の screen 実装、`FormEngine`、`ExportCoordinator` 本線統合、canonical 帳簿一本化は未達である。
+> 実装状態の確認には `release_ticket_list.md` を優先する。
+
 ---
 
 # 0. この文書の役割
@@ -2677,4 +2682,3 @@ UI は多少変わって構いません。
 - 単月全プロジェクト配賦、定期取引月次配賦、ユーザー勘定科目追加、ジャンル追加のいずれかが欠ける場合は不合格とする。
 - 原本証憑保存、検索、修正履歴、仕訳相互参照のいずれかが欠ける場合は不合格とする。
 - 旧 `LedgerDataStore` のような第二正本構造を残した場合は不合格とする。
-

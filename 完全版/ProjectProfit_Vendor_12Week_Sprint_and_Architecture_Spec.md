@@ -6,6 +6,11 @@
 対象方式: **新規再構築（0から作る前提）**  
 想定委託先: iOS 開発会社 / 個人受託チーム / 小規模開発会社 / 会計・税務 SaaS 受託経験ありのチーム
 
+> 現況注記（2026-03-07）
+> この文書は「0から再構築する際の委託仕様書」として維持する。現行 repo には `EvidenceInbox`、`ApprovalQueue`、検索 index、migration dry-run、backup / restore、golden / canonical E2E、release CI がすでに存在するため、本書の未実装一覧は現況と一致しない箇所がある。
+> 一方で、`Recurring` 承認化、canonical 帳簿生成一本化、`FormEngine`、`ExportCoordinator` 本線統合、import 残タスク、`PrivacyInfo.xcprivacy` 不在は現行でも未達である。
+> 実装状態の確認には `release_ticket_list.md` を優先する。
+
 ---
 
 # 1. 本書の目的
@@ -1297,4 +1302,3 @@ ProjectProfit を本当に完成品にするためには、
 - 青色申告決算書 PDF
 - 収支内訳書 PDF
 - 消費税集計表 PNG
-

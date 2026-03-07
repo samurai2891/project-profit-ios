@@ -13,6 +13,11 @@
 - 汎用性を高め、幅広い業種に対応する
 - 帳簿は **法定帳簿としても、管理会計としても破綻しない完成形** にする
 
+> 現況注記（2026-03-07）
+> この文書は目標アーキテクチャ仕様書として維持する。現行 repo では canonical profile、税務状態/preflight、evidence intake、approval queue、検索 index、migration dry-run、backup / restore、golden / canonical E2E、release CI は実装済みまたは部分実装まで進んでいる。
+> 一方で、`AccountingEngine` の runtime caller 残存、`Recurring` 自動実行、`FormEngine` 不在、`TaxYearPacks/*/filing` と `consumption_tax` 未整備、`ExportCoordinator` 本線未集約は未達である。
+> 現在の実装棚卸しには `release_ticket_list.md` を優先する。
+
 ---
 
 # 0. この指示書の結論

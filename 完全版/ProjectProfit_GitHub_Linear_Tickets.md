@@ -5,6 +5,12 @@
 
 この文書は、既存の 12 週間スプリント計画を **GitHub Issues / Linear の親子チケット構成** に変換したものです。
 
+> 現況注記（2026-03-07）
+> この文書はチケット原本として維持し、現行コードとの差分だけをここに補足する。
+> 現行 repo では `EvidenceInbox`、`ApprovalQueue`、`PostingCandidate -> CanonicalJournal` 承認経路、検索 index、migration dry-run、backup / restore、golden / canonical E2E / release CI は実装済みまたは部分実装まで進んでいる。
+> 一方で、`Recurring` の preview -> approve 化、`AccountingEngine` の runtime caller 残存、`FormEngine` 不在、`ExportCoordinator` の本線未集約、import 残タスク、`PrivacyInfo.xcprivacy` 不在は未達のまま。
+> 現在の進捗判定は `release_ticket_list.md` を優先する。
+
 ### 運用ルール
 - **Epic** を親チケットとして作成
 - 各 `PP-xxx` を子チケットとして作成

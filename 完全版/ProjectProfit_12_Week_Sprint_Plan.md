@@ -12,6 +12,11 @@
 - 青色申告 / 白色申告 / インボイス / 消費税 / e-Tax を扱う
 - 定期取引、該当月自動分配、全プロジェクト一括配賦、勘定科目追加、ジャンル追加を標準装備する
 
+> 現況注記（2026-03-07）
+> この文書の週次配分は原計画として維持する。現行 repo では Week 7 以降に置かれていた `EvidenceInbox`、`ApprovalQueue`、migration dry-run、backup / restore、golden / canonical E2E、release CI まで前倒しで入っている。
+> 一方で、Week 9-11 相当の `Recurring` 承認化、canonical 帳簿一本化、`FormEngine`、`ExportCoordinator` 本線統合は完了していない。
+> 現況の優先順位は `release_ticket_list.md` を優先する。
+
 ---
 
 # 0. このスプリント計画の目的

@@ -6,6 +6,11 @@
 モデル: **Claude Opus 4.6（全Agent統一）**  
 リポジトリ: https://github.com/samurai2891/project-profit-ios
 
+> 現況注記（2026-03-07）
+> この文書は当初の agent 配置計画として維持する。現行 repo では `EvidenceInbox`、`ApprovalQueue`、検索 index、migration dry-run、backup / restore、golden / canonical E2E、`release-quality.yml` がすでに入っているため、Week 10-12 想定の一部は前倒し済みである。
+> 一方で、`Recurring` の preview -> approve 化、`AccountingEngine` 依存の除去、`FormEngine`、`ExportCoordinator` の本線統合は未完で、agent 割当の対象として残る。
+> 現在の進捗判定は `release_ticket_list.md` を優先する。
+
 ---
 
 # 0. 全体アーキテクチャ

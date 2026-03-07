@@ -12,10 +12,10 @@
 - 関連既存チケット: `PP-003`, `PP-056`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/ProjectProfitApp.swift` は legacy モデル群のみを `modelContainer` に登録している。
-  - `ProjectProfit/Views/ContentView.swift` は起動時に `DataStore` と `LedgerDataStore` を両方立ち上げている。
-  - `ProjectProfit/App/FeatureFlags.swift` は存在するが参照されていない。
-  - `ProjectProfit/Infrastructure/Persistence/SwiftData/Store/ModelContainerFactory.swift` は存在するが未使用。
+  - `ProjectProfit/ProjectProfitApp.swift` は `ModelContainerFactory.makeAppContainer()` を使っている。
+  - `ProjectProfit/Views/ContentView.swift` は `DataStore` を起動し、`EvidenceInboxView` と `ApprovalQueueView` を本線タブに持つ。
+  - `ProjectProfit/App/FeatureFlags.swift` は `useLegacyLedger` などのフラグを持ち、legacy ledger UI 側で参照されている。
+  - `LedgerDataStore` と legacy ledger 画面群は repo 内に残っている。
 - 対象ファイル:
   - `ProjectProfit/ProjectProfitApp.swift`
   - `ProjectProfit/Views/ContentView.swift`
@@ -34,14 +34,14 @@
 
 ### REL-P0-02 Repository / UseCase 層を完成させる
 - 関連既存チケット: `PP-010`
-- 状態: **未完成**
+- 状態: **部分実装**
 - 根拠:
-  - 実装済み Repository は `SwiftDataBusinessProfileRepository.swift` と `SwiftDataAuditRepository.swift` のみ。
-  - `EvidenceRepository`, `TaxYearProfileRepository`, `CounterpartyRepository`, `PostingCandidateRepository`, `CanonicalJournalEntryRepository` は protocol のみ。
-  - `ProjectProfit/Application` 配下は mapper 2本のみで UseCase が未実装。
+  - `SwiftDataBusinessProfileRepository.swift`, `SwiftDataAuditRepository.swift`, `SwiftDataTaxYearProfileRepository.swift`, `SwiftDataEvidenceRepository.swift`, `SwiftDataCounterpartyRepository.swift`, `SwiftDataPostingCandidateRepository.swift`, `SwiftDataCanonicalJournalEntryRepository.swift` が存在する。
+  - `Application/UseCases` には masters / evidence / filing / journals / posting / distribution の UseCase 実装がある。
+  - 一方で広い本線では `DataStore` 依存が残っている。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/*Repository.swift`
-  - `ProjectProfit/Application/UseCases/`（新規）
+  - `ProjectProfit/Application/UseCases/`（拡張）
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/`（拡張）
   - `ProjectProfit/Application/Mappers/`（拡張）
 - 実装内容:
@@ -56,9 +56,9 @@
 - 関連既存チケット: `PP-005`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/Core/Domain/BusinessProfile/BusinessProfile.swift` と `.../TaxYear/TaxYearProfile.swift` は存在する。
-  - しかし `ProjectProfit/Models/PPAccountingProfile.swift` が現在も本番で使われている。
-  - `ProjectProfit/Views/Settings/ProfileSettingsView.swift` は旧プロフィールを読み書きしている。
+  - `BusinessProfile` / `TaxYearProfile`、対応 entity、migration mapper、`ProfileSettingsUseCase` は存在する。
+  - `ProfileSettingsView.swift` は canonical profile 保存経路に接続されている。
+  - 一方で `DataStore.reloadProfileSettings()` と secure payload fallback は `PPAccountingProfile` をまだ参照している。
 - 対象ファイル:
   - `ProjectProfit/Models/PPAccountingProfile.swift`
   - `ProjectProfit/Views/Settings/ProfileSettingsView.swift`
@@ -77,9 +77,9 @@
 - 関連既存チケット: `PP-015`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/Infrastructure/TaxYearPack/BundledTaxYearPackProvider.swift` は存在するが未使用。
-  - `ProjectProfit/Resources/TaxYearPacks/2025/profile.json` はあるが、`2026` は `.gitkeep` のみ。
-  - 現在は `ProjectProfit/Services/TaxYearDefinitionLoader.swift` が `TaxYear2025.json` に依存した旧読み込みのまま。
+  - `BundledTaxYearPackProvider.swift` は `TaxYearDefinitionLoader.swift`、`ProfileSettingsUseCase.swift`、`DataStore.swift` から参照されている。
+  - `ProjectProfit/Resources/TaxYearPacks/2025/profile.json` と `2026/profile.json` は存在する。
+  - 一方で `TaxYearPacks/*/filing` と `TaxYearPacks/*/consumption_tax` は `.gitkeep` のみで、`TaxYearDefinitionLoader.swift` は field 定義を旧 `TaxYear{year}.json` から読んでいる。
 - 対象ファイル:
   - `ProjectProfit/Infrastructure/TaxYearPack/BundledTaxYearPackProvider.swift`
   - `ProjectProfit/Services/TaxYearDefinitionLoader.swift`
@@ -97,9 +97,9 @@
 - 関連既存チケット: `PP-017`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/Core/Domain/Tax/TaxStatusMachine.swift` はある。
-  - しかし年度ロック実装は `ProjectProfit/Services/DataStore+YearLock.swift` と `PPAccountingProfile.lockedYears` の legacy 方式。
-  - VAT方式や青色控除レベルも TaxYearProfile ベースで UI 制御されていない。
+  - `TaxStatusMachine.swift` に加えて `TaxYearStateUseCase.swift` と `FilingPreflightUseCase.swift` が存在する。
+  - `ClosingEntryView.swift` と `EtaxExportViewModel.swift` は税務状態/preflight を呼んでいる。
+  - 一方で `PPAccountingProfile.lockedYears` は model / migration / snapshot / restore / tests に残っている。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/Tax/TaxStatusMachine.swift`
   - `ProjectProfit/Services/DataStore+YearLock.swift`
@@ -117,10 +117,10 @@
 - 関連既存チケット: `PP-018`, `PP-019`, `PP-045`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift` はある。
-  - しかし `ProjectProfit/Services/ConsumptionTaxReportService.swift` は仮払/仮受の単純差額だけ。
-  - `ProjectProfit/Models/ConsumptionTaxModels.swift` / `AccountingEnums.swift` の legacy tax 表現が残っている。
-  - `ReceiptReviewView.swift` は transaction 作成時に legacy `TaxCategory`, `taxRate`, `isTaxIncluded` を直接扱う。
+  - `TaxCode.swift`、`TaxRuleEvaluator.swift`、`ConsumptionTaxWorksheet.swift` が存在する。
+  - `ConsumptionTaxReportService.swift` は canonical journal から worksheet / summary を生成できる。
+  - 一方で `ConsumptionTaxModels.swift` / `AccountingEnums.swift` の legacy tax 表現は残っている。
+  - `ReceiptReviewView.swift` は intake request 構築時に `TaxCategory`, `taxRate`, `isTaxIncluded` の bridge 値をまだ持っている。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift`
   - `ProjectProfit/Services/ConsumptionTaxReportService.swift`
@@ -137,17 +137,18 @@
 
 ### REL-P0-07 Evidence intake パイプラインを作り、Receipt 直登録をやめる
 - 関連既存チケット: `PP-022`, `PP-023`, `PP-029`
-- 状態: **未完成**
+- 状態: **部分実装**
 - 根拠:
-  - `ProjectProfit/Features/EvidenceInbox/...` は `.gitkeep` のみで画面未実装。
-  - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift` は OCR 結果から直接 `dataStore.addTransactionResult(...)` を呼ぶ。
-  - `EvidenceDocument` / `EvidenceRecordEntity` はあるが intake UI と未接続。
+  - `ProjectProfit/Features/EvidenceInbox/EvidenceInboxView.swift` は実装済み。
+  - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift` は `ReceiptEvidenceIntakeUseCase.intake(...)` を呼ぶ。
+  - `EvidenceDocument` / `EvidenceRecordEntity` / intake UseCase は接続済み。
+  - 一方で `ReceiptScannerView.swift` で確認できる本線 intake UI は camera / photo library で、PDF import / share sheet import は未完のまま。
 - 対象ファイル:
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`
   - `ProjectProfit/Services/ReceiptScannerService.swift`
   - `ProjectProfit/Core/Domain/Evidence/*`
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/EvidenceRecordEntity.swift`
-  - `ProjectProfit/Features/EvidenceInbox/`（新規実装）
+  - `ProjectProfit/Features/EvidenceInbox/`（拡張）
 - 実装内容:
   - カメラ/写真/PDF/Share Sheet から evidence draft を作る。
   - 原本保存、OCR、抽出、重複検知、ステータス管理を evidence 基盤に集約。
@@ -158,17 +159,17 @@
 
 ### REL-P0-08 PostingCandidate フローと PostingEngine を実装する
 - 関連既存チケット: `PP-030`, `PP-031`, `PP-032`
-- 状態: **未完成**
+- 状態: **部分実装**
 - 根拠:
-  - `PostingCandidate` / `CanonicalJournalEntry` は定義済みだが利用箇所がほぼ無い。
-  - `AccountingEngine.swift` が依然として legacy transaction → journal 変換の中心。
-  - `ProjectProfit/Features/ApprovalQueue/...` も `.gitkeep` のみ。
+  - `PostingCandidate` / `CanonicalJournalEntry` は repository / use case / tests を持ち、`ReceiptEvidenceIntakeUseCase` と `PostingWorkflowUseCase` から使われている。
+  - `ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift` は実装済み。
+  - 一方で `AccountingEngine.swift` は `DataStore.swift` と `AccountingBootstrapService.swift` からまだ呼ばれている。
 - 対象ファイル:
   - `ProjectProfit/Services/AccountingEngine.swift`
   - `ProjectProfit/Core/Domain/Posting/*`
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/PostingCandidateEntity.swift`
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/JournalEntryEntity.swift`
-  - `ProjectProfit/Features/ApprovalQueue/`（新規実装）
+  - `ProjectProfit/Features/ApprovalQueue/`（拡張）
 - 実装内容:
   - evidence → candidate 生成、candidate 編集、approve/post、複数行/複数税率/複数プロジェクト配賦を実装。
   - `AccountingEngine` を candidate/posting engine に分解。
@@ -178,11 +179,11 @@
 
 ### REL-P0-09 承認・取消・監査ログ・締め前チェックを一つのフローにする
 - 関連既存チケット: `PP-033`, `PP-046`, `PP-051`
-- 状態: **未完成**
+- 状態: **部分実装**
 - 根拠:
-  - `AuditEvent` と `AuditEventEntity` はあるが、監査対象はほぼ evidence/candidate/journal に結び付いていない。
-  - `EtaxCharacterValidator.swift` は禁則文字・必須項目中心で、帳簿整合や未紐付け検出はない。
-  - `ClosingEntryView.swift` は手動ロック/解除に留まり、月締め/年締めの preflight がない。
+  - `AuditEvent` は `ReceiptEvidenceIntakeUseCase` と `PostingWorkflowUseCase` の evidence / candidate / journal フローで保存されている。
+  - `FilingPreflightUseCase.swift` が存在し、`ClosingEntryView.swift` と `EtaxExportViewModel.swift` が呼んでいる。
+  - 一方で `EtaxCharacterValidator.swift` 自体は文字/必須項目 validator のままで、全出力系の統一 blocker ではない。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/Audit/*`
   - `ProjectProfit/Views/Accounting/ClosingEntryView.swift`
@@ -199,14 +200,14 @@
 
 ### REL-P0-10 Evidence / Journal 検索インデックスを実装する
 - 関連既存チケット: `PP-012`
-- 状態: **未着手に近い**
+- 状態: **部分実装**
 - 根拠:
-  - `EvidenceSearchCriteria.swift` はあるが repository 実装がない。
-  - `LegalDocumentLedgerView.swift` は保存区分フィルタのみで、日付/金額/取引先検索がない。
-  - `PPDocumentRecord` は amount / counterparty / T番号の検索項目を持たない。
+  - `EvidenceSearchCriteria.swift` は拡張済みで、`EvidenceSearchIndexEntity.swift`、`JournalSearchIndexEntity.swift`、`SearchIndexRebuilder.swift` が存在する。
+  - `SwiftDataEvidenceRepository.swift` と `JournalSearchUseCase.swift` は index 経由の検索を持つ。
+  - `LegalDocumentLedgerView.swift`、`EvidenceInboxView.swift`、`JournalListView.swift` に検索/再索引導線がある。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/Evidence/EvidenceSearchCriteria.swift`
-  - `ProjectProfit/Infrastructure/Search/`（新規）
+  - `ProjectProfit/Infrastructure/Search/`（拡張）
   - `ProjectProfit/Views/Accounting/LegalDocumentLedgerView.swift`
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/EvidenceRecordEntity.swift`
 - 実装内容:
@@ -218,14 +219,15 @@
 
 ### REL-P0-11 Migration Runner と backup/restore を先に入れる
 - 関連既存チケット: `PP-013`, `PP-014`
-- 状態: **未着手**
+- 状態: **部分実装**
 - 根拠:
-  - リポジトリ内に migration / backup / restore 系の Swift 実装ファイルが見当たらない。
-  - canonical entity と legacy entity が共存しているため、手作業移行は危険。
+  - `MigrationReportRunner.swift`、`BackupService.swift`、`RestoreService.swift` は存在する。
+  - `SettingsView.swift` から backup / restore / migration dry-run を実行できる。
+  - 一方で execute migration は profile migration と snapshot restore が中心で、legacy transaction / journal / document の本移行 execute は別課題のまま。
 - 対象ファイル:
-  - `ProjectProfit/Application/Migrations/`（新規）
-  - `ProjectProfit/Infrastructure/FileStorage/`（新規）
-  - `ProjectProfit/Features/Settings/`（新規 UI 追加）
+  - `ProjectProfit/Application/Migrations/`（拡張）
+  - `ProjectProfit/Infrastructure/FileStorage/`（拡張）
+  - `ProjectProfit/Views/Settings/SettingsView.swift`
 - 実装内容:
   - legacy → canonical の dry-run、差分レポート、孤児データ検出を実装。
   - スナップショット export / import / checksum / rollback 手順を実装。
@@ -237,8 +239,9 @@
 - 関連既存チケット: `PP-055`
 - 状態: **部分実装**
 - 根拠:
-  - `ProjectProfitTests/Golden/GoldenBaselineTests.swift` に `BookEngine` / `FormEngine` / `ConsumptionTaxEngine` 完成待ち TODO が残っている。
-  - CI は `.github/workflows/etax-ci.yml` に e-Tax lane があるが、canonical path の E2E や migration rehearsal は無い。
+  - `ProjectProfitTests/Golden/GoldenBaselineTests.swift` は journal / trial balance / blue return / consumption tax worksheet / migration dry-run の snapshot を持つ。
+  - `ProjectProfitTests/CanonicalFlowE2ETests.swift` と `ProjectProfitTests/ReleasePerformanceGateTests.swift` が存在する。
+  - `.github/workflows/release-quality.yml` が golden / canonical-e2e / migration-rehearsal / performance-gate を持つ。
 - 対象ファイル:
   - `ProjectProfitTests/Golden/GoldenBaselineTests.swift`
   - `ProjectProfitTests/Core/*`
@@ -259,12 +262,13 @@
 - 関連既存チケット: `PP-006`, `PP-025`
 - 状態: **部分実装**
 - 根拠:
-  - `Counterparty.swift` / `CounterpartyEntity.swift` はあるが repository/UI 未実装。
-  - 現行 transaction は `Models.swift` 上の `counterparty: String?` で保持しているだけ。
+  - `SwiftDataCounterpartyRepository.swift`、`CounterpartyMasterUseCase.swift`、`CounterpartyListView.swift`、`CounterpartyFormView.swift` は存在する。
+  - `ReceiptEvidenceIntakeUseCase.swift` は OCR 抽出名から取引先候補解決を行っている。
+  - 一方で現行 transaction は `Models.swift` 上の `counterparty: String?` 保持も残っている。
 - 対象ファイル:
   - `ProjectProfit/Core/Domain/Counterparties/*`
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/CounterpartyEntity.swift`
-  - `ProjectProfit/Features/Masters/Counterparties/`（新規実装）
+  - `ProjectProfit/Features/Masters/Counterparties/`（拡張）
   - `ProjectProfit/Services/ReceiptScannerService.swift`
 - 完了条件:
   - OCR から取引先候補を引ける。
@@ -274,13 +278,13 @@
 - 関連既存チケット: `PP-007`
 - 状態: **部分実装**
 - 根拠:
-  - `ChartOfAccountsView.swift` は一覧のみ。
-  - `CategoryAccountMappingView.swift` はカテゴリ→科目紐付けのみで、科目 CRUD や legal mapping がない。
-  - custom account が帳票 line へ落ちる保証がない。
+  - `ChartOfAccountsView.swift` から `AccountFormView.swift` を開く CRUD 導線がある。
+  - `ChartOfAccountsUseCase.swift` と `SwiftDataChartOfAccountsRepository.swift` は存在する。
+  - 一方で `defaultLegalReportLineId` を UI から完結編集できる証拠は確認できていない。
 - 対象ファイル:
   - `ProjectProfit/Views/Accounting/ChartOfAccountsView.swift`
   - `ProjectProfit/Core/Domain/Accounts/*`
-  - `ProjectProfit/Features/Masters/Accounts/`（新規実装）
+  - `ProjectProfit/Features/Masters/Accounts/`（拡張）
 - 完了条件:
   - 勘定科目追加/編集/無効化ができる。
   - すべての科目が法定帳票 line と対応付く。
@@ -290,7 +294,8 @@
 - 状態: **未完成**
 - 根拠:
   - `ContentView.swift` で起動時に `processRecurringTransactions()` が即実行される。
-  - 月次一括配賦バッチ、preview diff、approval UI が見当たらない。
+  - `Features/Recurring/RecurringPreviewView.swift` は存在する。
+  - 一方で `DataStore.swift` では project / recurring 更新時にも `processRecurringTransactions()` が呼ばれている。
 - 対象ファイル:
   - `ProjectProfit/Services/DataStore.swift`
   - `ProjectProfit/Core/Domain/Distribution/*`
@@ -304,7 +309,8 @@
 - 関連既存チケット: `PP-039`, `PP-041`, `PP-044`
 - 状態: **未完成**
 - 根拠:
-  - 旧 `AccountingReportService` と ledger 系帳簿が並立している。
+  - `AccountingReportService.swift` には legacy と canonical の両経路が並存している。
+  - `AccountingEngine.swift` は `DataStore.swift` と `AccountingBootstrapService.swift` からまだ呼ばれている。
   - `BookProjectionEngine` / `BookSpecRegistry` は存在しない。
 - 対象ファイル:
   - `ProjectProfit/Services/AccountingReportService.swift`
@@ -319,12 +325,12 @@
 - 根拠:
   - `EtaxFormType` は `.blueReturn`, `.whiteReturn` の2種のみ。
   - `ShushiNaiyakushoBuilder.swift` はあるが `FormEngine` は未実装。
-  - 青色申告決算書の現金主義用分岐がない。
+  - `TaxYearPacks/*/filing` は `.gitkeep` のみで、`TaxYearDefinitionLoaderTests.swift` では 2026 年の `blueReturn` が未対応になっている。
 - 対象ファイル:
   - `ProjectProfit/Models/EtaxModels.swift`
   - `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
   - `ProjectProfit/Services/EtaxFieldPopulator.swift`
-  - `ProjectProfit/Features/Filing/`（新規実装）
+  - `ProjectProfit/Features/Filing/`（拡張）
 - 完了条件:
   - 白色、青色一般、青色現金主義の各 builder が分離される。
   - form build が TaxYearPack から駆動される。
@@ -333,9 +339,9 @@
 - 関連既存チケット: `PP-053`
 - 状態: **未完成**
 - 根拠:
-  - `SettingsView.swift` はカテゴリ管理、定期取引、申告者情報が中心。
-  - 年分設定、VAT、勘定科目、取引先、ジャンル、配賦テンプレートの管理画面がない。
-  - `ProjectProfit/Features/Masters/*` は `.gitkeep` のみ。
+  - `SettingsView.swift` から `ProfileSettingsView.swift`、`CounterpartyListView.swift`、`DistributionTemplateSettingsView.swift` を開ける。
+  - `Features/Masters/Accounts` と `Features/Masters/Counterparties` には screen 実装がある。
+  - 一方で `Features/Settings/Presentation/Screens` は `.gitkeep` のみで、設定/マスタ再編は完了していない。
 - 対象ファイル:
   - `ProjectProfit/Views/Settings/SettingsView.swift`
   - `ProjectProfit/Features/Masters/*`
@@ -346,10 +352,11 @@
 
 ### REL-P1-07 ワークフロー UI を繋ぐ
 - 関連既存チケット: `PP-054`
-- 状態: **未着手に近い**
+- 状態: **部分実装**
 - 根拠:
-  - 現行の `MainTabView` は Dashboard / Projects / Transactions / Report / Settings の旧導線。
-  - `EvidenceInbox`, `ApprovalQueue`, `Filing`, `Journals` feature の実体がない。
+  - `MainTabView` は `EvidenceInboxView` と `ApprovalQueueView` を本線タブに持つ。
+  - `Features/Filing/Presentation/Screens` と `Features/Journals/Presentation/Screens` は `.gitkeep` のみ。
+  - `ReportView.swift` は `AccountingHomeView` 経由の旧導線をまだ持つ。
 - 対象ファイル:
   - `ProjectProfit/Views/ContentView.swift`
   - `ProjectProfit/Features/EvidenceInbox/*`
@@ -361,10 +368,11 @@
 
 ### REL-P1-08 ExportCoordinator へ出力系を集約する
 - 関連既存チケット: `PP-052`
-- 状態: **未着手**
+- 状態: **部分実装**
 - 根拠:
   - `PDFExportService.swift`, `CSVExportService.swift`, `LedgerExportService.swift`, `LedgerExcelExportService.swift`, `LedgerPDFExportService.swift`, `EtaxXtxExporter.swift` が分散。
-  - 出力元データも旧/新/ledger 系で分かれている。
+  - `ExportCoordinator.swift` と `ExportCoordinatorTests.swift` は存在する。
+  - 一方で UI 側は各 export service を個別に呼んでおり、出力元データも旧/新/ledger 系で分かれている。
 - 対象ファイル:
   - `ProjectProfit/Services/PDFExportService.swift`
   - `ProjectProfit/Services/CSVExportService.swift`
@@ -417,7 +425,9 @@
 ### REL-P2-06 CI を e-Tax 以外へ広げる
 - 関連既存チケット: `PP-055` の派生
 - 状態: **部分実装**
-- 根拠: `.github/workflows/etax-ci.yml` はあるが、books / migration / canonical E2E の lane が無い。
+- 根拠:
+  - `.github/workflows/etax-ci.yml` に加えて `.github/workflows/release-quality.yml` が存在する。
+  - `release-quality.yml` は golden / canonical E2E / migration / performance の lane を持つ。
 - 完了条件: books / forms / migration / performance の CI lane が揃う。
 
 ---

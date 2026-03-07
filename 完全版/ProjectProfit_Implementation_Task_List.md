@@ -5,6 +5,11 @@
 対象: `project-profit-ios` 既存コードベース  
 目的: 既存コンセプトを維持したまま、個人事業主向け・プロジェクト別管理対応・オンデバイスAI限定の完全会計システムへ到達するための、実装可能な分解済みタスク一覧を定義する。
 
+> 現況注記（2026-03-07）
+> この文書は WBS 原本として維持する。現行 repo では repository / use case 拡張、profile canonical 化の一部、税務状態/preflight、evidence intake、approval queue、検索 index、migration dry-run、backup / restore、golden / canonical E2E / release CI まで実装が進んでいる。
+> 一方で、`Recurring` の preview -> approve 化、canonical 帳簿生成エンジン一本化、`FormEngine`、`ExportCoordinator` 本線統合、import 残タスク、App Store 補助ファイル整備は未完のまま。
+> 現在の実装優先順位と到達判定は `release_ticket_list.md` を優先する。
+
 ---
 
 # 0. この文書の使い方
