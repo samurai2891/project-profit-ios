@@ -71,7 +71,7 @@ final class BackupRestoreServiceTests: XCTestCase {
         _ = try seedSnapshotState(
             profileId: "profile-taxyear",
             transactionId: UUID(uuidString: "20000000-0000-0000-0000-000000000001")!,
-            transactionDate: Date(timeIntervalSince1970: 1_743_350_400), // 2025-03-31 JST proximity not required
+            transactionDate: stableDate(year: 2025, month: 2, day: 15),
             receiptFileName: "receipt-2024.jpg",
             documentId: UUID(uuidString: "20000000-0000-0000-0000-000000000002")!,
             documentFileName: "document-2024.pdf",
@@ -80,7 +80,7 @@ final class BackupRestoreServiceTests: XCTestCase {
         let included = try seedSnapshotState(
             profileId: "profile-taxyear-b",
             transactionId: UUID(uuidString: "20000000-0000-0000-0000-000000000003")!,
-            transactionDate: Date(timeIntervalSince1970: 1_743_436_800), // 2025-04-01
+            transactionDate: stableDate(year: 2025, month: 4, day: 15),
             receiptFileName: "receipt-2025.jpg",
             documentId: UUID(uuidString: "20000000-0000-0000-0000-000000000004")!,
             documentFileName: "document-2025.pdf",
@@ -231,6 +231,18 @@ final class BackupRestoreServiceTests: XCTestCase {
 
         try context.save()
         return (profile, transaction, document)
+    }
+
+    private func stableDate(year: Int, month: Int, day: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.date(from: DateComponents(
+            timeZone: calendar.timeZone,
+            year: year,
+            month: month,
+            day: day,
+            hour: 12
+        ))!
     }
 
     private func extractSnapshot(from archiveURL: URL) throws -> (directory: URL, manifest: SnapshotManifest, payload: AppSnapshotPayload, secureProfiles: [SnapshotSecureProfile], payloadData: Data, secureData: Data) {
