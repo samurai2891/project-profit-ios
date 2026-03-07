@@ -18,13 +18,9 @@ struct BalanceSheetView: View {
             if let viewModel, let report = viewModel.balanceSheet {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
-                        csvGenerator: {
-                            ReportCSVExportService.exportBalanceSheetCSV(report: report)
-                        },
-                        pdfGenerator: {
-                            PDFExportService.exportBalanceSheetPDF(report: report)
-                        },
-                        fileNamePrefix: "貸借対照表"
+                        target: .balanceSheet,
+                        fiscalYear: viewModel.fiscalYear,
+                        dataStore: dataStore
                     )
                 }
             }

@@ -273,4 +273,46 @@ extension DataStore {
         }
         return lines.joined(separator: "\n")
     }
+
+    // MARK: - Canonical Sub-Ledger
+
+    /// Canonical仕訳帳を生成
+    func canonicalJournalBook(
+        fiscalYear: Int
+    ) -> [CanonicalJournalBookEntry] {
+        let accounts = canonicalAccounts()
+        let journals = canonicalJournalEntries(fiscalYear: fiscalYear)
+        return CanonicalBookService.generateJournalBook(
+            journals: journals,
+            accounts: accounts
+        )
+    }
+
+    /// Canonical総勘定元帳を生成（特定勘定科目）
+    func canonicalGeneralLedger(
+        fiscalYear: Int,
+        accountId: UUID
+    ) -> [CanonicalLedgerEntry] {
+        let accounts = canonicalAccounts()
+        let journals = canonicalJournalEntries(fiscalYear: fiscalYear)
+        return CanonicalBookService.generateGeneralLedger(
+            journals: journals,
+            accountId: accountId,
+            accounts: accounts
+        )
+    }
+
+    /// Canonical補助元帳を生成
+    func canonicalSubsidiaryLedger(
+        fiscalYear: Int,
+        type: CanonicalSubLedgerType
+    ) -> [CanonicalLedgerEntry] {
+        let accounts = canonicalAccounts()
+        let journals = canonicalJournalEntries(fiscalYear: fiscalYear)
+        return CanonicalBookService.generateSubsidiaryLedger(
+            journals: journals,
+            type: type,
+            accounts: accounts
+        )
+    }
 }

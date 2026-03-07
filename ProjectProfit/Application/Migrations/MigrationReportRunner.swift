@@ -64,9 +64,9 @@ struct MigrationReportRunner {
 
         let deltas = [
             MigrationModelDelta(modelName: "Profile", legacyCount: profiles.count, canonicalCount: businessProfiles.count + taxYearProfiles.count, executeSupported: true),
-            MigrationModelDelta(modelName: "Transaction", legacyCount: transactions.count, canonicalCount: postingCandidates.count + canonicalJournalEntries.count, executeSupported: false),
-            MigrationModelDelta(modelName: "Document", legacyCount: documentRecords.count, canonicalCount: evidenceRecords.count, executeSupported: false),
-            MigrationModelDelta(modelName: "Journal", legacyCount: journalEntries.count + journalLines.count, canonicalCount: canonicalJournalEntries.count + canonicalJournalLines.count, executeSupported: false),
+            MigrationModelDelta(modelName: "Transaction", legacyCount: transactions.count, canonicalCount: postingCandidates.count + canonicalJournalEntries.count, executeSupported: true),
+            MigrationModelDelta(modelName: "Document", legacyCount: documentRecords.count, canonicalCount: evidenceRecords.count, executeSupported: true),
+            MigrationModelDelta(modelName: "Journal", legacyCount: journalEntries.count + journalLines.count, canonicalCount: canonicalJournalEntries.count + canonicalJournalLines.count, executeSupported: true),
             MigrationModelDelta(modelName: "Project", legacyCount: projects.count, canonicalCount: projects.count, executeSupported: false),
             MigrationModelDelta(modelName: "Category", legacyCount: categories.count, canonicalCount: categories.count, executeSupported: false),
             MigrationModelDelta(modelName: "Account", legacyCount: accounts.count, canonicalCount: canonicalAccounts.count, executeSupported: false),

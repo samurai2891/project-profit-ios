@@ -125,6 +125,20 @@ struct RecurringPreviewView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                if let projectName = item.projectName {
+                    Label(projectName, systemImage: "folder")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if item.allocationMode == .manual {
+                    Text("手動配賦")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppColors.warning.opacity(0.1))
+                        .clipShape(Capsule())
+                }
             }
 
             Spacer()

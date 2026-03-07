@@ -18,13 +18,9 @@ struct TrialBalanceView: View {
             if let viewModel, let report = viewModel.trialBalance {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
-                        csvGenerator: {
-                            ReportCSVExportService.exportTrialBalanceCSV(rows: report.rows)
-                        },
-                        pdfGenerator: {
-                            PDFExportService.exportTrialBalancePDF(report: report)
-                        },
-                        fileNamePrefix: "試算表"
+                        target: .trialBalance,
+                        fiscalYear: viewModel.fiscalYear,
+                        dataStore: dataStore
                     )
                 }
             }

@@ -113,7 +113,7 @@ enum EtaxXtxExporter {
         fields: [MappedEtaxField]
     ) throws -> String {
         switch form.formType {
-        case .blueReturn:
+        case .blueReturn, .blueCashBasis:
             return buildBlueReturnXml(form: form, definition: definition, fields: fields)
         case .whiteReturn:
             return buildWhiteReturnXml(form: form, definition: definition, fields: fields)

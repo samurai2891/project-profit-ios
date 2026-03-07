@@ -12,7 +12,7 @@ final class LedgerDataStoreTests: XCTestCase {
         super.setUp()
         container = try! TestModelContainer.create()
         context = container.mainContext
-        store = LedgerDataStore(modelContext: context)
+        store = LedgerDataStore(modelContext: context, accessMode: .readWrite)
     }
 
     override func tearDown() {
@@ -409,7 +409,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testReadOnlyStoreRejectsEntryMutation() {
-        let writableStore = LedgerDataStore(modelContext: context)
+        let writableStore = LedgerDataStore(modelContext: context, accessMode: .readWrite)
         let book = writableStore.createBook(ledgerType: .cashBook, title: "テスト")!
         let readOnlyStore = LedgerDataStore(modelContext: context, accessMode: .readOnly)
         let entry = CashBookEntry(

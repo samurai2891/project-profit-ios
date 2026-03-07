@@ -8,6 +8,42 @@ struct ExportMenuButton: View {
     @State private var showShareSheet = false
     @State private var shareURL: URL?
 
+    /// ExportCoordinator 経由でエクスポートするコンビニエンスイニシャライザ
+    @MainActor
+    init(
+        target: ExportCoordinator.ExportTarget,
+        fiscalYear: Int,
+        dataStore: DataStore,
+        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
+    ) {
+        self.fileNamePrefix = target.label
+        self.csvGenerator = {
+            guard let url = try? ExportCoordinator.export(
+                target: target,
+                format: .csv,
+                fiscalYear: fiscalYear,
+                dataStore: dataStore,
+                ledgerOptions: ledgerOptions
+            ),
+            let data = try? Data(contentsOf: url),
+            let text = String(data: data, encoding: .utf8)
+            else { return "" }
+            return text
+        }
+        self.pdfGenerator = {
+            guard let url = try? ExportCoordinator.export(
+                target: target,
+                format: .pdf,
+                fiscalYear: fiscalYear,
+                dataStore: dataStore,
+                ledgerOptions: ledgerOptions
+            ),
+            let data = try? Data(contentsOf: url)
+            else { return Data() }
+            return data
+        }
+    }
+
     var body: some View {
         Menu {
             Button {

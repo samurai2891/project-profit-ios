@@ -18,13 +18,9 @@ struct ProfitLossView: View {
             if let viewModel, let report = viewModel.profitLoss {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
-                        csvGenerator: {
-                            ReportCSVExportService.exportProfitLossCSV(report: report)
-                        },
-                        pdfGenerator: {
-                            PDFExportService.exportProfitLossPDF(report: report)
-                        },
-                        fileNamePrefix: "損益計算書"
+                        target: .profitLoss,
+                        fiscalYear: viewModel.fiscalYear,
+                        dataStore: dataStore
                     )
                 }
             }

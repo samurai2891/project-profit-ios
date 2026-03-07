@@ -188,4 +188,69 @@ final class RecurringPreviewTests: XCTestCase {
 
         XCTAssertTrue(preview.isEmpty, "定期取引がない場合プレビューは空であるべき")
     }
+
+    // MARK: - Allocation Info Tests
+
+    /// プレビュー項目にアロケーション情報が含まれる
+    func testPreviewItemContainsAllocationInfo() {
+        let project = makeProject(name: "テストPJ")
+        let day = pastDayOfMonth
+        let todayComps = todayComponents
+        guard todayComps.day! >= day else { return }
+
+        insertRecurringDirectly(
+            name: "配賦テスト",
+            type: .expense,
+            amount: 10000,
+            categoryId: "cat-test",
+            projectId: project.id,
+            dayOfMonth: day
+        )
+
+        let preview = dataStore.previewRecurringTransactions()
+        let item = preview.first { $0.recurringName == "配賦テスト" }
+        XCTAssertNotNil(item)
+        XCTAssertEqual(item?.projectName, "テストPJ")
+        XCTAssertEqual(item?.allocationMode, .manual)
+    }
+
+    // MARK: - Year Lock Tests
+
+    private func setupProfileAndLockYear(_ year: Int) {
+        if dataStore.accountingProfile == nil {
+            let profile = PPAccountingProfile(fiscalYear: year)
+            context.insert(profile)
+            try? context.save()
+            dataStore.loadData()
+        }
+        dataStore.lockFiscalYear(year)
+    }
+
+    /// 年度ロック中の日付はプレビューからスキップされる
+    func testPreviewSkipsYearLockedDates() {
+        let project = makeProject()
+        let todayComps = todayComponents
+        let currentYear = todayComps.year!
+
+        setupProfileAndLockYear(currentYear)
+
+        insertRecurringDirectly(
+            name: "ロック年度テスト",
+            type: .expense,
+            amount: 5000,
+            categoryId: "cat-test",
+            projectId: project.id,
+            dayOfMonth: pastDayOfMonth
+        )
+
+        let preview = dataStore.previewRecurringTransactions()
+        let lockedItems = preview.filter { item in
+            calendar.component(.year, from: item.scheduledDate) == currentYear
+                && item.recurringName == "ロック年度テスト"
+        }
+        XCTAssertTrue(lockedItems.isEmpty, "年度ロック中の日付はプレビューに含まれないべき")
+
+        // Unlock for cleanup
+        dataStore.unlockFiscalYear(currentYear)
+    }
 }

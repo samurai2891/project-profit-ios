@@ -4,6 +4,7 @@
 // ============================================================
 
 import Foundation
+import os
 import SwiftData
 
 @MainActor
@@ -13,6 +14,8 @@ final class LedgerDataStore {
         case readOnly
         case readWrite
     }
+
+    private static let logger = Logger(subsystem: "com.projectprofit", category: "LedgerDataStore")
 
     private let modelContext: ModelContext
     private let accessMode: AccessMode
@@ -24,7 +27,7 @@ final class LedgerDataStore {
         accessMode == .readOnly
     }
 
-    init(modelContext: ModelContext, accessMode: AccessMode = .readWrite) {
+    init(modelContext: ModelContext, accessMode: AccessMode = .readOnly) {
         self.modelContext = modelContext
         self.accessMode = accessMode
         loadBooks()
@@ -216,6 +219,7 @@ final class LedgerDataStore {
 
     private func ensureWriteAccess() -> Bool {
         guard !isReadOnly else {
+            Self.logger.warning("Write access denied: LedgerDataStore is read-only")
             lastError = .invalidInput(message: "旧台帳は読み取り専用です")
             return false
         }

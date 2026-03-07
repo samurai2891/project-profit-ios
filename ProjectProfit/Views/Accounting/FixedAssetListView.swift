@@ -25,50 +25,9 @@ struct FixedAssetListView: View {
                 HStack(spacing: 12) {
                     if !dataStore.fixedAssets.isEmpty {
                         ExportMenuButton(
-                            csvGenerator: {
-                                ReportCSVExportService.exportFixedAssetsCSV(
-                                    assets: dataStore.fixedAssets,
-                                    calculateAccumulated: { asset in
-                                        dataStore.calculatePriorAccumulatedDepreciation(
-                                            asset: asset, beforeYear: currentYear + 1
-                                        )
-                                    },
-                                    calculateCurrentYear: { asset in
-                                        let prior = dataStore.calculatePriorAccumulatedDepreciation(
-                                            asset: asset, beforeYear: currentYear
-                                        )
-                                        let calc = DepreciationEngine.calculate(
-                                            asset: asset,
-                                            fiscalYear: currentYear,
-                                            priorAccumulatedDepreciation: prior
-                                        )
-                                        return calc?.annualAmount ?? 0
-                                    }
-                                )
-                            },
-                            pdfGenerator: {
-                                PDFExportService.exportFixedAssetsPDF(
-                                    assets: dataStore.fixedAssets,
-                                    fiscalYear: currentYear,
-                                    calculateAccumulated: { asset in
-                                        dataStore.calculatePriorAccumulatedDepreciation(
-                                            asset: asset, beforeYear: currentYear + 1
-                                        )
-                                    },
-                                    calculateCurrentYear: { asset in
-                                        let prior = dataStore.calculatePriorAccumulatedDepreciation(
-                                            asset: asset, beforeYear: currentYear
-                                        )
-                                        let calc = DepreciationEngine.calculate(
-                                            asset: asset,
-                                            fiscalYear: currentYear,
-                                            priorAccumulatedDepreciation: prior
-                                        )
-                                        return calc?.annualAmount ?? 0
-                                    }
-                                )
-                            },
-                            fileNamePrefix: "固定資産台帳"
+                            target: .fixedAssets,
+                            fiscalYear: currentYear,
+                            dataStore: dataStore
                         )
                         NavigationLink(destination: FixedAssetScheduleView()) {
                             Image(systemName: "tablecells")

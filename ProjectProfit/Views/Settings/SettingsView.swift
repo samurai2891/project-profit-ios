@@ -495,6 +495,21 @@ struct SettingsView: View {
                     )
                 }
 
+                if let migrationDryRunReport, migrationDryRunReport.deltas.contains(where: { $0.executeSupported && $0.legacyCount > 0 }) {
+                    Divider().padding(.leading, 70)
+
+                    Button {
+                        executeMigration()
+                    } label: {
+                        menuRow(
+                            icon: "arrow.triangle.2.circlepath",
+                            iconColor: AppColors.warning,
+                            title: "移行を実行",
+                            subtitle: "レガシーデータをcanonicalモデルに変換"
+                        )
+                    }
+                }
+
                 Divider().padding(.leading, 70)
 
                 Button {
@@ -639,6 +654,33 @@ struct SettingsView: View {
             showOperationAlert = true
         } catch {
             operationMessage = "移行 dry-run に失敗しました: \(error.localizedDescription)"
+            showOperationAlert = true
+        }
+    }
+
+    private func executeMigration() {
+        guard let businessId = dataStore.businessProfile?.id else {
+            operationMessage = "事業者情報が未設定です"
+            showOperationAlert = true
+            return
+        }
+
+        do {
+            let executor = LegacyDataMigrationExecutor(modelContext: dataStore.modelContext)
+            let result = try executor.execute(businessId: businessId)
+
+            let summary = "移行完了: 取引 \(result.transactionsMigrated)件, 仕訳 \(result.journalsMigrated)件, 書類 \(result.documentsMigrated)件"
+            if result.hasErrors {
+                operationMessage = summary + "\nエラー: \(result.errors.prefix(3).joined(separator: "\n"))"
+            } else {
+                operationMessage = summary
+            }
+
+            migrationDryRunReport = try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
+            dataStore.loadData()
+            showOperationAlert = true
+        } catch {
+            operationMessage = "移行に失敗しました: \(error.localizedDescription)"
             showOperationAlert = true
         }
     }

@@ -127,12 +127,15 @@ struct EtaxForm {
 
 enum EtaxFormType: String {
     case blueReturn = "青色申告決算書"
+    case blueCashBasis = "青色申告決算書（現金主義）"
     case whiteReturn = "白色収支内訳書"
 
     var definitionFormKey: String {
         switch self {
         case .blueReturn:
             return "blue_general"
+        case .blueCashBasis:
+            return "blue_cash_basis"
         case .whiteReturn:
             return "white_shushi"
         }

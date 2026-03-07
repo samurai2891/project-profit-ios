@@ -30,7 +30,7 @@ struct ReportView: View {
                         ProgressView()
                     }
                 case .taxFiling:
-                    AccountingHomeView()
+                    FilingDashboardView()
                 }
             }
         }

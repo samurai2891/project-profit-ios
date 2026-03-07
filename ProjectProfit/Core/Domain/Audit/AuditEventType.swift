@@ -20,6 +20,7 @@ enum AuditEventType: String, Codable, Sendable, CaseIterable {
     case distributionRuleChanged
     case taxYearSettingChanged
     case businessProfileChanged
+    case recurringApproved
 
     var displayName: String {
         switch self {
@@ -41,6 +42,7 @@ enum AuditEventType: String, Codable, Sendable, CaseIterable {
         case .distributionRuleChanged: "配賦ルール変更"
         case .taxYearSettingChanged: "年分設定変更"
         case .businessProfileChanged: "事業者情報変更"
+        case .recurringApproved: "定期取引承認"
         }
     }
 }

@@ -11,6 +11,8 @@ struct RecurringPreviewItem: Identifiable, Sendable {
     let categoryId: String
     let memo: String
     let isMonthlySpread: Bool
+    let projectName: String?
+    let allocationMode: AllocationMode
 
     init(
         id: UUID = UUID(),
@@ -21,7 +23,9 @@ struct RecurringPreviewItem: Identifiable, Sendable {
         scheduledDate: Date,
         categoryId: String,
         memo: String,
-        isMonthlySpread: Bool = false
+        isMonthlySpread: Bool = false,
+        projectName: String? = nil,
+        allocationMode: AllocationMode = .equalAll
     ) {
         self.id = id
         self.recurringId = recurringId
@@ -32,5 +36,7 @@ struct RecurringPreviewItem: Identifiable, Sendable {
         self.categoryId = categoryId
         self.memo = memo
         self.isMonthlySpread = isMonthlySpread
+        self.projectName = projectName
+        self.allocationMode = allocationMode
     }
 }

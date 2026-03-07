@@ -32,7 +32,7 @@
     },
     {
       "canonicalCount" : 0,
-      "executeSupported" : false,
+      "executeSupported" : true,
       "legacyCount" : 0,
       "modelName" : "Document"
     },
@@ -50,7 +50,7 @@
     },
     {
       "canonicalCount" : 42,
-      "executeSupported" : false,
+      "executeSupported" : true,
       "legacyCount" : 42,
       "modelName" : "Journal"
     },
@@ -80,7 +80,7 @@
     },
     {
       "canonicalCount" : 28,
-      "executeSupported" : false,
+      "executeSupported" : true,
       "legacyCount" : 14,
       "modelName" : "Transaction"
     },

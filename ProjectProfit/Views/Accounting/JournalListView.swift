@@ -44,23 +44,9 @@ struct JournalListView: View {
                 HStack(spacing: 12) {
                     if !sortedEntries.isEmpty {
                         ExportMenuButton(
-                            csvGenerator: {
-                                ReportCSVExportService.exportJournalCSV(
-                                    entries: projectedJournals.entries,
-                                    lines: projectedJournals.lines,
-                                    accounts: dataStore.accounts
-                                )
-                            },
-                            pdfGenerator: {
-                                let fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
-                                return PDFExportService.exportJournalPDF(
-                                    entries: projectedJournals.entries,
-                                    lines: projectedJournals.lines,
-                                    accounts: dataStore.accounts,
-                                    fiscalYear: fiscalYear
-                                )
-                            },
-                            fileNamePrefix: "仕訳帳"
+                            target: .journal,
+                            fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
+                            dataStore: dataStore
                         )
                     }
                     Menu {

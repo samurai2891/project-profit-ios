@@ -2556,6 +2556,10 @@ class DataStore {
             guard recurring.isActive else { continue }
             if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
 
+            let projectName = recurring.allocations.first.flatMap { alloc in
+                projects.first(where: { $0.id == alloc.projectId })?.name
+            }
+
             if recurring.frequency == .monthly {
                 var iterYear: Int
                 var iterMonth: Int
@@ -2582,8 +2586,9 @@ class DataStore {
 
                     if let endDate = recurring.endDate, txDate > endDate { break }
 
+                    let yearLocked = isYearLocked(for: txDate)
                     let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !isSkipped {
+                    if !yearLocked && !isSkipped {
                         items.append(RecurringPreviewItem(
                             recurringId: recurring.id,
                             recurringName: recurring.name,
@@ -2591,7 +2596,9 @@ class DataStore {
                             amount: recurring.amount,
                             scheduledDate: txDate,
                             categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)"
+                            memo: "[定期] \(recurring.name)",
+                            projectName: projectName,
+                            allocationMode: recurring.allocationMode
                         ))
                     }
 
@@ -2613,6 +2620,7 @@ class DataStore {
                     guard !generatedMonths.contains(monthKey) else { continue }
                     guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
                     if let endDate = recurring.endDate, txDate > endDate { continue }
+                    if isYearLocked(for: txDate) { continue }
                     let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
                     if !isSkipped {
                         let txAmount = month == 12 ? monthlyAmount + remainder : monthlyAmount
@@ -2624,7 +2632,9 @@ class DataStore {
                             scheduledDate: txDate,
                             categoryId: recurring.categoryId,
                             memo: "[定期/月次] \(recurring.name)",
-                            isMonthlySpread: true
+                            isMonthlySpread: true,
+                            projectName: projectName,
+                            allocationMode: recurring.allocationMode
                         ))
                     }
                 }
@@ -2643,6 +2653,7 @@ class DataStore {
                     }
                     guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
                     if let endDate = recurring.endDate, txDate > endDate { break }
+                    if isYearLocked(for: txDate) { continue }
                     let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
                     if !isSkipped {
                         items.append(RecurringPreviewItem(
@@ -2652,7 +2663,9 @@ class DataStore {
                             amount: recurring.amount,
                             scheduledDate: txDate,
                             categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)"
+                            memo: "[定期] \(recurring.name)",
+                            projectName: projectName,
+                            allocationMode: recurring.allocationMode
                         ))
                     }
                 }
@@ -2669,6 +2682,7 @@ class DataStore {
 
         for item in approvedItems {
             guard let recurring = recurringTransactions.first(where: { $0.id == item.recurringId }) else { continue }
+            if isYearLocked(for: item.scheduledDate) { continue }
             let calendar = Calendar.current
             let txDate = item.scheduledDate
 
@@ -2724,6 +2738,18 @@ class DataStore {
             refreshTransactions()
             refreshJournalEntries()
             refreshJournalLines()
+
+            if let businessId = businessProfile?.id {
+                let auditEvent = AuditEvent(
+                    businessId: businessId,
+                    eventType: .recurringApproved,
+                    aggregateType: "RecurringTransaction",
+                    aggregateId: UUID(),
+                    actor: "system",
+                    reason: "\(generatedCount)件の定期取引を承認"
+                )
+                appendAuditEvent(auditEvent)
+            }
         }
 
         return generatedCount
@@ -3265,6 +3291,25 @@ class DataStore {
             newValue: newValue
         )
         modelContext.insert(log)
+    }
+
+    func appendAuditEvent(_ event: AuditEvent) {
+        guard let businessId = businessProfile?.id else { return }
+        let entity = AuditEventEntity(
+            eventId: event.id,
+            businessId: businessId,
+            eventTypeRaw: event.eventType.rawValue,
+            aggregateType: event.aggregateType,
+            aggregateId: event.aggregateId,
+            beforeStateHash: event.beforeStateHash,
+            afterStateHash: event.afterStateHash,
+            actor: event.actor,
+            createdAt: event.createdAt,
+            reason: event.reason,
+            relatedEvidenceId: event.relatedEvidenceId,
+            relatedJournalId: event.relatedJournalId
+        )
+        modelContext.insert(entity)
     }
 
     func getTransactionLogs(for transactionId: UUID) -> [PPTransactionLog] {

@@ -13,6 +13,7 @@ struct AccountFormView: View {
     @State private var name = ""
     @State private var accountType: CanonicalAccountType = .expense
     @State private var normalBalance: NormalBalance = .debit
+    @State private var selectedLegalReportLineId: String?
     @State private var selectedTaxCodeId: String?
     @State private var projectAllocatable = true
     @State private var householdProrationAllowed = false
@@ -115,6 +116,13 @@ struct AccountFormView: View {
                 }
             }
 
+            Picker("決算書表示行", selection: $selectedLegalReportLineId) {
+                Text("未設定").tag(String?.none)
+                ForEach(LegalReportLine.allCases) { line in
+                    Text(line.displayName).tag(String?.some(line.rawValue))
+                }
+            }
+
             Toggle("プロジェクト配賦可能", isOn: $projectAllocatable)
             Toggle("家事按分可能", isOn: $householdProrationAllowed)
         }
@@ -148,6 +156,7 @@ struct AccountFormView: View {
         name = acct.name
         accountType = acct.accountType
         normalBalance = acct.normalBalance
+        selectedLegalReportLineId = acct.defaultLegalReportLineId
         selectedTaxCodeId = acct.defaultTaxCodeId
         projectAllocatable = acct.projectAllocatable
         householdProrationAllowed = acct.householdProrationAllowed
@@ -168,6 +177,7 @@ struct AccountFormView: View {
         if let existing = account {
             accountToSave = existing.updated(
                 name: isSystemAccount ? nil : trimmedName,
+                defaultLegalReportLineId: .some(selectedLegalReportLineId),
                 defaultTaxCodeId: .some(selectedTaxCodeId),
                 projectAllocatable: projectAllocatable,
                 householdProrationAllowed: householdProrationAllowed
@@ -179,6 +189,7 @@ struct AccountFormView: View {
                 name: trimmedName,
                 accountType: accountType,
                 normalBalance: normalBalance,
+                defaultLegalReportLineId: selectedLegalReportLineId,
                 defaultTaxCodeId: selectedTaxCodeId,
                 projectAllocatable: projectAllocatable,
                 householdProrationAllowed: householdProrationAllowed

@@ -30,25 +30,15 @@ struct LedgerView: View {
             if let accountId = selectedAccountId,
                let account = dataStore.accounts.first(where: { $0.id == accountId }) {
                 ToolbarItem(placement: .primaryAction) {
-                    let entries = dataStore.getLedgerEntries(accountId: accountId)
                     ExportMenuButton(
-                        csvGenerator: {
-                            ReportCSVExportService.exportLedgerCSV(
-                                accountName: account.name,
-                                accountCode: account.code,
-                                entries: entries
-                            )
-                        },
-                        pdfGenerator: {
-                            let fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
-                            return PDFExportService.exportLedgerPDF(
-                                accountName: account.name,
-                                accountCode: account.code,
-                                entries: entries,
-                                fiscalYear: fiscalYear
-                            )
-                        },
-                        fileNamePrefix: "元帳_\(account.name)"
+                        target: .ledger,
+                        fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
+                        dataStore: dataStore,
+                        ledgerOptions: ExportCoordinator.LedgerExportOptions(
+                            accountId: account.id,
+                            accountName: account.name,
+                            accountCode: account.code
+                        )
                     )
                 }
             }

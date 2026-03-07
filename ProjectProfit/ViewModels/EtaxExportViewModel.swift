@@ -56,48 +56,27 @@ final class EtaxExportViewModel {
             return
         }
 
-        let startMonth = FiscalYearSettings.startMonth
-        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let pl = AccountingReportService.generateProfitLoss(
-            fiscalYear: fiscalYear,
-            accounts: dataStore.accounts,
-            journalEntries: projected.entries,
-            journalLines: projected.lines,
-            startMonth: startMonth
-        )
-        let bs = AccountingReportService.generateBalanceSheet(
-            fiscalYear: fiscalYear,
-            accounts: dataStore.accounts,
-            journalEntries: projected.entries,
-            journalLines: projected.lines,
-            startMonth: startMonth
-        )
-
-        let inventoryRecord = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
-        let profile = dataStore.etaxExportProfile(for: fiscalYear)
-
-        let form: EtaxForm
+        let filingStyle: FilingStyle
         switch formType {
         case .blueReturn:
-            form = EtaxFieldPopulator.populate(
-                fiscalYear: fiscalYear,
-                profitLoss: pl,
-                balanceSheet: bs,
-                formType: .blueReturn,
-                accounts: dataStore.accounts,
-                profile: profile,
-                inventoryRecord: inventoryRecord
-            )
+            filingStyle = .blueGeneral
+        case .blueCashBasis:
+            filingStyle = .blueCashBasis
         case .whiteReturn:
-            form = ShushiNaiyakushoBuilder.build(
-                fiscalYear: fiscalYear,
-                profitLoss: pl,
-                accounts: dataStore.accounts,
-                profile: profile,
-                fixedAssets: dataStore.fixedAssets,
-                journalLines: projected.lines,
-                journalEntries: projected.entries
+            filingStyle = .white
+        }
+
+        let form: EtaxForm
+        do {
+            form = try FormEngine.build(
+                filingStyle: filingStyle,
+                dataStore: dataStore,
+                fiscalYear: fiscalYear
             )
+        } catch {
+            exportedForm = nil
+            validationErrors = [.validationFailed(reasons: [error.localizedDescription])]
+            return
         }
 
         validationErrors = EtaxCharacterValidator.validateForm(Self.exportableForm(from: form))
