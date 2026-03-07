@@ -15,8 +15,22 @@ struct EvidenceInboxView: View {
     @State private var isLoading = false
     @State private var isReindexing = false
 
+    private var isCurrentYearLocked: Bool {
+        let currentYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
+        let state = dataStore.yearLockState(for: currentYear)
+        return state != .open && !state.allowsNormalPosting
+    }
+
     var body: some View {
         List {
+            if isCurrentYearLocked {
+                Section {
+                    Label("現在の年度はロック中のため、新規証憑の取込はできません", systemImage: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.warning)
+                }
+            }
+
             Section {
                 Picker(
                     "ステータス",
@@ -57,16 +71,6 @@ struct EvidenceInboxView: View {
         .navigationTitle("証憑Inbox")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                NavigationLink {
-                    ApprovalQueueView()
-                } label: {
-                    Image(systemName: "checklist")
-                }
-                .accessibilityLabel("Approval Queue")
-                .accessibilityHint("承認待ちの仕訳候補を確認します")
-            }
-
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     Menu {
@@ -89,6 +93,7 @@ struct EvidenceInboxView: View {
                     }
                     .accessibilityLabel("書類読取")
                     .accessibilityHint("新しい証憑を取り込みます")
+                    .disabled(isCurrentYearLocked)
                 }
             }
         }

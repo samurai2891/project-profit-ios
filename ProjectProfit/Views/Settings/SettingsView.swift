@@ -31,8 +31,11 @@ struct SettingsView: View {
                 // Retention Policy
                 retentionPolicySection
 
-                // Management
-                managementSection
+                // Business Settings
+                businessSettingsSection
+
+                // Master Management
+                masterManagementSection
 
                 // Data
                 dataSection
@@ -241,40 +244,14 @@ struct SettingsView: View {
         }
     }
 
-    private var managementSection: some View {
+    private var businessSettingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("管理")
+            Text("事業設定")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
             VStack(spacing: 0) {
-                NavigationLink {
-                    RecurringView()
-                } label: {
-                    menuRow(
-                        icon: "repeat",
-                        iconColor: AppColors.success,
-                        title: "定期取引",
-                        subtitle: "毎月・毎年の自動登録を管理"
-                    )
-                }
-
-                Divider().padding(.leading, 70)
-
-                Button {
-                    showCategorySheet = true
-                } label: {
-                    menuRow(
-                        icon: "chart.pie.fill",
-                        iconColor: AppColors.primary,
-                        title: "カテゴリ管理",
-                        subtitle: "収益・経費カテゴリの追加・編集"
-                    )
-                }
-
-                Divider().padding(.leading, 70)
-
                 NavigationLink {
                     ProfileSettingsView()
                 } label: {
@@ -289,6 +266,56 @@ struct SettingsView: View {
                 Divider().padding(.leading, 70)
 
                 NavigationLink {
+                    RecurringView()
+                } label: {
+                    menuRow(
+                        icon: "repeat",
+                        iconColor: AppColors.success,
+                        title: "定期取引",
+                        subtitle: "毎月・毎年の自動登録を管理"
+                    )
+                }
+            }
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private var masterManagementSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("マスタ管理")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(spacing: 0) {
+                NavigationLink {
+                    CounterpartyListView()
+                } label: {
+                    menuRow(
+                        icon: "person.2.fill",
+                        iconColor: AppColors.primary,
+                        title: "取引先管理",
+                        subtitle: "取引先マスタの追加・編集・削除"
+                    )
+                }
+
+                Divider().padding(.leading, 70)
+
+                NavigationLink {
+                    ChartOfAccountsView()
+                } label: {
+                    menuRow(
+                        icon: "text.book.closed.fill",
+                        iconColor: AppColors.success,
+                        title: "勘定科目管理",
+                        subtitle: "勘定科目の追加・編集・無効化"
+                    )
+                }
+
+                Divider().padding(.leading, 70)
+
+                NavigationLink {
                     DistributionTemplateSettingsView()
                 } label: {
                     menuRow(
@@ -296,6 +323,19 @@ struct SettingsView: View {
                         iconColor: AppColors.success,
                         title: "配賦テンプレート",
                         subtitle: "共通費の配賦ルールを管理"
+                    )
+                }
+
+                Divider().padding(.leading, 70)
+
+                Button {
+                    showCategorySheet = true
+                } label: {
+                    menuRow(
+                        icon: "chart.pie.fill",
+                        iconColor: AppColors.primary,
+                        title: "カテゴリ管理",
+                        subtitle: "収益・経費カテゴリの追加・編集"
                     )
                 }
             }

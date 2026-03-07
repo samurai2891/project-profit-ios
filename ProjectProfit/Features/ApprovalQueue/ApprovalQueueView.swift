@@ -287,6 +287,12 @@ struct ApprovalCandidateDetailView: View {
         }
     }
 
+    private var isCandidateYearLocked: Bool {
+        guard let candidate else { return false }
+        let year = fiscalYear(for: candidate.candidateDate, startMonth: FiscalYearSettings.startMonth)
+        return !dataStore.yearLockState(for: year).allowsNormalPosting
+    }
+
     private var hasSavableLines: Bool {
         lineDrafts.contains { draft in
             (draft.debitLegacyAccountId != nil || draft.creditLegacyAccountId != nil)
@@ -523,7 +529,13 @@ struct ApprovalCandidateDetailView: View {
                 Task { await approveCandidate() }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isSaving || !hasSavableLines || candidate == nil)
+            .disabled(isSaving || !hasSavableLines || candidate == nil || isCandidateYearLocked)
+
+            if isCandidateYearLocked {
+                Text("年度ロック中")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.warning)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)

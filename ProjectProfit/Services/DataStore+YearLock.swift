@@ -22,6 +22,38 @@ extension DataStore {
         return false
     }
 
+    // MARK: - Graduated Lock Checks
+
+    /// 通常仕訳の登録が不可か判定（softCloseまでは許可、taxClose以降は不可）
+    func cannotPostNormalEntry(for date: Date) -> Bool {
+        let year = fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)
+        return cannotPostNormalEntry(forYear: year)
+    }
+
+    func cannotPostNormalEntry(forYear year: Int) -> Bool {
+        let state = yearLockState(for: year)
+        if !state.allowsNormalPosting {
+            lastError = .yearLocked(year: year)
+            return true
+        }
+        return false
+    }
+
+    /// 決算整理仕訳の登録が不可か判定（taxCloseまでは許可、filed以降は不可）
+    func cannotPostAdjustingEntry(for date: Date) -> Bool {
+        let year = fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)
+        return cannotPostAdjustingEntry(forYear: year)
+    }
+
+    func cannotPostAdjustingEntry(forYear year: Int) -> Bool {
+        let state = yearLockState(for: year)
+        if !state.allowsAdjustingEntries {
+            lastError = .yearLocked(year: year)
+            return true
+        }
+        return false
+    }
+
     func yearLockState(for year: Int) -> YearLockState {
         if let canonicalState = persistedYearLockState(for: year) {
             return canonicalState

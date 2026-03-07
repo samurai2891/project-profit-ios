@@ -21,6 +21,15 @@ enum TaxCode: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    var shortLabel: String {
+        switch self {
+        case .standard10: "10%"
+        case .reduced8: "8%"
+        case .exempt: "非課税"
+        case .nonTaxable: "不課税"
+        }
+    }
+
     var legacyCategory: TaxCategory {
         switch self {
         case .standard10:

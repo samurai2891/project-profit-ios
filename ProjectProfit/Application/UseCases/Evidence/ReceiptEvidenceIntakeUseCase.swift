@@ -486,14 +486,11 @@ struct ReceiptEvidenceIntakeUseCase {
 
     private func matchedCounterpartyId(businessId: UUID, name: String?) async throws -> UUID? {
         guard let normalizedName = normalizedOptionalString(name) else { return nil }
-        let matches = try await counterpartyMasterUseCase.searchCounterparties(
-            businessId: businessId,
-            query: normalizedName
+        let matched = try await counterpartyMasterUseCase.suggestCounterparty(
+            storeName: normalizedName,
+            businessId: businessId
         )
-        let normalizedFolded = normalizedName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        return matches.first {
-            $0.displayName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) == normalizedFolded
-        }?.id
+        return matched?.id
     }
 
     private func makeStructuredFields(from request: ReceiptEvidenceIntakeRequest) -> EvidenceStructuredFields {

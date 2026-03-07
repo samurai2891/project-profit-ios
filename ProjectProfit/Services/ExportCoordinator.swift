@@ -1,0 +1,289 @@
+import Foundation
+
+/// 全 export サービスを統合するコーディネーター
+@MainActor
+enum ExportCoordinator {
+
+    // MARK: - Types
+
+    enum ExportFormat: String, CaseIterable, Sendable {
+        case csv
+        case pdf
+
+        var label: String {
+            switch self {
+            case .csv: "CSV"
+            case .pdf: "PDF"
+            }
+        }
+
+        var fileExtension: String { rawValue }
+    }
+
+    enum ExportTarget: String, CaseIterable, Sendable {
+        case profitLoss
+        case balanceSheet
+        case trialBalance
+        case journal
+        case ledger
+        case fixedAssets
+
+        var label: String {
+            switch self {
+            case .profitLoss: "損益計算書"
+            case .balanceSheet: "貸借対照表"
+            case .trialBalance: "残高試算表"
+            case .journal: "仕訳帳"
+            case .ledger: "総勘定元帳"
+            case .fixedAssets: "固定資産台帳"
+            }
+        }
+
+        var filePrefix: String {
+            switch self {
+            case .profitLoss: "profit_loss"
+            case .balanceSheet: "balance_sheet"
+            case .trialBalance: "trial_balance"
+            case .journal: "journal"
+            case .ledger: "ledger"
+            case .fixedAssets: "fixed_assets"
+            }
+        }
+    }
+
+    enum ExportError: LocalizedError {
+        case dataUnavailable
+        case ledgerAccountRequired
+        case unsupportedFormat(ExportTarget, ExportFormat)
+        case fileWriteFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .dataUnavailable:
+                return "出力データが取得できません"
+            case .ledgerAccountRequired:
+                return "元帳出力には勘定科目の指定が必要です"
+            case .unsupportedFormat(let target, let format):
+                return "\(target.label)の\(format.label)出力は未対応です"
+            case .fileWriteFailed:
+                return "ファイルの書き込みに失敗しました"
+            }
+        }
+    }
+
+    struct LedgerExportOptions: Sendable {
+        let accountId: String
+        let accountName: String
+        let accountCode: String
+    }
+
+    // MARK: - Export
+
+    /// 指定の帳票をフォーマットでエクスポートし、一時ファイルのURLを返す
+    static func export(
+        target: ExportTarget,
+        format: ExportFormat,
+        fiscalYear: Int,
+        dataStore: DataStore,
+        ledgerOptions: LedgerExportOptions? = nil
+    ) throws -> URL {
+        let content: ExportContent = try generateContent(
+            target: target,
+            format: format,
+            fiscalYear: fiscalYear,
+            dataStore: dataStore,
+            ledgerOptions: ledgerOptions
+        )
+
+        let fileName = makeFileName(target: target, fiscalYear: fiscalYear, format: format)
+        return try writeToTempFile(content: content, fileName: fileName)
+    }
+
+    // MARK: - Content Generation
+
+    private enum ExportContent {
+        case text(String)
+        case data(Data)
+    }
+
+    private static func generateContent(
+        target: ExportTarget,
+        format: ExportFormat,
+        fiscalYear: Int,
+        dataStore: DataStore,
+        ledgerOptions: LedgerExportOptions?
+    ) throws -> ExportContent {
+        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let accounts = dataStore.accounts
+        let startMonth = FiscalYearSettings.startMonth
+
+        switch (target, format) {
+        // MARK: Journal
+        case (.journal, .csv):
+            let csv = ReportCSVExportService.exportJournalCSV(
+                entries: projected.entries,
+                lines: projected.lines,
+                accounts: accounts
+            )
+            return .text(csv)
+
+        case (.journal, .pdf):
+            let pdf = PDFExportService.exportJournalPDF(
+                entries: projected.entries,
+                lines: projected.lines,
+                accounts: accounts,
+                fiscalYear: fiscalYear
+            )
+            return .data(pdf)
+
+        // MARK: Profit & Loss
+        case (.profitLoss, .csv):
+            let report = AccountingReportService.generateProfitLoss(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .text(ReportCSVExportService.exportProfitLossCSV(report: report))
+
+        case (.profitLoss, .pdf):
+            let report = AccountingReportService.generateProfitLoss(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(PDFExportService.exportProfitLossPDF(report: report))
+
+        // MARK: Balance Sheet
+        case (.balanceSheet, .csv):
+            let report = AccountingReportService.generateBalanceSheet(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .text(ReportCSVExportService.exportBalanceSheetCSV(report: report))
+
+        case (.balanceSheet, .pdf):
+            let report = AccountingReportService.generateBalanceSheet(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(PDFExportService.exportBalanceSheetPDF(report: report))
+
+        // MARK: Trial Balance
+        case (.trialBalance, .csv):
+            let report = AccountingReportService.generateTrialBalance(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .text(ReportCSVExportService.exportTrialBalanceCSV(rows: report.rows))
+
+        case (.trialBalance, .pdf):
+            let report = AccountingReportService.generateTrialBalance(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(PDFExportService.exportTrialBalancePDF(report: report))
+
+        // MARK: Ledger
+        case (.ledger, .csv):
+            guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
+            let entries = dataStore.getLedgerEntries(accountId: opts.accountId)
+            return .text(ReportCSVExportService.exportLedgerCSV(
+                accountName: opts.accountName,
+                accountCode: opts.accountCode,
+                entries: entries
+            ))
+
+        case (.ledger, .pdf):
+            guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
+            let entries = dataStore.getLedgerEntries(accountId: opts.accountId)
+            return .data(PDFExportService.exportLedgerPDF(
+                accountName: opts.accountName,
+                accountCode: opts.accountCode,
+                entries: entries,
+                fiscalYear: fiscalYear
+            ))
+
+        // MARK: Fixed Assets
+        case (.fixedAssets, .csv):
+            let assets = dataStore.fixedAssets
+            return .text(ReportCSVExportService.exportFixedAssetsCSV(
+                assets: assets,
+                calculateAccumulated: { asset in
+                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
+                    return calc.accumulatedDepreciation
+                },
+                calculateCurrentYear: { asset in
+                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
+                }
+            ))
+
+        case (.fixedAssets, .pdf):
+            let assets = dataStore.fixedAssets
+            return .data(PDFExportService.exportFixedAssetsPDF(
+                assets: assets,
+                fiscalYear: fiscalYear,
+                calculateAccumulated: { asset in
+                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
+                    return calc.accumulatedDepreciation
+                },
+                calculateCurrentYear: { asset in
+                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
+                }
+            ))
+        }
+    }
+
+    // MARK: - File Naming
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Tokyo")
+        return formatter
+    }()
+
+    static func makeFileName(target: ExportTarget, fiscalYear: Int, format: ExportFormat) -> String {
+        let dateStr = dateFormatter.string(from: Date())
+        return "\(target.filePrefix)_\(fiscalYear)_\(dateStr).\(format.fileExtension)"
+    }
+
+    // MARK: - File I/O
+
+    private static func writeToTempFile(content: ExportContent, fileName: String) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent(fileName)
+
+        switch content {
+        case .text(let text):
+            guard let data = text.data(using: .utf8) else {
+                throw ExportError.fileWriteFailed
+            }
+            try data.write(to: fileURL, options: .atomic)
+        case .data(let data):
+            try data.write(to: fileURL, options: .atomic)
+        }
+
+        return fileURL
+    }
+}
