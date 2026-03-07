@@ -17,11 +17,11 @@ enum FeatureFlags {
         set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalPosting) }
     }
 
-    /// 旧 LedgerDataStore を正本として使用
+    /// 旧 LedgerDataStore ベースの台帳 UI を有効化
     static var useLegacyLedger: Bool {
         get {
             if UserDefaults.standard.object(forKey: Keys.useLegacyLedger) == nil {
-                return true
+                return false
             }
             return UserDefaults.standard.bool(forKey: Keys.useLegacyLedger)
         }
@@ -40,12 +40,9 @@ enum FeatureFlags {
         set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalTaxEngine) }
     }
 
-    /// 全フラグをデフォルト（legacy ON）に戻す
+    /// 全フラグの明示設定を解除してデフォルト値に戻す
     static func resetToDefaults() {
-        useCanonicalPosting = false
-        useLegacyLedger = true
-        useCanonicalEvidence = false
-        useCanonicalTaxEngine = false
+        clearOverrides()
     }
 
     /// 全フラグを canonical に切り替え（カットオーバー用）
@@ -54,6 +51,14 @@ enum FeatureFlags {
         useLegacyLedger = false
         useCanonicalEvidence = true
         useCanonicalTaxEngine = true
+    }
+
+    /// テスト・切り戻し確認用に全フラグの上書きを削除する
+    static func clearOverrides() {
+        UserDefaults.standard.removeObject(forKey: Keys.useCanonicalPosting)
+        UserDefaults.standard.removeObject(forKey: Keys.useLegacyLedger)
+        UserDefaults.standard.removeObject(forKey: Keys.useCanonicalEvidence)
+        UserDefaults.standard.removeObject(forKey: Keys.useCanonicalTaxEngine)
     }
 
     /// デバッグ用: 現在のフラグ状態

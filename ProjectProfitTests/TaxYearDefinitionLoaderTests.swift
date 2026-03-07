@@ -73,23 +73,45 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
     func testIsSupportedYear() {
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025))
+        XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2026))
         XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 1900))
     }
 
     func testIsSupportedYearByFormType() {
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025, formType: .blueReturn))
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025, formType: .whiteReturn))
+        XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 2026, formType: .blueReturn))
         XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 1900, formType: .blueReturn))
     }
 
     func testSupportedYearsContains2025() {
         let years = TaxYearDefinitionLoader.supportedYears()
         XCTAssertTrue(years.contains(2025))
+        XCTAssertTrue(years.contains(2026))
     }
 
     func testSupportedYearsByFormContains2025() {
         let years = TaxYearDefinitionLoader.supportedYears(formType: .whiteReturn)
         XCTAssertTrue(years.contains(2025))
+        XCTAssertFalse(years.contains(2026))
+    }
+
+    // MARK: - TaxYearPack Bridge
+
+    func testTaxYearPackProvider_availableYearsIncludes2026() async {
+        let provider = BundledTaxYearPackProvider(bundle: .main)
+        let years = await provider.availableYears()
+
+        XCTAssertTrue(years.contains(2025))
+        XCTAssertTrue(years.contains(2026))
+    }
+
+    func testTaxYearPackProvider_packFor2026LoadsProfile() async throws {
+        let provider = BundledTaxYearPackProvider(bundle: .main)
+        let pack = try await provider.pack(for: 2026)
+
+        XCTAssertEqual(pack.taxYear, 2026)
+        XCTAssertEqual(pack.version, "2026-v1")
     }
 
     // MARK: - Coverage

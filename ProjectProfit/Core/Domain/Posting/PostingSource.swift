@@ -45,6 +45,7 @@ enum CanonicalJournalEntryType: String, Codable, Sendable, CaseIterable {
     case inventoryAdjustment // 棚卸調整
     case recurring           // 定期仕訳
     case taxAdjustment       // 税務調整
+    case reversal            // 取消仕訳
 
     var displayName: String {
         switch self {
@@ -55,6 +56,7 @@ enum CanonicalJournalEntryType: String, Codable, Sendable, CaseIterable {
         case .inventoryAdjustment: "棚卸調整"
         case .recurring: "定期仕訳"
         case .taxAdjustment: "税務調整"
+        case .reversal: "取消仕訳"
         }
     }
 }

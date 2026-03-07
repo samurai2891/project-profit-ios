@@ -1,7 +1,7 @@
 import Foundation
 
 /// 電子帳簿保存法の対応レベル
-enum ElectronicBookLevel: String, Codable, Sendable {
+enum ElectronicBookLevel: String, Codable, Sendable, CaseIterable {
     case none
     case standard
     case superior

@@ -1,7 +1,7 @@
 import Foundation
 
 /// 消費税の課税区分
-enum VatStatus: String, Codable, Sendable {
+enum VatStatus: String, Codable, Sendable, CaseIterable {
     case exempt
     case taxable
 

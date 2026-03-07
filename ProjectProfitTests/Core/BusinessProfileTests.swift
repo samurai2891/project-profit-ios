@@ -9,6 +9,7 @@ final class BusinessProfileTests: XCTestCase {
         XCTAssertEqual(profile.defaultCurrency, "JPY")
         XCTAssertEqual(profile.invoiceIssuerStatus, .unknown)
         XCTAssertEqual(profile.ownerNameKana, "")
+        XCTAssertEqual(profile.defaultPaymentAccountId, AccountingConstants.defaultPaymentAccountId)
     }
 
     func testCreationWithAllFields() {
@@ -51,6 +52,7 @@ final class BusinessProfileTests: XCTestCase {
         XCTAssertEqual(original.id, updated.id)
         // ownerName は変更されていない
         XCTAssertEqual(updated.ownerName, "田中太郎")
+        XCTAssertEqual(updated.defaultPaymentAccountId, AccountingConstants.defaultPaymentAccountId)
     }
 
     func testInvoiceIssuerStatusTransitions() {

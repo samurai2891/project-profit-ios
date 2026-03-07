@@ -1,7 +1,7 @@
 import Foundation
 
 /// 申告方式
-enum FilingStyle: String, Codable, Sendable {
+enum FilingStyle: String, Codable, Sendable, CaseIterable {
     /// 青色申告（一般用・発生主義）
     case blueGeneral
     /// 青色申告（現金主義用）

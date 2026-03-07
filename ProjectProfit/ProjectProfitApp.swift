@@ -5,36 +5,32 @@ import SwiftData
 struct ProjectProfitApp: App {
     @State private var notificationService = NotificationService()
     private let notificationDelegate = NotificationDelegate()
+    private let sharedModelContainer: ModelContainer
+    private static let isRunningTests =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
 
     init() {
         UNUserNotificationCenter.current().delegate = notificationDelegate
+        do {
+            sharedModelContainer = try ModelContainerFactory.makeAppContainer()
+        } catch {
+            fatalError("Failed to create model container: \(error)")
+        }
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(notificationService)
-                .task {
-                    await notificationService.checkAuthorizationStatus()
-                }
+            if Self.isRunningTests {
+                EmptyView()
+            } else {
+                ContentView()
+                    .environment(notificationService)
+                    .task {
+                        await notificationService.checkAuthorizationStatus()
+                    }
+            }
         }
-        .modelContainer(for: [
-            PPProject.self,
-            PPTransaction.self,
-            PPCategory.self,
-            PPRecurringTransaction.self,
-            PPAccount.self,
-            PPJournalEntry.self,
-            PPJournalLine.self,
-            PPAccountingProfile.self,
-            PPUserRule.self,
-            PPFixedAsset.self,
-            PPInventoryRecord.self,
-            PPDocumentRecord.self,
-            PPComplianceLog.self,
-            PPTransactionLog.self,
-            SDLedgerBook.self,
-            SDLedgerEntry.self
-        ])
+        .modelContainer(sharedModelContainer)
     }
 }

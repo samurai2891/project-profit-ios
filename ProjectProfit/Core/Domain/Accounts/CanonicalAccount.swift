@@ -4,6 +4,7 @@ import Foundation
 struct CanonicalAccount: Identifiable, Codable, Sendable, Equatable {
     let id: UUID
     let businessId: UUID
+    let legacyAccountId: String?
     let code: String
     let name: String
     let accountType: CanonicalAccountType
@@ -20,6 +21,7 @@ struct CanonicalAccount: Identifiable, Codable, Sendable, Equatable {
     init(
         id: UUID = UUID(),
         businessId: UUID,
+        legacyAccountId: String? = nil,
         code: String,
         name: String,
         accountType: CanonicalAccountType,
@@ -35,6 +37,7 @@ struct CanonicalAccount: Identifiable, Codable, Sendable, Equatable {
     ) {
         self.id = id
         self.businessId = businessId
+        self.legacyAccountId = legacyAccountId
         self.code = code
         self.name = name
         self.accountType = accountType
@@ -62,6 +65,7 @@ struct CanonicalAccount: Identifiable, Codable, Sendable, Equatable {
         CanonicalAccount(
             id: self.id,
             businessId: self.businessId,
+            legacyAccountId: self.legacyAccountId,
             code: self.code,
             name: name ?? self.name,
             accountType: self.accountType,

@@ -1,7 +1,7 @@
 import Foundation
 
 /// インボイス発行事業者の登録状態
-enum InvoiceIssuerStatus: String, Codable, Sendable {
+enum InvoiceIssuerStatus: String, Codable, Sendable, CaseIterable {
     case registered
     case unregistered
     case unknown

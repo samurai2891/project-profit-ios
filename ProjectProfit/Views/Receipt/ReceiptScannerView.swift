@@ -12,6 +12,7 @@ struct ReceiptScannerView: View {
     @State private var selectedImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showCamera = false
+    @State private var selectedSourceType: EvidenceSourceType = .manualNoFile
     @State private var scannerService = ReceiptScannerService()
 
     init(defaultProjectId: UUID? = nil) {
@@ -26,8 +27,15 @@ struct ReceiptScannerView: View {
                     imagePreview(selectedImage!)
                 case .processing:
                     processingView
-                case .completed(let data):
-                    ReceiptReviewView(receiptData: data, receiptImage: selectedImage, defaultProjectId: defaultProjectId, onDismiss: { dismiss() })
+                case .completed(let output):
+                    ReceiptReviewView(
+                        receiptData: output.receiptData,
+                        ocrText: output.ocrText,
+                        receiptImage: selectedImage,
+                        evidenceSourceType: selectedSourceType,
+                        defaultProjectId: defaultProjectId,
+                        onDismiss: { dismiss() }
+                    )
                 case .failed(let message):
                     errorView(message: message)
                 default:
@@ -81,6 +89,7 @@ struct ReceiptScannerView: View {
             VStack(spacing: 12) {
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
                     Button {
+                        selectedSourceType = .camera
                         showCamera = true
                     } label: {
                         HStack {
@@ -146,6 +155,7 @@ struct ReceiptScannerView: View {
                 Button {
                     selectedImage = nil
                     photoPickerItem = nil
+                    selectedSourceType = .manualNoFile
                     scannerService.reset()
                 } label: {
                     Text("やり直す")
@@ -225,11 +235,12 @@ struct ReceiptScannerView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Button {
-                selectedImage = nil
-                photoPickerItem = nil
-                scannerService.reset()
-            } label: {
+                Button {
+                    selectedImage = nil
+                    photoPickerItem = nil
+                    selectedSourceType = .manualNoFile
+                    scannerService.reset()
+                } label: {
                 Text("もう一度試す")
                     .fontWeight(.semibold)
                     .padding(.horizontal, 24)
@@ -250,6 +261,7 @@ struct ReceiptScannerView: View {
 
     private func loadPhoto(from item: PhotosPickerItem?) {
         guard let item else { return }
+        selectedSourceType = .photoLibrary
         Task {
             if let data = try? await item.loadTransferable(type: Data.self),
                let uiImage = UIImage(data: data)

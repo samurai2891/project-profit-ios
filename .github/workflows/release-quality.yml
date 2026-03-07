@@ -1,0 +1,371 @@
+name: Release Quality
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  simulator-health:
+    name: Simulator Health
+    runs-on: macos-latest
+    outputs:
+      status: ${{ steps.health.outputs.status }}
+      reason: ${{ steps.health.outputs.reason }}
+      simulator_device: ${{ steps.health.outputs.simulator_device }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check simulator health
+        id: health
+        shell: bash
+        run: |
+          set +e
+          output="$(bash scripts/check_simulator_health.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          simulator_device="$(printf '%s\n' "$output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="simulator health check output parsing failed"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          if [[ -n "$simulator_device" ]]; then
+            echo "simulator_device=$simulator_device" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "### simulator-health"
+            echo "- status: $status"
+            echo "- reason: $reason"
+            if [[ -n "$simulator_device" ]]; then
+              echo "- simulator_device: $simulator_device"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$status" == "error" || "$exit_code" -ne 0 ]]; then
+            echo "simulator-health failed: $reason" >&2
+            exit 1
+          fi
+
+  golden-baseline:
+    name: Golden Baseline
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run golden baseline lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: golden-baseline
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/golden-baseline
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/GoldenBaselineTests
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="golden lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/golden-baseline/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/golden-baseline/golden-baseline.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/golden-baseline/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload golden artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-baseline-artifacts
+          path: /tmp/release-quality/golden-baseline
+          if-no-files-found: warn
+
+  canonical-e2e:
+    name: Canonical E2E
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run canonical E2E lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: canonical-e2e
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/canonical-e2e
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/CanonicalFlowE2ETests
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="canonical E2E lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/canonical-e2e/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/canonical-e2e/canonical-e2e.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/canonical-e2e/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload canonical E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-e2e-artifacts
+          path: /tmp/release-quality/canonical-e2e
+          if-no-files-found: warn
+
+  migration-rehearsal:
+    name: Migration Rehearsal
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run migration rehearsal lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: migration-rehearsal
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/migration-rehearsal
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/MigrationReportRunnerTests
+            ProjectProfitTests/BackupRestoreServiceTests
+            ProjectProfitTests/CanonicalFlowE2ETests/testBackupRestoreRoundTripRestoresSearchableCanonicalArtifacts
+            ProjectProfitTests/CanonicalFlowE2ETests/testMigrationRehearsalOnGoldenFixtureHasNoOrphans
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="migration rehearsal lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/migration-rehearsal/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/migration-rehearsal/migration-rehearsal.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/migration-rehearsal/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload migration rehearsal artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-rehearsal-artifacts
+          path: /tmp/release-quality/migration-rehearsal
+          if-no-files-found: warn
+
+  performance-gate:
+    name: Performance Gate
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run performance gate lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: performance-gate
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/performance-gate
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/ReleasePerformanceGateTests
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          metrics_path="$(printf '%s\n' "$output" | awk -F= '/^metrics_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="performance gate lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/performance-gate/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/performance-gate/performance-gate.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/performance-gate/xcodebuild.log"
+          fi
+          if [[ -z "$metrics_path" ]]; then
+            metrics_path="/tmp/release-quality/performance-gate/performance_metrics.txt"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+          echo "metrics_path=$metrics_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-gate-artifacts
+          path: /tmp/release-quality/performance-gate
+          if-no-files-found: warn

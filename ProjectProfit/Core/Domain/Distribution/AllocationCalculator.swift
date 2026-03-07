@@ -64,45 +64,31 @@ struct AllocationCalculator: Sendable {
         let totalWeight = weights.reduce(Decimal(0)) { $0 + $1.weight }
         guard totalWeight > 0 else { return [] }
 
-        var allocations: [CanonicalProjectAllocation] = []
-        var remaining = totalAmount
-
         // 最大重みのインデックスを取得（largestWeightAdjust 用）
         let maxWeightIndex = weights.enumerated()
             .max(by: { $0.element.weight < $1.element.weight })?.offset ?? 0
-
-        for (index, weight) in weights.enumerated() {
-            let isAdjustTarget: Bool
-            switch roundingPolicy {
-            case .lastProjectAdjust:
-                isAdjustTarget = index == weights.count - 1
-            case .largestWeightAdjust:
-                isAdjustTarget = index == maxWeightIndex
-            }
-
-            let ratio = weight.weight / totalWeight
-            let amount: Decimal
-
-            if isAdjustTarget {
-                // 調整対象は残額を充当
-                let otherAllocations = allocations.reduce(Decimal(0)) { $0 + $1.amount }
-                amount = totalAmount - otherAllocations
-            } else {
-                amount = (totalAmount * ratio).rounded(scale: 0)
-            }
-
-            remaining -= amount
-
-            allocations.append(CanonicalProjectAllocation(
-                projectId: weight.projectId,
-                amount: amount,
-                ratio: ratio,
-                basisAmount: totalAmount,
-                source: .fromRule
-            ))
+        let adjustTargetIndex: Int = switch roundingPolicy {
+        case .lastProjectAdjust:
+            weights.count - 1
+        case .largestWeightAdjust:
+            maxWeightIndex
         }
 
-        return allocations
+        let ratios = weights.map { $0.weight / totalWeight }
+        let provisionalAmounts = ratios.enumerated().map { index, ratio in
+            index == adjustTargetIndex ? Decimal?.none : (totalAmount * ratio).rounded(scale: 0)
+        }
+        let adjustedAmount = totalAmount - provisionalAmounts.compactMap { $0 }.reduce(Decimal(0), +)
+
+        return weights.enumerated().map { index, weight in
+            CanonicalProjectAllocation(
+                projectId: weight.projectId,
+                amount: provisionalAmounts[index] ?? adjustedAmount,
+                ratio: ratios[index],
+                basisAmount: totalAmount,
+                source: .fromRule
+            )
+        }
     }
 }
 

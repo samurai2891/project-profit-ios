@@ -1,0 +1,235 @@
+﻿ID,Type,Parent Epic,Title,Priority,Estimate,Cycle,Labels,Dependencies,Description
+EPIC-01,Epic,,基盤凍結・移行準備・カットオーバー管理,P0,,,"epic,platform,migration",,現行機能の比較基準を固定し、段階移行と安全なリリースを可能にする。
+EPIC-02,Epic,,Canonical Domain・永続化・正本一本化,P0,,,"epic,domain,persistence",,証憑→候補→確定仕訳を唯一の正本にし、二重台帳を解消する。
+EPIC-03,Epic,,税務状態マシン・税ルールエンジン,P0,,,"epic,tax,rules",,青色/白色・消費税・インボイス特例を年分ごとに安全に判定できるようにする。
+EPIC-04,Epic,,証憑台帳・オンデバイス Document Intake,P0,,,"epic,evidence,ocr,on-device-ai",,原本保存、OCR、抽出、検索、履歴、重複検知を備えた証憑基盤を構築する。
+EPIC-05,Epic,,Posting・定期取引・自動配賦・照合,P0,,,"epic,posting,automation,distribution",,候補生成→承認→確定→照合を一貫させ、月次の自動化を最大化する。
+EPIC-06,Epic,,帳簿Projection・決算整理・消費税集計表,P0,,,"epic,books,projection,vat",,すべての帳簿を確定仕訳から再生成し、決算整理と消費税集計を完成させる。
+EPIC-07,Epic,,青色/白色帳票・FormEngine・e-Tax,P0,,,"epic,forms,etax,filing",,収支内訳書・青色申告決算書・e-Tax XML を年分パックで生成可能にする。
+EPIC-08,Epic,,UI/UX・マスタ管理・業種汎用化,P1,,,"epic,ui,masters,workflow",,証憑中心 UX と、勘定科目・ジャンル・取引先の拡張性を両立させる。
+EPIC-09,Epic,,Import/Export・バックアップ・外部明細,P1,,,"epic,import,export,backup",,大量入力・帳簿配布・保全を実務レベルに引き上げる。
+EPIC-10,Epic,,QA・性能・回帰・リリース,P0,,,"epic,qa,performance,release",,税務・帳簿・移行の壊れを自動検知し、安全に切り替える。
+PP-001,Task,EPIC-01,現行機能インベントリと画面/出力物のベースラインを固定する,P0,3,Sprint 1,"platform,baseline,audit",,"目的: 現行機能、モデル、サービス、画面、帳票、テストを棚卸しし、比較対象を固定する。
+スコープ: 機能一覧 / 画面一覧 / モデル一覧 / 出力物サンプル / 既知不具合一覧
+依存: なし
+完了条件: 現行出力の golden サンプルが保存されている / 以降のリファクタリング比較基準として使える"
+PP-002,Task,EPIC-01,Golden dataset と帳簿/帳票スナップショットを作成する,P0,3,Sprint 1,"qa,golden-data,snapshot",PP-001,"目的: 青色、白色、消費税、棚卸、固定資産、定期取引の代表データセットを整備する。
+スコープ: 青色65ケース / 白色ケース / 2割特例ケース / 軽減税率混在ケース / 定期取引配賦ケース
+依存: PP-001
+完了条件: 各ケースに期待帳簿と期待帳票がある / CI で再利用できる"
+PP-003,Task,EPIC-01,Feature Flag と parallel-run 比較基盤を導入する,P0,2,Sprint 1,"platform,feature-flag,parallel-run",PP-001,"目的: 新旧エンジンを並走させ、差分比較と段階的リリースを可能にする。
+スコープ: 新旧 engine 切替フラグ / migration dry-run フラグ / debug diff view
+依存: PP-001
+完了条件: 新旧の帳簿出力を同一データで比較できる"
+PP-004,Task,EPIC-02,Domain モジュール構成と命名規則を確定する,P0,2,Sprint 1,"domain,architecture",PP-001,"目的: Business/Tax/Evidence/Posting/Books/Forms/Automation の責務を定義し、以後の実装先を固定する。
+スコープ: ディレクトリ作成 / README / 命名規則
+依存: PP-001
+完了条件: 新規コードの置き場が明確 / 旧 Models.swift への追記禁止ルールが決まる"
+PP-005,Task,EPIC-02,BusinessProfile と TaxYearProfile を新設する,P0,3,Sprint 1,"domain,tax-year,profile",PP-004,"目的: 事業者共通情報と年分固有の税務状態を分離した新 canonical profile を導入する。
+スコープ: BusinessProfile / TaxYearProfile / migration adapter
+依存: PP-004
+完了条件: 青色/白色・青色控除レベル・VAT方式を保持できる / 旧 isBlueReturn 依存が縮退開始する"
+PP-006,Task,EPIC-02,Counterparty / Genre / IndustryPreset を新設する,P0,3,Sprint 1,"domain,masters,genre,counterparty",PP-004,"目的: 取引先マスタ、自由分析用ジャンル、業種プリセットを定義して、拡張性の土台を作る。
+スコープ: Counterparty / GenreMaster / IndustryPreset
+依存: PP-004
+完了条件: T番号・既定勘定科目・既定税区分・既定ジャンルを保持できる"
+PP-007,Task,EPIC-02,ChartOfAccounts v2 と legal mapping モデルを定義する,P0,3,Sprint 1,"domain,accounts,legal-mapping",PP-004,"目的: system account と custom account を分離し、法定帳票マッピングを必須化する。
+スコープ: AccountGroup / LegalLineMapping / custom account policy
+依存: PP-004
+完了条件: ユーザー追加勘定科目が帳票へ落とせる設計になる"
+PP-008,Task,EPIC-02,Evidence / Candidate / PostedJournal の canonical モデルを定義する,P0,5,Sprint 1,"domain,evidence,posting",PP-004,"目的: 証憑、取引候補、仕訳候補、確定仕訳の新しい正本系列を定義する。
+スコープ: EvidenceDocument / EvidenceVersion / TransactionCandidate / PostingCandidate / PostedJournal
+依存: PP-004
+完了条件: 会計正本が 1 系統に整理される / AI候補と確定仕訳が分離される"
+PP-009,Task,EPIC-01,移行マッピング RFC を作成し、旧→新対応表を確定する,P0,2,Sprint 1,"migration,rfc","PP-005,PP-006,PP-007,PP-008","目的: 旧 DataStore / LedgerDataStore / document record を新 canonical model へ移す対応表を文書化する。
+スコープ: migration matrix / known risks / fallback rules
+依存: PP-005 / PP-006 / PP-007 / PP-008
+完了条件: 各旧モデルに新保存先が定義されている"
+PP-010,Task,EPIC-02,Repository 層を新設し DataStore 依存を縮退させる,P0,5,Sprint 2,"persistence,repository,refactor",PP-008,"目的: 巨大な DataStore を repository/use-case 構成へ移し、ドメインと永続化の境界を引く。
+スコープ: BusinessProfileRepository / EvidenceRepository / PostingRepository / ProjectRepository
+依存: PP-008
+完了条件: 新規コードが DataStore に直接集約されない"
+PP-011,Task,EPIC-02,Evidence file store と metadata store を分離する,P0,3,Sprint 2,"evidence,storage,files",PP-008,"目的: 原本ファイル保存と DB メタデータ保存を分離し、ハッシュ・MIME・file protection を標準化する。
+スコープ: file store abstraction / content hash / stable file id
+依存: PP-008
+完了条件: 原本ファイルが evidence metadata と一意に結び付く"
+PP-012,Task,EPIC-04,Evidence / Journal 検索インデックスを実装する,P0,3,Sprint 2,"search,compliance,evidence",PP-011,"目的: 日付・金額・取引先・T番号・プロジェクトで高速検索できるインデックスを作る。
+スコープ: search index / query primitives / reindex job
+依存: PP-011
+完了条件: 電子取引保存を意識した検索導線が動く"
+PP-013,Task,EPIC-01,Migration Runner と dry-run レポートを実装する,P0,5,Sprint 2,"migration,dry-run,report","PP-009,PP-010,PP-011","目的: 本移行前に件数差分・孤立データ・変換失敗を可視化する dry-run を作る。
+スコープ: runner / diff report / error buckets
+依存: PP-009 / PP-010 / PP-011
+完了条件: 実データで dry-run できる / 本番移行前に問題を洗える"
+PP-014,Task,EPIC-09,Snapshot backup / restore を実装する,P1,3,Sprint 2,"backup,restore,safety",PP-010,"目的: 年分単位と全体バックアップをローカルで保存/復元できるようにする。
+スコープ: snapshot export / snapshot import / checksum
+依存: PP-010
+完了条件: 移行前後に退避・復元ができる"
+PP-015,Task,EPIC-07,TaxYearPack loader と schema を導入する,P0,4,Sprint 2,"tax-year-pack,forms,etax",PP-005,"目的: 年分ごとの field map / validation / XML version を読む TaxYearPack 基盤を作る。
+スコープ: TaxYearPack schema / loader / 2025/2026 skeleton
+依存: PP-005
+完了条件: 単一 JSON 依存から脱却できる"
+PP-016,Task,EPIC-03,FilingStyleEngine と BlueDeductionEngine を実装する,P0,4,Sprint 2,"tax,blue-return,white-return","PP-005,PP-015","目的: 青色一般/現金主義/白色、65/55/10 の要件判定ロジックを独立サービス化する。
+スコープ: filing style engine / blue deduction engine / validation messages
+依存: PP-005 / PP-015
+完了条件: 青色控除レベルと現金主義の関係を判定できる"
+PP-017,Task,EPIC-03,VAT state machine を実装する,P0,4,Sprint 2,"tax,vat,state-machine",PP-005,"目的: 課税/免税、一般/簡易/2割特例、インボイス登録状態を年分プロフィールと連動して判定する。
+スコープ: VATStatus / VATMethod / eligibility rules
+依存: PP-005
+完了条件: VAT方式を UI トグルではなく状態機械で管理できる"
+PP-018,Task,EPIC-03,TaxCode master と PurchaseCreditMethod enum を実装する,P0,3,Sprint 2,"tax-code,invoice,purchase-credit",PP-017,"目的: 税区分を master 化し、少額特例・80%・50%・帳簿のみ特例などの控除根拠を enum 化する。
+スコープ: TaxCode master / PurchaseCreditMethod
+依存: PP-017
+完了条件: InvoiceType の不十分な表現を置き換えられる"
+PP-019,Task,EPIC-03,少額特例・80%/50%経過措置・2割特例ルールを実装する,P0,5,Sprint 3,"tax,special-cases,invoice","PP-017,PP-018","目的: 期間、事業者要件、取引単位、控除率を踏まえた特例判定を実装する。
+スコープ: small amount rule / transitional 80/50 rule / two-tenths rule
+依存: PP-017 / PP-018
+完了条件: 代表シナリオで控除可否と率が正しく出る"
+PP-020,Task,EPIC-03,家事按分・事業専用割合エンジンを実装する,P0,3,Sprint 3,"tax,apportionment,expense","PP-007,PP-017","目的: 通信費・家賃・水道光熱費などの事業按分をルールベースで処理する。
+スコープ: apportionment rule / override support
+依存: PP-007 / PP-017
+完了条件: 必要経費算入額と帳票反映が一致する"
+PP-021,Task,EPIC-03,源泉徴収・支払調書の基礎モデルを導入する,P1,3,Sprint 3,"withholding,reports,tax","PP-006,PP-007","目的: 報酬料金等の源泉徴収と支払調書に必要な属性を保持できるようにする。
+スコープ: withholding fields / payee classification
+依存: PP-006 / PP-007
+完了条件: 源泉対象支払の記帳と後続帳票に必要な情報を保持できる"
+PP-022,Task,EPIC-04,DocumentIntakePipeline の雛形を作成する,P0,4,Sprint 3,"intake,ocr,pipeline","PP-008,PP-011","目的: 取り込み→OCR→抽出→分類→候補化までのパイプラインを新サービス構成で再設計する。
+スコープ: pipeline interfaces / stage contracts
+依存: PP-008 / PP-011
+完了条件: レシート以外も扱える責務分離ができる"
+PP-023,Task,EPIC-04,Import チャネル（カメラ/写真/PDF/Share/CSV）を追加する,P0,4,Sprint 3,"import,files,share-sheet",PP-022,"目的: ユーザーが原本を入れる入口を統一し、証憑/明細取り込みを 1 箇所に集約する。
+スコープ: camera import / pdf import / share sheet import / csv import stub
+依存: PP-022
+完了条件: 全チャネルから evidence draft が作成される"
+PP-024,Task,EPIC-04,OCR ステージング（layout/entity/line item）を実装する,P0,5,Sprint 3,"ocr,entities,line-items","PP-022,PP-023","目的: OCR text だけでなく、レイアウトブロック、行アイテム、税額ブロックを段階的に抽出する。
+スコープ: OCRBlock / EntityExtraction / LineItemExtraction
+依存: PP-022 / PP-023
+完了条件: 金額・日付・行明細を別々に取得できる"
+PP-025,Task,EPIC-04,T番号抽出と取引先照合を実装する,P0,3,Sprint 3,"invoice,t-number,counterparty","PP-006,PP-024","目的: OCR から T番号を抽出し、取引先マスタや登録状態と照合する。
+スコープ: T-number parser / counterparty matcher
+依存: PP-006 / PP-024
+完了条件: T番号が evidence に保持され、取引先候補へ反映される"
+PP-026,Task,EPIC-04,税率別ブロック抽出と信頼度スコアを実装する,P0,4,Sprint 3,"vat,confidence,extraction",PP-024,"目的: 10% / 8% の対象額・税額を抽出し、抽出結果に confidence を付ける。
+スコープ: tax block parser / confidence scorer
+依存: PP-024
+完了条件: 要確認か自動承認候補かをスコアで判断できる"
+PP-027,Task,EPIC-04,重複検知と evidence versioning を実装する,P0,4,Sprint 3,"duplicates,versioning,audit","PP-011,PP-012","目的: 原本ハッシュと近似条件で重複を検知し、修正履歴と採用履歴を保持する。
+スコープ: duplicate detector / version history
+依存: PP-011 / PP-012
+完了条件: 二重計上の予防と訂正履歴の追跡ができる"
+PP-028,Task,EPIC-04,オンデバイス AI ガードと fallback 実装を入れる,P0,3,Sprint 3,"on-device-ai,privacy,fallback",PP-022,"目的: 外部 API へ本文を送らない設計を強制し、非対応端末では rule-based extraction へフォールバックする。
+スコープ: AI guard / offline fallback
+依存: PP-022
+完了条件: AI なし端末でも主要導線が動く"
+PP-029,Task,EPIC-08,証憑 Inbox UI を実装する,P1,4,Sprint 4,"ui,inbox,evidence","PP-023,PP-027","目的: 未処理・要確認・確定済み・重複疑いを一覧できる証憑中心 UX を導入する。
+スコープ: inbox list / filters / quick actions
+依存: PP-023 / PP-027
+完了条件: 証憑から会計を始める流れが成立する"
+PP-030,Task,EPIC-05,TransactionCandidate / PostingCandidate フローを実装する,P0,4,Sprint 4,"posting,candidate,workflow","PP-008,PP-024","目的: 証憑や明細から直接仕訳せず、候補状態を経由して確定するフローを作る。
+スコープ: candidate state machine / candidate storage
+依存: PP-008 / PP-024
+完了条件: AI 抽出結果が正本仕訳と分離される"
+PP-031,Task,EPIC-05,PostingEngine へ AccountingEngine を分割する,P0,5,Sprint 4,"posting,refactor,accounting-engine","PP-030,PP-018","目的: 仕訳構築、税判断、配賦、確定を独立コンポーネントに分割する。
+スコープ: PostingEngine / TaxDecisionEngine / JournalPoster
+依存: PP-030 / PP-018
+完了条件: AccountingEngine の一枚岩ロジックが解体される"
+PP-032,Task,EPIC-05,複数税率・複数行・複数プロジェクト対応の候補生成を実装する,P0,5,Sprint 4,"multi-line,multi-rate,distribution","PP-031,PP-026","目的: 1証憑多行、多税率、多プロジェクト配賦、固定資産+消耗品混在を扱えるようにする。
+スコープ: line-level candidate generation
+依存: PP-031 / PP-026
+完了条件: 1証憑=1仕訳の前提がなくなる"
+PP-033,Task,EPIC-05,承認ワークフロー・取消仕訳・監査ログを実装する,P0,4,Sprint 4,"approval,reversal,audit","PP-030,PP-031","目的: suggested/needsReview/approved/posted/reversed の状態と取消仕訳処理を実装する。
+スコープ: approval flow / reversal flow
+依存: PP-030 / PP-031
+完了条件: posted 後は修正ではなく取消/訂正で扱う"
+PP-034,Task,EPIC-05,Recurring engine を再設計する,P0,4,Sprint 4,"recurring,automation","PP-009,PP-031","目的: 定期取引テンプレートを idempotent に再設計し、月次発生と編集履歴を扱えるようにする。
+スコープ: RecurringTemplate / generation log
+依存: PP-009 / PP-031
+完了条件: 同じ月に重複生成しない"
+PP-035,Task,EPIC-05,単月の全プロジェクト一括配賦バッチを実装する,P0,4,Sprint 4,"distribution,projects,month-close",PP-034,"目的: 指定月の共通費を、全アクティブプロジェクトへ一括按分する機能を実装する。
+スコープ: monthly batch distribution / preview diff
+依存: PP-034
+完了条件: preview → approve → apply の流れがある"
+PP-036,Task,EPIC-05,DistributionRule engine を実装する,P0,4,Sprint 4,"distribution,rules,projects","PP-006,PP-034","目的: 均等・固定比率・売上比・予算比・残差処理を扱う配賦ルールエンジンを実装する。
+スコープ: distribution modes / rounding policies
+依存: PP-006 / PP-034
+完了条件: 定期取引と単月配賦の双方で再利用できる"
+PP-037,Task,EPIC-05,User Rule Engine とローカル学習メモリを実装する,P1,4,Sprint 4,"rules,local-learning,automation","PP-030,PP-028","目的: ユーザー修正からローカルルールを作り、次回候補へ反映できるようにする。
+スコープ: rule editor / local suggestion memory
+依存: PP-030 / PP-028
+完了条件: 修正を繰り返すほど候補精度が改善する"
+PP-038,Task,EPIC-09,銀行/カード照合の基礎を実装する,P1,3,Sprint 4,"reconciliation,bank,card",PP-030,"目的: 明細と候補/仕訳のマッチング基礎を入れ、将来の bank/card import と接続する。
+スコープ: match states / match primitives
+依存: PP-030
+完了条件: 未照合・候補一致・確定一致を扱える"
+PP-039,Task,EPIC-06,BookProjectionEngine を実装する,P0,5,Sprint 5,"books,projection,ledger",PP-033,"目的: 確定仕訳からすべての帳簿を deterministic に生成する projection engine を実装する。
+スコープ: projection engine / rebuild command
+依存: PP-033
+完了条件: 帳簿が正本ではなく派生物になる"
+PP-040,Task,EPIC-06,BookSpecRegistry と帳簿フォーマット定義を実装する,P0,3,Sprint 5,"books,format,registry",PP-039,"目的: 帳簿ごとの列、表示順、集計ルール、PDF/CSV/Excel フォーマット定義を集約する。
+スコープ: book specs for core ledgers
+依存: PP-039
+完了条件: フォーマット仕様がコード断片に散らばらない"
+PP-041,Task,EPIC-06,主要帳簿（仕訳帳/総勘定元帳/現金/預金/売掛/買掛/経費）を実装する,P0,5,Sprint 5,"books,core-ledgers","PP-039,PP-040","目的: 法定・実務の主要帳簿を canonical posted journal から生成する。
+スコープ: journal book / general ledger / cash book / bank book / A/R / A/P / expense book
+依存: PP-039 / PP-040
+完了条件: 帳簿単位の golden test を作成できる"
+PP-042,Task,EPIC-06,固定資産台帳と減価償却 projection を完成させる,P0,4,Sprint 5,"fixed-assets,depreciation,books",PP-041,"目的: 取得・償却・特別償却・事業専用割合を台帳と帳票へ繋げる。
+スコープ: fixed asset book / depreciation schedule
+依存: PP-041
+完了条件: 決算書の減価償却明細に必要な値が揃う"
+PP-043,Task,EPIC-06,棚卸台帳と売上原価 projection を完成させる,P0,4,Sprint 5,"inventory,cogs,books",PP-041,"目的: 期首/仕入/期末棚卸から売上原価を算定し、台帳と決算書へ反映する。
+スコープ: inventory ledger / COGS calculation
+依存: PP-041
+完了条件: 期末棚卸が P/L/収支内訳書へ繋がる"
+PP-044,Task,EPIC-06,プロジェクト別補助元帳を実装する,P0,3,Sprint 5,"projects,books,management-accounting","PP-041,PP-036","目的: プロジェクトごとの収入・支出・配賦を帳簿として追えるようにする。
+スコープ: project subsidiary ledger
+依存: PP-041 / PP-036
+完了条件: プロジェクト損益の根拠が帳簿で見える"
+PP-045,Task,EPIC-06,ConsumptionTaxWorksheet を実装する,P0,5,Sprint 5,"vat,worksheet,invoice","PP-019,PP-041","目的: 標準税率/軽減税率、国税 7.8/6.24、控除税額小計、差引税額まで持つ消費税集計表エンジンを作る。
+スコープ: worksheet model / worksheet service / UI-ready rows
+依存: PP-019 / PP-041
+完了条件: ユーザー添付の集計表に近い列構成で集計できる"
+PP-046,Task,EPIC-06,BookValidationService と月締め/年締めサービスを実装する,P0,4,Sprint 5,"validation,close,lock","PP-041,PP-045","目的: 帳簿整合チェック、月締め、年締め、ロック、解除ログを実装する。
+スコープ: book validation / month close / year close
+依存: PP-041 / PP-045
+完了条件: 締め前チェックリストとロックが機能する"
+PP-047,Task,EPIC-07,FormEngine と TaxYearPack field map を実装する,P0,5,Sprint 6,"forms,field-map,tax-year-pack","PP-015,PP-041","目的: 法定帳票 line registry、field mapping、validation を年分パックで扱う基盤を実装する。
+スコープ: FormEngine / FormLineRegistry / field mappers
+依存: PP-015 / PP-041
+完了条件: 帳票ロジックが 1 箇所へ集約される"
+PP-048,Task,EPIC-07,収支内訳書ビルダーを完全化する,P0,4,Sprint 6,"forms,white-return","PP-047,PP-041,PP-042,PP-043","目的: 収支内訳書 1-2 ページの主要欄・売上先/仕入先明細・減価償却・地代家賃等を埋められるようにする。
+スコープ: white return builder / page mapping
+依存: PP-047 / PP-041 / PP-042 / PP-043
+完了条件: 一般用 1-2 ページの主要行と明細が生成される"
+PP-049,Task,EPIC-07,青色申告決算書（一般用）ビルダーを完全化する,P0,5,Sprint 6,"forms,blue-return","PP-047,PP-041,PP-042,PP-043","目的: 一般用 1-4 ページ（損益計算書、月別売上、減価償却、貸借対照表）を生成できるようにする。
+スコープ: blue return builder / page mapping
+依存: PP-047 / PP-041 / PP-042 / PP-043
+完了条件: 一般用 1-4 ページの主要欄が埋まる"
+PP-050,Task,EPIC-07,青色申告決算書（現金主義用）ビルダーを追加する,P1,3,Sprint 6,"forms,cash-basis","PP-047,PP-049","目的: 青色現金主義の専用フォームと validation を実装する。
+スコープ: cash-basis form builder
+依存: PP-047 / PP-049
+完了条件: filingStyle=blueCashBasis のとき専用帳票が出る"
+PP-051,Task,EPIC-07,ETaxExportService と preflight validator を実装する,P0,4,Sprint 6,"etax,xml,validation","PP-047,PP-048,PP-049","目的: 提出用 XML の生成、必須項目チェック、禁則文字チェック、TaxYearPack 整合チェックを実装する。
+スコープ: ETaxExportService / preflight report
+依存: PP-047 / PP-048 / PP-049
+完了条件: PDF と XML の役割が明確に分離される"
+PP-052,Task,EPIC-09,ExportCoordinator（PDF/CSV/Excel/XML）を実装する,P1,3,Sprint 6,"export,pdf,csv,excel","PP-040,PP-047,PP-051","目的: 帳簿と帳票の export を一元化し、フォーマット差分を出力層に閉じ込める。
+スコープ: ExportCoordinator / export naming rules
+依存: PP-040 / PP-047 / PP-051
+完了条件: 集計ロジックの重複が無くなる"
+PP-053,Task,EPIC-08,ホーム/設定/マスタ UI を再設計する,P1,4,Sprint 6,"ui,settings,masters","PP-005,PP-006,PP-007,PP-029","目的: 事業者情報、年分設定、勘定科目、取引先、ジャンル、定期取引、配賦ルールの管理 UI をまとめる。
+スコープ: settings workspace / master screens
+依存: PP-005 / PP-006 / PP-007 / PP-029
+完了条件: マスタ変更が UI から完結する"
+PP-054,Task,EPIC-08,候補レビュー / 帳簿 / 申告ワークスペース UI を再設計する,P1,4,Sprint 6,"ui,workflow,filing","PP-030,PP-041,PP-048,PP-049","目的: 証憑→候補→確定→帳簿→申告のワークフローを画面で繋げる。
+スコープ: candidate review UI / books hub / filing hub
+依存: PP-030 / PP-041 / PP-048 / PP-049
+完了条件: 初心者でも次に何をすべきか分かる"
+PP-055,Task,EPIC-10,E2E 回帰・性能測定・移行リハーサルを実施する,P0,5,Sprint 6,"qa,performance,migration,e2e","PP-046,PP-051,PP-052","目的: 全主要シナリオで E2E テストを行い、移行リハーサルと性能計測を完了させる。
+スコープ: regression report / performance report / dress rehearsal result
+依存: PP-046 / PP-051 / PP-052
+完了条件: 主要シナリオがすべて通り、性能閾値を満たす"
+PP-056,Task,EPIC-01,カットオーバーと旧 ledger 正本の撤去を実施する,P0,3,Sprint 6,"cutover,cleanup,release",PP-055,"目的: 新 canonical path を既定にし、旧 ledger 正本コードを read-only または削除に移行する。
+スコープ: cutover checklist / legacy decommission plan
+依存: PP-055
+完了条件: 新正本が既定となり、旧正本への新規書込が止まる"

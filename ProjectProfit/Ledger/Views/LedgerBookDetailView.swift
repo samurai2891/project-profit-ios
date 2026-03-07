@@ -49,19 +49,25 @@ struct LedgerBookDetailView: View {
                             Button("CSV出力") { exportCSV() }
                             Button("Excel出力") { exportExcel() }
                             Button("PDF出力") { exportPDF() }
-                            Divider()
                         }
-                        Button("CSVインポート") { showCSVImport = true }
+                        if !ledgerStore.isReadOnly {
+                            if !rawEntries.isEmpty {
+                                Divider()
+                            }
+                            Button("CSVインポート") { showCSVImport = true }
+                        }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
                     .accessibilityLabel("出力・インポート")
-                    Button {
-                        showAddEntry = true
-                    } label: {
-                        Image(systemName: "plus")
+                    if !ledgerStore.isReadOnly {
+                        Button {
+                            showAddEntry = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("エントリを追加")
                     }
-                    .accessibilityLabel("エントリを追加")
                 }
             }
         }
@@ -87,7 +93,7 @@ struct LedgerBookDetailView: View {
                 .foregroundStyle(.secondary)
             Text("エントリがありません")
                 .font(.headline)
-            Text("＋ボタンからエントリを追加してください")
+            Text(ledgerStore.isReadOnly ? "旧台帳は読み取り専用です" : "＋ボタンからエントリを追加してください")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -98,13 +104,19 @@ struct LedgerBookDetailView: View {
         List {
             carryForwardRow
 
-            ForEach(Array(rawEntries.enumerated()), id: \.element.id) { index, sdEntry in
-                entryRow(sdEntry, index: index)
-            }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    let entry = rawEntries[index]
-                    ledgerStore.deleteEntry(entry.id, bookId: bookId)
+            if ledgerStore.isReadOnly {
+                ForEach(Array(rawEntries.enumerated()), id: \.element.id) { index, sdEntry in
+                    entryRow(sdEntry, index: index)
+                }
+            } else {
+                ForEach(Array(rawEntries.enumerated()), id: \.element.id) { index, sdEntry in
+                    entryRow(sdEntry, index: index)
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        let entry = rawEntries[index]
+                        ledgerStore.deleteEntry(entry.id, bookId: bookId)
+                    }
                 }
             }
         }

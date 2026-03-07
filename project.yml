@@ -21,8 +21,12 @@ targets:
       - path: ProjectProfit
         excludes:
           - "Ledger/Bridge/xlsxwriter"
+          - "Resources/TaxYearPacks"
     resources:
       - path: ProjectProfit/Ledger/Resources
+        buildPhase: resources
+      - path: ProjectProfit/Resources/TaxYearPacks
+        type: folder
         buildPhase: resources
     settings:
       base:

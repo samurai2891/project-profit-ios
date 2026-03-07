@@ -8,6 +8,7 @@ final class BusinessProfileEntity {
     var ownerName: String
     var ownerNameKana: String
     var businessName: String
+    var defaultPaymentAccountId: String?
     var businessAddress: String
     var postalCode: String
     var phoneNumber: String
@@ -24,6 +25,7 @@ final class BusinessProfileEntity {
         ownerName: String = "",
         ownerNameKana: String = "",
         businessName: String = "",
+        defaultPaymentAccountId: String? = nil,
         businessAddress: String = "",
         postalCode: String = "",
         phoneNumber: String = "",
@@ -39,6 +41,7 @@ final class BusinessProfileEntity {
         self.ownerName = ownerName
         self.ownerNameKana = ownerNameKana
         self.businessName = businessName
+        self.defaultPaymentAccountId = defaultPaymentAccountId
         self.businessAddress = businessAddress
         self.postalCode = postalCode
         self.phoneNumber = phoneNumber

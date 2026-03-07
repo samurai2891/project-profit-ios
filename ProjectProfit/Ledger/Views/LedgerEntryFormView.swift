@@ -105,6 +105,13 @@ struct LedgerEntryFormView: View {
 
     var body: some View {
         Form {
+            if ledgerStore.isReadOnly {
+                Section {
+                    Text("旧台帳は読み取り専用です")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             switch ledgerType {
             case .cashBook, .cashBookInvoice:
                 cashBookForm
@@ -143,7 +150,7 @@ struct LedgerEntryFormView: View {
                     saveEntry()
                     dismiss()
                 }
-                .disabled(descriptionText.isEmpty && destination.isEmpty && assetName.isEmpty)
+                .disabled((descriptionText.isEmpty && destination.isEmpty && assetName.isEmpty) || ledgerStore.isReadOnly)
             }
         }
     }

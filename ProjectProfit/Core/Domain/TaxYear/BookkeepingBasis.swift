@@ -1,7 +1,7 @@
 import Foundation
 
 /// 記帳方式
-enum BookkeepingBasis: String, Codable, Sendable {
+enum BookkeepingBasis: String, Codable, Sendable, CaseIterable {
     case singleEntry
     case doubleEntry
     case cashBasis

@@ -9,6 +9,7 @@ enum BusinessProfileEntityMapper {
             ownerName: entity.ownerName,
             ownerNameKana: entity.ownerNameKana,
             businessName: entity.businessName,
+            defaultPaymentAccountId: entity.defaultPaymentAccountId ?? AccountingConstants.defaultPaymentAccountId,
             businessAddress: entity.businessAddress,
             postalCode: entity.postalCode,
             phoneNumber: entity.phoneNumber,
@@ -28,6 +29,7 @@ enum BusinessProfileEntityMapper {
             ownerName: domain.ownerName,
             ownerNameKana: domain.ownerNameKana,
             businessName: domain.businessName,
+            defaultPaymentAccountId: domain.defaultPaymentAccountId,
             businessAddress: domain.businessAddress,
             postalCode: domain.postalCode,
             phoneNumber: domain.phoneNumber,
@@ -45,6 +47,7 @@ enum BusinessProfileEntityMapper {
         entity.ownerName = domain.ownerName
         entity.ownerNameKana = domain.ownerNameKana
         entity.businessName = domain.businessName
+        entity.defaultPaymentAccountId = domain.defaultPaymentAccountId
         entity.businessAddress = domain.businessAddress
         entity.postalCode = domain.postalCode
         entity.phoneNumber = domain.phoneNumber

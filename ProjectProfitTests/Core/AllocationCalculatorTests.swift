@@ -88,6 +88,23 @@ final class AllocationCalculatorTests: XCTestCase {
         XCTAssertEqual(total, 110000, "端数調整後も合計が元金額と一致")
     }
 
+    func testWeightedSplitLargestWeightAdjustAppliesResidualToLargestWeightProject() {
+        let proj1 = UUID()
+        let proj2 = UUID()
+        let weights = [
+            DistributionWeight(projectId: proj1, weight: 70),
+            DistributionWeight(projectId: proj2, weight: 30)
+        ]
+
+        let allocations = AllocationCalculator.weightedSplit(
+            totalAmount: 100,
+            weights: weights,
+            roundingPolicy: .largestWeightAdjust
+        )
+
+        XCTAssertEqual(allocations.map(\.amount), [70, 30])
+    }
+
     func testWeightedSplitEmptyWeights() {
         let allocations = AllocationCalculator.weightedSplit(
             totalAmount: 100000,

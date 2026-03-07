@@ -56,6 +56,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
         taxAnalysis: TaxAnalysis?? = nil,
         confidenceScore: Double? = nil,
         status: CandidateStatus? = nil,
+        counterpartyId: UUID?? = nil,
         memo: String?? = nil
     ) -> PostingCandidate {
         PostingCandidate(
@@ -64,7 +65,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
             businessId: self.businessId,
             taxYear: self.taxYear,
             candidateDate: self.candidateDate,
-            counterpartyId: self.counterpartyId,
+            counterpartyId: counterpartyId ?? self.counterpartyId,
             proposedLines: proposedLines ?? self.proposedLines,
             taxAnalysis: taxAnalysis ?? self.taxAnalysis,
             confidenceScore: confidenceScore ?? self.confidenceScore,

@@ -21,6 +21,7 @@ final class EvidenceRecordEntity {
     var extractionVersion: String?
     var searchTokensJSON: String
     var structuredFieldsJSON: String?
+    var versionsJSON: String?
     var linkedCounterpartyId: UUID?
     var linkedProjectIdsJSON: String
     var complianceStatusRaw: String
@@ -48,6 +49,7 @@ final class EvidenceRecordEntity {
         extractionVersion: String? = nil,
         searchTokensJSON: String = "[]",
         structuredFieldsJSON: String? = nil,
+        versionsJSON: String? = nil,
         linkedCounterpartyId: UUID? = nil,
         linkedProjectIdsJSON: String = "[]",
         complianceStatusRaw: String = "pendingReview",
@@ -74,6 +76,7 @@ final class EvidenceRecordEntity {
         self.extractionVersion = extractionVersion
         self.searchTokensJSON = searchTokensJSON
         self.structuredFieldsJSON = structuredFieldsJSON
+        self.versionsJSON = versionsJSON
         self.linkedCounterpartyId = linkedCounterpartyId
         self.linkedProjectIdsJSON = linkedProjectIdsJSON
         self.complianceStatusRaw = complianceStatusRaw

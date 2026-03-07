@@ -1,7 +1,7 @@
 import Foundation
 
 /// 年度ロック状態
-enum YearLockState: String, Codable, Sendable {
+enum YearLockState: String, Codable, Sendable, CaseIterable {
     /// 通常（編集可能）
     case open
     /// 仮締め（修正可、追加制限あり）

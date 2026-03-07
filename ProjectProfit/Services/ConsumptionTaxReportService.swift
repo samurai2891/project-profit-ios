@@ -3,15 +3,138 @@ import Foundation
 @MainActor
 enum ConsumptionTaxReportService {
 
-    // MARK: - Summary Generation
+    // MARK: - Canonical Worksheet
 
-    /// 指定年度の消費税集計レポートを生成する
-    /// - Parameters:
-    ///   - fiscalYear: 対象年度
-    ///   - journalEntries: 全仕訳伝票
-    ///   - journalLines: 全仕訳明細行
-    ///   - accounts: 全勘定科目（将来の拡張用に受け取る）
-    /// - Returns: 消費税集計結果
+    static func generateWorksheet(
+        fiscalYear: Int,
+        taxYearProfile: TaxYearProfile,
+        journalEntries: [CanonicalJournalEntry],
+        accounts: [CanonicalAccount],
+        counterparties: [Counterparty] = [],
+        pack: TaxYearPack? = nil,
+        startMonth: Int = 1
+    ) -> ConsumptionTaxWorksheet {
+        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
+        let accountById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        let counterpartyById = Dictionary(uniqueKeysWithValues: counterparties.map { ($0.id, $0) })
+        let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
+
+        let relevantEntries = journalEntries
+            .filter { $0.journalDate >= startDate && $0.journalDate <= endDate }
+            .sorted { lhs, rhs in
+                if lhs.journalDate != rhs.journalDate {
+                    return lhs.journalDate < rhs.journalDate
+                }
+                return lhs.voucherNo < rhs.voucherNo
+            }
+
+        var worksheetLines: [ConsumptionTaxWorksheetLine] = []
+
+        for entry in relevantEntries {
+            let inputTaxPool = actualTaxPool(
+                for: entry,
+                legacyAccountId: AccountingConstants.inputTaxAccountId,
+                accountById: accountById
+            )
+            let outputTaxPool = actualTaxPool(
+                for: entry,
+                legacyAccountId: AccountingConstants.outputTaxAccountId,
+                accountById: accountById
+            )
+
+            let revenueLines = entry.lines.filter {
+                guard let taxCode = TaxCode.resolve(id: $0.taxCodeId) else { return false }
+                guard let account = accountById[$0.accountId], account.accountType == .revenue else { return false }
+                return taxCode.isTaxable || taxCode == .exempt || taxCode == .nonTaxable
+            }
+            worksheetLines.append(
+                contentsOf: makeWorksheetLines(
+                    journalLines: revenueLines,
+                    direction: .output,
+                    entry: entry,
+                    taxPool: outputTaxPool,
+                    evaluator: evaluator,
+                    accountById: accountById,
+                    counterpartyById: counterpartyById,
+                    pack: pack
+                )
+            )
+
+            let expenseLines = entry.lines.filter {
+                guard let taxCode = TaxCode.resolve(id: $0.taxCodeId) else { return false }
+                guard let account = accountById[$0.accountId], account.accountType == .expense else { return false }
+                return taxCode.isTaxable || taxCode == .exempt || taxCode == .nonTaxable
+            }
+            worksheetLines.append(
+                contentsOf: makeWorksheetLines(
+                    journalLines: expenseLines,
+                    direction: .input,
+                    entry: entry,
+                    taxPool: inputTaxPool,
+                    evaluator: evaluator,
+                    accountById: accountById,
+                    counterpartyById: counterpartyById,
+                    pack: pack
+                )
+            )
+        }
+
+        let outputTaxTotal = worksheetLines
+            .filter { $0.direction == .output }
+            .reduce(0) { $0 + $1.taxAmount }
+        let rawInputTaxTotal = worksheetLines
+            .filter { $0.direction == .input }
+            .reduce(0) { $0 + $1.taxAmount }
+        let deductibleInputTaxTotal = worksheetLines
+            .filter { $0.direction == .input }
+            .reduce(0) { $0 + $1.deductibleTaxAmount }
+
+        return ConsumptionTaxWorksheet(
+            fiscalYear: fiscalYear,
+            generatedAt: Date(),
+            lines: worksheetLines,
+            outputTaxTotal: outputTaxTotal,
+            rawInputTaxTotal: rawInputTaxTotal,
+            deductibleInputTaxTotal: deductibleInputTaxTotal
+        )
+    }
+
+    static func generateSummary(from worksheet: ConsumptionTaxWorksheet) -> ConsumptionTaxSummary {
+        ConsumptionTaxSummary(
+            fiscalYear: worksheet.fiscalYear,
+            generatedAt: worksheet.generatedAt,
+            outputTaxTotal: worksheet.outputTaxTotal,
+            inputTaxTotal: worksheet.deductibleInputTaxTotal,
+            rawInputTaxTotal: worksheet.rawInputTaxTotal,
+            taxPayable: worksheet.taxPayable
+        )
+    }
+
+    static func generateSummary(
+        fiscalYear: Int,
+        taxYearProfile: TaxYearProfile,
+        journalEntries: [CanonicalJournalEntry],
+        accounts: [CanonicalAccount],
+        counterparties: [Counterparty] = [],
+        pack: TaxYearPack? = nil,
+        startMonth: Int = 1
+    ) -> ConsumptionTaxSummary {
+        generateSummary(
+            from: generateWorksheet(
+                fiscalYear: fiscalYear,
+                taxYearProfile: taxYearProfile,
+                journalEntries: journalEntries,
+                accounts: accounts,
+                counterparties: counterparties,
+                pack: pack,
+                startMonth: startMonth
+            )
+        )
+    }
+
+    // MARK: - Legacy Compatibility
+
+    /// 旧 `PPJournalEntry` / `PPJournalLine` ベースの集計を維持する互換 API。
     static func generateSummary(
         fiscalYear: Int,
         journalEntries: [PPJournalEntry],
@@ -26,12 +149,10 @@ enum ConsumptionTaxReportService {
 
         let relevantLines = journalLines.filter { postedEntryIds.contains($0.entryId) }
 
-        // 仮払消費税（借方合計）
         let inputTaxTotal = relevantLines
             .filter { $0.accountId == AccountingConstants.inputTaxAccountId }
             .reduce(0) { $0 + $1.debit }
 
-        // 仮受消費税（貸方合計）
         let outputTaxTotal = relevantLines
             .filter { $0.accountId == AccountingConstants.outputTaxAccountId }
             .reduce(0) { $0 + $1.credit }
@@ -41,11 +162,109 @@ enum ConsumptionTaxReportService {
             generatedAt: Date(),
             outputTaxTotal: outputTaxTotal,
             inputTaxTotal: inputTaxTotal,
+            rawInputTaxTotal: inputTaxTotal,
             taxPayable: outputTaxTotal - inputTaxTotal
         )
     }
 
     // MARK: - Helpers
+
+    private static func makeWorksheetLines(
+        journalLines: [JournalLine],
+        direction: ConsumptionTaxWorksheetLine.Direction,
+        entry: CanonicalJournalEntry,
+        taxPool: Int,
+        evaluator: TaxRuleEvaluator,
+        accountById: [UUID: CanonicalAccount],
+        counterpartyById: [UUID: Counterparty],
+        pack: TaxYearPack?
+    ) -> [ConsumptionTaxWorksheetLine] {
+        let taxableBusinessLines = journalLines.compactMap { line -> (JournalLine, TaxCode)? in
+            guard let taxCode = TaxCode.resolve(id: line.taxCodeId) else { return nil }
+            return (line, taxCode)
+        }
+        guard !taxableBusinessLines.isEmpty else { return [] }
+
+        let taxableTotal = taxableBusinessLines.reduce(0) { partial, entry in
+            partial + decimalToInt(entry.0.amount)
+        }
+
+        var remainingTaxPool = taxPool
+        var worksheetLines: [ConsumptionTaxWorksheetLine] = []
+
+        for (index, item) in taxableBusinessLines.enumerated() {
+            let line = item.0
+            let taxCode = item.1
+            let taxableAmount = decimalToInt(line.amount)
+
+            let allocatedTaxAmount: Int
+            if !taxCode.isTaxable {
+                allocatedTaxAmount = 0
+            } else if index == taxableBusinessLines.count - 1 {
+                allocatedTaxAmount = remainingTaxPool
+            } else if taxableTotal > 0 {
+                allocatedTaxAmount = taxPool * taxableAmount / taxableTotal
+                remainingTaxPool -= allocatedTaxAmount
+            } else {
+                allocatedTaxAmount = 0
+            }
+
+            let purchaseCreditMethod: InputTaxCreditMethod?
+            let deductibleTaxAmount: Int
+            if direction == .input, taxCode.isTaxable {
+                let counterpartyStatus = line.counterpartyId
+                    .flatMap { counterpartyById[$0]?.invoiceIssuerStatus }
+                    ?? .unknown
+                let grossAmount = Decimal(taxableAmount + allocatedTaxAmount)
+                let creditMethod = evaluator.evaluateInputTaxCreditMethod(
+                    transactionDate: entry.journalDate,
+                    counterpartyInvoiceStatus: counterpartyStatus,
+                    amount: grossAmount
+                )
+                purchaseCreditMethod = creditMethod
+                deductibleTaxAmount = decimalToInt(Decimal(allocatedTaxAmount) * creditMethod.creditRate)
+            } else {
+                purchaseCreditMethod = nil
+                deductibleTaxAmount = 0
+            }
+
+            worksheetLines.append(
+                ConsumptionTaxWorksheetLine(
+                    id: line.id,
+                    journalId: entry.id,
+                    journalDate: entry.journalDate,
+                    direction: direction,
+                    taxCode: taxCode,
+                    accountId: line.accountId,
+                    counterpartyId: line.counterpartyId,
+                    taxableAmount: taxableAmount,
+                    taxAmount: allocatedTaxAmount,
+                    deductibleTaxAmount: deductibleTaxAmount,
+                    purchaseCreditMethod: purchaseCreditMethod,
+                    taxRateBreakdown: taxCode.rateBreakdown(using: pack)
+                )
+            )
+        }
+
+        return worksheetLines
+    }
+
+    private static func actualTaxPool(
+        for entry: CanonicalJournalEntry,
+        legacyAccountId: String,
+        accountById: [UUID: CanonicalAccount]
+    ) -> Int {
+        entry.lines.reduce(0) { partial, line in
+            guard accountById[line.accountId]?.legacyAccountId == legacyAccountId else {
+                return partial
+            }
+            return partial + decimalToInt(line.amount)
+        }
+    }
+
+    private static func decimalToInt(_ value: Decimal) -> Int {
+        NSDecimalNumber(decimal: value).intValue
+    }
 
     private static func fiscalYearRange(year: Int, startMonth: Int) -> (start: Date, end: Date) {
         let calendar = Calendar(identifier: .gregorian)

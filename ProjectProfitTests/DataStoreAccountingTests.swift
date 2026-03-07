@@ -186,4 +186,658 @@ final class DataStoreAccountingTests: XCTestCase {
         let entries = dataStore.getLedgerEntries(accountId: "acct-cash")
         XCTAssertTrue(entries.isEmpty)
     }
+
+    func testDefaultPaymentAccountPreferencePrefersCanonicalBusinessProfile() {
+        let businessId = UUID()
+        dataStore.accountingProfile?.defaultPaymentAccountId = "acct-cash"
+        dataStore.businessProfile = BusinessProfile(
+            id: businessId,
+            ownerName: "Canonical Owner",
+            defaultPaymentAccountId: "acct-bank"
+        )
+
+        XCTAssertEqual(dataStore.defaultPaymentAccountPreference, "acct-bank")
+    }
+
+    func testEtaxExportProfileUsesCanonicalDefaultPaymentAccount() {
+        let businessId = UUID()
+        dataStore.accountingProfile?.defaultPaymentAccountId = "acct-cash"
+        dataStore.businessProfile = BusinessProfile(
+            id: businessId,
+            ownerName: "Canonical Owner",
+            defaultPaymentAccountId: "acct-bank"
+        )
+        dataStore.currentTaxYearProfile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            taxPackVersion: "2025-v1"
+        )
+
+        let profile = dataStore.etaxExportProfile(for: 2025)
+
+        XCTAssertEqual(profile?.defaultPaymentAccountId, "acct-bank")
+    }
+
+    func testEtaxExportProfileUsesCanonicalTaxYearSettingsInsteadOfLegacySettings() {
+        let businessId = UUID()
+        dataStore.accountingProfile?.isBlueReturn = true
+        dataStore.accountingProfile?.bookkeepingMode = .doubleEntry
+        dataStore.businessProfile = BusinessProfile(
+            id: businessId,
+            ownerName: "Canonical Owner",
+            businessName: "Canonical商店"
+        )
+        dataStore.currentTaxYearProfile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            filingStyle: .white,
+            blueDeductionLevel: .none,
+            bookkeepingBasis: .singleEntry,
+            vatStatus: .exempt,
+            vatMethod: .general,
+            taxPackVersion: "2025-v1"
+        )
+
+        let profile = dataStore.etaxExportProfile(for: 2025)
+
+        XCTAssertEqual(profile?.isBlueReturn, false)
+        XCTAssertEqual(profile?.bookkeepingMode, .singleEntry)
+    }
+
+    func testProfileSensitivePayloadLoadsFromCanonicalSecureStore() {
+        let businessId = UUID()
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "カノニカル",
+            postalCode: "1500001",
+            address: "東京都渋谷区1-2-3",
+            phoneNumber: "09012345678",
+            dateOfBirth: Date(timeIntervalSince1970: 1_700_000_000),
+            businessCategory: "ソフトウェア開発",
+            myNumberFlag: true,
+            includeSensitiveInExport: false
+        )
+        defer { _ = ProfileSecureStore.delete(profileId: businessId.uuidString) }
+
+        dataStore.businessProfile = BusinessProfile(id: businessId, ownerName: "Canonical Owner")
+        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: businessId.uuidString))
+
+        let loaded = dataStore.profileSensitivePayload
+
+        XCTAssertEqual(loaded?.ownerNameKana, "カノニカル")
+        XCTAssertEqual(loaded?.postalCode, "1500001")
+        XCTAssertEqual(loaded?.businessCategory, "ソフトウェア開発")
+        XCTAssertEqual(loaded?.includeSensitiveInExport, false)
+    }
+
+    func testProfileSensitivePayloadFallsBackToLegacySecureStore() {
+        guard let legacyProfile = dataStore.accountingProfile else {
+            return XCTFail("legacy profile should exist after bootstrap")
+        }
+
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "レガシー",
+            postalCode: "1000001",
+            address: "東京都千代田区1-1-1",
+            phoneNumber: "0312345678",
+            dateOfBirth: nil,
+            businessCategory: "デザイン",
+            myNumberFlag: false,
+            includeSensitiveInExport: true
+        )
+        defer { _ = ProfileSecureStore.delete(profileId: legacyProfile.id) }
+
+        dataStore.businessProfile = nil
+        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: legacyProfile.id))
+
+        let loaded = dataStore.profileSensitivePayload
+
+        XCTAssertEqual(loaded?.ownerNameKana, "レガシー")
+        XCTAssertEqual(loaded?.postalCode, "1000001")
+        XCTAssertEqual(loaded?.address, "東京都千代田区1-1-1")
+    }
+
+    func testProfileSensitivePayloadBackfillsFromLegacyProfileFieldsWhenSecureStoreMissing() {
+        guard let legacyProfile = dataStore.accountingProfile else {
+            return XCTFail("legacy profile should exist after bootstrap")
+        }
+
+        let businessId = UUID()
+        let legacyProfileId = "legacy-profile-\(UUID().uuidString)"
+        let canonicalProfileId = businessId.uuidString
+        legacyProfile.id = legacyProfileId
+        legacyProfile.ownerNameKana = "ヤマダタロウ"
+        legacyProfile.postalCode = "1000001"
+        legacyProfile.address = "東京都千代田区千代田1-1"
+        legacyProfile.phoneNumber = "0312345678"
+        legacyProfile.businessCategory = "ソフトウェア開発"
+        legacyProfile.myNumberFlag = true
+        legacyProfile.dateOfBirth = Date(timeIntervalSince1970: 946_684_800)
+
+        dataStore.businessProfile = BusinessProfile(
+            id: businessId,
+            ownerName: "Canonical Owner"
+        )
+        dataStore.currentTaxYearProfile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            taxPackVersion: "2025-v1"
+        )
+
+        _ = ProfileSecureStore.delete(profileId: canonicalProfileId)
+        _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        defer {
+            _ = ProfileSecureStore.delete(profileId: canonicalProfileId)
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        }
+
+        let profile = dataStore.etaxExportProfile(for: 2025)
+        let persistedPayload = ProfileSecureStore.load(profileId: canonicalProfileId)
+
+        XCTAssertEqual(profile?.ownerNameKana, "ヤマダタロウ")
+        XCTAssertEqual(profile?.postalCode, "1000001")
+        XCTAssertEqual(profile?.address, "東京都千代田区千代田1-1")
+        XCTAssertEqual(profile?.phoneNumber, "0312345678")
+        XCTAssertEqual(profile?.businessCategory, "ソフトウェア開発")
+        XCTAssertEqual(profile?.myNumberFlag, true)
+        XCTAssertEqual(profile?.dateOfBirth, Date(timeIntervalSince1970: 946_684_800))
+        XCTAssertEqual(persistedPayload?.ownerNameKana, "ヤマダタロウ")
+        XCTAssertEqual(persistedPayload?.businessCategory, "ソフトウェア開発")
+        XCTAssertEqual(persistedPayload?.myNumberFlag, true)
+    }
+
+    func testLegacyLedgerDiagnosticsAreEmptyWithoutLegacyData() {
+        let diagnostics = dataStore.legacyLedgerDiagnostics()
+
+        XCTAssertEqual(diagnostics.legacyBookCount, 0)
+        XCTAssertEqual(diagnostics.legacyEntryCount, 0)
+        XCTAssertEqual(diagnostics.legacyJournalBookCount, 0)
+        XCTAssertEqual(diagnostics.legacyJournalEntryCount, 0)
+    }
+
+    func testLegacyLedgerDiagnosticsCompareCanonicalAndLegacyJournalCounts() throws {
+        _ = dataStore.addManualJournalEntry(
+            date: Date(),
+            memo: "canonical",
+            lines: [
+                (accountId: "acct-rent", debit: 1000, credit: 0, memo: ""),
+                (accountId: "acct-cash", debit: 0, credit: 1000, memo: "")
+            ]
+        )
+
+        let legacyJournalBook = SDLedgerBook(
+            ledgerType: .journal,
+            title: "Legacy Journal"
+        )
+        context.insert(legacyJournalBook)
+        context.insert(
+            SDLedgerEntry(
+                bookId: legacyJournalBook.id,
+                entryJSON: "{}",
+                sortOrder: 0
+            )
+        )
+        try context.save()
+
+        let diagnostics = dataStore.legacyLedgerDiagnostics()
+
+        XCTAssertEqual(diagnostics.legacyBookCount, 1)
+        XCTAssertEqual(diagnostics.legacyEntryCount, 1)
+        XCTAssertEqual(diagnostics.legacyJournalBookCount, 1)
+        XCTAssertEqual(diagnostics.legacyJournalEntryCount, 1)
+        XCTAssertEqual(diagnostics.canonicalJournalEntryCount, dataStore.journalEntries.count)
+        XCTAssertEqual(diagnostics.journalEntryDelta, diagnostics.canonicalJournalEntryCount - 1)
+    }
+
+    func testDataStoreMutationsDoNotModifyLegacyLedgerCounts() throws {
+        let legacyCashBook = SDLedgerBook(
+            ledgerType: .cashBook,
+            title: "Legacy Cash Book"
+        )
+        context.insert(legacyCashBook)
+        context.insert(
+            SDLedgerEntry(
+                bookId: legacyCashBook.id,
+                entryJSON: "{}",
+                sortOrder: 0
+            )
+        )
+        try context.save()
+
+        let before = dataStore.legacyLedgerDiagnostics()
+        let project = dataStore.addProject(name: "P1", description: "")
+        _ = dataStore.addTransaction(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "legacy should stay read-only",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash"
+        )
+        let after = dataStore.legacyLedgerDiagnostics()
+
+        XCTAssertEqual(after.legacyBookCount, before.legacyBookCount)
+        XCTAssertEqual(after.legacyEntryCount, before.legacyEntryCount)
+        XCTAssertEqual(after.legacyJournalBookCount, before.legacyJournalBookCount)
+        XCTAssertEqual(after.legacyJournalEntryCount, before.legacyJournalEntryCount)
+        XCTAssertGreaterThan(after.canonicalJournalEntryCount, before.canonicalJournalEntryCount)
+    }
+
+    func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let repository = SwiftDataChartOfAccountsRepository(modelContext: context)
+
+        let cash = try await repository.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: "acct-cash"
+        )
+        let supplies = try await repository.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies"
+        )
+
+        XCTAssertEqual(cash?.code, "101")
+        XCTAssertEqual(cash?.name, "現金")
+        XCTAssertEqual(supplies?.code, "509")
+        XCTAssertEqual(supplies?.name, "消耗品費")
+    }
+
+    func testSyncCanonicalArtifactsCreatesPostingForDefaultLegacyAccountIds() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "P1", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "工具代",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            counterparty: "山田商事",
+            candidateSource: .manual
+        )
+
+        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(counterpartyId) = result.counterpartyStatus else {
+            return XCTFail("取引先は canonical master に保存される前提")
+        }
+        guard case let .synced(candidateId, journalId) = result.postingStatus else {
+            return XCTFail("default acct-* の legacy account id も canonical account に解決できる前提")
+        }
+
+        let counterpartyUseCase = CounterpartyMasterUseCase(modelContext: context)
+        let counterparties = try await counterpartyUseCase.searchCounterparties(
+            businessId: businessId,
+            query: "山田商事"
+        )
+        let chartOfAccountsUseCase = ChartOfAccountsUseCase(modelContext: context)
+        let suppliesAccount = try await chartOfAccountsUseCase.account(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies"
+        )
+        let cashAccount = try await chartOfAccountsUseCase.account(
+            businessId: businessId,
+            legacyAccountId: "acct-cash"
+        )
+        let candidateRepository = SwiftDataPostingCandidateRepository(modelContext: context)
+        let journalUseCase = PostingWorkflowUseCase(modelContext: context)
+        let candidate = try await candidateRepository.findById(candidateId)
+        let journals = try await journalUseCase.journals(
+            businessId: businessId,
+            taxYear: fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
+        )
+        let journal = try XCTUnwrap(journals.first { $0.id == journalId })
+        let candidateAccountIds = Set(
+            try XCTUnwrap(candidate?.proposedLines.compactMap { line in
+                line.debitAccountId ?? line.creditAccountId
+            })
+        )
+
+        XCTAssertEqual(counterparties.map(\.id), [counterpartyId])
+        XCTAssertEqual(candidateId, transaction.id)
+        XCTAssertEqual(journal.id, try XCTUnwrap(transaction.journalEntryId))
+        XCTAssertEqual(candidateAccountIds, Set([try XCTUnwrap(suppliesAccount?.id), try XCTUnwrap(cashAccount?.id)]))
+        XCTAssertEqual(Set(journal.lines.map(\.accountId)), Set([try XCTUnwrap(suppliesAccount?.id), try XCTUnwrap(cashAccount?.id)]))
+    }
+
+    func testSyncCanonicalArtifactsCreatesAndUpsertsCanonicalPostingWhenLegacyAccountIdsAreUUIDStrings() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let fixture = try makeUUIDBackedExpenseFixture()
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1800,
+            date: Date(),
+            categoryId: fixture.categoryId,
+            memo: "UUID経費",
+            allocations: [(projectId: fixture.project.id, ratio: 100)],
+            paymentAccountId: fixture.paymentAccountId,
+            counterparty: "合同会社テスト",
+            candidateSource: .manual
+        )
+
+        let firstSync = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(counterpartyId) = firstSync.counterpartyStatus else {
+            return XCTFail("取引先は同期される前提")
+        }
+        guard case let .synced(candidateId, journalId) = firstSync.postingStatus else {
+            return XCTFail("UUID 形式の legacy account id は posting sync できる前提")
+        }
+
+        let candidateRepository = SwiftDataPostingCandidateRepository(modelContext: context)
+        let journalRepository = SwiftDataCanonicalJournalEntryRepository(modelContext: context)
+        let firstCandidate = try await candidateRepository.findById(candidateId)
+        let firstJournal = try await journalRepository.findById(journalId)
+        let initialVoucherNo = try XCTUnwrap(firstJournal?.voucherNo)
+
+        XCTAssertEqual(candidateId, transaction.id)
+        XCTAssertEqual(journalId, transaction.journalEntryId)
+        XCTAssertEqual(firstCandidate?.counterpartyId, counterpartyId)
+        XCTAssertEqual(firstCandidate?.source, .manual)
+        XCTAssertEqual(firstCandidate?.proposedLines.count, 2)
+        XCTAssertEqual(firstJournal?.businessId, businessId)
+        XCTAssertEqual(firstJournal?.sourceCandidateId, transaction.id)
+        XCTAssertEqual(firstJournal?.totalDebit, Decimal(1800))
+        XCTAssertEqual(firstJournal?.totalCredit, Decimal(1800))
+
+        dataStore.updateTransaction(
+            id: transaction.id,
+            amount: 2400,
+            memo: "UUID経費 更新後",
+            counterparty: "合同会社テスト",
+            candidateSource: .manual
+        )
+        let secondSync = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(updatedCandidateId, updatedJournalId) = secondSync.postingStatus else {
+            return XCTFail("更新後も posting sync できる前提")
+        }
+
+        let updatedCandidate = try await candidateRepository.findById(updatedCandidateId)
+        let updatedJournal = try await journalRepository.findById(updatedJournalId)
+
+        XCTAssertEqual(updatedCandidateId, candidateId)
+        XCTAssertEqual(updatedJournalId, journalId)
+        XCTAssertEqual(updatedCandidate?.proposedLines.map(\.amount), [Decimal(2400), Decimal(2400)])
+        XCTAssertEqual(updatedJournal?.voucherNo, initialVoucherNo)
+        XCTAssertEqual(updatedJournal?.totalDebit, Decimal(2400))
+        XCTAssertEqual(updatedJournal?.totalCredit, Decimal(2400))
+        XCTAssertEqual(updatedJournal?.description, "UUID経費 更新後")
+    }
+
+    func testSyncCanonicalCounterpartyForRecurringPersistsCounterpartyMaster() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Recurring Project", description: "")
+        let recurring = dataStore.addRecurring(
+            name: "サーバー代",
+            type: .expense,
+            amount: 3000,
+            categoryId: "cat-tools",
+            memo: "月額",
+            allocationMode: .manual,
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            counterparty: "定期先株式会社"
+        )
+
+        let status = await dataStore.syncCanonicalCounterparty(forRecurringId: recurring.id)
+        guard case let .synced(counterpartyId) = status else {
+            return XCTFail("定期取引の取引先も canonical master に保存される前提")
+        }
+
+        let useCase = CounterpartyMasterUseCase(modelContext: context)
+        let counterparties = try await useCase.searchCounterparties(
+            businessId: businessId,
+            query: "定期先株式会社"
+        )
+
+        XCTAssertEqual(counterparties.map(\.id), [counterpartyId])
+    }
+
+    func testSyncCanonicalArtifactsStoresExplicitTaxCodeOnCandidateAndCounterparty() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Tax Project", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1100,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "課税経費",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            taxAmount: 100,
+            taxRate: 10,
+            isTaxIncluded: true,
+            taxCategory: .standardRate,
+            counterparty: "税コード商事",
+            candidateSource: .manual
+        )
+
+        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(candidateId, _) = result.postingStatus else {
+            return XCTFail("canonical posting が作成される前提")
+        }
+
+        let candidateRepository = SwiftDataPostingCandidateRepository(modelContext: context)
+        let candidate = try await candidateRepository.findById(candidateId)
+        let counterpartyUseCase = CounterpartyMasterUseCase(modelContext: context)
+        let counterparties = try await counterpartyUseCase.searchCounterparties(
+            businessId: businessId,
+            query: "税コード商事"
+        )
+
+        XCTAssertEqual(Set(candidate?.proposedLines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
+        XCTAssertEqual(candidate?.taxAnalysis?.taxAmount, Decimal(100))
+        XCTAssertEqual(counterparties.first?.defaultTaxCodeId, TaxCode.standard10.rawValue)
+    }
+
+    func testSyncCanonicalArtifactsFallsBackToCounterpartyDefaultTaxCode() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Tax Default Project", description: "")
+
+        let firstTransaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1080,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "初回",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            taxAmount: 80,
+            taxRate: 8,
+            isTaxIncluded: true,
+            taxCategory: .reducedRate,
+            counterparty: "軽減取引先",
+            candidateSource: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(forTransactionId: firstTransaction.id, source: .manual)
+
+        let secondTransaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "2回目",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            counterparty: "軽減取引先",
+            candidateSource: .manual
+        )
+        let secondResult = await dataStore.syncCanonicalArtifacts(forTransactionId: secondTransaction.id, source: .manual)
+        guard case let .synced(candidateId, _) = secondResult.postingStatus else {
+            return XCTFail("counterparty default tax code で posting sync できる前提")
+        }
+
+        let candidateRepository = SwiftDataPostingCandidateRepository(modelContext: context)
+        let candidate = try await candidateRepository.findById(candidateId)
+
+        XCTAssertEqual(Set(candidate?.proposedLines.compactMap(\.taxCodeId) ?? []), [TaxCode.reduced8.rawValue])
+    }
+
+    func testSyncCanonicalArtifactsFallsBackToCanonicalAccountDefaultTaxCode() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let chartOfAccountsUseCase = ChartOfAccountsUseCase(modelContext: context)
+        let fetchedSuppliesAccount = try await chartOfAccountsUseCase.account(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies"
+        )
+        let suppliesAccount = try XCTUnwrap(fetchedSuppliesAccount)
+        try await chartOfAccountsUseCase.save(
+            suppliesAccount.updated(defaultTaxCodeId: .some(TaxCode.standard10.rawValue))
+        )
+
+        let project = dataStore.addProject(name: "Account Default Project", description: "")
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "勘定科目既定税コード",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+
+        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(candidateId, _) = result.postingStatus else {
+            return XCTFail("勘定科目既定税コードで posting sync できる前提")
+        }
+
+        let candidateRepository = SwiftDataPostingCandidateRepository(modelContext: context)
+        let candidate = try await candidateRepository.findById(candidateId)
+
+        XCTAssertEqual(Set(candidate?.proposedLines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
+    }
+
+    func testProjectedCanonicalJournalsIncludeApprovedEvidenceJournal() async throws {
+        let useCase = ReceiptEvidenceIntakeUseCase(modelContext: context)
+        let reviewedDate = Date(timeIntervalSince1970: 1_772_841_600)
+        let request = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 1200,
+                date: "2026-03-07",
+                storeName: "文具センター",
+                estimatedCategory: "tools",
+                itemSummary: "ノート"
+            ),
+            ocrText: "文具センター\n合計 1,200円",
+            sourceType: .camera,
+            fileData: Data("jpeg".utf8),
+            originalFileName: "approval-queue.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 1200,
+            reviewedDate: reviewedDate,
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "[レシート] 文具センター - ノート",
+            lineItems: [LineItem(name: "ノート", quantity: 1, unitPrice: 1200)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCategory: nil,
+            taxRate: 0,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            counterpartyName: "文具センター"
+        )
+
+        let result = try await useCase.intake(request)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        let journal = try await PostingWorkflowUseCase(modelContext: context)
+            .approveCandidate(candidateId: result.candidate.id)
+        let projected = dataStore.projectedCanonicalJournals(
+            fiscalYear: fiscalYear(for: reviewedDate, startMonth: FiscalYearSettings.startMonth)
+        )
+
+        XCTAssertTrue(projected.entries.contains { $0.id == journal.id })
+        XCTAssertEqual(projected.lines.filter { $0.entryId == journal.id }.count, journal.lines.count)
+    }
+
+    func testProjectedCanonicalJournalsRetainLegacyManualEntries() {
+        let entry = dataStore.addManualJournalEntry(
+            date: Date(),
+            memo: "補助仕訳",
+            lines: [
+                (accountId: "acct-rent", debit: 1000, credit: 0, memo: ""),
+                (accountId: "acct-cash", debit: 0, credit: 1000, memo: "")
+            ]
+        )
+
+        let projected = dataStore.projectedCanonicalJournals()
+
+        XCTAssertTrue(projected.entries.contains { $0.id == entry?.id })
+        XCTAssertEqual(projected.lines.filter { $0.entryId == entry?.id }.count, 2)
+    }
+
+    private func makeUUIDBackedExpenseFixture() throws -> (project: PPProject, paymentAccountId: String, categoryId: String) {
+        let paymentAccountId = UUID().uuidString
+        let expenseAccountId = UUID().uuidString
+        context.insert(
+            PPAccount(
+                id: paymentAccountId,
+                code: "991",
+                name: "UUID現金",
+                accountType: .asset,
+                subtype: .cash,
+                isSystem: false,
+                displayOrder: 991
+            )
+        )
+        context.insert(
+            PPAccount(
+                id: expenseAccountId,
+                code: "992",
+                name: "UUID経費",
+                accountType: .expense,
+                isSystem: false,
+                displayOrder: 992
+            )
+        )
+        try context.save()
+        dataStore.loadData()
+
+        let category = dataStore.addCategory(name: "UUID経費カテゴリ", type: .expense, icon: "wrench")
+        dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: expenseAccountId)
+        let project = dataStore.addProject(name: "UUID Project", description: "")
+        return (project, paymentAccountId, category.id)
+    }
+}
+
+final class FeatureFlagsTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        FeatureFlags.clearOverrides()
+    }
+
+    override func tearDown() {
+        FeatureFlags.clearOverrides()
+        super.tearDown()
+    }
+
+    func testUseLegacyLedgerDefaultsToDisabled() {
+        XCTAssertFalse(FeatureFlags.useLegacyLedger)
+    }
+
+    func testUseLegacyLedgerCanBeEnabledExplicitly() {
+        FeatureFlags.useLegacyLedger = true
+
+        XCTAssertTrue(FeatureFlags.useLegacyLedger)
+    }
+
+    func testResetToDefaultsClearsLegacyLedgerOverride() {
+        FeatureFlags.useLegacyLedger = true
+
+        FeatureFlags.resetToDefaults()
+
+        XCTAssertFalse(FeatureFlags.useLegacyLedger)
+    }
+
+    func testSwitchToCanonicalDisablesLegacyLedger() {
+        FeatureFlags.useLegacyLedger = true
+
+        FeatureFlags.switchToCanonical()
+
+        XCTAssertFalse(FeatureFlags.useLegacyLedger)
+    }
 }

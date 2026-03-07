@@ -22,11 +22,11 @@ struct FixedAssetDetailView: View {
     private var isAssetFiscalYearLocked: Bool {
         guard let asset else { return false }
         let year = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        return dataStore.accountingProfile?.isYearLocked(year) ?? false
+        return dataStore.isYearLocked(year)
     }
 
     private var isCurrentYearLocked: Bool {
-        dataStore.accountingProfile?.isYearLocked(currentYear) ?? false
+        dataStore.isYearLocked(currentYear)
     }
 
     private var schedule: [DepreciationCalculation] {

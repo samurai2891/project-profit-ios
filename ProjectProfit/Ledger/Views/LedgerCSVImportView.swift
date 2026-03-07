@@ -26,12 +26,20 @@ struct LedgerCSVImportView: View {
     var body: some View {
         NavigationStack {
             List {
+                if ledgerStore.isReadOnly {
+                    Section {
+                        Text("旧台帳は読み取り専用です。CSVインポートは無効です。")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section {
                     Button {
                         showFilePicker = true
                     } label: {
                         Label("CSVファイルを選択", systemImage: "doc.badge.plus")
                     }
+                    .disabled(ledgerStore.isReadOnly)
 
                     if let url = selectedURL {
                         HStack {
@@ -81,7 +89,7 @@ struct LedgerCSVImportView: View {
                                 Spacer()
                             }
                         }
-                        .disabled(isImporting)
+                        .disabled(isImporting || ledgerStore.isReadOnly)
                     }
                 }
 
@@ -139,6 +147,10 @@ struct LedgerCSVImportView: View {
     // MARK: - File Handling
 
     private func handleFileSelection(_ result: Result<[URL], Error>) {
+        guard !ledgerStore.isReadOnly else {
+            errorMessage = "旧台帳は読み取り専用です"
+            return
+        }
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
@@ -168,6 +180,10 @@ struct LedgerCSVImportView: View {
     }
 
     private func performImport() async {
+        guard !ledgerStore.isReadOnly else {
+            errorMessage = "旧台帳は読み取り専用です"
+            return
+        }
         guard let url = selectedURL,
               let ledgerType = book?.ledgerType else { return }
 

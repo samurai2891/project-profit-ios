@@ -8,21 +8,33 @@ enum ReceiptImageStore {
     private static let directoryName = "ReceiptImages"
     private static let documentDirectoryName = "DocumentFiles"
     private static let jpegQuality: CGFloat = 0.7
+    private static var baseDirectoryURLOverride: URL?
 
     // MARK: - Directory
 
-    private static var directoryURL: URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    private static var baseDirectoryURL: URL {
+        if let baseDirectoryURLOverride {
+            return baseDirectoryURLOverride
+        }
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    static var imageDirectoryURL: URL {
+        let documents = baseDirectoryURL
         return documents.appendingPathComponent(directoryName)
     }
 
-    private static var documentDirectoryURL: URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    static var documentDirectoryURL: URL {
+        let documents = baseDirectoryURL
         return documents.appendingPathComponent(documentDirectoryName)
     }
 
+    static func setBaseDirectoryOverride(_ url: URL?) {
+        baseDirectoryURLOverride = url
+    }
+
     static func ensureDirectoryExists() throws {
-        let url = directoryURL
+        let url = imageDirectoryURL
         if !FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
@@ -37,15 +49,20 @@ enum ReceiptImageStore {
 
     // MARK: - Save
 
+    static func jpegData(for image: UIImage) throws -> Data {
+        guard let data = image.jpegData(compressionQuality: jpegQuality) else {
+            throw ReceiptImageStoreError.compressionFailed
+        }
+        return data
+    }
+
     static func saveImage(_ image: UIImage) throws -> String {
         try ensureDirectoryExists()
 
         let fileName = "\(UUID().uuidString).jpg"
-        let fileURL = directoryURL.appendingPathComponent(fileName)
+        let fileURL = imageDirectoryURL.appendingPathComponent(fileName)
 
-        guard let data = image.jpegData(compressionQuality: jpegQuality) else {
-            throw ReceiptImageStoreError.compressionFailed
-        }
+        let data = try jpegData(for: image)
 
         try data.write(to: fileURL, options: .atomic)
         return fileName
@@ -69,7 +86,7 @@ enum ReceiptImageStore {
 
     static func loadImage(fileName: String) -> UIImage? {
         guard let safeName = sanitizedFileName(fileName) else { return nil }
-        let fileURL = directoryURL.appendingPathComponent(safeName)
+        let fileURL = imageDirectoryURL.appendingPathComponent(safeName)
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let data = try? Data(contentsOf: fileURL) else {
             return nil
@@ -79,7 +96,7 @@ enum ReceiptImageStore {
 
     static func loadImageData(fileName: String) -> Data? {
         guard let safeName = sanitizedFileName(fileName) else { return nil }
-        let fileURL = directoryURL.appendingPathComponent(safeName)
+        let fileURL = imageDirectoryURL.appendingPathComponent(safeName)
         return try? Data(contentsOf: fileURL)
     }
 
@@ -87,7 +104,7 @@ enum ReceiptImageStore {
 
     static func deleteImage(fileName: String) {
         guard let safeName = sanitizedFileName(fileName) else { return }
-        let fileURL = directoryURL.appendingPathComponent(safeName)
+        let fileURL = imageDirectoryURL.appendingPathComponent(safeName)
         try? FileManager.default.removeItem(at: fileURL)
     }
 
@@ -95,8 +112,17 @@ enum ReceiptImageStore {
 
     static func imageExists(fileName: String) -> Bool {
         guard let safeName = sanitizedFileName(fileName) else { return false }
-        let fileURL = directoryURL.appendingPathComponent(safeName)
+        let fileURL = imageDirectoryURL.appendingPathComponent(safeName)
         return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+
+    static func storeImageData(_ data: Data, fileName: String) throws {
+        try ensureDirectoryExists()
+        guard let safeName = sanitizedFileName(fileName) else {
+            throw ReceiptImageStoreError.invalidFileName
+        }
+        let fileURL = imageDirectoryURL.appendingPathComponent(safeName)
+        try data.write(to: fileURL, options: .atomic)
     }
 
     // MARK: - Document File Save
@@ -135,6 +161,15 @@ enum ReceiptImageStore {
         return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
     }
 
+    static func storeDocumentData(_ data: Data, fileName: String) throws {
+        try ensureDocumentDirectoryExists()
+        guard let safeName = sanitizedFileName(fileName) else {
+            throw ReceiptImageStoreError.invalidFileName
+        }
+        let fileURL = documentDirectoryURL.appendingPathComponent(safeName)
+        try data.write(to: fileURL, options: .atomic)
+    }
+
     static func sha256Hex(data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
@@ -144,11 +179,14 @@ enum ReceiptImageStore {
 
 enum ReceiptImageStoreError: LocalizedError {
     case compressionFailed
+    case invalidFileName
 
     var errorDescription: String? {
         switch self {
         case .compressionFailed:
             "画像の圧縮に失敗しました"
+        case .invalidFileName:
+            "無効なファイル名です"
         }
     }
 }

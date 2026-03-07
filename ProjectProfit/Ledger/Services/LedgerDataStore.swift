@@ -9,13 +9,24 @@ import SwiftData
 @MainActor
 @Observable
 final class LedgerDataStore {
+    enum AccessMode: Sendable {
+        case readOnly
+        case readWrite
+    }
+
     private let modelContext: ModelContext
+    private let accessMode: AccessMode
 
     var books: [SDLedgerBook] = []
     var lastError: AppError?
 
-    init(modelContext: ModelContext) {
+    var isReadOnly: Bool {
+        accessMode == .readOnly
+    }
+
+    init(modelContext: ModelContext, accessMode: AccessMode = .readWrite) {
         self.modelContext = modelContext
+        self.accessMode = accessMode
         loadBooks()
     }
 
@@ -36,7 +47,10 @@ final class LedgerDataStore {
         title: String,
         metadataJSON: String = "{}",
         includeInvoice: Bool = false
-    ) -> SDLedgerBook {
+    ) -> SDLedgerBook? {
+        guard ensureWriteAccess() else {
+            return nil
+        }
         let book = SDLedgerBook(
             ledgerType: ledgerType,
             title: title,
@@ -50,6 +64,7 @@ final class LedgerDataStore {
     }
 
     func updateBookTitle(_ bookId: UUID, title: String) {
+        guard ensureWriteAccess() else { return }
         guard let book = books.first(where: { $0.id == bookId }) else { return }
         book.title = title
         book.updatedAt = Date()
@@ -58,6 +73,7 @@ final class LedgerDataStore {
     }
 
     func updateBookMetadata(_ bookId: UUID, metadataJSON: String) {
+        guard ensureWriteAccess() else { return }
         guard let book = books.first(where: { $0.id == bookId }) else { return }
         book.metadataJSON = metadataJSON
         book.updatedAt = Date()
@@ -66,6 +82,7 @@ final class LedgerDataStore {
     }
 
     func deleteBook(_ bookId: UUID) {
+        guard ensureWriteAccess() else { return }
         guard let book = books.first(where: { $0.id == bookId }) else { return }
         // Delete all entries first
         let entries = fetchRawEntries(for: bookId)
@@ -93,6 +110,7 @@ final class LedgerDataStore {
         entry: T,
         sortOrder: Int? = nil
     ) -> SDLedgerEntry? {
+        guard ensureWriteAccess() else { return nil }
         let order = sortOrder ?? (fetchRawEntries(for: bookId).count)
         guard let sdEntry = LedgerBridge.encodeEntry(entry, bookId: bookId, sortOrder: order) else {
             return nil
@@ -104,6 +122,7 @@ final class LedgerDataStore {
     }
 
     func updateEntry<T: Encodable>(_ entryId: UUID, bookId: UUID, newEntry: T) {
+        guard ensureWriteAccess() else { return }
         guard let sdEntry = fetchRawEntry(id: entryId) else { return }
         guard let json = LedgerBridge.encode(newEntry) else { return }
         sdEntry.entryJSON = json
@@ -113,6 +132,7 @@ final class LedgerDataStore {
     }
 
     func deleteEntry(_ entryId: UUID, bookId: UUID) {
+        guard ensureWriteAccess() else { return }
         guard let sdEntry = fetchRawEntry(id: entryId) else { return }
         modelContext.delete(sdEntry)
         updateBookTimestamp(bookId)
@@ -120,6 +140,7 @@ final class LedgerDataStore {
     }
 
     func reorderEntries(bookId: UUID, orderedIds: [UUID]) {
+        guard ensureWriteAccess() else { return }
         let entries = fetchRawEntries(for: bookId)
         let entryMap = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         for (index, id) in orderedIds.enumerated() {
@@ -192,6 +213,14 @@ final class LedgerDataStore {
     }
 
     // MARK: - Persistence Helpers
+
+    private func ensureWriteAccess() -> Bool {
+        guard !isReadOnly else {
+            lastError = .invalidInput(message: "旧台帳は読み取り専用です")
+            return false
+        }
+        return true
+    }
 
     private func save() {
         do {

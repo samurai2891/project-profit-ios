@@ -7,6 +7,7 @@ struct BusinessProfile: Identifiable, Codable, Sendable, Equatable {
     let ownerName: String
     let ownerNameKana: String
     let businessName: String
+    let defaultPaymentAccountId: String
     let businessAddress: String
     let postalCode: String
     let phoneNumber: String
@@ -23,6 +24,7 @@ struct BusinessProfile: Identifiable, Codable, Sendable, Equatable {
         ownerName: String,
         ownerNameKana: String = "",
         businessName: String = "",
+        defaultPaymentAccountId: String = AccountingConstants.defaultPaymentAccountId,
         businessAddress: String = "",
         postalCode: String = "",
         phoneNumber: String = "",
@@ -38,6 +40,7 @@ struct BusinessProfile: Identifiable, Codable, Sendable, Equatable {
         self.ownerName = ownerName
         self.ownerNameKana = ownerNameKana
         self.businessName = businessName
+        self.defaultPaymentAccountId = defaultPaymentAccountId
         self.businessAddress = businessAddress
         self.postalCode = postalCode
         self.phoneNumber = phoneNumber
@@ -55,6 +58,7 @@ struct BusinessProfile: Identifiable, Codable, Sendable, Equatable {
         ownerName: String? = nil,
         ownerNameKana: String? = nil,
         businessName: String? = nil,
+        defaultPaymentAccountId: String? = nil,
         businessAddress: String? = nil,
         postalCode: String? = nil,
         phoneNumber: String? = nil,
@@ -68,6 +72,7 @@ struct BusinessProfile: Identifiable, Codable, Sendable, Equatable {
             ownerName: ownerName ?? self.ownerName,
             ownerNameKana: ownerNameKana ?? self.ownerNameKana,
             businessName: businessName ?? self.businessName,
+            defaultPaymentAccountId: defaultPaymentAccountId ?? self.defaultPaymentAccountId,
             businessAddress: businessAddress ?? self.businessAddress,
             postalCode: postalCode ?? self.postalCode,
             phoneNumber: phoneNumber ?? self.phoneNumber,

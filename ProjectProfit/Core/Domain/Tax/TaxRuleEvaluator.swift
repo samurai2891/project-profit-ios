@@ -5,6 +5,12 @@ import Foundation
 struct TaxRuleEvaluator: Sendable {
 
     let profile: TaxYearProfile
+    let pack: TaxYearPack?
+
+    init(profile: TaxYearProfile, pack: TaxYearPack? = nil) {
+        self.profile = profile
+        self.pack = pack
+    }
 
     /// 仕入税額控除の方式を判定
     func evaluateInputTaxCreditMethod(
@@ -18,7 +24,7 @@ struct TaxRuleEvaluator: Sendable {
         }
 
         // 2割特例の場合は概算控除
-        if profile.isTwoTenthsSpecial {
+        if profile.isTwoTenthsSpecial && (pack?.twoTenthsSpecialAvailable ?? true) {
             return .twoTenthsEstimate
         }
 
@@ -48,7 +54,7 @@ struct TaxRuleEvaluator: Sendable {
         let month = calendar.component(.month, from: transactionDate)
 
         // 少額特例: 税込1万円未満（基準期間の課税売上高1億円以下）
-        if amount < 10000 {
+        if amount < (pack?.smallAmountThreshold ?? 10000) {
             return .smallAmountSpecial
         }
 
@@ -72,15 +78,15 @@ struct TaxRuleEvaluator: Sendable {
     ) -> TaxRateBreakdown {
         if isReducedRate {
             return TaxRateBreakdown(
-                totalRate: Decimal(string: "0.08")!,
-                nationalRate: Decimal(string: "0.0624")!,
-                localRate: Decimal(string: "0.0176")!
+                totalRate: pack?.consumptionTaxReducedRate ?? Decimal(string: "0.08")!,
+                nationalRate: pack?.nationalRateReduced ?? Decimal(string: "0.0624")!,
+                localRate: pack?.localRateReduced ?? Decimal(string: "0.0176")!
             )
         } else {
             return TaxRateBreakdown(
-                totalRate: Decimal(string: "0.10")!,
-                nationalRate: Decimal(string: "0.078")!,
-                localRate: Decimal(string: "0.022")!
+                totalRate: pack?.consumptionTaxStandardRate ?? Decimal(string: "0.10")!,
+                nationalRate: pack?.nationalRateStandard ?? Decimal(string: "0.078")!,
+                localRate: pack?.localRateStandard ?? Decimal(string: "0.022")!
             )
         }
     }

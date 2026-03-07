@@ -1192,10 +1192,10 @@ final class DataStoreCRUDTests: XCTestCase {
             memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
             frequency: .monthly,
-            dayOfMonth: 15
+            dayOfMonth: 1
         )
 
-        // dayOfMonth: 15 auto-generates transactions → project has tx refs → archived
+        // dayOfMonth: 1 auto-generates transactions → project has tx refs → archived
         dataStore.deleteProject(id: project.id)
 
         // Project should be archived (has transaction references)

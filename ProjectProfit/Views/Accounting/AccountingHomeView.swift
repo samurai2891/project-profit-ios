@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct AccountingHomeView: View {
@@ -155,12 +156,16 @@ struct AccountingHomeView: View {
                 subtitle: "全固定資産の減価償却スケジュール",
                 destination: FixedAssetScheduleView()
             )
-            navigationRow(
-                icon: "books.vertical",
-                title: "台帳管理",
-                subtitle: "各種台帳の作成・管理・エクスポート",
-                destination: LedgerHomeView()
-            )
+            #if DEBUG
+            if FeatureFlags.useLegacyLedger {
+                navigationRow(
+                    icon: "books.vertical",
+                    title: "台帳管理",
+                    subtitle: "各種台帳の作成・管理・エクスポート",
+                    destination: LegacyLedgerHomeContainerView()
+                )
+            }
+            #endif
             navigationRow(
                 icon: "cart",
                 title: "棚卸入力",
@@ -221,5 +226,29 @@ struct AccountingHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct LegacyLedgerHomeContainerView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var ledgerStore: LedgerDataStore?
+
+    var body: some View {
+        Group {
+            if let ledgerStore {
+                LedgerHomeView()
+                    .environment(ledgerStore)
+            } else {
+                ProgressView("読み込み中...")
+            }
+        }
+        .task {
+            if ledgerStore == nil {
+                ledgerStore = LedgerDataStore(
+                    modelContext: modelContext,
+                    accessMode: .readOnly
+                )
+            }
+        }
     }
 }

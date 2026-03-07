@@ -1,7 +1,7 @@
 import Foundation
 
 /// 消費税の計算方式
-enum VatMethod: String, Codable, Sendable {
+enum VatMethod: String, Codable, Sendable, CaseIterable {
     case general
     case simplified
     case twoTenths

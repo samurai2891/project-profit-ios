@@ -20,13 +20,15 @@ struct LedgerHomeView: View {
         }
         .navigationTitle("台帳管理")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showCreateSheet = true
-                } label: {
-                    Image(systemName: "plus")
+            if !ledgerStore.isReadOnly {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("台帳を追加")
                 }
-                .accessibilityLabel("台帳を追加")
             }
         }
         .sheet(isPresented: $showCreateSheet) {
@@ -43,7 +45,7 @@ struct LedgerHomeView: View {
                 .foregroundStyle(.secondary)
             Text("帳簿がありません")
                 .font(.headline)
-            Text("＋ボタンから帳簿を追加してください")
+            Text(ledgerStore.isReadOnly ? "旧台帳は読み取り専用です" : "＋ボタンから帳簿を追加してください")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -52,15 +54,23 @@ struct LedgerHomeView: View {
 
     private var bookList: some View {
         List {
-            ForEach(ledgerStore.books, id: \.id) { book in
-                NavigationLink(destination: LedgerBookDetailView(bookId: book.id)) {
-                    bookRow(book)
+            if ledgerStore.isReadOnly {
+                ForEach(ledgerStore.books, id: \.id) { book in
+                    NavigationLink(destination: LedgerBookDetailView(bookId: book.id)) {
+                        bookRow(book)
+                    }
                 }
-            }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    let book = ledgerStore.books[index]
-                    ledgerStore.deleteBook(book.id)
+            } else {
+                ForEach(ledgerStore.books, id: \.id) { book in
+                    NavigationLink(destination: LedgerBookDetailView(bookId: book.id)) {
+                        bookRow(book)
+                    }
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        let book = ledgerStore.books[index]
+                        ledgerStore.deleteBook(book.id)
+                    }
                 }
             }
         }

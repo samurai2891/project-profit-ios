@@ -89,15 +89,40 @@ final class MonthlyAmortizationTests: XCTestCase {
         XCTAssertFalse(spreadTx.isEmpty, "Should have generated monthly spread transactions")
 
         // Each transaction should have the spread amount
-        let monthlyAmount = 120000 / 12
+        let monthCount = 12 - startMonth + 1
+        let monthlyAmount = 120000 / monthCount
         for tx in spreadTx {
             let txMonth = calendar.component(.month, from: tx.date)
             if txMonth == 12 {
-                XCTAssertEqual(tx.amount, monthlyAmount + (120000 - monthlyAmount * 12), "December should include remainder")
+                XCTAssertEqual(tx.amount, monthlyAmount + (120000 - monthlyAmount * monthCount), "December should include remainder")
             } else {
-                XCTAssertEqual(tx.amount, monthlyAmount, "Monthly amount should be 120000/12 = \(monthlyAmount)")
+                XCTAssertEqual(tx.amount, monthlyAmount, "Monthly amount should be 120000/\(monthCount) = \(monthlyAmount)")
             }
         }
+    }
+
+    func testMonthlySpread_preservesCounterpartyOnGeneratedTransactions() {
+        guard let startMonth = pastMonth else { return }
+        let project = makeProject()
+
+        _ = dataStore.addRecurring(
+            name: "Annual Support Fee",
+            type: .expense,
+            amount: 120000,
+            categoryId: "cat-tools",
+            memo: "spread",
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .yearly,
+            dayOfMonth: 1,
+            monthOfYear: startMonth,
+            yearlyAmortizationMode: .monthlySpread,
+            counterparty: "年次配賦先株式会社"
+        )
+
+        let spreadTx = fetchAllTransactions().filter { $0.memo.contains("[定期/月次]") }
+
+        XCTAssertFalse(spreadTx.isEmpty)
+        XCTAssertTrue(spreadTx.allSatisfy { $0.counterparty == "年次配賦先株式会社" })
     }
 
     // MARK: - Test 2: Amount splitting with remainder
@@ -318,7 +343,8 @@ final class MonthlyAmortizationTests: XCTestCase {
             calendar.component(.month, from: $0.date) == startMonth
         }) {
             let total = startMonthTx.allocations.reduce(0) { $0 + $1.amount }
-            let monthlyAmount = 120000 / 12
+            let monthCount = 12 - startMonth + 1
+            let monthlyAmount = 120000 / monthCount
             XCTAssertEqual(total, monthlyAmount, "Total for month should be monthly split amount")
         }
     }

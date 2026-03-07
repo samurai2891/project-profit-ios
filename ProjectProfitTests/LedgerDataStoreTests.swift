@@ -28,7 +28,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .cashBook,
             title: "現金出納帳 2025"
-        )
+        )!
 
         XCTAssertEqual(book.title, "現金出納帳 2025")
         XCTAssertEqual(book.ledgerTypeRaw, "cash_book")
@@ -44,7 +44,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testUpdateBookTitle() {
-        let book = store.createBook(ledgerType: .cashBook, title: "旧名称")
+        let book = store.createBook(ledgerType: .cashBook, title: "旧名称")!
 
         store.updateBookTitle(book.id, title: "新名称")
 
@@ -52,7 +52,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testDeleteBook() {
-        let book = store.createBook(ledgerType: .cashBook, title: "削除対象")
+        let book = store.createBook(ledgerType: .cashBook, title: "削除対象")!
 
         store.deleteBook(book.id)
 
@@ -61,7 +61,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testDeleteBookCascadesEntries() {
-        let book = store.createBook(ledgerType: .cashBook, title: "テスト")
+        let book = store.createBook(ledgerType: .cashBook, title: "テスト")!
         let entry = CashBookEntry(
             month: 1, day: 15, description: "売上", account: "売上高",
             income: 10000
@@ -90,7 +90,7 @@ final class LedgerDataStoreTests: XCTestCase {
     // MARK: - Entry CRUD
 
     func testAddCashBookEntry() {
-        let book = store.createBook(ledgerType: .cashBook, title: "テスト")
+        let book = store.createBook(ledgerType: .cashBook, title: "テスト")!
         let entry = CashBookEntry(
             month: 3, day: 1, description: "事務用品", account: "消耗品費",
             expense: 5000
@@ -103,7 +103,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testDecodeCashBookEntryRoundTrip() {
-        let book = store.createBook(ledgerType: .cashBook, title: "テスト")
+        let book = store.createBook(ledgerType: .cashBook, title: "テスト")!
         let original = CashBookEntry(
             month: 4, day: 10, description: "売上入金", account: "売上高",
             income: 50000
@@ -121,7 +121,7 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testDeleteEntry() {
-        let book = store.createBook(ledgerType: .cashBook, title: "テスト")
+        let book = store.createBook(ledgerType: .cashBook, title: "テスト")!
         let entry = CashBookEntry(
             month: 1, day: 1, description: "テスト", account: "テスト",
             income: 1000
@@ -142,7 +142,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .cashBook, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         // エントリ1: 入金 50000
         store.addEntry(to: book.id, entry: CashBookEntry(
@@ -173,7 +173,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .bankAccountBook, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: BankAccountBookEntry(
             month: 2, day: 1, description: "振込", account: "売掛金",
@@ -196,7 +196,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .accountsReceivable, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: AccountsReceivableEntry(
             month: 3, day: 1, counterAccount: "売上高", description: "商品売上",
@@ -221,7 +221,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .accountsPayable, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: AccountsPayableEntry(
             month: 4, day: 1, counterAccount: "仕入高", description: "商品仕入",
@@ -246,7 +246,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .expenseBook, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: ExpenseBookEntry(
             month: 5, day: 1, counterAccount: "現金", description: "コピー用紙",
@@ -272,7 +272,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .generalLedger, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         // 借方増加（資産）
         store.addEntry(to: book.id, entry: GeneralLedgerEntry(
@@ -302,7 +302,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .generalLedger, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         // 貸方増加（負債）
         store.addEntry(to: book.id, entry: GeneralLedgerEntry(
@@ -331,7 +331,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .cashBook, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: CashBookEntry(
             month: 1, day: 5, description: "売上", account: "売上高",
@@ -354,7 +354,7 @@ final class LedgerDataStoreTests: XCTestCase {
             ledgerType: .cashBookInvoice, title: "テスト",
             metadataJSON: metadataJSON,
             includeInvoice: true
-        )
+        )!
 
         store.addEntry(to: book.id, entry: CashBookEntry(
             month: 1, day: 1, description: "テスト", account: "売上高",
@@ -379,7 +379,7 @@ final class LedgerDataStoreTests: XCTestCase {
         let book = store.createBook(
             ledgerType: .cashBook, title: "テスト",
             metadataJSON: metadataJSON
-        )
+        )!
 
         store.addEntry(to: book.id, entry: CashBookEntry(
             month: 1, day: 1, description: "入金", account: "売上高",
@@ -394,7 +394,38 @@ final class LedgerDataStoreTests: XCTestCase {
     }
 
     func testFinalBalanceEmpty() {
-        let book = store.createBook(ledgerType: .journal, title: "テスト")
+        let book = store.createBook(ledgerType: .journal, title: "テスト")!
         XCTAssertNil(store.finalBalance(for: book.id))
+    }
+
+    func testReadOnlyStoreRejectsBookCreation() {
+        let readOnlyStore = LedgerDataStore(modelContext: context, accessMode: .readOnly)
+
+        let created = readOnlyStore.createBook(ledgerType: .cashBook, title: "読み取り専用")
+
+        XCTAssertNil(created)
+        XCTAssertEqual(readOnlyStore.books.count, 0)
+        XCTAssertEqual(readOnlyStore.lastError?.errorDescription, "旧台帳は読み取り専用です")
+    }
+
+    func testReadOnlyStoreRejectsEntryMutation() {
+        let writableStore = LedgerDataStore(modelContext: context)
+        let book = writableStore.createBook(ledgerType: .cashBook, title: "テスト")!
+        let readOnlyStore = LedgerDataStore(modelContext: context, accessMode: .readOnly)
+        let entry = CashBookEntry(
+            month: 1,
+            day: 1,
+            description: "売上",
+            account: "売上高",
+            income: 1000
+        )
+
+        let inserted = readOnlyStore.addEntry(to: book.id, entry: entry)
+        readOnlyStore.deleteBook(book.id)
+
+        XCTAssertNil(inserted)
+        XCTAssertNotNil(readOnlyStore.book(for: book.id))
+        XCTAssertEqual(readOnlyStore.fetchRawEntries(for: book.id).count, 0)
+        XCTAssertEqual(readOnlyStore.lastError?.errorDescription, "旧台帳は読み取り専用です")
     }
 }

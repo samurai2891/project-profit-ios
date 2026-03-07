@@ -15,27 +15,133 @@ extension DataStore {
 
     /// 指定年度がロック済みか確認し、ロック済みならエラーを設定してtrueを返す
     func isYearLocked(_ year: Int) -> Bool {
-        guard let profile = accountingProfile else { return false }
-        if profile.isYearLocked(year) {
+        if yearLockState(for: year) != .open {
             lastError = .yearLocked(year: year)
             return true
         }
         return false
     }
 
+    func yearLockState(for year: Int) -> YearLockState {
+        if let canonicalState = persistedYearLockState(for: year) {
+            return canonicalState
+        }
+        if accountingProfile?.isYearLocked(year) == true {
+            return .finalLock
+        }
+        return .open
+    }
+
     // MARK: - Lock / Unlock
 
     /// 指定年度をロックする
     func lockFiscalYear(_ year: Int) {
-        guard let profile = accountingProfile else { return }
-        profile.lockYear(year)
-        save()
+        forceUpdateYearLockState(.finalLock, for: year)
     }
 
     /// 指定年度のロックを解除する
     func unlockFiscalYear(_ year: Int) {
-        guard let profile = accountingProfile else { return }
-        profile.unlockYear(year)
-        save()
+        forceUpdateYearLockState(.open, for: year)
+    }
+
+    @discardableResult
+    func transitionFiscalYearState(_ state: YearLockState, for year: Int) -> Bool {
+        ensureCanonicalProfileLoadedForYearLock()
+        guard let businessId = businessProfile?.id else {
+            let error = AppError.invalidInput(message: "申告者情報が未設定のため年度状態を更新できません")
+            AppLogger.dataStore.warning("\(error.localizedDescription)")
+            lastError = error
+            return false
+        }
+
+        do {
+            let fallbackProfile = currentTaxYearProfile?.taxYear == year ? currentTaxYearProfile : nil
+            let updated = try TaxYearStateUseCase(modelContext: modelContext).transitionYearLock(
+                businessId: businessId,
+                taxYear: year,
+                targetState: state,
+                fallbackProfile: fallbackProfile
+            )
+            if currentTaxYearProfile?.taxYear == year {
+                currentTaxYearProfile = updated
+            }
+            lastError = nil
+            return true
+        } catch {
+            AppLogger.dataStore.error("Validated year lock update failed: year=\(year), state=\(state.rawValue), error=\(error.localizedDescription)")
+            lastError = .saveFailed(underlying: error)
+            modelContext.rollback()
+            return false
+        }
+    }
+
+    private func persistedYearLockState(for year: Int) -> YearLockState? {
+        if let currentTaxYearProfile, currentTaxYearProfile.taxYear == year {
+            return currentTaxYearProfile.yearLockState
+        }
+        guard let businessId = businessProfile?.id else {
+            return nil
+        }
+        do {
+            let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == year
+                }
+            )
+            let entity = try modelContext.fetch(descriptor).first
+            return entity.flatMap { YearLockState(rawValue: $0.yearLockStateRaw) }
+        } catch {
+            AppLogger.dataStore.warning("Year lock state lookup failed: year=\(year), error=\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func forceUpdateYearLockState(_ state: YearLockState, for year: Int) {
+        ensureCanonicalProfileLoadedForYearLock()
+        guard let businessId = businessProfile?.id else {
+            AppLogger.dataStore.warning("Year lock update skipped: canonical business profile unavailable")
+            return
+        }
+
+        do {
+            let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == year
+                }
+            )
+
+            if let entity = try modelContext.fetch(descriptor).first {
+                entity.yearLockStateRaw = state.rawValue
+                entity.updatedAt = Date()
+                if currentTaxYearProfile?.taxYear == year {
+                    currentTaxYearProfile = TaxYearProfileEntityMapper.toDomain(entity)
+                }
+            } else {
+                let profile = TaxYearProfile(
+                    businessId: businessId,
+                    taxYear: year,
+                    yearLockState: state,
+                    taxPackVersion: "\(year)-v1"
+                )
+                modelContext.insert(TaxYearProfileEntityMapper.toEntity(profile))
+                if currentTaxYearProfile?.taxYear == year {
+                    currentTaxYearProfile = profile
+                }
+            }
+
+            save()
+        } catch {
+            AppLogger.dataStore.error("Year lock update failed: year=\(year), error=\(error.localizedDescription)")
+            lastError = .saveFailed(underlying: error)
+            modelContext.rollback()
+        }
+    }
+
+    private func ensureCanonicalProfileLoadedForYearLock() {
+        guard businessProfile == nil else {
+            return
+        }
+        runLegacyProfileMigrationIfNeeded()
+        refreshCanonicalProfileCache()
     }
 }

@@ -23,7 +23,7 @@ final class AccountingHomeViewModel {
         unpostedJournalCount = entries.filter { !$0.isPosted }.count
         totalJournalEntries = entries.count
         totalAccounts = dataStore.accounts.filter { $0.isActive }.count
-        isBootstrapped = dataStore.accountingProfile != nil
+        isBootstrapped = dataStore.isAccountingBootstrapped
 
         // 仮勘定の借方合計 - 貸方合計
         let suspenseLines = lines.filter { $0.accountId == AccountingConstants.suspenseAccountId }
