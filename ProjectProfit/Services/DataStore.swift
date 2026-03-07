@@ -1685,8 +1685,8 @@ class DataStore {
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) -> Result<PPTransaction, AppError> {
-        // T5: 年度ロックガード
-        guard !isYearLocked(for: date) else {
+        // T5: 年度ロックガード（段階的チェック）
+        guard !cannotPostNormalEntry(for: date) else {
             return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
         }
         let safeCategoryId: String
@@ -1807,13 +1807,11 @@ class DataStore {
             lastError = .transactionNotFound(id: id)
             return false
         }
-        // T5: 年度ロックガード（変更先の日付と現在の日付の両方をチェック）
-        if isYearLocked(for: transaction.date) {
-            lastError = .yearLocked(year: fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth))
+        // T5: 年度ロックガード（段階的チェック：変更先の日付と現在の日付の両方）
+        if cannotPostNormalEntry(for: transaction.date) {
             return false
         }
-        if let date, isYearLocked(for: date) {
-            lastError = .yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth))
+        if let date, cannotPostNormalEntry(for: date) {
             return false
         }
         lastError = nil
@@ -1911,8 +1909,8 @@ class DataStore {
 
     func deleteTransaction(id: UUID) {
         guard let transaction = allTransactions.first(where: { $0.id == id }) else { return }
-        // T5: 年度ロックガード
-        if isYearLocked(for: transaction.date) { return }
+        // T5: 年度ロックガード（段階的チェック）
+        if cannotPostNormalEntry(for: transaction.date) { return }
 
         // ソフトデリート: 物理削除ではなく deletedAt を設定
         transaction.deletedAt = Date()
@@ -2543,6 +2541,192 @@ class DataStore {
         case .failure:
             return nil
         }
+    }
+
+    /// 定期取引の生成プレビュー（dry-run）。実際の取引は生成しない。
+    func previewRecurringTransactions() -> [RecurringPreviewItem] {
+        let calendar = Calendar.current
+        let today = todayDate()
+        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
+        guard let currentYear = todayComps.year, let currentMonth = todayComps.month, let currentDay = todayComps.day else { return [] }
+
+        var items: [RecurringPreviewItem] = []
+
+        for recurring in recurringTransactions {
+            guard recurring.isActive else { continue }
+            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
+
+            if recurring.frequency == .monthly {
+                var iterYear: Int
+                var iterMonth: Int
+
+                if let lastGen = recurring.lastGeneratedDate {
+                    let lastComps = calendar.dateComponents([.year, .month], from: lastGen)
+                    iterYear = lastComps.year!
+                    iterMonth = lastComps.month!
+                    iterMonth += 1
+                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                } else {
+                    iterYear = currentYear
+                    iterMonth = currentMonth
+                }
+
+                while iterYear < currentYear || (iterYear == currentYear && iterMonth <= currentMonth) {
+                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth { break }
+
+                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
+                        iterMonth += 1
+                        if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                        continue
+                    }
+
+                    if let endDate = recurring.endDate, txDate > endDate { break }
+
+                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
+                    if !isSkipped {
+                        items.append(RecurringPreviewItem(
+                            recurringId: recurring.id,
+                            recurringName: recurring.name,
+                            type: recurring.type,
+                            amount: recurring.amount,
+                            scheduledDate: txDate,
+                            categoryId: recurring.categoryId,
+                            memo: "[定期] \(recurring.name)"
+                        ))
+                    }
+
+                    iterMonth += 1
+                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                }
+            } else if recurring.yearlyAmortizationMode == .monthlySpread {
+                if let endDate = recurring.endDate, today > endDate { continue }
+                let startMonth = recurring.monthOfYear ?? 1
+                let actualMonthCount = 12 - startMonth + 1
+                let monthlyAmount = recurring.amount / actualMonthCount
+                let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
+                let currentYearPrefix = String(format: "%d-", currentYear)
+                let generatedMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
+
+                for month in startMonth...12 {
+                    guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else { continue }
+                    let monthKey = String(format: "%d-%02d", currentYear, month)
+                    guard !generatedMonths.contains(monthKey) else { continue }
+                    guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
+                    if let endDate = recurring.endDate, txDate > endDate { continue }
+                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
+                    if !isSkipped {
+                        let txAmount = month == 12 ? monthlyAmount + remainder : monthlyAmount
+                        items.append(RecurringPreviewItem(
+                            recurringId: recurring.id,
+                            recurringName: recurring.name,
+                            type: recurring.type,
+                            amount: txAmount,
+                            scheduledDate: txDate,
+                            categoryId: recurring.categoryId,
+                            memo: "[定期/月次] \(recurring.name)",
+                            isMonthlySpread: true
+                        ))
+                    }
+                }
+            } else {
+                let targetMonth = recurring.monthOfYear ?? 1
+                let startYear: Int
+                if let lastGen = recurring.lastGeneratedDate {
+                    startYear = calendar.component(.year, from: lastGen) + 1
+                } else {
+                    startYear = currentYear
+                }
+                guard startYear <= currentYear else { continue }
+                for iterYear in startYear...currentYear {
+                    if iterYear == currentYear {
+                        if currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth) { break }
+                    }
+                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
+                    if let endDate = recurring.endDate, txDate > endDate { break }
+                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
+                    if !isSkipped {
+                        items.append(RecurringPreviewItem(
+                            recurringId: recurring.id,
+                            recurringName: recurring.name,
+                            type: recurring.type,
+                            amount: recurring.amount,
+                            scheduledDate: txDate,
+                            categoryId: recurring.categoryId,
+                            memo: "[定期] \(recurring.name)"
+                        ))
+                    }
+                }
+            }
+        }
+
+        return items.sorted { $0.scheduledDate < $1.scheduledDate }
+    }
+
+    /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
+    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) -> Int {
+        let approvedItems = items.filter { approvedIds.contains($0.id) }
+        var generatedCount = 0
+
+        for item in approvedItems {
+            guard let recurring = recurringTransactions.first(where: { $0.id == item.recurringId }) else { continue }
+            let calendar = Calendar.current
+            let txDate = item.scheduledDate
+
+            if item.isMonthlySpread {
+                let monthKey = String(format: "%d-%02d", calendar.component(.year, from: txDate), calendar.component(.month, from: txDate))
+                let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
+
+                var txAllocations: [Allocation]
+                switch recurring.allocationMode {
+                case .equalAll:
+                    let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+                    guard !activeProjectIds.isEmpty else { continue }
+                    txAllocations = calculateEqualSplitAllocations(amount: item.amount, projectIds: activeProjectIds)
+                case .manual:
+                    txAllocations = recalculateAllocationAmounts(amount: item.amount, existingAllocations: recurring.allocations)
+                }
+
+                let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+                switch addTransactionResult(
+                    type: recurring.type,
+                    amount: item.amount,
+                    date: txDate,
+                    categoryId: recurring.categoryId,
+                    memo: memo,
+                    allocations: txRatios,
+                    recurringId: recurring.id,
+                    paymentAccountId: recurring.paymentAccountId,
+                    transferToAccountId: recurring.transferToAccountId,
+                    taxDeductibleRate: recurring.taxDeductibleRate,
+                    counterparty: recurring.counterparty,
+                    candidateSource: .recurring
+                ) {
+                case .success:
+                    recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
+                    recurring.updatedAt = Date()
+                    generatedCount += 1
+                case .failure:
+                    break
+                }
+            } else {
+                let isYearly = recurring.frequency == .yearly
+                if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: isYearly, calendar: calendar) != nil {
+                    recurring.lastGeneratedDate = txDate
+                    recurring.updatedAt = Date()
+                    generatedCount += 1
+                }
+            }
+        }
+
+        if generatedCount > 0 {
+            save()
+            refreshRecurring()
+            refreshTransactions()
+            refreshJournalEntries()
+            refreshJournalLines()
+        }
+
+        return generatedCount
     }
 
     @discardableResult
@@ -3300,6 +3484,35 @@ class DataStore {
         return canonicalAccountId(
             for: legacyAccountId,
             canonicalIdsByLegacyId: canonicalAccountIdsByLegacyId(businessId: businessId)
+        )
+    }
+
+    // MARK: - Canonical Report Convenience
+
+    func canonicalTrialBalance(fiscalYear: Int) -> CanonicalTrialBalanceReport {
+        AccountingReportService.generateTrialBalance(
+            fiscalYear: fiscalYear,
+            accounts: canonicalAccounts(),
+            journals: canonicalJournalEntries(fiscalYear: fiscalYear),
+            startMonth: FiscalYearSettings.startMonth
+        )
+    }
+
+    func canonicalProfitLoss(fiscalYear: Int) -> CanonicalProfitLossReport {
+        AccountingReportService.generateProfitLoss(
+            fiscalYear: fiscalYear,
+            accounts: canonicalAccounts(),
+            journals: canonicalJournalEntries(fiscalYear: fiscalYear),
+            startMonth: FiscalYearSettings.startMonth
+        )
+    }
+
+    func canonicalBalanceSheet(fiscalYear: Int) -> CanonicalBalanceSheetReport {
+        AccountingReportService.generateBalanceSheet(
+            fiscalYear: fiscalYear,
+            accounts: canonicalAccounts(),
+            journals: canonicalJournalEntries(fiscalYear: fiscalYear),
+            startMonth: FiscalYearSettings.startMonth
         )
     }
 

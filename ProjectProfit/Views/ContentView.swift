@@ -6,12 +6,18 @@ struct ContentView: View {
     @Environment(NotificationService.self) private var notificationService
     @State private var dataStore: DataStore?
     @State private var hasInitialized = false
+    @State private var pendingRecurringCount = 0
+    @State private var showRecurringPreview = false
 
     var body: some View {
         Group {
             if let store = dataStore {
                 MainTabView()
                     .environment(store)
+                    .sheet(isPresented: $showRecurringPreview) {
+                        RecurringPreviewView()
+                            .environment(store)
+                    }
             } else {
                 ProgressView("読み込み中...")
             }
@@ -28,9 +34,13 @@ struct ContentView: View {
             store.loadData()
             _ = await store.reloadProfileSettings()
             store.recalculateAllPartialPeriodProjects()
-            _ = store.processRecurringTransactions()
+            let pendingItems = store.previewRecurringTransactions()
+            pendingRecurringCount = pendingItems.count
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store
+            if !pendingItems.isEmpty {
+                showRecurringPreview = true
+            }
         }
     }
 }
@@ -55,10 +65,17 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                ProjectsView()
+                EvidenceInboxView()
             }
             .tabItem {
-                Label("プロジェクト", systemImage: "folder.fill")
+                Label("証憑", systemImage: "doc.text.viewfinder")
+            }
+
+            NavigationStack {
+                ApprovalQueueView()
+            }
+            .tabItem {
+                Label("承認", systemImage: "checklist")
             }
 
             NavigationStack {

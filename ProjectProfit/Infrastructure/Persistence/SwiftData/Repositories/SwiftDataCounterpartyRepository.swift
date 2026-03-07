@@ -43,6 +43,39 @@ final class SwiftDataCounterpartyRepository: CounterpartyRepository {
             }
     }
 
+    nonisolated func findByDisplayNamePrefix(businessId: UUID, query: String) async throws -> [Counterparty] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
+        guard !normalizedQuery.isEmpty else { return [] }
+
+        let foldOptions: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        let all = try await findByBusiness(businessId: businessId)
+
+        // Fold once per counterparty, then filter + sort
+        let annotated: [(counterparty: Counterparty, foldedName: String)] = all.compactMap { cp in
+            let foldedName = cp.displayName.folding(options: foldOptions, locale: .current)
+            let foldedKana = cp.kana?.folding(options: foldOptions, locale: .current)
+            let foldedLegal = cp.legalName?.folding(options: foldOptions, locale: .current)
+
+            let matches = foldedName.contains(normalizedQuery)
+                || (foldedKana?.hasPrefix(normalizedQuery) ?? false)
+                || (foldedLegal?.hasPrefix(normalizedQuery) ?? false)
+            return matches ? (cp, foldedName) : nil
+        }
+
+        return annotated
+            .sorted { lhs, rhs in
+                let lhsPrefix = lhs.foldedName.hasPrefix(normalizedQuery)
+                let rhsPrefix = rhs.foldedName.hasPrefix(normalizedQuery)
+                if lhsPrefix != rhsPrefix { return lhsPrefix }
+                let lhsExact = lhs.foldedName == normalizedQuery
+                let rhsExact = rhs.foldedName == normalizedQuery
+                if lhsExact != rhsExact { return lhsExact }
+                return lhs.counterparty.displayName < rhs.counterparty.displayName
+            }
+            .map(\.counterparty)
+    }
+
     nonisolated func findByRegistrationNumber(_ number: String) async throws -> Counterparty? {
         let normalizedNumber = number.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedNumber.isEmpty else { return nil }
