@@ -217,7 +217,8 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Year Lock Tests
 
     private func setupProfileAndLockYear(_ year: Int) {
-        if dataStore.accountingProfile == nil {
+        if dataStore.businessProfile == nil {
+            // Insert legacy profile so migration auto-creates canonical profiles
             let profile = PPAccountingProfile(fiscalYear: year)
             context.insert(profile)
             try? context.save()

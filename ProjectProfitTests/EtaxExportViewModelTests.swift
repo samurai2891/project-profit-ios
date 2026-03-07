@@ -168,8 +168,8 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testGeneratePreviewUsesCanonicalProfileInsteadOfLegacyProfile() {
         let businessId = UUID()
-        dataStore.accountingProfile?.ownerName = "Legacy Owner"
-        dataStore.accountingProfile?.businessName = "Legacy商店"
+        // Legacy profile is no longer accessible via DataStore;
+        // canonical profile is the sole source of truth.
         dataStore.businessProfile = BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",

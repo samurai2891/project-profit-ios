@@ -154,14 +154,15 @@ final class DataStoreInventoryTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupProfileAndLockYear(_ year: Int) {
-        if dataStore.accountingProfile == nil {
+        if dataStore.businessProfile == nil {
+            // Insert legacy profile so migration auto-creates canonical profiles
             let profile = PPAccountingProfile(
                 fiscalYear: year,
                 bookkeepingMode: .doubleEntry
             )
             dataStore.modelContext.insert(profile)
             dataStore.save()
-            dataStore.accountingProfile = profile
+            dataStore.loadData()
         }
         dataStore.lockFiscalYear(year)
     }

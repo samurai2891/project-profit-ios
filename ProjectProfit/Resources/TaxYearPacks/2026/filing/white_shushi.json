@@ -1,0 +1,52 @@
+{
+  "formType": "white_shushi",
+  "taxYear": 2026,
+  "formId": "KOA110",
+  "formVer": "12.0",
+  "rootTag": "KOA110",
+  "displayName": "収支内訳書（一般用）",
+  "filingDeadline": "2027-03-16",
+  "sections": [
+    {
+      "id": "revenue",
+      "label": "収入金額",
+      "fields": [
+        { "internalKey": "shushi_revenue_total", "fieldLabel": "収入金額", "xmlTag": "AIG00020", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "expenses",
+      "label": "必要経費",
+      "fields": [
+        { "internalKey": "shushi_expense_rent", "fieldLabel": "地代家賃", "xmlTag": "AIG00190", "dataType": "number" },
+        { "internalKey": "shushi_expense_utilities", "fieldLabel": "水道光熱費", "xmlTag": "AIG00240", "dataType": "number" },
+        { "internalKey": "shushi_expense_travel", "fieldLabel": "旅費交通費", "xmlTag": "AIG00250", "dataType": "number" },
+        { "internalKey": "shushi_expense_communication", "fieldLabel": "通信費", "xmlTag": "AIG00260", "dataType": "number" },
+        { "internalKey": "shushi_expense_advertising", "fieldLabel": "広告宣伝費", "xmlTag": "AIG00270", "dataType": "number" },
+        { "internalKey": "shushi_expense_entertainment", "fieldLabel": "接待交際費", "xmlTag": "AIG00280", "dataType": "number" },
+        { "internalKey": "shushi_expense_depreciation", "fieldLabel": "減価償却費", "xmlTag": "AIG00170", "dataType": "number" },
+        { "internalKey": "shushi_expense_insurance", "fieldLabel": "損害保険料", "xmlTag": "AIG00290", "dataType": "number" },
+        { "internalKey": "shushi_expense_interest", "fieldLabel": "利子割引料", "xmlTag": "AIG00200", "dataType": "number" },
+        { "internalKey": "shushi_expense_supplies", "fieldLabel": "消耗品費", "xmlTag": "AIG00310", "dataType": "number" },
+        { "internalKey": "shushi_expense_taxes", "fieldLabel": "租税公課", "xmlTag": "AIG00220", "dataType": "number" },
+        { "internalKey": "shushi_expense_outsourcing", "fieldLabel": "外注工賃", "xmlTag": "AIG00160", "dataType": "number" },
+        { "internalKey": "shushi_expense_misc", "fieldLabel": "雑費", "xmlTag": "AIG00340", "dataType": "number" },
+        { "internalKey": "shushi_expense_total", "fieldLabel": "経費合計", "xmlTag": "AIG00360", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "income",
+      "label": "所得金額",
+      "fields": [
+        { "internalKey": "shushi_income_net", "fieldLabel": "所得金額", "xmlTag": "AIG00400", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "deductions",
+      "label": "各種控除",
+      "fields": [
+        { "internalKey": "shushi_rent_breakdown", "fieldLabel": "地代家賃合計", "xmlTag": "AIN00090", "dataType": "number" }
+      ]
+    }
+  ]
+}

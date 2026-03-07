@@ -1,0 +1,55 @@
+{
+  "taxYear": 2025,
+  "standardRate": "0.10",
+  "reducedRate": "0.08",
+  "nationalRateStandard": "0.078",
+  "localRateStandard": "0.022",
+  "nationalRateReduced": "0.0624",
+  "localRateReduced": "0.0176",
+  "invoiceSystem": {
+    "startDate": "2023-10-01",
+    "description": "適格請求書等保存方式（インボイス制度）"
+  },
+  "transitionalMeasures": [
+    {
+      "id": "transitional_80",
+      "periodStart": "2023-10-01",
+      "periodEnd": "2026-09-30",
+      "creditRate": "0.8",
+      "description": "免税事業者からの仕入に係る経過措置（80%控除）"
+    },
+    {
+      "id": "transitional_50",
+      "periodStart": "2026-10-01",
+      "periodEnd": "2029-09-30",
+      "creditRate": "0.5",
+      "description": "免税事業者からの仕入に係る経過措置（50%控除）"
+    }
+  ],
+  "specialProvisions": [
+    {
+      "id": "two_tenths_special",
+      "available": true,
+      "description": "2割特例（小規模事業者に係る税額控除に関する経過措置）",
+      "applicablePeriod": "2023-10-01〜2026-09-30の属する課税期間"
+    },
+    {
+      "id": "small_amount_special",
+      "threshold": "10000",
+      "description": "少額特例（税込1万円未満の課税仕入について帳簿のみで仕入税額控除可能）",
+      "condition": "基準期間の課税売上高が1億円以下"
+    }
+  ],
+  "simplifiedTaxation": {
+    "threshold": "50000000",
+    "description": "簡易課税制度（基準期間の課税売上高が5,000万円以下の事業者が選択可能）",
+    "deemedPurchaseRates": {
+      "category1": "0.90",
+      "category2": "0.80",
+      "category3": "0.70",
+      "category4": "0.60",
+      "category5": "0.50",
+      "category6": "0.40"
+    }
+  }
+}

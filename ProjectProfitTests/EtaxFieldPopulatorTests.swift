@@ -235,15 +235,11 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         )
     }
 
-    func testPopulateDeclarantInfoLoadsFromSecureStore() {
-        let profileId = UUID().uuidString
-        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
-
-        let profile = PPAccountingProfile(
-            id: profileId,
-            fiscalYear: 2025,
-            businessName: "暗号化屋号",
-            ownerName: "山田太郎"
+    func testPopulateDeclarantInfoWithSensitivePayload() {
+        let businessProfile = BusinessProfile(
+            id: UUID(),
+            ownerName: "山田太郎",
+            businessName: "暗号化屋号"
         )
         let birthDate = Calendar(identifier: .gregorian).date(from: DateComponents(year: 1990, month: 1, day: 2))
         let payload = ProfileSensitivePayload.fromLegacyProfile(
@@ -256,9 +252,11 @@ final class EtaxFieldPopulatorTests: XCTestCase {
             myNumberFlag: true,
             includeSensitiveInExport: true
         )
-        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
 
-        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(
+            businessProfile: businessProfile,
+            sensitivePayload: payload
+        )
         let values = Dictionary(uniqueKeysWithValues: fields.map { ($0.id, $0.value.exportText) })
 
         XCTAssertEqual(values["declarant_name"], "山田太郎")
@@ -273,14 +271,10 @@ final class EtaxFieldPopulatorTests: XCTestCase {
     }
 
     func testPopulateDeclarantInfoSkipsSensitiveFieldsWhenConsentDisabled() {
-        let profileId = UUID().uuidString
-        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
-
-        let profile = PPAccountingProfile(
-            id: profileId,
-            fiscalYear: 2025,
-            businessName: "屋号",
-            ownerName: "佐藤花子"
+        let businessProfile = BusinessProfile(
+            id: UUID(),
+            ownerName: "佐藤花子",
+            businessName: "屋号"
         )
         let payload = ProfileSensitivePayload.fromLegacyProfile(
             ownerNameKana: "サトウハナコ",
@@ -292,9 +286,11 @@ final class EtaxFieldPopulatorTests: XCTestCase {
             myNumberFlag: true,
             includeSensitiveInExport: false
         )
-        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
 
-        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(
+            businessProfile: businessProfile,
+            sensitivePayload: payload
+        )
         let ids = Set(fields.map(\.id))
 
         XCTAssertTrue(ids.contains("declarant_name"))
@@ -308,24 +304,21 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         XCTAssertFalse(ids.contains("declarant_my_number_flag"))
     }
 
-    func testPopulateDeclarantInfoDoesNotUseLegacyPlainFieldsWhenSecurePayloadMissing() {
-        let profileId = UUID().uuidString
-        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
-
-        let profile = PPAccountingProfile(
-            id: profileId,
-            fiscalYear: 2025,
-            businessName: "屋号",
+    func testPopulateDeclarantInfoWithoutSensitivePayloadOnlyIncludesBasicFields() {
+        let businessProfile = BusinessProfile(
+            id: UUID(),
             ownerName: "田中太郎",
             ownerNameKana: "タナカタロウ",
+            businessName: "屋号",
+            businessAddress: "東京都千代田区1-1",
             postalCode: "1000001",
-            address: "東京都千代田区1-1",
-            phoneNumber: "0312345678",
-            businessCategory: "ソフトウェア開発",
-            myNumberFlag: true
+            phoneNumber: "0312345678"
         )
 
-        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(
+            businessProfile: businessProfile,
+            sensitivePayload: nil
+        )
         let ids = Set(fields.map(\.id))
 
         XCTAssertTrue(ids.contains("declarant_name"))

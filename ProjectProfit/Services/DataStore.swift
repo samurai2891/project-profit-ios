@@ -53,7 +53,6 @@ class DataStore {
     var accounts: [PPAccount] = []
     var journalEntries: [PPJournalEntry] = []
     var journalLines: [PPJournalLine] = []
-    var accountingProfile: PPAccountingProfile?
     var businessProfile: BusinessProfile?
     var currentTaxYearProfile: TaxYearProfile?
     var fixedAssets: [PPFixedAsset] = []
@@ -98,20 +97,16 @@ class DataStore {
         businessProfile?.id.uuidString
     }
 
-    private var legacyProfileSecureStoreId: String? {
-        accountingProfile?.id
-    }
-
     var isAccountingBootstrapped: Bool {
-        businessProfile != nil || accountingProfile != nil
+        businessProfile != nil
     }
 
     var defaultPaymentAccountPreference: String? {
-        businessProfile?.defaultPaymentAccountId ?? accountingProfile?.defaultPaymentAccountId
+        businessProfile?.defaultPaymentAccountId
     }
 
     var profileOpeningDate: Date? {
-        businessProfile?.openingDate ?? accountingProfile?.openingDate
+        businessProfile?.openingDate
     }
 
     private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
@@ -388,8 +383,6 @@ class DataStore {
             let lineDescriptor = FetchDescriptor<PPJournalLine>(sortBy: [SortDescriptor(\.displayOrder)])
             journalLines = try modelContext.fetch(lineDescriptor)
 
-            let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
-            accountingProfile = try modelContext.fetch(profileDescriptor).first
             runLegacyProfileMigrationIfNeeded()
             refreshCanonicalProfileCache()
             _ = loadSensitivePayload()
@@ -410,8 +403,6 @@ class DataStore {
                 refreshJournalLines()
                 refreshCategories()
                 refreshTransactions()
-                let profileDesc = FetchDescriptor<PPAccountingProfile>()
-                accountingProfile = try? modelContext.fetch(profileDesc).first
                 runLegacyProfileMigrationIfNeeded()
                 refreshCanonicalProfileCache()
                 AppLogger.dataStore.info("Bootstrap完了: accounts=\(result.accountsCreated), journals=\(result.journalEntriesGenerated)")
@@ -439,10 +430,10 @@ class DataStore {
     func reloadProfileSettings() async -> Bool {
         let payload = loadSensitivePayload()
         do {
-            let defaultTaxYear = currentTaxYearProfile?.taxYear ?? accountingProfile?.fiscalYear ?? currentFiscalYear()
+            let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: defaultTaxYear,
-                legacyProfile: accountingProfile,
+                legacyProfile: nil,
                 sensitivePayload: payload
             )
             applyProfileSettingsState(state)
@@ -462,7 +453,7 @@ class DataStore {
         do {
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: command.taxYear,
-                legacyProfile: accountingProfile,
+                legacyProfile: nil,
                 sensitivePayload: sensitivePayload
             )
             guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
@@ -473,7 +464,6 @@ class DataStore {
                 currentState: state
             )
 
-            persistLegacyFiscalYearIfNeeded(savedState.taxYearProfile.taxYear)
             applyProfileSettingsState(savedState)
 
             if save() {
@@ -496,8 +486,6 @@ class DataStore {
     }
 
     func refreshCanonicalProfileCache() {
-        let payload = loadSensitivePayload()
-
         do {
             let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
                 sortBy: [SortDescriptor(\.createdAt)]
@@ -505,17 +493,12 @@ class DataStore {
             let businessEntities = try modelContext.fetch(businessDescriptor)
             if let entity = businessEntities.first {
                 businessProfile = BusinessProfileEntityMapper.toDomain(entity)
-            } else if let accountingProfile {
-                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
-                    from: accountingProfile,
-                    sensitivePayload: payload
-                )
             } else {
                 businessProfile = nil
             }
 
             if let businessProfile {
-                let defaultTaxYear = accountingProfile?.fiscalYear ?? currentFiscalYear()
+                let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
                 let businessId = businessProfile.id
                 let taxDescriptor = FetchDescriptor<TaxYearProfileEntity>(
                     predicate: #Predicate {
@@ -525,12 +508,6 @@ class DataStore {
                 let taxEntities = try modelContext.fetch(taxDescriptor)
                 if let entity = taxEntities.first {
                     currentTaxYearProfile = TaxYearProfileEntityMapper.toDomain(entity)
-                } else if let accountingProfile {
-                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
-                        from: accountingProfile,
-                        businessId: businessProfile.id,
-                        taxPackVersion: "\(defaultTaxYear)-v1"
-                    )
                 } else {
                     currentTaxYearProfile = TaxYearProfile(
                         businessId: businessProfile.id,
@@ -542,20 +519,7 @@ class DataStore {
                 currentTaxYearProfile = nil
             }
         } catch {
-            AppLogger.dataStore.warning("Canonical profile cache refresh skipped: \(error.localizedDescription)")
-            if let accountingProfile {
-                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
-                    from: accountingProfile,
-                    sensitivePayload: payload
-                )
-                if let businessProfile {
-                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
-                        from: accountingProfile,
-                        businessId: businessProfile.id,
-                        taxPackVersion: "\(accountingProfile.fiscalYear)-v1"
-                    )
-                }
-            }
+            AppLogger.dataStore.warning("Canonical profile cache refresh failed: \(error.localizedDescription)")
         }
     }
 
@@ -602,109 +566,27 @@ class DataStore {
            let payload = ProfileSecureStore.load(profileId: canonicalProfileSecureStoreId) {
             return payload
         }
-
-        if let legacyProfileSecureStoreId,
-           let payload = ProfileSecureStore.load(profileId: legacyProfileSecureStoreId) {
-            if let canonicalProfileSecureStoreId,
-               canonicalProfileSecureStoreId != legacyProfileSecureStoreId {
-                _ = ProfileSecureStore.save(payload, profileId: canonicalProfileSecureStoreId)
-            }
-            return payload
-        }
-
-        guard let legacyPayload = fallbackSensitivePayloadFromLegacyProfile() else {
-            return nil
-        }
-        if let canonicalProfileSecureStoreId {
-            _ = ProfileSecureStore.save(legacyPayload, profileId: canonicalProfileSecureStoreId)
-        }
-        if let legacyProfileSecureStoreId {
-            _ = ProfileSecureStore.save(legacyPayload, profileId: legacyProfileSecureStoreId)
-        }
-        return legacyPayload
-    }
-
-    private func fallbackSensitivePayloadFromLegacyProfile() -> ProfileSensitivePayload? {
-        guard let accountingProfile else {
-            return nil
-        }
-
-        let payload = ProfileSensitivePayload.fromLegacyProfile(
-            ownerNameKana: accountingProfile.ownerNameKana,
-            postalCode: accountingProfile.postalCode,
-            address: accountingProfile.address,
-            phoneNumber: accountingProfile.phoneNumber,
-            dateOfBirth: accountingProfile.dateOfBirth,
-            businessCategory: accountingProfile.businessCategory,
-            myNumberFlag: accountingProfile.myNumberFlag
-        )
-
-        let hasLegacySensitiveValue =
-            payload.ownerNameKana != nil ||
-            payload.postalCode != nil ||
-            payload.address != nil ||
-            payload.phoneNumber != nil ||
-            payload.dateOfBirth != nil ||
-            payload.businessCategory != nil ||
-            payload.myNumberFlag != nil
-
-        if hasLegacySensitiveValue {
-            AppLogger.dataStore.info("Profile sensitive payload backfilled from legacy profile")
-            return payload
-        }
         return nil
     }
 
     private func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
         let canonicalId = businessProfileId.uuidString
-        guard ProfileSecureStore.save(payload, profileId: canonicalId) else {
-            return false
-        }
-        if let legacyProfileSecureStoreId,
-           legacyProfileSecureStoreId != canonicalId {
-            _ = ProfileSecureStore.save(payload, profileId: legacyProfileSecureStoreId)
-        }
-        return true
+        return ProfileSecureStore.save(payload, profileId: canonicalId)
     }
 
-    private func persistLegacyFiscalYearIfNeeded(_ taxYear: Int) {
-        guard let accountingProfile, accountingProfile.fiscalYear != taxYear else {
-            return
-        }
-        accountingProfile.fiscalYear = taxYear
-        accountingProfile.updatedAt = Date()
-    }
-
-    func etaxExportProfile(for fiscalYear: Int) -> PPAccountingProfile? {
+    /// canonical プロフィールを直接返す（PPAccountingProfile を経由しない）
+    func canonicalExportProfiles(
+        for fiscalYear: Int
+    ) -> (business: BusinessProfile, taxYear: TaxYearProfile, sensitive: ProfileSensitivePayload?)? {
         guard let businessProfile else {
-            return accountingProfile
+            return nil
         }
-
-        let payload = loadSensitivePayload()
-        let taxYearProfile = resolvedTaxYearProfileForExport(
+        let taxYear = resolvedTaxYearProfileForExport(
             fiscalYear: fiscalYear,
             businessId: businessProfile.id
         )
-
-        return PPAccountingProfile(
-            id: businessProfile.id.uuidString,
-            fiscalYear: fiscalYear,
-            bookkeepingMode: bookkeepingModeForExport(taxYearProfile.bookkeepingBasis),
-            businessName: businessProfile.businessName,
-            ownerName: businessProfile.ownerName,
-            taxOfficeCode: normalizedOptionalString(businessProfile.taxOfficeCode),
-            isBlueReturn: taxYearProfile.filingStyle.isBlue,
-            defaultPaymentAccountId: businessProfile.defaultPaymentAccountId,
-            openingDate: businessProfile.openingDate,
-            lockedYears: taxYearProfile.yearLockState == .open ? [] : [fiscalYear],
-            ownerNameKana: normalizedOptionalString(payload?.ownerNameKana ?? businessProfile.ownerNameKana),
-            postalCode: normalizedOptionalString(payload?.postalCode ?? businessProfile.postalCode),
-            address: normalizedOptionalString(payload?.address ?? businessProfile.businessAddress),
-            phoneNumber: normalizedOptionalString(payload?.phoneNumber ?? businessProfile.phoneNumber),
-            dateOfBirth: payload?.dateOfBirth,
-            businessCategory: normalizedOptionalString(payload?.businessCategory),
-            myNumberFlag: payload?.myNumberFlag
-        )
+        let sensitive = loadSensitivePayload()
+        return (business: businessProfile, taxYear: taxYear, sensitive: sensitive)
     }
 
     private func taxYearProfileForExport(fiscalYear: Int, businessId: UUID) -> TaxYearProfile? {
@@ -753,15 +635,6 @@ class DataStore {
             taxYear: fiscalYear,
             taxPackVersion: "\(fiscalYear)-v1"
         )
-    }
-
-    private func bookkeepingModeForExport(_ bookkeepingBasis: BookkeepingBasis) -> BookkeepingMode {
-        switch bookkeepingBasis {
-        case .singleEntry:
-            return .singleEntry
-        case .doubleEntry, .cashBasis:
-            return .doubleEntry
-        }
     }
 
     private func normalizedOptionalString(_ value: String?) -> String? {
@@ -1720,10 +1593,12 @@ class DataStore {
         )
         modelContext.insert(transaction)
 
-        // Phase 4B: 仕訳を自動生成
-        let engine = AccountingEngine(modelContext: modelContext)
-        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-            transaction.journalEntryId = entry.id
+        // Phase 4B: 仕訳を自動生成（canonical正本モード時はスキップ）
+        if !FeatureFlags.useCanonicalPosting {
+            let engine = AccountingEngine(modelContext: modelContext)
+            if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
+                transaction.journalEntryId = entry.id
+            }
         }
 
         save()
@@ -1893,10 +1768,12 @@ class DataStore {
 
         transaction.updatedAt = Date()
 
-        // Phase 4B: 仕訳を再生成（bookkeepingMode が locked でない場合）
-        let engine = AccountingEngine(modelContext: modelContext)
-        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-            transaction.journalEntryId = entry.id
+        // Phase 4B: 仕訳を再生成（canonical正本モード時はスキップ）
+        if !FeatureFlags.useCanonicalPosting {
+            let engine = AccountingEngine(modelContext: modelContext)
+            if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
+                transaction.journalEntryId = entry.id
+            }
         }
 
         save()
@@ -1916,9 +1793,11 @@ class DataStore {
         transaction.deletedAt = Date()
         transaction.updatedAt = Date()
 
-        // Phase 4B: 対応する仕訳を削除
-        let engine = AccountingEngine(modelContext: modelContext)
-        engine.deleteJournalEntry(for: transaction.id)
+        // Phase 4B: 対応する仕訳を削除（canonical正本モード時はスキップ）
+        if !FeatureFlags.useCanonicalPosting {
+            let engine = AccountingEngine(modelContext: modelContext)
+            engine.deleteJournalEntry(for: transaction.id)
+        }
 
         save()
         refreshTransactions()
@@ -3449,10 +3328,7 @@ class DataStore {
         let documentRecords = listDocumentRecords()
         let documentFilesToDelete = documentRecords.map(\.storedFileName)
         let complianceLogs = listComplianceLogs(limit: Int.max)
-        let secureStoreIds = Set([
-            canonicalProfileSecureStoreId,
-            legacyProfileSecureStoreId
-        ].compactMap { $0 })
+        let secureStoreIds = Set([canonicalProfileSecureStoreId].compactMap { $0 })
 
         for p in projects { modelContext.delete(p) }
         for t in transactions { modelContext.delete(t) }
@@ -3462,7 +3338,9 @@ class DataStore {
         for a in accounts { modelContext.delete(a) }
         for je in journalEntries { modelContext.delete(je) }
         for jl in journalLines { modelContext.delete(jl) }
-        if let profile = accountingProfile { modelContext.delete(profile) }
+        if let legacyProfiles = try? modelContext.fetch(FetchDescriptor<PPAccountingProfile>()) {
+            for profile in legacyProfiles { modelContext.delete(profile) }
+        }
         if let businessProfiles = try? modelContext.fetch(FetchDescriptor<BusinessProfileEntity>()) {
             for profile in businessProfiles {
                 modelContext.delete(profile)
@@ -3494,7 +3372,6 @@ class DataStore {
         accounts = []
         journalEntries = []
         journalLines = []
-        accountingProfile = nil
         businessProfile = nil
         currentTaxYearProfile = nil
         fixedAssets = []

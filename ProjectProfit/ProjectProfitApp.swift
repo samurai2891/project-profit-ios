@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import SwiftData
 
@@ -12,6 +13,11 @@ struct ProjectProfitApp: App {
 
     init() {
         UNUserNotificationCenter.current().delegate = notificationDelegate
+
+        // REL-P0-01: 単一正本へカットオーバー
+        FeatureFlags.switchToCanonical()
+        AppLogger.general.info("Canonical cutover active: \(FeatureFlags.debugDescription)")
+
         do {
             sharedModelContainer = try ModelContainerFactory.makeAppContainer()
         } catch {

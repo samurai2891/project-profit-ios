@@ -5,16 +5,54 @@ import Foundation
 @MainActor
 enum ShushiNaiyakushoBuilder {
 
-    /// 白色申告 収支内訳書用のEtaxFormを生成
+    /// 白色申告 収支内訳書用のEtaxFormを生成（canonical profile ベース）
     static func build(
         fiscalYear: Int,
         profitLoss: ProfitLossReport,
         accounts: [PPAccount],
-        profile: PPAccountingProfile? = nil,
+        businessProfile: BusinessProfile? = nil,
+        taxYearProfile: TaxYearProfile? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil,
         fixedAssets: [PPFixedAsset] = [],
         journalLines: [PPJournalLine] = [],
         journalEntries: [PPJournalEntry] = []
     ) -> EtaxForm {
+        let fields = buildFields(
+            fiscalYear: fiscalYear,
+            profitLoss: profitLoss,
+            accounts: accounts,
+            fixedAssets: fixedAssets,
+            journalLines: journalLines,
+            journalEntries: journalEntries
+        )
+
+        var allFields = fields
+        if let businessProfile {
+            allFields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: sensitivePayload
+            ))
+        }
+
+        return EtaxForm(
+            fiscalYear: fiscalYear,
+            formType: .whiteReturn,
+            fields: allFields,
+            generatedAt: Date()
+        )
+    }
+
+    // MARK: - Private
+
+    /// 共通のフィールド生成ロジック（申告者情報を除く）
+    private static func buildFields(
+        fiscalYear: Int,
+        profitLoss: ProfitLossReport,
+        accounts: [PPAccount],
+        fixedAssets: [PPFixedAsset],
+        journalLines: [PPJournalLine],
+        journalEntries: [PPJournalEntry]
+    ) -> [EtaxField] {
         var fields: [EtaxField] = []
 
         // 収入 — 売上のみ（白色は簡易）
@@ -105,16 +143,6 @@ enum ShushiNaiyakushoBuilder {
             ))
         }
 
-        // 共通の申告者情報
-        if let profile {
-            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(profile: profile))
-        }
-
-        return EtaxForm(
-            fiscalYear: fiscalYear,
-            formType: .whiteReturn,
-            fields: fields,
-            generatedAt: Date()
-        )
+        return fields
     }
 }

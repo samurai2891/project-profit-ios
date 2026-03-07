@@ -68,7 +68,6 @@ struct GoldenFixtureLoader {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fixture.businessProfile.fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         let command = SaveProfileSettingsCommand(
@@ -422,7 +421,7 @@ struct GoldenSnapshotBuilder {
     static func blueReturnSnapshot(from scenario: GoldenScenario) -> GoldenEtaxFormSnapshot {
         let fiscalYear = scenario.fixture.businessProfile.fiscalYear
         let projected = scenario.dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let profile = scenario.dataStore.etaxExportProfile(for: fiscalYear)
+        let canonical = scenario.dataStore.canonicalExportProfiles(for: fiscalYear)
         let form = EtaxFieldPopulator.populate(
             fiscalYear: fiscalYear,
             profitLoss: AccountingReportService.generateProfitLoss(
@@ -441,7 +440,9 @@ struct GoldenSnapshotBuilder {
             ),
             formType: .blueReturn,
             accounts: scenario.dataStore.accounts,
-            profile: profile,
+            businessProfile: canonical?.business,
+            taxYearProfile: canonical?.taxYear,
+            sensitivePayload: canonical?.sensitive,
             inventoryRecord: scenario.dataStore.getInventoryRecord(fiscalYear: fiscalYear)
         )
         return GoldenEtaxFormSnapshot(

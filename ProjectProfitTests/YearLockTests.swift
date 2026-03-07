@@ -33,13 +33,9 @@ final class YearLockTests: XCTestCase {
     }
 
     private func setupProfileAndLockYear(_ year: Int) {
-        // ブートストラップでプロファイルが作成されるが、確実にプロファイルがある状態にする
-        if dataStore.accountingProfile == nil {
-            let profile = PPAccountingProfile(fiscalYear: year)
-            context.insert(profile)
-            try? context.save()
-            dataStore.loadData()
-        }
+        // ブートストラップで canonical プロファイルが作成される前提。
+        // loadData() により businessProfile が確実にセットされた状態で lockFiscalYear を呼ぶ。
+        dataStore.loadData()
         dataStore.lockFiscalYear(year)
     }
 
@@ -71,17 +67,14 @@ final class YearLockTests: XCTestCase {
         XCTAssertEqual(persistedTaxYearProfile(2025)?.yearLockStateRaw, YearLockState.finalLock.rawValue)
     }
 
-    func testUnlockYearPrefersCanonicalStateWhenLegacyLockRemains() {
+    func testUnlockYearUsesCanonicalState() {
         dataStore.lockFiscalYear(2025)
-        dataStore.accountingProfile?.lockedYears = [2025]
-        dataStore.accountingProfile?.updatedAt = Date()
-        _ = dataStore.save()
+        XCTAssertTrue(dataStore.isYearLocked(2025))
 
         dataStore.unlockFiscalYear(2025)
 
         XCTAssertFalse(dataStore.isYearLocked(2025))
         XCTAssertEqual(persistedTaxYearProfile(2025)?.yearLockStateRaw, YearLockState.open.rawValue)
-        XCTAssertEqual(dataStore.accountingProfile?.lockedYears, [2025], "legacy lock remains but canonical state should win")
     }
 
     func testTransitionFiscalYearStateFollowsAllowedSequence() {
@@ -110,8 +103,7 @@ final class YearLockTests: XCTestCase {
         )
     }
 
-    func testIsYearLocked_usesCanonicalProfileWhenLegacyProfileMissing() {
-        dataStore.accountingProfile = nil
+    func testIsYearLocked_usesCanonicalProfile() {
         dataStore.currentTaxYearProfile = TaxYearProfile(
             businessId: UUID(),
             taxYear: 2025,
@@ -251,12 +243,7 @@ final class YearLockTests: XCTestCase {
     func testDeleteManualJournalEntry_blockedByYearLock() {
         // まず未ロック状態で仕訳追加
         let date2025 = dateFrom(year: 2025, month: 3, day: 1)
-        if dataStore.accountingProfile == nil {
-            let profile = PPAccountingProfile(fiscalYear: 2025)
-            context.insert(profile)
-            try? context.save()
-            dataStore.loadData()
-        }
+        dataStore.loadData()
 
         XCTAssertFalse(dataStore.isYearLocked(2025), "2025年は仕訳追加前に未ロックの前提: \(yearLockDiagnostics(for: 2025))")
 
@@ -308,8 +295,6 @@ final class YearLockTests: XCTestCase {
         let businessId = dataStore.businessProfile?.id.uuidString ?? "nil"
         let currentTaxYear = dataStore.currentTaxYearProfile?.taxYear.description ?? "nil"
         let currentLockState = dataStore.currentTaxYearProfile?.yearLockState.rawValue ?? "nil"
-        let legacyFiscalYear = dataStore.accountingProfile?.fiscalYear.description ?? "nil"
-        let legacyLockedYears = dataStore.accountingProfile?.lockedYears?.description ?? "nil"
 
         let descriptor = FetchDescriptor<TaxYearProfileEntity>()
         let persistedProfiles = (try? context.fetch(descriptor)) ?? []
@@ -319,6 +304,6 @@ final class YearLockTests: XCTestCase {
             .joined(separator: ",")
         let persistedState = persistedTaxYearProfile(year)?.yearLockStateRaw ?? "nil"
 
-        return "businessId=\(businessId) currentTaxYear=\(currentTaxYear) currentLockState=\(currentLockState) legacyFiscalYear=\(legacyFiscalYear) legacyLockedYears=\(legacyLockedYears) persistedState=\(persistedState) allTaxYearProfiles=[\(allTaxYears)]"
+        return "businessId=\(businessId) currentTaxYear=\(currentTaxYear) currentLockState=\(currentLockState) persistedState=\(persistedState) allTaxYearProfiles=[\(allTaxYears)]"
     }
 }

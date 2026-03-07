@@ -36,7 +36,7 @@ enum FormEngine {
         let startMonth = FiscalYearSettings.startMonth
         let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
         let accounts = dataStore.accounts
-        let profile = dataStore.etaxExportProfile(for: fiscalYear)
+        let canonical = dataStore.canonicalExportProfiles(for: fiscalYear)
 
         switch filingStyle {
         case .blueGeneral:
@@ -61,7 +61,9 @@ enum FormEngine {
                 balanceSheet: bs,
                 formType: .blueReturn,
                 accounts: accounts,
-                profile: profile,
+                businessProfile: canonical?.business,
+                taxYearProfile: canonical?.taxYear,
+                sensitivePayload: canonical?.sensitive,
                 inventoryRecord: inventoryRecord
             )
 
@@ -69,7 +71,9 @@ enum FormEngine {
             return try CashBasisReturnBuilder.build(
                 fiscalYear: fiscalYear,
                 dataStore: dataStore,
-                profile: profile
+                businessProfile: canonical?.business,
+                taxYearProfile: canonical?.taxYear,
+                sensitivePayload: canonical?.sensitive
             )
 
         case .white:
@@ -84,7 +88,9 @@ enum FormEngine {
                 fiscalYear: fiscalYear,
                 profitLoss: pl,
                 accounts: accounts,
-                profile: profile,
+                businessProfile: canonical?.business,
+                taxYearProfile: canonical?.taxYear,
+                sensitivePayload: canonical?.sensitive,
                 fixedAssets: dataStore.fixedAssets,
                 journalLines: projected.lines,
                 journalEntries: projected.entries

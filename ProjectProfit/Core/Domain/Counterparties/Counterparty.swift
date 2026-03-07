@@ -20,6 +20,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
     let defaultTaxCodeId: String?
     let defaultProjectId: UUID?
     let notes: String?
+    let payeeInfo: PayeeInfo?
     let createdAt: Date
     let updatedAt: Date
 
@@ -41,6 +42,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         defaultTaxCodeId: String? = nil,
         defaultProjectId: UUID? = nil,
         notes: String? = nil,
+        payeeInfo: PayeeInfo? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -61,6 +63,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         self.defaultTaxCodeId = defaultTaxCodeId
         self.defaultProjectId = defaultProjectId
         self.notes = notes
+        self.payeeInfo = payeeInfo
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -74,7 +77,8 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         statusEffectiveFrom: Date?? = nil,
         statusEffectiveTo: Date?? = nil,
         defaultAccountId: UUID?? = nil,
-        defaultTaxCodeId: String?? = nil
+        defaultTaxCodeId: String?? = nil,
+        payeeInfo: PayeeInfo?? = nil
     ) -> Counterparty {
         Counterparty(
             id: self.id,
@@ -94,6 +98,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
             defaultTaxCodeId: defaultTaxCodeId ?? self.defaultTaxCodeId,
             defaultProjectId: self.defaultProjectId,
             notes: self.notes,
+            payeeInfo: payeeInfo ?? self.payeeInfo,
             createdAt: self.createdAt,
             updatedAt: Date()
         )

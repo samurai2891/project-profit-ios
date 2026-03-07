@@ -80,7 +80,8 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
     func testIsSupportedYearByFormType() {
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025, formType: .blueReturn))
         XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2025, formType: .whiteReturn))
-        XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 2026, formType: .blueReturn))
+        XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2026, formType: .blueReturn))
+        XCTAssertTrue(TaxYearDefinitionLoader.isSupported(year: 2026, formType: .whiteReturn))
         XCTAssertFalse(TaxYearDefinitionLoader.isSupported(year: 1900, formType: .blueReturn))
     }
 
@@ -90,10 +91,10 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertTrue(years.contains(2026))
     }
 
-    func testSupportedYearsByFormContains2025() {
+    func testSupportedYearsByFormContains2025And2026() {
         let years = TaxYearDefinitionLoader.supportedYears(formType: .whiteReturn)
         XCTAssertTrue(years.contains(2025))
-        XCTAssertFalse(years.contains(2026))
+        XCTAssertTrue(years.contains(2026))
     }
 
     // MARK: - TaxYearPack Bridge
@@ -114,10 +115,60 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(pack.version, "2026-v1")
     }
 
+    // MARK: - 2026 Pack-based Definition
+
+    func testLoadDefinition_2026ReturnsNonNil() {
+        let definition = TaxYearDefinitionLoader.loadDefinition(for: 2026)
+        XCTAssertNotNil(definition, "TaxYear2026 definition should be loadable")
+        XCTAssertEqual(definition?.fiscalYear, 2026)
+        XCTAssertNotNil(definition?.forms?["blue_general"])
+        XCTAssertNotNil(definition?.forms?["white_shushi"])
+    }
+
+    func testFieldLabel_2026_blueReturnSalesRevenue() {
+        let label = TaxYearDefinitionLoader.fieldLabel(
+            for: .salesRevenue, formType: .blueReturn, fiscalYear: 2026
+        )
+        XCTAssertEqual(label, "ア 売上（収入）金額")
+    }
+
+    func testFieldLabel_2026_whiteReturnSalesRevenue() {
+        let label = TaxYearDefinitionLoader.fieldLabel(
+            for: .salesRevenue, formType: .whiteReturn, fiscalYear: 2026
+        )
+        XCTAssertEqual(label, "収入金額")
+    }
+
+    func testXmlTag_2026_blueReturnSalesRevenue() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(
+            for: "revenue_sales_revenue", formType: .blueReturn, fiscalYear: 2026
+        )
+        XCTAssertEqual(xmlTag, "AMF00100")
+    }
+
+    func testXmlTag_2026_whiteReturnExpenseTaxes() {
+        let xmlTag = TaxYearDefinitionLoader.xmlTag(
+            for: "shushi_expense_taxes", formType: .whiteReturn, fiscalYear: 2026
+        )
+        XCTAssertEqual(xmlTag, "AIG00220")
+    }
+
+    func testFilingDeadline_2026IsMarch16() async throws {
+        let provider = BundledTaxYearPackProvider(bundle: .main)
+        let pack = try await provider.pack(for: 2026)
+        XCTAssertEqual(pack.filingDeadlineMonth, 3)
+        XCTAssertEqual(pack.filingDeadlineDay, 16)
+    }
+
     // MARK: - Coverage
 
     func testAllTaxLinesCovered_2025() {
         let uncovered = TaxYearDefinitionLoader.validateCoverage(for: 2025)
         XCTAssertTrue(uncovered.isEmpty, "All TaxLines should be covered in TaxYear2025.json. Missing: \(uncovered.map(\.rawValue))")
+    }
+
+    func testAllTaxLinesCovered_2026() {
+        let uncovered = TaxYearDefinitionLoader.validateCoverage(for: 2026)
+        XCTAssertTrue(uncovered.isEmpty, "All TaxLines should be covered in TaxYear2026.json. Missing: \(uncovered.map(\.rawValue))")
     }
 }

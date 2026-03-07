@@ -3,9 +3,10 @@ import SwiftData
 
 // MARK: - PPAccountingProfile
 
-/// 会計設定プロファイル（1レコードのみ、id = "profile-default" で固定）
-/// ブートストラップ時に存在チェック → 未作成なら初期値で生成する。
-/// NOTE: modelContainer への登録は 4A-8 で一括で行う。
+/// レガシー会計設定プロファイル（read-only legacy: 新規作成禁止）
+/// SwiftData @Model として残し、既存データの読み込みおよびバックアップ/リストア互換性を維持する。
+/// 新規コードでは BusinessProfile / TaxYearProfile を使用すること。
+@available(*, deprecated, message: "Use BusinessProfile / TaxYearProfile instead. Read-only legacy model.")
 @Model
 final class PPAccountingProfile {
     @Attribute(.unique) var id: String        // "profile-default" 固定

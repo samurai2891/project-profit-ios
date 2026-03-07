@@ -187,9 +187,8 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertTrue(entries.isEmpty)
     }
 
-    func testDefaultPaymentAccountPreferencePrefersCanonicalBusinessProfile() {
+    func testDefaultPaymentAccountPreferenceReturnsBusinessProfileValue() {
         let businessId = UUID()
-        dataStore.accountingProfile?.defaultPaymentAccountId = "acct-cash"
         dataStore.businessProfile = BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
@@ -199,9 +198,8 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(dataStore.defaultPaymentAccountPreference, "acct-bank")
     }
 
-    func testEtaxExportProfileUsesCanonicalDefaultPaymentAccount() {
+    func testCanonicalExportProfilesReturnsBusinessDefaultPaymentAccount() {
         let businessId = UUID()
-        dataStore.accountingProfile?.defaultPaymentAccountId = "acct-cash"
         dataStore.businessProfile = BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
@@ -213,15 +211,13 @@ final class DataStoreAccountingTests: XCTestCase {
             taxPackVersion: "2025-v1"
         )
 
-        let profile = dataStore.etaxExportProfile(for: 2025)
+        let profiles = dataStore.canonicalExportProfiles(for: 2025)
 
-        XCTAssertEqual(profile?.defaultPaymentAccountId, "acct-bank")
+        XCTAssertEqual(profiles?.business.defaultPaymentAccountId, "acct-bank")
     }
 
-    func testEtaxExportProfileUsesCanonicalTaxYearSettingsInsteadOfLegacySettings() {
+    func testCanonicalExportProfilesReturnsTaxYearSettings() {
         let businessId = UUID()
-        dataStore.accountingProfile?.isBlueReturn = true
-        dataStore.accountingProfile?.bookkeepingMode = .doubleEntry
         dataStore.businessProfile = BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
@@ -238,10 +234,10 @@ final class DataStoreAccountingTests: XCTestCase {
             taxPackVersion: "2025-v1"
         )
 
-        let profile = dataStore.etaxExportProfile(for: 2025)
+        let profiles = dataStore.canonicalExportProfiles(for: 2025)
 
-        XCTAssertEqual(profile?.isBlueReturn, false)
-        XCTAssertEqual(profile?.bookkeepingMode, .singleEntry)
+        XCTAssertEqual(profiles?.taxYear.isBlueReturn, false)
+        XCTAssertEqual(profiles?.taxYear.bookkeepingBasis, .singleEntry)
     }
 
     func testProfileSensitivePayloadLoadsFromCanonicalSecureStore() {
@@ -269,49 +265,55 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(loaded?.includeSensitiveInExport, false)
     }
 
-    func testProfileSensitivePayloadFallsBackToLegacySecureStore() {
-        guard let legacyProfile = dataStore.accountingProfile else {
-            return XCTFail("legacy profile should exist after bootstrap")
-        }
-
-        let payload = ProfileSensitivePayload.fromLegacyProfile(
-            ownerNameKana: "レガシー",
-            postalCode: "1000001",
-            address: "東京都千代田区1-1-1",
-            phoneNumber: "0312345678",
-            dateOfBirth: nil,
-            businessCategory: "デザイン",
-            myNumberFlag: false,
-            includeSensitiveInExport: true
-        )
-        defer { _ = ProfileSecureStore.delete(profileId: legacyProfile.id) }
-
+    func testProfileSensitivePayloadReturnsNilWithoutBusinessProfile() {
         dataStore.businessProfile = nil
-        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: legacyProfile.id))
 
         let loaded = dataStore.profileSensitivePayload
 
-        XCTAssertEqual(loaded?.ownerNameKana, "レガシー")
-        XCTAssertEqual(loaded?.postalCode, "1000001")
-        XCTAssertEqual(loaded?.address, "東京都千代田区1-1-1")
+        XCTAssertNil(loaded, "No sensitive payload should load without a canonical business profile")
     }
 
-    func testProfileSensitivePayloadBackfillsFromLegacyProfileFieldsWhenSecureStoreMissing() {
-        guard let legacyProfile = dataStore.accountingProfile else {
-            return XCTFail("legacy profile should exist after bootstrap")
-        }
-
+    func testCanonicalExportProfilesIncludesSensitivePayloadFromSecureStore() {
         let businessId = UUID()
-        let legacyProfileId = "legacy-profile-\(UUID().uuidString)"
         let canonicalProfileId = businessId.uuidString
-        legacyProfile.id = legacyProfileId
-        legacyProfile.ownerNameKana = "ヤマダタロウ"
-        legacyProfile.postalCode = "1000001"
-        legacyProfile.address = "東京都千代田区千代田1-1"
-        legacyProfile.phoneNumber = "0312345678"
-        legacyProfile.businessCategory = "ソフトウェア開発"
-        legacyProfile.myNumberFlag = true
-        legacyProfile.dateOfBirth = Date(timeIntervalSince1970: 946_684_800)
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "ヤマダタロウ",
+            postalCode: "1000001",
+            address: "東京都千代田区千代田1-1",
+            phoneNumber: "0312345678",
+            dateOfBirth: Date(timeIntervalSince1970: 946_684_800),
+            businessCategory: "ソフトウェア開発",
+            myNumberFlag: true,
+            includeSensitiveInExport: true
+        )
+        defer { _ = ProfileSecureStore.delete(profileId: canonicalProfileId) }
+
+        dataStore.businessProfile = BusinessProfile(
+            id: businessId,
+            ownerName: "Canonical Owner"
+        )
+        dataStore.currentTaxYearProfile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            taxPackVersion: "2025-v1"
+        )
+        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: canonicalProfileId))
+
+        let profiles = dataStore.canonicalExportProfiles(for: 2025)
+
+        XCTAssertEqual(profiles?.sensitive?.ownerNameKana, "ヤマダタロウ")
+        XCTAssertEqual(profiles?.sensitive?.postalCode, "1000001")
+        XCTAssertEqual(profiles?.sensitive?.address, "東京都千代田区千代田1-1")
+        XCTAssertEqual(profiles?.sensitive?.phoneNumber, "0312345678")
+        XCTAssertEqual(profiles?.sensitive?.businessCategory, "ソフトウェア開発")
+        XCTAssertEqual(profiles?.sensitive?.myNumberFlag, true)
+        XCTAssertEqual(profiles?.sensitive?.dateOfBirth, Date(timeIntervalSince1970: 946_684_800))
+    }
+
+    func testCanonicalExportProfilesReturnsNilSensitiveWhenSecureStoreEmpty() {
+        let businessId = UUID()
+        let canonicalProfileId = businessId.uuidString
+        _ = ProfileSecureStore.delete(profileId: canonicalProfileId)
 
         dataStore.businessProfile = BusinessProfile(
             id: businessId,
@@ -323,26 +325,10 @@ final class DataStoreAccountingTests: XCTestCase {
             taxPackVersion: "2025-v1"
         )
 
-        _ = ProfileSecureStore.delete(profileId: canonicalProfileId)
-        _ = ProfileSecureStore.delete(profileId: legacyProfileId)
-        defer {
-            _ = ProfileSecureStore.delete(profileId: canonicalProfileId)
-            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
-        }
+        let profiles = dataStore.canonicalExportProfiles(for: 2025)
 
-        let profile = dataStore.etaxExportProfile(for: 2025)
-        let persistedPayload = ProfileSecureStore.load(profileId: canonicalProfileId)
-
-        XCTAssertEqual(profile?.ownerNameKana, "ヤマダタロウ")
-        XCTAssertEqual(profile?.postalCode, "1000001")
-        XCTAssertEqual(profile?.address, "東京都千代田区千代田1-1")
-        XCTAssertEqual(profile?.phoneNumber, "0312345678")
-        XCTAssertEqual(profile?.businessCategory, "ソフトウェア開発")
-        XCTAssertEqual(profile?.myNumberFlag, true)
-        XCTAssertEqual(profile?.dateOfBirth, Date(timeIntervalSince1970: 946_684_800))
-        XCTAssertEqual(persistedPayload?.ownerNameKana, "ヤマダタロウ")
-        XCTAssertEqual(persistedPayload?.businessCategory, "ソフトウェア開発")
-        XCTAssertEqual(persistedPayload?.myNumberFlag, true)
+        XCTAssertNotNil(profiles, "profiles should exist when business and taxYear are set")
+        XCTAssertNil(profiles?.sensitive, "sensitive should be nil when secure store has no data")
     }
 
     func testLegacyLedgerDiagnosticsAreEmptyWithoutLegacyData() {

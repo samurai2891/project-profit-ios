@@ -369,3 +369,161 @@ jobs:
           name: performance-gate-artifacts
           path: /tmp/release-quality/performance-gate
           if-no-files-found: warn
+
+  books:
+    name: Books
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run books lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: books
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/books
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/AccountingReportServiceTests
+            ProjectProfitTests/AccountingEngineTests
+            ProjectProfitTests/AccountingBootstrapTests
+            ProjectProfitTests/AccountingIntegrationTests
+            ProjectProfitTests/ClosingEntryTests
+            ProjectProfitTests/DocumentAndSubLedgerTests
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="books lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/books/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/books/books.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/books/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload books artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: books-artifacts
+          path: /tmp/release-quality/books
+          if-no-files-found: warn
+
+  forms:
+    name: Forms
+    runs-on: macos-latest
+    needs: simulator-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run forms lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: forms
+          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/forms
+          RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_ONLY_TESTING: |
+            ProjectProfitTests/ShushiNaiyakushoBuilderTests
+            ProjectProfitTests/EtaxFieldPopulatorTests
+            ProjectProfitTests/EtaxCharacterValidatorTests
+            ProjectProfitTests/EtaxXtxExporterTests
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="forms lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="/tmp/release-quality/forms/summary.md"
+          fi
+          if [[ -z "$xcresult_path" ]]; then
+            xcresult_path="/tmp/release-quality/forms/forms.xcresult"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="/tmp/release-quality/forms/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "xcresult_path=$xcresult_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload forms artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forms-artifacts
+          path: /tmp/release-quality/forms
+          if-no-files-found: warn

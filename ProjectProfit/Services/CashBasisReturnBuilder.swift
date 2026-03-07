@@ -16,12 +16,36 @@ enum CashBasisReturnBuilder {
         }
     }
 
-    /// 現金主義用の EtaxForm を生成
+    /// 現金主義用の EtaxForm を生成（canonical profile ベース）
     static func build(
         fiscalYear: Int,
         dataStore: DataStore,
-        profile: PPAccountingProfile?
+        businessProfile: BusinessProfile? = nil,
+        taxYearProfile: TaxYearProfile? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil
     ) throws -> EtaxForm {
+        var fields = try buildCoreFields(fiscalYear: fiscalYear, dataStore: dataStore)
+
+        if let businessProfile {
+            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: sensitivePayload
+            ))
+        }
+
+        return EtaxForm(
+            fiscalYear: fiscalYear,
+            formType: .blueCashBasis,
+            fields: fields,
+            generatedAt: Date()
+        )
+    }
+
+    /// 収支フィールドの共通生成ロジック
+    private static func buildCoreFields(
+        fiscalYear: Int,
+        dataStore: DataStore
+    ) throws -> [EtaxField] {
         let startMonth = FiscalYearSettings.startMonth
         let startDate = startOfFiscalYear(fiscalYear, startMonth: startMonth)
         let endDate = endOfFiscalYear(fiscalYear, startMonth: startMonth)
@@ -95,17 +119,7 @@ enum CashBasisReturnBuilder {
             section: .income
         ))
 
-        // 申告者情報
-        if let profile {
-            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(profile: profile))
-        }
-
-        return EtaxForm(
-            fiscalYear: fiscalYear,
-            formType: .blueCashBasis,
-            fields: fields,
-            generatedAt: Date()
-        )
+        return fields
     }
 
     // MARK: - Helpers

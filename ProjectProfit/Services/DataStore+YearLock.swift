@@ -58,9 +58,6 @@ extension DataStore {
         if let canonicalState = persistedYearLockState(for: year) {
             return canonicalState
         }
-        if accountingProfile?.isYearLocked(year) == true {
-            return .finalLock
-        }
         return .open
     }
 

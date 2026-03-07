@@ -56,11 +56,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let command = SaveProfileSettingsCommand(
             ownerName: "山田太郎",
             ownerNameKana: "ヤマダタロウ",
@@ -106,11 +102,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let existingTaxProfile = initial.taxYearProfile.updated(
             vatStatus: .taxable,
             invoiceIssuerStatusAtYear: .registered
@@ -159,11 +151,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let command = SaveProfileSettingsCommand(
             ownerName: initial.businessProfile.ownerName,
             ownerNameKana: initial.businessProfile.ownerNameKana,

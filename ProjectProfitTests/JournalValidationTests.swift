@@ -85,7 +85,6 @@ final class JournalValidationTests: XCTestCase {
     // MARK: - Locked Fiscal Year Tests
 
     func testValidateLockedFiscalYear() {
-        let profile = PPAccountingProfile(fiscalYear: 2025, lockedAt: Date())
         let entry = PPJournalEntry(
             sourceKey: "tx:\(UUID())",
             date: Calendar(identifier: .gregorian).date(from: DateComponents(year: 2025, month: 6, day: 15))!,
@@ -96,7 +95,7 @@ final class JournalValidationTests: XCTestCase {
             PPJournalLine(entryId: entry.id, accountId: "acct-sales", debit: 0, credit: 10_000),
         ]
 
-        let issues = JournalValidationService.validateEntry(entry, lines: lines, profile: profile)
+        let issues = JournalValidationService.validateEntry(entry, lines: lines, yearLockState: .finalLock, fiscalYear: 2025)
         XCTAssertTrue(issues.contains(where: {
             if case .lockedFiscalYear(let year) = $0 { return year == 2025 }
             return false
@@ -104,7 +103,6 @@ final class JournalValidationTests: XCTestCase {
     }
 
     func testValidateUnlockedFiscalYear_NoIssue() {
-        let profile = PPAccountingProfile(fiscalYear: 2025)
         let entry = PPJournalEntry(
             sourceKey: "tx:\(UUID())",
             date: Calendar(identifier: .gregorian).date(from: DateComponents(year: 2025, month: 6, day: 15))!,
@@ -115,7 +113,7 @@ final class JournalValidationTests: XCTestCase {
             PPJournalLine(entryId: entry.id, accountId: "acct-sales", debit: 0, credit: 10_000),
         ]
 
-        let issues = JournalValidationService.validateEntry(entry, lines: lines, profile: profile)
+        let issues = JournalValidationService.validateEntry(entry, lines: lines, yearLockState: .open, fiscalYear: 2025)
         XCTAssertTrue(issues.isEmpty)
     }
 

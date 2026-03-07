@@ -250,7 +250,6 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         dataStore.loadData()

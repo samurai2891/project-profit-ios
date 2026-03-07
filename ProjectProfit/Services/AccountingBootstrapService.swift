@@ -31,9 +31,13 @@ final class AccountingBootstrapService {
 
     /// 会計データのブートストラップが必要かどうかを判定する
     func needsBootstrap() -> Bool {
-        let descriptor = FetchDescriptor<PPAccountingProfile>()
-        let profiles = (try? modelContext.fetch(descriptor)) ?? []
-        return profiles.isEmpty
+        let legacyDescriptor = FetchDescriptor<PPAccountingProfile>()
+        let legacyProfiles = (try? modelContext.fetch(legacyDescriptor)) ?? []
+        if !legacyProfiles.isEmpty { return false }
+
+        let canonicalDescriptor = FetchDescriptor<BusinessProfileEntity>()
+        let canonicalProfiles = (try? modelContext.fetch(canonicalDescriptor)) ?? []
+        return canonicalProfiles.isEmpty
     }
 
     /// 8ステップの移行を実行する
@@ -43,8 +47,14 @@ final class AccountingBootstrapService {
     ) -> BootstrapResult {
         logger.info("会計ブートストラップ開始")
 
-        // Step 1: PPAccountingProfile 作成
-        let profile = step1_createProfileIfNeeded()
+        // Step 1: プロフィール作成（canonical のみ or canonical + legacy）
+        let defaultPaymentAccountId: String
+        if FeatureFlags.useCanonicalProfileOnly {
+            defaultPaymentAccountId = step1_createCanonicalProfileOnly()
+        } else {
+            let profile = step1_createProfileIfNeeded()
+            defaultPaymentAccountId = profile.defaultPaymentAccountId
+        }
 
         // Step 2: デフォルト勘定科目を挿入
         let accountsCreated = step2_seedDefaultAccounts()
@@ -55,7 +65,7 @@ final class AccountingBootstrapService {
         // Step 4: フィールド補完（paymentAccountId, taxDeductibleRate, bookkeepingMode）
         let transactionsBackfilled = step4_backfillTransactionFields(
             transactions: transactions,
-            defaultPaymentAccountId: profile.defaultPaymentAccountId
+            defaultPaymentAccountId: defaultPaymentAccountId
         )
 
         // Step 5: 未マッピングカテゴリを仮勘定にリンク
@@ -95,7 +105,28 @@ final class AccountingBootstrapService {
 
     // MARK: - Step 1: Create Profile
 
-    /// PPAccountingProfile が存在しなければデフォルト値で作成する
+    /// canonical のみモード: BusinessProfileEntity + TaxYearProfileEntity を作成し、
+    /// PPAccountingProfile の insert をスキップする。
+    private func step1_createCanonicalProfileOnly() -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let currentYear = calendar.component(.year, from: Date())
+
+        let businessId = UUID()
+        let businessEntity = step1_ensureBusinessProfileEntity(businessId: businessId)
+        modelContext.insert(businessEntity)
+
+        let taxYearEntity = step1_ensureTaxYearProfileEntity(
+            businessId: businessId,
+            taxYear: currentYear
+        )
+        modelContext.insert(taxYearEntity)
+
+        logger.info("Step 1: canonical プロファイルのみ作成完了（PPAccountingProfile スキップ）")
+        return AccountingConstants.defaultPaymentAccountId
+    }
+
+    /// canonical プロフィール（BusinessProfileEntity + TaxYearProfileEntity）を先に作成し、
+    /// レガシー PPAccountingProfile はその derived projection として生成する。
     private func step1_createProfileIfNeeded() -> PPAccountingProfile {
         let descriptor = FetchDescriptor<PPAccountingProfile>()
         if let existing = try? modelContext.fetch(descriptor).first {
@@ -105,6 +136,19 @@ final class AccountingBootstrapService {
         let calendar = Calendar(identifier: .gregorian)
         let currentYear = calendar.component(.year, from: Date())
 
+        // canonical: BusinessProfileEntity を作成
+        let businessId = UUID()
+        let businessEntity = step1_ensureBusinessProfileEntity(businessId: businessId)
+        modelContext.insert(businessEntity)
+
+        // canonical: TaxYearProfileEntity を作成
+        let taxYearEntity = step1_ensureTaxYearProfileEntity(
+            businessId: businessId,
+            taxYear: currentYear
+        )
+        modelContext.insert(taxYearEntity)
+
+        // legacy: canonical からの派生として PPAccountingProfile を生成
         let profile = PPAccountingProfile(
             id: AccountingConstants.defaultProfileId,
             fiscalYear: currentYear,
@@ -113,8 +157,34 @@ final class AccountingBootstrapService {
             defaultPaymentAccountId: AccountingConstants.defaultPaymentAccountId
         )
         modelContext.insert(profile)
-        logger.info("Step 1: PPAccountingProfile 作成完了")
+        logger.info("Step 1: canonical + legacy プロファイル作成完了")
         return profile
+    }
+
+    private func step1_ensureBusinessProfileEntity(businessId: UUID) -> BusinessProfileEntity {
+        let descriptor = FetchDescriptor<BusinessProfileEntity>()
+        if let existing = (try? modelContext.fetch(descriptor))?.first {
+            return existing
+        }
+        return BusinessProfileEntity(
+            businessId: businessId,
+            defaultPaymentAccountId: AccountingConstants.defaultPaymentAccountId
+        )
+    }
+
+    private func step1_ensureTaxYearProfileEntity(
+        businessId: UUID,
+        taxYear: Int
+    ) -> TaxYearProfileEntity {
+        let descriptor = FetchDescriptor<TaxYearProfileEntity>()
+        if let existing = (try? modelContext.fetch(descriptor))?.first,
+           existing.taxYear == taxYear {
+            return existing
+        }
+        return TaxYearProfileEntity(
+            businessId: businessId,
+            taxYear: taxYear
+        )
     }
 
     // MARK: - Step 2: Seed Default Accounts

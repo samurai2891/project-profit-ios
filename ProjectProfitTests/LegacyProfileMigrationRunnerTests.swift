@@ -172,6 +172,8 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         store.loadData()
 
         XCTAssertFalse(store.isLoading)
-        XCTAssertNotNil(store.accountingProfile)
+        // After loadData, canonical businessProfile should be populated
+        // (bootstrap creates legacy profile which auto-migrates)
+        XCTAssertNotNil(store.businessProfile)
     }
 }

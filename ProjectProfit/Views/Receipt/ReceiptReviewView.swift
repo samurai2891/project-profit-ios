@@ -8,6 +8,7 @@ struct ReceiptReviewView: View {
     let ocrText: String
     let receiptImage: UIImage?
     let evidenceSourceType: EvidenceSourceType
+    let originalFileData: Data?
     let defaultProjectId: UUID?
     let onDismiss: () -> Void
 
@@ -35,6 +36,7 @@ struct ReceiptReviewView: View {
         ocrText: String,
         receiptImage: UIImage? = nil,
         evidenceSourceType: EvidenceSourceType = .manualNoFile,
+        originalFileData: Data? = nil,
         defaultProjectId: UUID? = nil,
         onDismiss: @escaping () -> Void
     ) {
@@ -42,6 +44,7 @@ struct ReceiptReviewView: View {
         self.ocrText = ocrText
         self.receiptImage = receiptImage
         self.evidenceSourceType = evidenceSourceType
+        self.originalFileData = originalFileData
         self.defaultProjectId = defaultProjectId
         self.onDismiss = onDismiss
     }
@@ -622,17 +625,29 @@ struct ReceiptReviewView: View {
             let originalFileName = generatedOriginalFileName()
 
             do {
-                guard let receiptImage else {
-                    throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+                let isPDFSource = originalFileData != nil
+                    && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
+                let fileData: Data
+                let mimeType: String
+
+                if isPDFSource, let pdfData = originalFileData {
+                    fileData = pdfData
+                    mimeType = "application/pdf"
+                } else {
+                    guard let receiptImage else {
+                        throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+                    }
+                    fileData = try ReceiptImageStore.jpegData(for: receiptImage)
+                    mimeType = "image/jpeg"
                 }
-                let fileData = try ReceiptImageStore.jpegData(for: receiptImage)
+
                 let request = ReceiptEvidenceIntakeRequest(
                     receiptData: receiptData,
                     ocrText: ocrText,
                     sourceType: evidenceSourceType,
                     fileData: fileData,
                     originalFileName: originalFileName,
-                    mimeType: "image/jpeg",
+                    mimeType: mimeType,
                     reviewedAmount: amount,
                     reviewedDate: validDate,
                     transactionType: type,
@@ -676,7 +691,10 @@ struct ReceiptReviewView: View {
         case .manualNoFile:
             prefix = "manual"
         }
-        return "\(prefix)-receipt-\(timestamp).jpg"
+        let isPDFSource = originalFileData != nil
+            && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
+        let ext = isPDFSource ? "pdf" : "jpg"
+        return "\(prefix)-receipt-\(timestamp).\(ext)"
     }
 
     private func ensureValidCategorySelection() {

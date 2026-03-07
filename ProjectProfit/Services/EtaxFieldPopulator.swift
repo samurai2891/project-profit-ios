@@ -5,14 +5,16 @@ import Security
 @MainActor
 enum EtaxFieldPopulator {
 
-    /// P&Lレポートからe-Taxフォームを生成
+    /// P&Lレポートからe-Taxフォームを生成（canonical profile ベース）
     static func populate(
         fiscalYear: Int,
         profitLoss: ProfitLossReport,
         balanceSheet: BalanceSheetReport?,
         formType: EtaxFormType = .blueReturn,
         accounts: [PPAccount],
-        profile: PPAccountingProfile? = nil,
+        businessProfile: BusinessProfile? = nil,
+        taxYearProfile: TaxYearProfile? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil,
         inventoryRecord: PPInventoryRecord? = nil
     ) -> EtaxForm {
         var fields: [EtaxField] = []
@@ -83,8 +85,11 @@ enum EtaxFieldPopulator {
         ))
 
         // 申告者情報セクション
-        if let profile {
-            fields.append(contentsOf: populateDeclarantInfo(profile: profile))
+        if let businessProfile {
+            fields.append(contentsOf: populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: sensitivePayload
+            ))
         }
 
         // 棚卸セクション
@@ -105,26 +110,29 @@ enum EtaxFieldPopulator {
         )
     }
 
-    // MARK: - Declarant Info
+    // MARK: - Declarant Info (Canonical)
 
-    /// 申告者情報セクションのフィールドを生成
-    static func populateDeclarantInfo(profile: PPAccountingProfile) -> [EtaxField] {
+    /// 申告者情報セクションのフィールドを生成（canonical BusinessProfile ベース）
+    static func populateDeclarantInfo(
+        businessProfile: BusinessProfile,
+        sensitivePayload: ProfileSensitivePayload? = nil
+    ) -> [EtaxField] {
+        let includeSensitive = sensitivePayload?.includeSensitiveInExport ?? false
+
+        let ownerNameKana = sensitivePayload?.ownerNameKana ?? nonEmpty(businessProfile.ownerNameKana)
+        let postalCode = sensitivePayload?.postalCode ?? nonEmpty(businessProfile.postalCode)
+        let address = sensitivePayload?.address ?? nonEmpty(businessProfile.businessAddress)
+        let phoneNumber = sensitivePayload?.phoneNumber ?? nonEmpty(businessProfile.phoneNumber)
+        let dateOfBirth = sensitivePayload?.dateOfBirth
+        let businessCategory = sensitivePayload?.businessCategory
+        let myNumberFlag = sensitivePayload?.myNumberFlag
+
         var fields: [EtaxField] = []
-        let secure = ProfileSecureStore.load(profileId: profile.id)
-        let includeSensitive = secure?.includeSensitiveInExport ?? false
 
-        let ownerNameKana = secure?.ownerNameKana
-        let postalCode = secure?.postalCode
-        let address = secure?.address
-        let phoneNumber = secure?.phoneNumber
-        let dateOfBirth = secure?.dateOfBirth
-        let businessCategory = secure?.businessCategory
-        let myNumberFlag = secure?.myNumberFlag
-
-        if !profile.ownerName.isEmpty {
+        if !businessProfile.ownerName.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_name", fieldLabel: "氏名",
-                taxLine: nil, value: profile.ownerName, section: .declarantInfo
+                taxLine: nil, value: businessProfile.ownerName, section: .declarantInfo
             ))
         }
         if includeSensitive, let kana = ownerNameKana, !kana.isEmpty {
@@ -151,10 +159,10 @@ enum EtaxFieldPopulator {
                 taxLine: nil, value: phone, section: .declarantInfo
             ))
         }
-        if !profile.businessName.isEmpty {
+        if !businessProfile.businessName.isEmpty {
             fields.append(EtaxField(
                 id: "declarant_business_name", fieldLabel: "屋号",
-                taxLine: nil, value: profile.businessName, section: .declarantInfo
+                taxLine: nil, value: businessProfile.businessName, section: .declarantInfo
             ))
         }
         if includeSensitive, let category = businessCategory, !category.isEmpty {
@@ -177,6 +185,15 @@ enum EtaxFieldPopulator {
         }
 
         return fields
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
     }
 
     // MARK: - Inventory
