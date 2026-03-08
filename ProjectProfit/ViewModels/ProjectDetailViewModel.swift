@@ -45,10 +45,14 @@ final class ProjectDetailViewModel {
         dataStore.getYearlyProjectSummaries(projectId: projectId, startMonth: FiscalYearSettings.startMonth)
     }
 
+    var canMutateLegacyTransactions: Bool {
+        dataStore.isLegacyTransactionEditingEnabled
+    }
+
     // MARK: - Actions
 
     func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id)
+        dataStore.deleteTransaction(id: id, mutationSource: .userInitiated)
     }
 
     func getCategoryName(for categoryId: String) -> String {

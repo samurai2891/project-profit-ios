@@ -3,6 +3,11 @@ import os
 import SwiftData
 import SwiftUI
 
+enum LegacyTransactionMutationSource: Sendable, Equatable {
+    case systemGenerated
+    case userInitiated
+}
+
 @MainActor
 @Observable
 class DataStore {
@@ -118,6 +123,14 @@ class DataStore {
 
     var profileOpeningDate: Date? {
         businessProfile?.openingDate
+    }
+
+    var isLegacyTransactionEditingEnabled: Bool {
+        !FeatureFlags.useCanonicalPosting
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        AppError.legacyTransactionMutationDisabled.errorDescription ?? "この操作は現在利用できません"
     }
 
     private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
@@ -515,12 +528,14 @@ class DataStore {
 
     @discardableResult
     func reloadProfileSettings() async -> Bool {
+        runLegacyProfileMigrationIfNeeded()
+        refreshCanonicalProfileCache()
         let payload = loadSensitivePayload()
         do {
             let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: defaultTaxYear,
-                legacyProfile: nil,
+                legacyProfile: legacyProfileFallbackForProfileSettings(),
                 sensitivePayload: payload
             )
             applyProfileSettingsState(state)
@@ -537,10 +552,12 @@ class DataStore {
         command: SaveProfileSettingsCommand,
         sensitivePayload: ProfileSensitivePayload
     ) async -> Result<Void, Error> {
+        runLegacyProfileMigrationIfNeeded()
+        refreshCanonicalProfileCache()
         do {
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: command.taxYear,
-                legacyProfile: nil,
+                legacyProfile: legacyProfileFallbackForProfileSettings(),
                 sensitivePayload: sensitivePayload
             )
             guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
@@ -734,6 +751,29 @@ class DataStore {
 
     private func currentFiscalYear() -> Int {
         Calendar.current.component(.year, from: Date())
+    }
+
+    private func legacyProfileFallbackForProfileSettings() -> PPAccountingProfile? {
+        guard businessProfile == nil else {
+            return nil
+        }
+        do {
+            return try modelContext.fetch(FetchDescriptor<PPAccountingProfile>()).first
+        } catch {
+            AppLogger.dataStore.warning("Legacy profile fallback lookup failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func guardLegacyTransactionMutationAllowed(
+        source: LegacyTransactionMutationSource
+    ) -> AppError? {
+        guard source == .userInitiated, FeatureFlags.useCanonicalPosting else {
+            return nil
+        }
+        let error = AppError.legacyTransactionMutationDisabled
+        lastError = error
+        return error
     }
 
     private func enqueueCanonicalTransactionSync(for transactionId: UUID, source: CandidateSource?) {
@@ -1820,8 +1860,12 @@ class DataStore {
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true
+        enqueueCanonicalSync: Bool = true,
+        mutationSource: LegacyTransactionMutationSource = .systemGenerated
     ) -> Result<PPTransaction, AppError> {
+        if let error = guardLegacyTransactionMutationAllowed(source: mutationSource) {
+            return .failure(error)
+        }
         // T5: 年度ロックガード（段階的チェック）
         guard !cannotPostNormalEntry(for: date) else {
             return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
@@ -1906,7 +1950,8 @@ class DataStore {
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true
+        enqueueCanonicalSync: Bool = true,
+        mutationSource: LegacyTransactionMutationSource = .systemGenerated
     ) -> PPTransaction {
         switch addTransactionResult(
             type: type,
@@ -1928,7 +1973,8 @@ class DataStore {
             counterpartyId: counterpartyId,
             counterparty: counterparty,
             candidateSource: candidateSource,
-            enqueueCanonicalSync: enqueueCanonicalSync
+            enqueueCanonicalSync: enqueueCanonicalSync,
+            mutationSource: mutationSource
         ) {
         case .success(let transaction):
             return transaction
@@ -1957,8 +2003,12 @@ class DataStore {
         taxCategory: TaxCategory?? = nil,
         counterpartyId: UUID?? = nil,
         counterparty: String?? = nil,
-        candidateSource: CandidateSource? = nil
+        candidateSource: CandidateSource? = nil,
+        mutationSource: LegacyTransactionMutationSource = .systemGenerated
     ) -> Bool {
+        if guardLegacyTransactionMutationAllowed(source: mutationSource) != nil {
+            return false
+        }
         guard let transaction = transactions.first(where: { $0.id == id }) else {
             lastError = .transactionNotFound(id: id)
             return false
@@ -2088,7 +2138,13 @@ class DataStore {
         return true
     }
 
-    func deleteTransaction(id: UUID) {
+    func deleteTransaction(
+        id: UUID,
+        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+    ) {
+        if guardLegacyTransactionMutationAllowed(source: mutationSource) != nil {
+            return
+        }
         guard let transaction = allTransactions.first(where: { $0.id == id }) else { return }
         // T5: 年度ロックガード（段階的チェック）
         if cannotPostNormalEntry(for: transaction.date) { return }

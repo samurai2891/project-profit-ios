@@ -189,18 +189,17 @@ struct ApprovalQueueView: View {
 
 private struct CandidateLineDraft: Identifiable {
     let id: UUID
-    var debitLegacyAccountId: String?
-    var creditLegacyAccountId: String?
+    var debitAccountId: UUID?
+    var creditAccountId: UUID?
     var amountText: String
     var taxCodeId: String?
     var projectAllocationId: UUID?
     var memo: String
 
-    @MainActor
-    init(line: PostingCandidateLine, dataStore: DataStore) {
+    init(line: PostingCandidateLine) {
         self.id = line.id
-        self.debitLegacyAccountId = line.debitAccountId.flatMap { dataStore.legacyAccountId(for: $0) }
-        self.creditLegacyAccountId = line.creditAccountId.flatMap { dataStore.legacyAccountId(for: $0) }
+        self.debitAccountId = line.debitAccountId
+        self.creditAccountId = line.creditAccountId
         self.amountText = NSDecimalNumber(decimal: line.amount).stringValue
         self.taxCodeId = line.taxCodeId
         self.projectAllocationId = line.projectAllocationId
@@ -209,12 +208,97 @@ private struct CandidateLineDraft: Identifiable {
 
     init() {
         self.id = UUID()
-        self.debitLegacyAccountId = nil
-        self.creditLegacyAccountId = nil
+        self.debitAccountId = nil
+        self.creditAccountId = nil
         self.amountText = ""
         self.taxCodeId = nil
         self.projectAllocationId = nil
         self.memo = ""
+    }
+}
+
+private struct CanonicalAccountPickerView: View {
+    let label: String
+    let accounts: [CanonicalAccount]
+    @Binding var selectedAccountId: UUID?
+
+    private var activeAccounts: [CanonicalAccount] {
+        accounts
+            .filter { $0.archivedAt == nil }
+            .sorted {
+                if $0.displayOrder == $1.displayOrder {
+                    return $0.code < $1.code
+                }
+                return $0.displayOrder < $1.displayOrder
+            }
+    }
+
+    private var groupedAccounts: [(CanonicalAccountType, [CanonicalAccount])] {
+        let grouped = Dictionary(grouping: activeAccounts, by: \.accountType)
+        return CanonicalAccountType.allCases.compactMap { type in
+            guard let items = grouped[type], !items.isEmpty else {
+                return nil
+            }
+            return (type, items)
+        }
+    }
+
+    private var selectedAccountName: String {
+        guard let selectedAccountId,
+              let account = activeAccounts.first(where: { $0.id == selectedAccountId }) else {
+            return "選択してください"
+        }
+        return "\(account.code) \(account.name)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Menu {
+                Button("未設定") {
+                    selectedAccountId = nil
+                }
+
+                ForEach(groupedAccounts, id: \.0) { accountType, items in
+                    Section(accountType.displayName) {
+                        ForEach(items, id: \.id) { account in
+                            Button {
+                                selectedAccountId = account.id
+                            } label: {
+                                HStack {
+                                    Text("\(account.code) \(account.name)")
+                                    if selectedAccountId == account.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedAccountName)
+                        .font(.subheadline)
+                        .foregroundStyle(selectedAccountId != nil ? .primary : .secondary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppColors.border, lineWidth: 1)
+                )
+            }
+            .accessibilityLabel(label)
+            .accessibilityValue(selectedAccountName)
+        }
     }
 }
 
@@ -295,9 +379,13 @@ struct ApprovalCandidateDetailView: View {
 
     private var hasSavableLines: Bool {
         lineDrafts.contains { draft in
-            (draft.debitLegacyAccountId != nil || draft.creditLegacyAccountId != nil)
+            (draft.debitAccountId != nil || draft.creditAccountId != nil)
                 && ((Decimal(string: draft.amountText) ?? 0) > 0)
         }
+    }
+
+    private var canonicalAccounts: [CanonicalAccount] {
+        dataStore.canonicalAccounts()
     }
 
     @ViewBuilder
@@ -433,24 +521,22 @@ struct ApprovalCandidateDetailView: View {
                 }
             }
 
-            AccountPickerView(
+            CanonicalAccountPickerView(
                 label: "借方科目",
-                accounts: dataStore.accounts,
+                accounts: canonicalAccounts,
                 selectedAccountId: Binding(
-                    get: { lineDrafts[index].debitLegacyAccountId },
-                    set: { lineDrafts[index].debitLegacyAccountId = $0 }
-                ),
-                filterPredicate: { $0.isActive }
+                    get: { lineDrafts[index].debitAccountId },
+                    set: { lineDrafts[index].debitAccountId = $0 }
+                )
             )
 
-            AccountPickerView(
+            CanonicalAccountPickerView(
                 label: "貸方科目",
-                accounts: dataStore.accounts,
+                accounts: canonicalAccounts,
                 selectedAccountId: Binding(
-                    get: { lineDrafts[index].creditLegacyAccountId },
-                    set: { lineDrafts[index].creditLegacyAccountId = $0 }
-                ),
-                filterPredicate: { $0.isActive }
+                    get: { lineDrafts[index].creditAccountId },
+                    set: { lineDrafts[index].creditAccountId = $0 }
+                )
             )
 
             HStack(spacing: 12) {
@@ -605,7 +691,7 @@ struct ApprovalCandidateDetailView: View {
                 counterparties = []
             }
             if let candidate {
-                lineDrafts = candidate.proposedLines.map { CandidateLineDraft(line: $0, dataStore: dataStore) }
+                lineDrafts = candidate.proposedLines.map(CandidateLineDraft.init(line:))
                 memo = candidate.memo ?? ""
                 selectedCounterpartyId = candidate.counterpartyId
             } else {
@@ -672,8 +758,8 @@ struct ApprovalCandidateDetailView: View {
                 return nil
             }
 
-            let debitAccountId = draft.debitLegacyAccountId.flatMap { dataStore.canonicalAccountId(for: $0) }
-            let creditAccountId = draft.creditLegacyAccountId.flatMap { dataStore.canonicalAccountId(for: $0) }
+            let debitAccountId = draft.debitAccountId
+            let creditAccountId = draft.creditAccountId
             guard debitAccountId != nil || creditAccountId != nil else {
                 return nil
             }

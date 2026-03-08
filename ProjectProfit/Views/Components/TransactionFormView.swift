@@ -43,6 +43,10 @@ struct TransactionFormView: View {
 
     private var isEditMode: Bool { transaction != nil }
 
+    private var isLegacyEditingDisabled: Bool {
+        !dataStore.isLegacyTransactionEditingEnabled
+    }
+
     private var paymentAccounts: [PPAccount] {
         dataStore.accounts.filter { $0.isPaymentAccount && $0.isActive }
     }
@@ -103,6 +107,9 @@ struct TransactionFormView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if isLegacyEditingDisabled {
+                        canonicalCutoverNotice
+                    }
                     typeSection
                     receiptSection
                     amountSection
@@ -165,9 +172,13 @@ struct TransactionFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
-                        .disabled(!isValid || isSubmitting)
+                        .disabled(!isValid || isSubmitting || isLegacyEditingDisabled)
                         .accessibilityLabel("保存")
-                        .accessibilityHint(isValid ? "タップして取引を保存" : "すべての必須項目を入力してください")
+                        .accessibilityHint(
+                            isLegacyEditingDisabled
+                                ? dataStore.legacyTransactionMutationDisabledMessage
+                                : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください")
+                        )
                 }
             }
             .onAppear { setupInitialValues() }
@@ -179,6 +190,24 @@ struct TransactionFormView: View {
     }
 
     // MARK: - Receipt Section
+
+    private var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引入力は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
     private var receiptSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -834,6 +863,10 @@ struct TransactionFormView: View {
     }
 
     private func save() {
+        guard !isLegacyEditingDisabled else {
+            saveError = dataStore.legacyTransactionMutationDisabledMessage
+            return
+        }
         guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
         defer { isSubmitting = false }
@@ -888,7 +921,8 @@ struct TransactionFormView: View {
                     taxCategory: resolvedTaxCategory,
                     counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
-                    candidateSource: .manual
+                    candidateSource: .manual,
+                    mutationSource: .userInitiated
                 )
                 if didUpdate, let oldPath = t.receiptImagePath {
                     ReceiptImageStore.deleteImage(fileName: oldPath)
@@ -907,7 +941,8 @@ struct TransactionFormView: View {
                     taxCategory: resolvedTaxCategory,
                     counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
-                    candidateSource: .manual
+                    candidateSource: .manual,
+                    mutationSource: .userInitiated
                 )
                 if didUpdate, let oldPath = t.receiptImagePath {
                     ReceiptImageStore.deleteImage(fileName: oldPath)
@@ -925,7 +960,8 @@ struct TransactionFormView: View {
                     taxCategory: resolvedTaxCategory,
                     counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
-                    candidateSource: .manual
+                    candidateSource: .manual,
+                    mutationSource: .userInitiated
                 )
             }
             if didUpdate {
@@ -947,7 +983,8 @@ struct TransactionFormView: View {
                 taxCategory: resolvedTaxCategory,
                 counterpartyId: selectedCounterpartyId,
                 counterparty: resolvedCounterparty,
-                candidateSource: .manual
+                candidateSource: .manual,
+                mutationSource: .userInitiated
             )
             switch result {
             case .success:

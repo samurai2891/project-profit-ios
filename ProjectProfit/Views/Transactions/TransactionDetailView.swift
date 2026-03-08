@@ -11,6 +11,10 @@ struct TransactionDetailView: View {
     @State private var showDeleteAlert = false
     @State private var showRecurringHistory = false
 
+    private var canMutateLegacyTransaction: Bool {
+        dataStore.isLegacyTransactionEditingEnabled
+    }
+
     private var typeColor: Color {
         switch transaction.type {
         case .income: AppColors.success
@@ -54,6 +58,9 @@ struct TransactionDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if !canMutateLegacyTransaction {
+                        canonicalCutoverNotice
+                    }
                     amountHeader
                     infoSection
                     if !transaction.lineItems.isEmpty {
@@ -83,10 +90,12 @@ struct TransactionDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("閉じる") { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("編集") { showEditSheet = true }
-                        .accessibilityLabel("編集")
-                        .accessibilityHint("タップして取引を編集")
+                if canMutateLegacyTransaction {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("編集") { showEditSheet = true }
+                            .accessibilityLabel("編集")
+                            .accessibilityHint("タップして取引を編集")
+                    }
                 }
             }
             .sheet(isPresented: $showEditSheet) {
@@ -105,7 +114,7 @@ struct TransactionDetailView: View {
             .alert("取引を削除", isPresented: $showDeleteAlert) {
                 Button("キャンセル", role: .cancel) {}
                 Button("削除", role: .destructive) {
-                    dataStore.deleteTransaction(id: transaction.id)
+                    dataStore.deleteTransaction(id: transaction.id, mutationSource: .userInitiated)
                     dismiss()
                 }
             } message: {
@@ -120,6 +129,24 @@ struct TransactionDetailView: View {
     }
 
     // MARK: - Amount Header
+
+    private var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引編集は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
     private var amountHeader: some View {
         VStack(spacing: 8) {
@@ -492,20 +519,23 @@ struct TransactionDetailView: View {
 
     // MARK: - Action Buttons
 
+    @ViewBuilder
     private var actionButtons: some View {
-        Button(role: .destructive) {
-            showDeleteAlert = true
-        } label: {
-            HStack {
-                Image(systemName: "trash")
-                Text("この取引を削除")
+        if canMutateLegacyTransaction {
+            Button(role: .destructive) {
+                showDeleteAlert = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("この取引を削除")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppColors.error)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(AppColors.error.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(AppColors.error)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppColors.error.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 }

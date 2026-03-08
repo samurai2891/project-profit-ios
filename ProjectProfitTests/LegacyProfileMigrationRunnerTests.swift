@@ -176,4 +176,29 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         // (bootstrap creates legacy profile which auto-migrates)
         XCTAssertNotNil(store.businessProfile)
     }
+
+    func testReloadProfileSettingsMigratesLegacyProfileWithoutPriorLoadData() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let legacy = PPAccountingProfile(
+            fiscalYear: 2026,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy User",
+            taxOfficeCode: "4321",
+            isBlueReturn: false,
+            defaultPaymentAccountId: "acct-bank"
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let store = DataStore(modelContext: context)
+        let didReload = await store.reloadProfileSettings()
+
+        XCTAssertTrue(didReload)
+        XCTAssertEqual(store.businessProfile?.businessName, "Legacy商店")
+        XCTAssertEqual(store.businessProfile?.ownerName, "Legacy User")
+        XCTAssertEqual(store.currentTaxYearProfile?.taxYear, 2026)
+        XCTAssertEqual(store.currentTaxYearProfile?.filingStyle, .white)
+    }
 }

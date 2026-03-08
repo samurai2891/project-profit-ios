@@ -412,6 +412,103 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertGreaterThan(after.canonicalJournalEntryCount, before.canonicalJournalEntryCount)
     }
 
+    func testUserInitiatedLegacyTransactionMutationsAreRejectedWhenCanonicalPostingEnabled() {
+        FeatureFlags.useCanonicalPosting = true
+        let project = dataStore.addProject(name: "P1", description: "")
+        let beforeCount = dataStore.transactions.count
+
+        let addResult = dataStore.addTransactionResult(
+            type: .expense,
+            amount: 1200,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "manual blocked",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            mutationSource: .userInitiated
+        )
+
+        switch addResult {
+        case .success:
+            XCTFail("user initiated add should be blocked during canonical cutover")
+        case .failure(let error):
+            XCTAssertEqual(error.errorDescription, AppError.legacyTransactionMutationDisabled.errorDescription)
+        }
+        XCTAssertEqual(dataStore.transactions.count, beforeCount)
+
+        let systemTransaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 800,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "system generated",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash"
+        )
+
+        let didUpdate = dataStore.updateTransaction(
+            id: systemTransaction.id,
+            memo: "blocked update",
+            mutationSource: .userInitiated
+        )
+        XCTAssertFalse(didUpdate)
+        XCTAssertEqual(systemTransaction.memo, "system generated")
+
+        dataStore.deleteTransaction(
+            id: systemTransaction.id,
+            mutationSource: .userInitiated
+        )
+        XCTAssertNil(systemTransaction.deletedAt)
+        XCTAssertEqual(
+            dataStore.lastError?.errorDescription,
+            AppError.legacyTransactionMutationDisabled.errorDescription
+        )
+    }
+
+    func testUserInitiatedManualJournalMutationsAreRejectedWhenCanonicalPostingEnabled() {
+        FeatureFlags.useCanonicalPosting = true
+        let beforeCount = dataStore.journalEntries.count
+
+        let blockedEntry = dataStore.addManualJournalEntry(
+            date: Date(),
+            memo: "manual blocked",
+            lines: [
+                (accountId: "acct-rent", debit: 1000, credit: 0, memo: ""),
+                (accountId: "acct-cash", debit: 0, credit: 1000, memo: ""),
+            ],
+            mutationSource: .userInitiated
+        )
+
+        XCTAssertNil(blockedEntry)
+        XCTAssertEqual(dataStore.journalEntries.count, beforeCount)
+        XCTAssertEqual(
+            dataStore.lastError?.errorDescription,
+            AppError.legacyManualJournalMutationDisabled.errorDescription
+        )
+
+        let systemEntry = dataStore.addManualJournalEntry(
+            date: Date(),
+            memo: "system generated journal",
+            lines: [
+                (accountId: "acct-rent", debit: 1000, credit: 0, memo: ""),
+                (accountId: "acct-cash", debit: 0, credit: 1000, memo: ""),
+            ]
+        )
+        XCTAssertNotNil(systemEntry)
+
+        if let systemEntry {
+            dataStore.deleteManualJournalEntry(
+                id: systemEntry.id,
+                mutationSource: .userInitiated
+            )
+            XCTAssertTrue(dataStore.journalEntries.contains { $0.id == systemEntry.id })
+            XCTAssertEqual(
+                dataStore.lastError?.errorDescription,
+                AppError.legacyManualJournalMutationDisabled.errorDescription
+            )
+        }
+    }
+
     func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let repository = SwiftDataChartOfAccountsRepository(modelContext: context)

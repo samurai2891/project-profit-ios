@@ -3,6 +3,13 @@ import SwiftUI
 struct ClosingEntryView: View {
     @Environment(DataStore.self) private var dataStore
 
+    private struct DisplayLine: Identifiable {
+        let id: UUID
+        let accountName: String
+        let debit: Int
+        let credit: Int
+    }
+
     @State private var selectedYear: Int
     @State private var showDeleteConfirmation = false
     @State private var showRegenerateConfirmation = false
@@ -15,16 +22,27 @@ struct ClosingEntryView: View {
         _selectedYear = State(initialValue: currentYear)
     }
 
-    private var closingEntry: PPJournalEntry? {
-        let sourceKey = PPJournalEntry.closingSourceKey(year: selectedYear)
-        return dataStore.journalEntries.first { $0.sourceKey == sourceKey }
+    private var canonicalClosingEntry: CanonicalJournalEntry? {
+        dataStore.canonicalJournalEntries(fiscalYear: selectedYear)
+            .first { $0.entryType == .closing }
     }
 
-    private var closingLines: [PPJournalLine] {
-        guard let entry = closingEntry else { return [] }
-        return dataStore.journalLines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
+    private var hasClosingEntry: Bool {
+        canonicalClosingEntry != nil
+    }
+
+    private var closingLines: [DisplayLine] {
+        let accountsById = Dictionary(uniqueKeysWithValues: dataStore.canonicalAccounts().map { ($0.id, $0) })
+        return canonicalClosingEntry?.lines
+            .sorted { $0.sortOrder < $1.sortOrder }
+            .map { line in
+                DisplayLine(
+                    id: line.id,
+                    accountName: accountsById[line.accountId]?.name ?? line.accountId.uuidString,
+                    debit: NSDecimalNumber(decimal: line.debitAmount).intValue,
+                    credit: NSDecimalNumber(decimal: line.creditAmount).intValue
+                )
+            } ?? []
     }
 
     private var currentYearState: YearLockState {
@@ -48,7 +66,7 @@ struct ClosingEntryView: View {
                 yearPicker
                 statusSection
                 preflightSection
-                if closingEntry != nil {
+                if hasClosingEntry {
                     closingLinesSection
                 }
                 actionButtons
@@ -156,9 +174,9 @@ struct ClosingEntryView: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: closingEntry != nil ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(closingEntry != nil ? AppColors.success : .secondary)
-                Text(closingEntry != nil ? "決算仕訳 生成済み" : "決算仕訳 未生成")
+                Image(systemName: hasClosingEntry ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(hasClosingEntry ? AppColors.success : .secondary)
+                Text(hasClosingEntry ? "決算仕訳 生成済み" : "決算仕訳 未生成")
                     .font(.headline)
             }
 
@@ -221,7 +239,7 @@ struct ClosingEntryView: View {
 
             ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                 HStack {
-                    Text(accountName(for: line.accountId))
+                    Text(line.accountName)
                         .font(.subheadline)
                     Spacer()
                     if line.debit > 0 {
@@ -245,10 +263,6 @@ struct ClosingEntryView: View {
         .padding(14)
         .background(AppColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func accountName(for accountId: String) -> String {
-        dataStore.accounts.first(where: { $0.id == accountId })?.name ?? accountId
     }
 
     // MARK: - Action Buttons
@@ -275,7 +289,7 @@ struct ClosingEntryView: View {
                 }
             }
 
-            if closingEntry == nil {
+            if !hasClosingEntry {
                 Button {
                     dataStore.generateClosingEntry(for: selectedYear)
                     refreshPreflightReport()

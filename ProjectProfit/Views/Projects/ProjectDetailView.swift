@@ -22,6 +22,9 @@ struct ProjectDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if !resolvedViewModel.canMutateLegacyTransactions {
+                    canonicalCutoverNotice
+                }
                 if let project = resolvedViewModel.currentProject {
                     headerCard(project: project)
                     descriptionSection(project: project)
@@ -380,15 +383,17 @@ private extension ProjectDetailView {
                 .accessibilityLabel("書類読取")
                 .accessibilityHint("タップして書類を読み取り取引を自動入力")
 
-                Button {
-                    showAddTransactionSheet = true
-                } label: {
-                    Label("手動で追加", systemImage: "plus")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                if resolvedViewModel.canMutateLegacyTransactions {
+                    Button {
+                        showAddTransactionSheet = true
+                    } label: {
+                        Label("手動で追加", systemImage: "plus")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .accessibilityLabel("取引を追加")
+                    .accessibilityHint("タップして新しい取引を作成")
                 }
-                .accessibilityLabel("取引を追加")
-                .accessibilityHint("タップして新しい取引を作成")
             }
         }
         .frame(maxWidth: .infinity)
@@ -406,6 +411,7 @@ private extension ProjectDetailView {
                         transaction: transaction,
                         projectId: projectId,
                         viewModel: resolvedViewModel,
+                        showDeleteButton: resolvedViewModel.canMutateLegacyTransactions,
                         onDelete: {
                             transactionToDelete = transaction
                             showDeleteConfirmation = true
@@ -434,16 +440,38 @@ private extension ProjectDetailView {
         .accessibilityHint("タップして書類を読み取り取引を自動入力")
     }
 
-    var addTransactionButton: some View {
-        Button {
-            showAddTransactionSheet = true
-        } label: {
-            Image(systemName: "plus.circle.fill")
-                .font(.title3)
-                .foregroundStyle(AppColors.primary)
+    var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引入力は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
         }
-        .accessibilityLabel("取引を追加")
-        .accessibilityHint("タップして新しい取引を作成")
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    var addTransactionButton: some View {
+        if resolvedViewModel.canMutateLegacyTransactions {
+            Button {
+                showAddTransactionSheet = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppColors.primary)
+            }
+            .accessibilityLabel("取引を追加")
+            .accessibilityHint("タップして新しい取引を作成")
+        }
     }
 
     @ViewBuilder
@@ -468,6 +496,7 @@ private struct TransactionRow: View {
     let transaction: PPTransaction
     let projectId: UUID
     let viewModel: ProjectDetailViewModel
+    let showDeleteButton: Bool
     let onDelete: () -> Void
 
     private var typeColor: Color {
@@ -592,16 +621,18 @@ private extension TransactionRow {
             }
             .accessibilityHidden(true)
 
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error.opacity(0.7))
+            if showDeleteButton {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.error.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("削除")
+                .accessibilityHint("タップして取引を削除")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("削除")
-            .accessibilityHint("タップして取引を削除")
         }
     }
 }

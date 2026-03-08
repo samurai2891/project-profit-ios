@@ -94,6 +94,10 @@ final class TransactionsViewModel {
         selectedType == .transfer
     }
 
+    var canMutateLegacyTransactions: Bool {
+        dataStore.isLegacyTransactionEditingEnabled
+    }
+
     var hasActiveFilter: Bool {
         filter.startDate != nil
             || filter.endDate != nil
@@ -159,7 +163,7 @@ final class TransactionsViewModel {
     // MARK: - Actions
 
     func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id)
+        dataStore.deleteTransaction(id: id, mutationSource: .userInitiated)
     }
 
     func generateCSVText(exportAll: Bool = false) -> String {

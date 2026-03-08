@@ -26,6 +26,10 @@ struct JournalListView: View {
         return sortedEntries.filter { matchingJournalIds.contains($0.id) }
     }
 
+    private var canCreateManualJournals: Bool {
+        dataStore.isLegacyTransactionEditingEnabled
+    }
+
     var body: some View {
         Group {
             if isSearching || isReindexing {
@@ -60,12 +64,14 @@ struct JournalListView: View {
                         Image(systemName: "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityLabel("検索条件")
-                    Button {
-                        showManualEntryForm = true
-                    } label: {
-                        Image(systemName: "plus")
+                    if canCreateManualJournals {
+                        Button {
+                            showManualEntryForm = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("手動仕訳を追加")
                     }
-                    .accessibilityLabel("手動仕訳を追加")
                 }
             }
         }
@@ -115,12 +121,23 @@ struct JournalListView: View {
             Text(searchForm.hasActiveFilters ? "検索条件に一致する仕訳がありません" : "仕訳がありません")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if !searchForm.hasActiveFilters, !canCreateManualJournals {
+                canonicalCutoverNotice
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 20)
     }
 
     private var journalList: some View {
         List {
+            if !canCreateManualJournals {
+                Section {
+                    canonicalCutoverNotice
+                        .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
+                        .listRowBackground(Color.clear)
+                }
+            }
             ForEach(visibleEntries, id: \.id) { entry in
                 NavigationLink(destination: JournalDetailView(entry: entry)) {
                     journalRow(entry)
@@ -128,6 +145,20 @@ struct JournalListView: View {
             }
         }
         .listStyle(.plain)
+    }
+
+    private var canonicalCutoverNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("手動仕訳の追加は停止中です", systemImage: "arrow.trianglehead.branch")
+                .font(.subheadline.weight(.semibold))
+            Text("canonical 正本へ切り替え済みのため、仕訳は証憑タブと承認タブから作成してください。決算整理は決算仕訳画面から管理します。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppColors.warning.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func journalRow(_ entry: PPJournalEntry) -> some View {

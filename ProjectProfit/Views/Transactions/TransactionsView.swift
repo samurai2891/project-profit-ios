@@ -175,6 +175,9 @@ struct TransactionsView: View {
     private func scrollContent(viewModel: TransactionsViewModel) -> some View {
         ScrollView {
             VStack(spacing: 12) {
+                if !viewModel.canMutateLegacyTransactions {
+                    canonicalCutoverNotice
+                }
                 HStack {
                     Text("\(viewModel.filteredTransactions.count)件")
                         .font(.caption)
@@ -501,7 +504,8 @@ struct TransactionsView: View {
                         TransactionCardView(
                             transaction: transaction,
                             onTap: { selectedTransaction = transaction },
-                            onDelete: { deletingTransaction = transaction }
+                            onDelete: { deletingTransaction = transaction },
+                            showDeleteButton: viewModel.canMutateLegacyTransactions
                         )
                     }
                 }
@@ -554,9 +558,13 @@ struct TransactionsView: View {
                 .foregroundStyle(AppColors.muted)
 
             Button {
-                showAddSheet = true
+                if dataStore.isLegacyTransactionEditingEnabled {
+                    showAddSheet = true
+                } else {
+                    showReceiptScanner = true
+                }
             } label: {
-                Text("最初の取引を追加")
+                Text(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の証憑を取り込む")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
@@ -565,8 +573,8 @@ struct TransactionsView: View {
                     .background(AppColors.primary)
                     .clipShape(Capsule())
             }
-            .accessibilityLabel("最初の取引を追加")
-            .accessibilityHint("タップして新しい取引を作成")
+            .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の証憑を取り込む")
+            .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして証憑を取り込みます")
 
             Spacer().frame(height: 40)
         }
@@ -575,11 +583,33 @@ struct TransactionsView: View {
 
     // MARK: - FAB
 
+    private var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引入力は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     private var fabButton: some View {
         Button {
-            showAddSheet = true
+            if dataStore.isLegacyTransactionEditingEnabled {
+                showAddSheet = true
+            } else {
+                showReceiptScanner = true
+            }
         } label: {
-            Image(systemName: "plus")
+            Image(systemName: dataStore.isLegacyTransactionEditingEnabled ? "plus" : "doc.text.viewfinder")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.white)
@@ -588,8 +618,8 @@ struct TransactionsView: View {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
         }
-        .accessibilityLabel("新規追加")
-        .accessibilityHint("タップして新しい取引を作成")
+        .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "新規追加" : "証憑を取り込む")
+        .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして証憑を取り込みます")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }
@@ -601,6 +631,7 @@ private struct TransactionCardView: View {
     let transaction: PPTransaction
     let onTap: () -> Void
     let onDelete: () -> Void
+    let showDeleteButton: Bool
 
     @Environment(DataStore.self) private var dataStore
 
@@ -765,13 +796,15 @@ private struct TransactionCardView: View {
                 .foregroundStyle(typeColor)
                 .accessibilityHidden(true)
 
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error.opacity(0.7))
+            if showDeleteButton {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.error.opacity(0.7))
+                }
+                .accessibilityLabel("削除")
+                .accessibilityHint("タップして削除確認画面を表示")
             }
-            .accessibilityLabel("削除")
-            .accessibilityHint("タップして削除確認画面を表示")
         }
     }
 }
