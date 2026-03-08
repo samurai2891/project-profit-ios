@@ -823,6 +823,158 @@ class DataStore {
         )
     }
 
+    func saveManualPostingCandidate(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource? = nil
+    ) async -> Result<PostingCandidate, AppError> {
+        guard !cannotPostNormalEntry(for: date) else {
+            return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
+        }
+        guard let businessId = businessProfile?.id else {
+            let error = AppError.invalidInput(message: "事業者プロフィールが未設定のため承認待ち候補を作成できません")
+            lastError = error
+            return .failure(error)
+        }
+
+        let safeCategoryId: String
+        switch type {
+        case .transfer:
+            safeCategoryId = categoryId
+        case .income, .expense:
+            safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
+        }
+
+        let baseAllocations = type == .transfer ? [] : allocations
+        let normalizedAllocations = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
+        let explicitTaxCodeId = TaxCode.resolve(
+            legacyCategory: taxCategory,
+            taxRate: taxRate
+        )?.rawValue
+
+        let counterpartyStatus = await syncCanonicalCounterparty(
+            id: counterpartyId,
+            named: counterparty,
+            defaultTaxCodeId: explicitTaxCodeId
+        )
+        let resolvedCounterpartyId: UUID?
+        switch counterpartyStatus {
+        case .synced(let id):
+            resolvedCounterpartyId = id
+        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
+            resolvedCounterpartyId = nil
+        }
+
+        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
+        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
+            id: UUID(),
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: safeCategoryId,
+            memo: memo,
+            recurringId: nil,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            createdAt: Date(),
+            updatedAt: Date(),
+            journalEntryId: nil
+        )
+
+        guard let posting = bridge.buildApprovedPosting(
+            for: snapshot,
+            businessId: businessId,
+            counterpartyId: resolvedCounterpartyId,
+            source: candidateSource ?? .manual,
+            categories: categories,
+            legacyAccounts: accounts
+        ) else {
+            let error = AppError.invalidInput(message: "承認待ち候補の勘定科目または税区分を解決できません")
+            lastError = error
+            return .failure(error)
+        }
+
+        var candidate = posting.candidate.updated(status: .draft)
+        candidate = candidateWithProjectAllocations(
+            candidate,
+            allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+        )
+
+        do {
+            try await postingWorkflowUseCase.saveCandidate(candidate)
+            lastError = nil
+            return .success(candidate)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
+    private func candidateWithProjectAllocations(
+        _ candidate: PostingCandidate,
+        allocations: [(projectId: UUID, ratio: Int)]
+    ) -> PostingCandidate {
+        guard !allocations.isEmpty else {
+            return candidate
+        }
+
+        let normalizedAllocations = allocations.filter { $0.ratio > 0 }
+        guard !normalizedAllocations.isEmpty else {
+            return candidate
+        }
+
+        let expandedLines = candidate.proposedLines.flatMap { line -> [PostingCandidateLine] in
+            if normalizedAllocations.count == 1, let allocation = normalizedAllocations.first {
+                return [line.updated(projectAllocationId: .some(allocation.projectId))]
+            }
+
+            let lineAmount = NSDecimalNumber(decimal: line.amount).intValue
+            let splitAllocations = calculateRatioAllocations(amount: lineAmount, allocations: normalizedAllocations)
+            return splitAllocations.compactMap { allocation in
+                guard allocation.amount > 0 else {
+                    return nil
+                }
+                return PostingCandidateLine(
+                    debitAccountId: line.debitAccountId,
+                    creditAccountId: line.creditAccountId,
+                    amount: Decimal(allocation.amount),
+                    taxCodeId: line.taxCodeId,
+                    legalReportLineId: line.legalReportLineId,
+                    projectAllocationId: allocation.projectId,
+                    memo: line.memo,
+                    evidenceLineReferenceId: line.evidenceLineReferenceId,
+                    withholdingTaxCodeId: line.withholdingTaxCodeId,
+                    withholdingTaxAmount: line.withholdingTaxAmount
+                )
+            }
+        }
+
+        guard !expandedLines.isEmpty else {
+            return candidate
+        }
+        return candidate.updated(proposedLines: expandedLines)
+    }
+
     private func syncCanonicalCounterparty(
         id explicitId: UUID?,
         named rawName: String?,

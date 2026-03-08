@@ -536,6 +536,91 @@ final class DataStoreAccountingTests: XCTestCase {
         }
     }
 
+    func testSaveManualPostingCandidateCreatesDraftWithoutLegacyTransaction() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "P1", description: "")
+        let beforeTransactionCount = dataStore.transactions.count
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        let result = await dataStore.saveManualPostingCandidate(
+            type: .expense,
+            amount: 12_000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "manual candidate",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            taxDeductibleRate: 100,
+            taxAmount: 1_200,
+            taxRate: 10,
+            isTaxIncluded: false,
+            taxCategory: .standardRate,
+            candidateSource: .manual
+        )
+
+        let candidate: PostingCandidate
+        switch result {
+        case .success(let savedCandidate):
+            candidate = savedCandidate
+        case .failure(let error):
+            XCTFail("manual candidate save should succeed: \(error.localizedDescription)")
+            return
+        }
+
+        XCTAssertEqual(candidate.status, .draft)
+        XCTAssertEqual(candidate.source, .manual)
+        XCTAssertEqual(candidate.counterpartyId, nil)
+        XCTAssertTrue(candidate.proposedLines.allSatisfy { $0.projectAllocationId == project.id })
+        XCTAssertEqual(dataStore.transactions.count, beforeTransactionCount)
+
+        let pendingCandidates = try await workflow.pendingCandidates(businessId: businessId)
+        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        XCTAssertTrue(pendingCandidates.contains(where: { $0.id == candidate.id }))
+        XCTAssertEqual(journals.count, beforeJournals.count)
+    }
+
+    func testSaveManualPostingCandidateSplitsProjectAllocationsAcrossLines() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let projectA = dataStore.addProject(name: "P1", description: "")
+        let projectB = dataStore.addProject(name: "P2", description: "")
+
+        let result = await dataStore.saveManualPostingCandidate(
+            type: .expense,
+            amount: 10_000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "allocation candidate",
+            allocations: [
+                (projectId: projectA.id, ratio: 60),
+                (projectId: projectB.id, ratio: 40),
+            ],
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+
+        let candidate: PostingCandidate
+        switch result {
+        case .success(let savedCandidate):
+            candidate = savedCandidate
+        case .failure(let error):
+            XCTFail("allocation candidate save should succeed: \(error.localizedDescription)")
+            return
+        }
+
+        let groupedAmounts = Dictionary(grouping: candidate.proposedLines, by: \.projectAllocationId)
+            .mapValues { lines in
+                lines.reduce(Decimal.zero) { $0 + $1.amount }
+            }
+
+        XCTAssertEqual(groupedAmounts[.some(projectA.id)], Decimal(12_000))
+        XCTAssertEqual(groupedAmounts[.some(projectB.id)], Decimal(8_000))
+        XCTAssertFalse(candidate.proposedLines.contains(where: { $0.projectAllocationId == nil }))
+    }
+
     func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let repository = SwiftDataChartOfAccountsRepository(modelContext: context)

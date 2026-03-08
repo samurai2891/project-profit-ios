@@ -412,6 +412,44 @@ struct CanonicalTransactionPostingBridge {
             journalEntryId = transaction.journalEntryId
         }
 
+        init(
+            id: UUID,
+            type: TransactionType,
+            amount: Int,
+            date: Date,
+            categoryId: String,
+            memo: String,
+            recurringId: UUID?,
+            paymentAccountId: String?,
+            transferToAccountId: String?,
+            taxDeductibleRate: Int?,
+            taxAmount: Int?,
+            taxRate: Int?,
+            isTaxIncluded: Bool?,
+            taxCategory: TaxCategory?,
+            createdAt: Date,
+            updatedAt: Date,
+            journalEntryId: UUID?
+        ) {
+            self.id = id
+            self.type = type
+            self.amount = amount
+            self.date = date
+            self.categoryId = categoryId
+            self.memo = memo
+            self.recurringId = recurringId
+            self.paymentAccountId = paymentAccountId
+            self.transferToAccountId = transferToAccountId
+            self.taxDeductibleRate = taxDeductibleRate
+            self.taxAmount = taxAmount
+            self.taxRate = taxRate
+            self.isTaxIncluded = isTaxIncluded
+            self.taxCategory = taxCategory
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.journalEntryId = journalEntryId
+        }
+
         var effectiveTaxDeductibleRate: Int {
             max(0, min(100, taxDeductibleRate ?? 100))
         }

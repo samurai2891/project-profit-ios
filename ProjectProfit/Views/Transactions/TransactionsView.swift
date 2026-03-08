@@ -558,13 +558,9 @@ struct TransactionsView: View {
                 .foregroundStyle(AppColors.muted)
 
             Button {
-                if dataStore.isLegacyTransactionEditingEnabled {
-                    showAddSheet = true
-                } else {
-                    showReceiptScanner = true
-                }
+                showAddSheet = true
             } label: {
-                Text(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の証憑を取り込む")
+                Text(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の候補を作成")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
@@ -573,8 +569,8 @@ struct TransactionsView: View {
                     .background(AppColors.primary)
                     .clipShape(Capsule())
             }
-            .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の証憑を取り込む")
-            .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして証憑を取り込みます")
+            .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の候補を作成")
+            .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
 
             Spacer().frame(height: 40)
         }
@@ -588,9 +584,9 @@ struct TransactionsView: View {
             Image(systemName: "lock.doc")
                 .foregroundStyle(AppColors.warning)
             VStack(alignment: .leading, spacing: 4) {
-                Text("手動取引入力は停止中")
+                Text("既存取引の編集・削除は停止中")
                     .font(.subheadline.weight(.semibold))
-                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                Text("新規の手入力は承認待ち候補として保存されます。証憑取込は右上の書類読取から行えます。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -603,13 +599,9 @@ struct TransactionsView: View {
 
     private var fabButton: some View {
         Button {
-            if dataStore.isLegacyTransactionEditingEnabled {
-                showAddSheet = true
-            } else {
-                showReceiptScanner = true
-            }
+            showAddSheet = true
         } label: {
-            Image(systemName: dataStore.isLegacyTransactionEditingEnabled ? "plus" : "doc.text.viewfinder")
+            Image(systemName: "plus")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.white)
@@ -618,8 +610,8 @@ struct TransactionsView: View {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
         }
-        .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "新規追加" : "証憑を取り込む")
-        .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして証憑を取り込みます")
+        .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "新規追加" : "候補を手入力")
+        .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }

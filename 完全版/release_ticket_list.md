@@ -1,7 +1,7 @@
-# ProjectProfit リリース向け修正チケット一覧（2026-03-08 実コード再監査版）
+# ProjectProfit リリース向け修正チケット一覧（2026-03-09 実装反映版）
 
-作成日: 2026-03-08  
-前提: `/Users/yutaro/project-profit-ios` を二度走査し、`release_ticket_list.md` の各項目を現コードに合わせて更新した。  
+作成日: 2026-03-09  
+前提: `/Users/yutaro/project-profit-ios` を二度走査し、2026-03-09 時点の未コミット差分も含めて `release_ticket_list.md` の各項目を現コードに合わせて更新した。  
 確認方法:
 - 一次確認: `rg` による全体走査で実装有無と参照経路を抽出
 - 二次確認: 該当ファイルを開いて active path と補助経路を再確認
@@ -22,7 +22,11 @@
   - `ProjectProfit/ProjectProfitApp.swift` で起動時に `FeatureFlags.switchToCanonical()` を実行している。
   - `ProjectProfit/App/FeatureFlags.swift` では `useCanonicalPosting = true`、`useLegacyLedger = false` を canonical 既定値として扱っている。
   - `ProjectProfit/Ledger/Services/LedgerDataStore.swift` は `FeatureFlags.useLegacyLedger == false` のとき書き込みを拒否する。
-  - 一方で `ProjectProfit/Views/Components/TransactionFormView.swift` と `ProjectProfit/Services/DataStore.swift` の legacy transaction 保存経路は残っている。
+  - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規入力は `DataStore.saveManualPostingCandidate(...)` を呼び、`PPTransaction` を作らず draft candidate として保存する。
+  - `ProjectProfit/Views/Transactions/TransactionsView.swift` の canonical 時の空状態ボタンと FAB は `新規取引` ではなく `最初の候補を作成` / `候補を手入力` 表示になっている。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存で legacy transaction 件数と journal 件数が増えないことを確認するテストがある。
+  - 一方で `ProjectProfit/Services/DataStore.swift` には `addTransactionResult(...)`、`updateTransaction(...)`、`deleteTransaction(...)` が残り、recurring と import もこの legacy transaction API を通る。
+  - `ProjectProfit/Services/DataStore.swift` の transaction 同期は `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼ぶため、transaction 起点の posting はまだ即時承認前提である。
 
 ### REL-P0-02 Repository / UseCase 層を完成させる
 - 関連既存チケット: `PP-010`
@@ -31,7 +35,9 @@
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/` に `BusinessProfile`、`TaxYearProfile`、`Evidence`、`Counterparty`、`PostingCandidate`、`CanonicalJournalEntry`、`ChartOfAccounts`、`DistributionTemplate`、`Audit` の repository 実装がある。
   - `ProjectProfit/Application/UseCases/` に masters / evidence / filing / journals / posting / distribution の UseCase 実装がある。
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`、`ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`、`ProjectProfit/Views/Settings/ProfileSettingsView.swift` は UseCase 側へ接続されている。
-  - 一方で `ProjectProfit/Services/DataStore.swift` と `ProjectProfit/Views/Components/TransactionFormView.swift` など、UI から `DataStore` を直接使う経路は残っている。
+  - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規保存は `DataStore.saveManualPostingCandidate(...)` を介して `PostingWorkflowUseCase.saveCandidate(...)` に到達する。
+  - 一方で `ProjectProfit/Services/DataStore.swift` は orchestration と永続化更新を両方持っており、`addTransactionResult(...)`、`updateTransaction(...)`、`processRecurringTransactions()`、import 系処理などの直接 mutation API が残る。
+  - `ProjectProfit/Views/Components/TransactionFormView.swift` の edit mode と、`ProjectProfit/Views/Components/RecurringFormView.swift`、`ProjectProfit/Views/Report/ReportView.swift` など、`DataStore` を直接参照する UI / service 経路はまだ残っている。
 
 ### REL-P0-03 `PPAccountingProfile` 依存を切って `BusinessProfile` / `TaxYearProfile` に移行する
 - 関連既存チケット: `PP-005`
@@ -96,6 +102,8 @@
   - `ProjectProfit/Services/AccountingBootstrapService.swift` は `CanonicalTransactionPostingBridge` を使って bootstrap 時の canonical candidate / journal を生成する。
   - `ProjectProfit/Services/DataStore.swift` の add / update / delete では production caller として `AccountingEngine` を使っていない。
   - `ProjectProfit/Services/AccountingBootstrapService.swift` の `CanonicalTransactionPostingBridge` は `TransactionSnapshot` を受けるようになり、橋渡し入力は `PPTransaction` 全体ではなく snapshot 化されている。
+  - `ProjectProfit/Services/DataStore.swift` の `saveManualPostingCandidate(...)` は bridge の出力 candidate を `.draft` に更新して `PostingWorkflowUseCase.saveCandidate(...)` だけを呼ぶ。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存で pending candidate が作られ、journal が増えないことを確認するテストがある。
   - 一方で `ProjectProfit/Services/DataStore.swift` は transaction 同期で `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼び、`ProjectProfit/Services/AccountingBootstrapService.swift` の bridge candidate status も `.approved` を返す。
 
 ### REL-P0-09 承認・取消・監査ログ・締め前チェックを一つのフローにする

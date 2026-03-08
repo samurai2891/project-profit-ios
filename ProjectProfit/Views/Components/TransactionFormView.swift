@@ -42,9 +42,12 @@ struct TransactionFormView: View {
     @State private var counterparty: String = ""
 
     private var isEditMode: Bool { transaction != nil }
+    private var isCanonicalDraftMode: Bool {
+        !dataStore.isLegacyTransactionEditingEnabled && !isEditMode
+    }
 
     private var isLegacyEditingDisabled: Bool {
-        !dataStore.isLegacyTransactionEditingEnabled
+        !dataStore.isLegacyTransactionEditingEnabled && isEditMode
     }
 
     private var paymentAccounts: [PPAccount] {
@@ -111,7 +114,9 @@ struct TransactionFormView: View {
                         canonicalCutoverNotice
                     }
                     typeSection
-                    receiptSection
+                    if !isCanonicalDraftMode {
+                        receiptSection
+                    }
                     amountSection
                     dateSection
                     if type != .transfer {
@@ -162,7 +167,11 @@ struct TransactionFormView: View {
             } message: {
                 Text(saveError ?? "保存に失敗しました")
             }
-            .navigationTitle(isEditMode ? "取引を編集" : "新規取引")
+            .navigationTitle(
+                isEditMode
+                    ? "取引を編集"
+                    : (isCanonicalDraftMode ? "新規候補" : "新規取引")
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -177,7 +186,9 @@ struct TransactionFormView: View {
                         .accessibilityHint(
                             isLegacyEditingDisabled
                                 ? dataStore.legacyTransactionMutationDisabledMessage
-                                : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください")
+                                : (isCanonicalDraftMode
+                                    ? (isValid ? "タップして承認待ち候補を保存" : "すべての必須項目を入力してください")
+                                    : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください"))
                         )
                 }
             }
@@ -196,9 +207,13 @@ struct TransactionFormView: View {
             Image(systemName: "lock.doc")
                 .foregroundStyle(AppColors.warning)
             VStack(alignment: .leading, spacing: 4) {
-                Text("手動取引入力は停止中")
+                Text(isCanonicalDraftMode ? "手入力は承認待ち候補として保存されます" : "既存取引の編集は停止中")
                     .font(.subheadline.weight(.semibold))
-                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                Text(
+                    isCanonicalDraftMode
+                        ? "この画面からの新規手入力は Approval Queue の下書き候補として保存されます。既存取引の編集・削除は停止したままです。"
+                        : dataStore.legacyTransactionMutationDisabledMessage
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -863,14 +878,12 @@ struct TransactionFormView: View {
     }
 
     private func save() {
+        guard isValid, let amount = Int(amountText) else { return }
         guard !isLegacyEditingDisabled else {
             saveError = dataStore.legacyTransactionMutationDisabledMessage
             return
         }
-        guard isValid, let amount = Int(amountText) else { return }
         isSubmitting = true
-        defer { isSubmitting = false }
-        saveError = nil
 
         let allocs = type == .transfer ? [] : allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
 
@@ -879,7 +892,7 @@ struct TransactionFormView: View {
             do {
                 imagePath = try ReceiptImageStore.saveImage(image)
             } catch {
-                // 画像保存失敗でも取引は保存する
+                imagePath = nil
             }
         }
 
@@ -904,6 +917,49 @@ struct TransactionFormView: View {
         } else {
             resolvedTaxAmount = nil
         }
+
+        if isCanonicalDraftMode {
+            Task { @MainActor in
+                defer { isSubmitting = false }
+                saveError = nil
+
+                let result = await dataStore.saveManualPostingCandidate(
+                    type: type,
+                    amount: amount,
+                    date: date,
+                    categoryId: resolvedCategoryId,
+                    memo: memo,
+                    allocations: allocs,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: resolvedTransferTo,
+                    taxDeductibleRate: resolvedTaxDeductibleRate,
+                    taxAmount: resolvedTaxAmount,
+                    taxRate: resolvedConsumptionTaxRate,
+                    isTaxIncluded: resolvedIsTaxIncluded,
+                    taxCategory: resolvedTaxCategory,
+                    counterpartyId: selectedCounterpartyId,
+                    counterparty: resolvedCounterparty,
+                    candidateSource: .manual
+                )
+
+                switch result {
+                case .success:
+                    if let imagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
+                    dismiss()
+                case .failure(let error):
+                    if let imagePath {
+                        ReceiptImageStore.deleteImage(fileName: imagePath)
+                    }
+                    saveError = error.localizedDescription
+                }
+            }
+            return
+        }
+
+        defer { isSubmitting = false }
+        saveError = nil
 
         if let t = transaction {
             let didUpdate: Bool
