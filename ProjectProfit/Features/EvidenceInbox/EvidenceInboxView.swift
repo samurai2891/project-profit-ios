@@ -11,6 +11,8 @@ struct EvidenceInboxView: View {
     @State private var searchForm = EvidenceSearchFormState()
     @State private var showScanner = false
     @State private var showSearchFilters = false
+    @State private var pendingSharedImportCount = 0
+    @State private var scannerSharedImportItem: SharedImportInboxItem?
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var isReindexing = false
@@ -87,6 +89,7 @@ struct EvidenceInboxView: View {
                     .accessibilityHint("証憑検索条件と再索引を開きます")
 
                     Button {
+                        scannerSharedImportItem = nil
                         showScanner = true
                     } label: {
                         Image(systemName: "doc.text.viewfinder")
@@ -94,11 +97,26 @@ struct EvidenceInboxView: View {
                     .accessibilityLabel("書類読取")
                     .accessibilityHint("新しい証憑を取り込みます")
                     .disabled(isCurrentYearLocked)
+
+                    if pendingSharedImportCount > 0 {
+                        Button {
+                            openSharedImportScanner()
+                        } label: {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                        }
+                        .accessibilityLabel("共有取り込み")
+                        .accessibilityHint("共有されたファイルを証憑取込へ追加")
+                        .disabled(isCurrentYearLocked)
+                    }
                 }
             }
         }
         .task(id: reloadKey) {
             await loadEvidence()
+            refreshSharedImportBadge()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            refreshSharedImportBadge()
         }
         .searchable(
             text: Binding(
@@ -109,9 +127,11 @@ struct EvidenceInboxView: View {
             prompt: "ファイル名 / OCR / 取引先 / ハッシュ"
         )
         .sheet(isPresented: $showScanner, onDismiss: {
+            scannerSharedImportItem = nil
             Task { await loadEvidence() }
+            refreshSharedImportBadge()
         }) {
-            ReceiptScannerView()
+            ReceiptScannerView(sharedImportItem: scannerSharedImportItem)
         }
         .sheet(isPresented: $showSearchFilters) {
             EvidenceSearchFilterSheet(
@@ -212,6 +232,21 @@ struct EvidenceInboxView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func refreshSharedImportBadge() {
+        pendingSharedImportCount = ShareImportInboxService.pendingCount()
+    }
+
+    private func openSharedImportScanner() {
+        guard !isCurrentYearLocked else { return }
+        guard let item = ShareImportInboxService.dequeueOldest() else {
+            refreshSharedImportBadge()
+            return
+        }
+        scannerSharedImportItem = item
+        showScanner = true
+        refreshSharedImportBadge()
     }
 
     private func projectLabels(for ids: [UUID]) -> String {

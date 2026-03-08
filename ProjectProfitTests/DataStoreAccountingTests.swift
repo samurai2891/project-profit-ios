@@ -86,34 +86,41 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertTrue(dataStore.journalLines.filter { $0.entryId == entryId }.isEmpty)
     }
 
-    func testDeleteAutoJournalEntryIsIgnored() {
+    func testDeleteAutoJournalEntryIsIgnored() async {
         // Auto entries should not be deletable via manual delete
         let project = dataStore.addProject(name: "P1", description: "")
         let tx = dataStore.addTransaction(
             type: .expense, amount: 1000, date: Date(),
             categoryId: "cat-tools", memo: "",
-            allocations: [(projectId: project.id, ratio: 100)]
+            allocations: [(projectId: project.id, ratio: 100)],
+            candidateSource: .manual
         )
-
-        guard let journalId = tx.journalEntryId else {
-            XCTFail("Transaction should have journal entry")
+        let syncResult = await dataStore.syncCanonicalArtifacts(forTransactionId: tx.id, source: .manual)
+        guard case let .synced(_, journalId) = syncResult.postingStatus else {
+            XCTFail("Transaction should be synced to canonical journal before deletion test")
             return
         }
 
-        let countBefore = dataStore.journalEntries.count
+        let countBefore = dataStore.canonicalJournalEntries().count
         dataStore.deleteManualJournalEntry(id: journalId)
-        XCTAssertEqual(dataStore.journalEntries.count, countBefore, "Auto entry should not be deleted")
+        XCTAssertEqual(dataStore.canonicalJournalEntries().count, countBefore, "Auto entry should not be deleted")
+        XCTAssertTrue(dataStore.canonicalJournalEntries().contains { $0.id == journalId })
     }
 
     // MARK: - Account Balance
 
-    func testGetAccountBalance() {
+    func testGetAccountBalance() async {
         let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let transaction = dataStore.addTransaction(
             type: .expense, amount: 3000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
-            paymentAccountId: "acct-cash"
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: transaction.id,
+            source: .manual
         )
 
         // 経費仕訳: 借方=acct-supplies(3000), 貸方=acct-cash(3000)
@@ -123,21 +130,31 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(cashBalance.balance, -3000)
     }
 
-    func testGetAccountBalanceWithMultipleTransactions() {
+    func testGetAccountBalanceWithMultipleTransactions() async {
         let project = dataStore.addProject(name: "P1", description: "")
 
-        _ = dataStore.addTransaction(
+        let income = dataStore.addTransaction(
             type: .income, amount: 50000, date: Date(),
             categoryId: "cat-project-income", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
-            paymentAccountId: "acct-cash"
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
         )
 
-        _ = dataStore.addTransaction(
+        let expense = dataStore.addTransaction(
             type: .expense, amount: 10000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
-            paymentAccountId: "acct-cash"
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: income.id,
+            source: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: expense.id,
+            source: .manual
         )
 
         // 収入: 借方=acct-cash(50000)
@@ -151,21 +168,31 @@ final class DataStoreAccountingTests: XCTestCase {
 
     // MARK: - Ledger Entries
 
-    func testGetLedgerEntries() {
+    func testGetLedgerEntries() async {
         let project = dataStore.addProject(name: "P1", description: "")
 
-        _ = dataStore.addTransaction(
+        let income = dataStore.addTransaction(
             type: .income, amount: 20000, date: Date(),
             categoryId: "cat-project-income", memo: "売上1",
             allocations: [(projectId: project.id, ratio: 100)],
-            paymentAccountId: "acct-cash"
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
         )
 
-        _ = dataStore.addTransaction(
+        let expense = dataStore.addTransaction(
             type: .expense, amount: 5000, date: Date(),
             categoryId: "cat-tools", memo: "ツール代",
             allocations: [(projectId: project.id, ratio: 100)],
-            paymentAccountId: "acct-cash"
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: income.id,
+            source: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: expense.id,
+            source: .manual
         )
 
         let entries = dataStore.getLedgerEntries(accountId: "acct-cash")
@@ -582,8 +609,8 @@ final class DataStoreAccountingTests: XCTestCase {
         )
 
         XCTAssertEqual(counterparties.map(\.id), [counterpartyId])
-        XCTAssertEqual(candidateId, transaction.id)
-        XCTAssertEqual(journal.id, try XCTUnwrap(transaction.journalEntryId))
+        XCTAssertEqual(journal.id, transaction.journalEntryId)
+        XCTAssertEqual(journal.sourceCandidateId, candidateId)
         XCTAssertEqual(candidateAccountIds, Set([try XCTUnwrap(suppliesAccount?.id), try XCTUnwrap(cashAccount?.id)]))
         XCTAssertEqual(Set(candidate?.proposedLines.compactMap(\.legalReportLineId) ?? []), Set([LegalReportLine.consumables.rawValue, LegalReportLine.cash.rawValue]))
         XCTAssertEqual(Set(journal.lines.compactMap(\.legalReportLineId)), Set([LegalReportLine.consumables.rawValue, LegalReportLine.cash.rawValue]))
@@ -619,13 +646,12 @@ final class DataStoreAccountingTests: XCTestCase {
         let firstJournal = try await journalRepository.findById(journalId)
         let initialVoucherNo = try XCTUnwrap(firstJournal?.voucherNo)
 
-        XCTAssertEqual(candidateId, transaction.id)
         XCTAssertEqual(journalId, transaction.journalEntryId)
+        XCTAssertEqual(firstJournal?.sourceCandidateId, candidateId)
         XCTAssertEqual(firstCandidate?.counterpartyId, counterpartyId)
         XCTAssertEqual(firstCandidate?.source, .manual)
         XCTAssertEqual(firstCandidate?.proposedLines.count, 2)
         XCTAssertEqual(firstJournal?.businessId, businessId)
-        XCTAssertEqual(firstJournal?.sourceCandidateId, transaction.id)
         XCTAssertEqual(firstJournal?.totalDebit, Decimal(1800))
         XCTAssertEqual(firstJournal?.totalCredit, Decimal(1800))
 
@@ -644,8 +670,8 @@ final class DataStoreAccountingTests: XCTestCase {
         let updatedCandidate = try await candidateRepository.findById(updatedCandidateId)
         let updatedJournal = try await journalRepository.findById(updatedJournalId)
 
-        XCTAssertEqual(updatedCandidateId, candidateId)
         XCTAssertEqual(updatedJournalId, journalId)
+        XCTAssertEqual(updatedJournal?.sourceCandidateId, updatedCandidateId)
         XCTAssertEqual(updatedCandidate?.proposedLines.map(\.amount), [Decimal(2400), Decimal(2400)])
         XCTAssertEqual(updatedJournal?.voucherNo, initialVoucherNo)
         XCTAssertEqual(updatedJournal?.totalDebit, Decimal(2400))
@@ -746,7 +772,7 @@ final class DataStoreAccountingTests: XCTestCase {
         try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
 
         let project = dataStore.addProject(name: "Ledger Project", description: "")
-        _ = dataStore.addTransaction(
+        let transaction = dataStore.addTransaction(
             type: .expense,
             amount: 1500,
             date: Date(),
@@ -757,6 +783,10 @@ final class DataStoreAccountingTests: XCTestCase {
             counterpartyId: counterparty.id,
             counterparty: "旧表示名",
             candidateSource: .manual
+        )
+        _ = await dataStore.syncCanonicalArtifacts(
+            forTransactionId: transaction.id,
+            source: .manual
         )
 
         let ledgerEntries = dataStore.getLedgerEntries(accountId: "acct-cash")

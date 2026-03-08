@@ -19,6 +19,7 @@
 		07C7C7AB2AAE14E5042C0861 /* BusinessProfileEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B78D7DEEA8EE6A9A2DC1627 /* BusinessProfileEntity.swift */; };
 		0854DAFC0FED5D4D01E0C9CA /* AccountingReportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D85A7C833F25E01DEEF74A6A /* AccountingReportServiceTests.swift */; };
 		08E0ECD5137C5A7A465D67E6 /* SwiftDataAuditRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AAB658AA44519964D6C3627 /* SwiftDataAuditRepository.swift */; };
+		0914D7A67ACC41A989728DF1 /* ProjectProfitShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7A6E2C6E710E5244E5A6FB4E /* ProjectProfitShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0998744C2E35DEC9761539FA /* CounterpartyListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42EDA334780C0A1193D42E7A /* CounterpartyListView.swift */; };
 		0A04B4422D6E2850DD6521E5 /* DepreciationScheduleBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066DCD3F546D9686B73B0175 /* DepreciationScheduleBuilder.swift */; };
 		0A577B7B1417C82171D1DEC4 /* JournalSearchIndexEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F6B1162D42F9C2DF4DB1C8 /* JournalSearchIndexEntity.swift */; };
@@ -152,6 +153,7 @@
 		5B1D744286736A44CD4F348B /* RecurringFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A95C3D59FD40A677B5178C /* RecurringFormView.swift */; };
 		5C58928AE26521AA5D90E64D /* trial_balance_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = 8DE30C78524443912A37764A /* trial_balance_2025.json */; };
 		5C7B68270AC7F3D21D5E119E /* CategoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A551798CD7C2831608B0924 /* CategoryListView.swift */; };
+		5D68222A701767D006CAAB49 /* ShareImportInboxService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ED6340F9E691F03BE8C07B /* ShareImportInboxService.swift */; };
 		5E3333063DA23EBC3D682C4A /* PPInventoryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD9EEA7953AF58102E6EB50B /* PPInventoryRecord.swift */; };
 		5F807CBBDA66A5BE70E2C2FC /* CounterpartyMatchingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA823A3DCFB86DC1FC326BDC /* CounterpartyMatchingTests.swift */; };
 		602B7A87AC6BB8FD9FC015AE /* DocumentAndSubLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B4447208A6B14F9B4732B6 /* DocumentAndSubLedgerTests.swift */; };
@@ -177,6 +179,7 @@
 		6D4A9E7E4339292D991F3838 /* DataStore+SubLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6B2AE0BDC8D0355B5B4ED4 /* DataStore+SubLedger.swift */; };
 		6E56FB6B9ED17EF86A039D4C /* TaxYearProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62CE258D9C50D0ABC8F13DDE /* TaxYearProfile.swift */; };
 		6EEFDE30751C759E2D296F22 /* ExportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E08276D9AF74E8E55F63C9 /* ExportCoordinator.swift */; };
+		6F5DF9E2F12259BFFF72EE78 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74030423140774095FF3BAD9 /* ShareViewController.swift */; };
 		6F6FC4351375668C83CB9D9C /* RegexReceiptParserLineItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */; };
 		6FB1494D018E20903B5500DC /* ShushiNaiyakushoBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0769B7DE6FC53BB20D7CA4FE /* ShushiNaiyakushoBuilderTests.swift */; };
 		703A8A873D26F3D4A05A157B /* SearchIndexNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325001AE3A310774943C88CA /* SearchIndexNormalizer.swift */; };
@@ -404,7 +407,6 @@
 		FC510C2377B9CF857CD6246D /* AccountingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49F981391FCA44E6C8AB6D5 /* AccountingEngine.swift */; };
 		FEA7603492BC3947AA6142A5 /* Counterparty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A2D258C14F7F17061A13BD /* Counterparty.swift */; };
 		FF2599B004C65ACD2567EADF /* ReceiptStoreNameExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA7DAC6D4DF4B24C0C7FDDA /* ReceiptStoreNameExtractionTests.swift */; };
-		E1FBD001A111111111111111 /* TaxYearPacks in Resources */ = {isa = PBXBuildFile; fileRef = E1FBD002A111111111111111 /* TaxYearPacks */; };
 		FF5BC625905895DDF36945EA /* blue_return_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D046AFB8A285895E856D8AD /* blue_return_2025.json */; };
 /* End PBXBuildFile section */
 
@@ -416,7 +418,28 @@
 			remoteGlobalIDString = B0EC5EFA88C12CE310144BE3;
 			remoteInfo = ProjectProfit;
 		};
+		D3FA547ED40D92E405859CDE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B57DFC77CA54255F00E8E08F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2AC8B098F002752A9CC037CD;
+			remoteInfo = ProjectProfitShareExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F0400DA8BB17EA851657B4C2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0914D7A67ACC41A989728DF1 /* ProjectProfitShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0196BD9BEB119EDF94F5E9C0 /* FilingPreflightUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilingPreflightUseCase.swift; sourceTree = "<group>"; };
@@ -437,6 +460,7 @@
 		0769B7DE6FC53BB20D7CA4FE /* ShushiNaiyakushoBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShushiNaiyakushoBuilderTests.swift; sourceTree = "<group>"; };
 		0780371B937F949A496304F6 /* ReceiptImageStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptImageStoreTests.swift; sourceTree = "<group>"; };
 		07C73700A1D59B4EC58525CD /* AllocationCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllocationCalculatorTests.swift; sourceTree = "<group>"; };
+		08ED6340F9E691F03BE8C07B /* ShareImportInboxService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareImportInboxService.swift; sourceTree = "<group>"; };
 		0984FEFC7B2326667C64BE24 /* TransactionDocumentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDocumentsView.swift; sourceTree = "<group>"; };
 		0B78D7DEEA8EE6A9A2DC1627 /* BusinessProfileEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessProfileEntity.swift; sourceTree = "<group>"; };
 		0BAB48A687634DC5CB54B9E3 /* bank_account_book.csv */ = {isa = PBXFileReference; path = bank_account_book.csv; sourceTree = "<group>"; };
@@ -575,6 +599,7 @@
 		4CAA1197D38F65E6F237AE60 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		4D05B7E92B75996C158B82C2 /* TransactionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionLogTests.swift; sourceTree = "<group>"; };
 		4D17B9A5B0C5D7BBA98F8895 /* ReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportView.swift; sourceTree = "<group>"; };
+		4E91441BF42A0F240FFAA7B0 /* ProjectProfit.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProjectProfit.entitlements; sourceTree = "<group>"; };
 		4EEE05896BC8D70A43F14E70 /* SnapshotArchiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotArchiveStore.swift; sourceTree = "<group>"; };
 		4F48559A7F4D6BBE5121CDAF /* ReceiptData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptData.swift; sourceTree = "<group>"; };
 		505F73585E64CE23BA2E1C2E /* UnclassifiedTransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnclassifiedTransactionsView.swift; sourceTree = "<group>"; };
@@ -639,6 +664,7 @@
 		73242F510F38D20CC94EDB39 /* GenreTag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreTag.swift; sourceTree = "<group>"; };
 		73BCAA68910A6A188939F824 /* CSVExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExportService.swift; sourceTree = "<group>"; };
 		73DEC3D27B47D6315C090581 /* DataStore+YearLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+YearLock.swift"; sourceTree = "<group>"; };
+		74030423140774095FF3BAD9 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		742624B8C52E8F6D98CA088F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		74425C8BE01EE1D03650DADD /* ReceiptEvidenceIntakeUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptEvidenceIntakeUseCase.swift; sourceTree = "<group>"; };
 		747668B983D212027E8841B1 /* EtaxFormPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtaxFormPreviewView.swift; sourceTree = "<group>"; };
@@ -653,6 +679,7 @@
 		799EA76468714F564BC67778 /* AccountingIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountingIntegrationTests.swift; sourceTree = "<group>"; };
 		79C5991FD8F9AEC972EC5907 /* DataStore+ProfileMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+ProfileMigration.swift"; sourceTree = "<group>"; };
 		79D2C1C6987F9CA1FFF101F7 /* JournalListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JournalListView.swift; sourceTree = "<group>"; };
+		7A6E2C6E710E5244E5A6FB4E /* ProjectProfitShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ProjectProfitShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A6FF2A21A749D41E72AB37B /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		7AD44E80A975D1B223D93DC4 /* LegacyProfileMigrationRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyProfileMigrationRunner.swift; sourceTree = "<group>"; };
 		7B5F07F9545B13513891FAC9 /* GeneralLedgerEnrichmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralLedgerEnrichmentTests.swift; sourceTree = "<group>"; };
@@ -689,6 +716,7 @@
 		8BCE949E82A5C728126DA116 /* LedgerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerModels.swift; sourceTree = "<group>"; };
 		8CD4372BC49C1F5F09857693 /* APBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APBookTests.swift; sourceTree = "<group>"; };
 		8DE30C78524443912A37764A /* trial_balance_2025.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = trial_balance_2025.json; sourceTree = "<group>"; };
+		8E0435D25BD95ED3A76C5ABC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8EA1D0763CA8B60E2F9A314F /* ManualJournalFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualJournalFormView.swift; sourceTree = "<group>"; };
 		8EAE48BFBBB58F4AE7FE367A /* BookkeepingBasis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookkeepingBasis.swift; sourceTree = "<group>"; };
 		8EF904D8494972942BD98EA7 /* ClassificationDictionaryLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassificationDictionaryLoaderTests.swift; sourceTree = "<group>"; };
@@ -792,6 +820,7 @@
 		CB31860C9EF7D5B7018A3CA9 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		CBD99BA5BD156A24FBFB28A3 /* InventoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryService.swift; sourceTree = "<group>"; };
 		CBE9275A16C42C4F88E0D6CD /* SwiftDataPostingCandidateRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPostingCandidateRepository.swift; sourceTree = "<group>"; };
+		CC7A8E8381695463330AABFB /* ProjectProfitShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProjectProfitShareExtension.entitlements; sourceTree = "<group>"; };
 		CD1BF8742BBD1210B5E4604D /* white_tax_bookkeeping_invoice.csv */ = {isa = PBXFileReference; path = white_tax_bookkeeping_invoice.csv; sourceTree = "<group>"; };
 		CE68B6A72A08ABDFA943720C /* LedgerPDFExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerPDFExportService.swift; sourceTree = "<group>"; };
 		CF0A86F0677FFFDD0CAE723A /* ProRataDataStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataDataStoreTests.swift; sourceTree = "<group>"; };
@@ -871,7 +900,6 @@
 		FDFACD44FE2A5A00E32DE1F5 /* TaxYearStateUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearStateUseCaseTests.swift; sourceTree = "<group>"; };
 		FEB249D7386ECBD01D9D1CA3 /* AuditEventEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditEventEntityMapper.swift; sourceTree = "<group>"; };
 		FF9988639C5530093B18A96C /* ClassificationDictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ClassificationDictionary.json; sourceTree = "<group>"; };
-		E1FBD002A111111111111111 /* TaxYearPacks */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TaxYearPacks; sourceTree = "<group>"; };
 		FFC31874A7BB42A137D5FD24 /* master_schema.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = master_schema.json; sourceTree = "<group>"; };
 		FFCB8FC1C6ACB85985794E9A /* DataStore+FixedAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+FixedAsset.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -1411,6 +1439,7 @@
 			children = (
 				6F1EE749033BC542E74BF32E /* Assets.xcassets */,
 				4AE6ADC8BBF51A08F3C7CFC8 /* PrivacyInfo.xcprivacy */,
+				4E91441BF42A0F240FFAA7B0 /* ProjectProfit.entitlements */,
 				7DA7BFF7AC521FFFE0C4FAF2 /* ProjectProfitApp.swift */,
 				8F9F7FAC2AA746195C392BF5 /* App */,
 				8458C21B6BA9E3743AA09C35 /* Application */,
@@ -1531,7 +1560,6 @@
 				FF9988639C5530093B18A96C /* ClassificationDictionary.json */,
 				AC7B430A76A9001283F6D7BE /* TaxYear2025.json */,
 				9A031028085511950C5BED20 /* TaxYear2026.json */,
-				E1FBD002A111111111111111 /* TaxYearPacks */,
 				011E7EB19AAC8E45ECDEC1F6 /* Fixtures */,
 				46BDD93C2E07F1698E324166 /* Seed */,
 			);
@@ -1939,6 +1967,7 @@
 			isa = PBXGroup;
 			children = (
 				52623B849DAB74FB8521FE1C /* ProjectProfit.app */,
+				7A6E2C6E710E5244E5A6FB4E /* ProjectProfitShareExtension.appex */,
 				F99B1D02EFBCB0EE2D7689AD /* ProjectProfitTests.xctest */,
 			);
 			name = Products;
@@ -1984,6 +2013,16 @@
 				9FC5E80ACEB114A2DF207A58 /* MigrationReportRunner.swift */,
 			);
 			path = Migrations;
+			sourceTree = "<group>";
+		};
+		A26F918CB697B9588D4C4194 /* ProjectProfitShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				8E0435D25BD95ED3A76C5ABC /* Info.plist */,
+				CC7A8E8381695463330AABFB /* ProjectProfitShareExtension.entitlements */,
+				74030423140774095FF3BAD9 /* ShareViewController.swift */,
+			);
+			path = ProjectProfitShareExtension;
 			sourceTree = "<group>";
 		};
 		A567EE7DFA562A3C6ECAD44B /* Export */ = {
@@ -2033,6 +2072,7 @@
 				2BE295C9DB8D76C5FF54A126 /* PDFPageRenderer.swift */,
 				5A73E9F970A14A82011654E0 /* ReceiptImageStore.swift */,
 				04A2B2D3D8EC7CFF1C077573 /* ReceiptScannerService.swift */,
+				08ED6340F9E691F03BE8C07B /* ShareImportInboxService.swift */,
 				4657F014A14E1329AA2DD771 /* ShushiNaiyakushoBuilder.swift */,
 				50D3EC2BB512E3FB12404BB8 /* TaxYearDefinitionLoader.swift */,
 			);
@@ -2213,6 +2253,7 @@
 			isa = PBXGroup;
 			children = (
 				3E7B670F522DFA7E7D82C25E /* ProjectProfit */,
+				A26F918CB697B9588D4C4194 /* ProjectProfitShareExtension */,
 				247A5852B2C4B22B7BDA8CA2 /* ProjectProfitTests */,
 				958A9A9F4B50A1137DA86168 /* Products */,
 			);
@@ -2624,6 +2665,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2AC8B098F002752A9CC037CD /* ProjectProfitShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 238B55EFE27A87A430C1150E /* Build configuration list for PBXNativeTarget "ProjectProfitShareExtension" */;
+			buildPhases = (
+				C7EB7805E8F7DFF5B36F5E9D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ProjectProfitShareExtension;
+			packageProductDependencies = (
+			);
+			productName = ProjectProfitShareExtension;
+			productReference = 7A6E2C6E710E5244E5A6FB4E /* ProjectProfitShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B0EC5EFA88C12CE310144BE3 /* ProjectProfit */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 52D3B5AC8708925D369A7D6A /* Build configuration list for PBXNativeTarget "ProjectProfit" */;
@@ -2631,10 +2689,12 @@
 				9D051B73DF64173E218AC2CA /* Sources */,
 				59110177D8540989E7C4E121 /* Resources */,
 				709D1B5E9F55164125D63DD9 /* Frameworks */,
+				F0400DA8BB17EA851657B4C2 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				6330C025EE921402E819D6A9 /* PBXTargetDependency */,
 			);
 			name = ProjectProfit;
 			packageProductDependencies = (
@@ -2672,6 +2732,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					2AC8B098F002752A9CC037CD = {
+						DevelopmentTeam = 52PPJXD67Z;
+						ProvisioningStyle = Automatic;
+					};
 					B0EC5EFA88C12CE310144BE3 = {
 						DevelopmentTeam = 52PPJXD67Z;
 						ProvisioningStyle = Automatic;
@@ -2700,6 +2764,7 @@
 			projectRoot = "";
 			targets = (
 				B0EC5EFA88C12CE310144BE3 /* ProjectProfit */,
+				2AC8B098F002752A9CC037CD /* ProjectProfitShareExtension */,
 				CEBE2334F607ECBED5AC3038 /* ProjectProfitTests */,
 			);
 		};
@@ -2729,7 +2794,6 @@
 				349D1EB6C16F60F571F7F83F /* PrivacyInfo.xcprivacy in Resources */,
 				3F81648CE6B6C8EEB38F5061 /* TaxYear2025.json in Resources */,
 				A8FA8DB90870CCED43385D01 /* TaxYear2026.json in Resources */,
-				E1FBD001A111111111111111 /* TaxYearPacks in Resources */,
 				7C474E8844847A4D840D601F /* account_categories.csv in Resources */,
 				C8DCD8F7513143795178BC10 /* accounts_payable_book.csv in Resources */,
 				407ACD6C9081402899813A62 /* accounts_receivable_book.csv in Resources */,
@@ -2986,6 +3050,7 @@
 				6B3C897369FF4CB4E1F5F668 /* SearchIndexRebuilder.swift in Sources */,
 				2FEA70AD7309ED271160B61D /* SettingsMainView.swift in Sources */,
 				722EABBD2C414B8BE300071D /* SettingsView.swift in Sources */,
+				5D68222A701767D006CAAB49 /* ShareImportInboxService.swift in Sources */,
 				76F8464149611CAFF0DA3CCF /* ShareSheetView.swift in Sources */,
 				463E08A62094EC3835DC5B0B /* ShushiNaiyakushoBuilder.swift in Sources */,
 				45708455FB689F21D9E2C11C /* SnapshotArchiveStore.swift in Sources */,
@@ -3027,6 +3092,14 @@
 				8F8D8017E4D8FDFC37C21423 /* WithholdingTaxCalculator.swift in Sources */,
 				7749C3DD6D14C282592B3315 /* WithholdingTaxCode.swift in Sources */,
 				3B45E815F4CD76F347CCC606 /* YearLockState.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C7EB7805E8F7DFF5B36F5E9D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6F5DF9E2F12259BFFF72EE78 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3143,6 +3216,11 @@
 			target = B0EC5EFA88C12CE310144BE3 /* ProjectProfit */;
 			targetProxy = 8838ED77F2FC9D2BC2224375 /* PBXContainerItemProxy */;
 		};
+		6330C025EE921402E819D6A9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2AC8B098F002752A9CC037CD /* ProjectProfitShareExtension */;
+			targetProxy = D3FA547ED40D92E405859CDE /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -3150,6 +3228,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ProjectProfit/ProjectProfit.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -3243,6 +3322,48 @@
 			};
 			name = Debug;
 		};
+		82FB2D42CF049B209128D7CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ProjectProfitShareExtension/ProjectProfitShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 52PPJXD67Z;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProjectProfitShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.projectprofit.ProjectProfit.ShareExtension;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A7E43565874B174C97D26A7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ProjectProfitShareExtension/ProjectProfitShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 52PPJXD67Z;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProjectProfitShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.projectprofit.ProjectProfit.ShareExtension;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		BA013A1DE5DDA601C6871919 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3325,6 +3446,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ProjectProfit/ProjectProfit.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -3380,6 +3502,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		238B55EFE27A87A430C1150E /* Build configuration list for PBXNativeTarget "ProjectProfitShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				82FB2D42CF049B209128D7CF /* Debug */,
+				A7E43565874B174C97D26A7D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		52D3B5AC8708925D369A7D6A /* Build configuration list for PBXNativeTarget "ProjectProfit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

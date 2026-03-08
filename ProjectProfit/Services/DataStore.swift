@@ -11,17 +11,6 @@ enum LegacyTransactionMutationSource: Sendable, Equatable {
 @MainActor
 @Observable
 class DataStore {
-    private struct LegacyPostingLineSnapshot: Sendable {
-        let accountId: String
-        let debit: Int
-        let credit: Int
-        let memo: String
-
-        var amount: Int {
-            max(debit, credit)
-        }
-    }
-
     struct LegacyLedgerDiagnostics: Equatable, Sendable {
         let legacyBookCount: Int
         let legacyEntryCount: Int
@@ -346,7 +335,7 @@ class DataStore {
         return (counterparty.id, counterparty.displayName)
     }
 
-    private func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
+    func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
         do {
             let descriptor: FetchDescriptor<JournalEntryEntity>
             if let taxYear {
@@ -535,7 +524,6 @@ class DataStore {
             let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: defaultTaxYear,
-                legacyProfile: legacyProfileFallbackForProfileSettings(),
                 sensitivePayload: payload
             )
             applyProfileSettingsState(state)
@@ -557,7 +545,6 @@ class DataStore {
         do {
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: command.taxYear,
-                legacyProfile: legacyProfileFallbackForProfileSettings(),
                 sensitivePayload: sensitivePayload
             )
             guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
@@ -753,18 +740,6 @@ class DataStore {
         Calendar.current.component(.year, from: Date())
     }
 
-    private func legacyProfileFallbackForProfileSettings() -> PPAccountingProfile? {
-        guard businessProfile == nil else {
-            return nil
-        }
-        do {
-            return try modelContext.fetch(FetchDescriptor<PPAccountingProfile>()).first
-        } catch {
-            AppLogger.dataStore.warning("Legacy profile fallback lookup failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-
     private func guardLegacyTransactionMutationAllowed(
         source: LegacyTransactionMutationSource
     ) -> AppError? {
@@ -892,377 +867,36 @@ class DataStore {
             return .skippedBusinessProfileUnavailable
         }
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        let resolvedPosting = resolvedLegacyPostingSnapshot(for: transaction)
-        let journalId = resolvedPosting?.journalId ?? transaction.journalEntryId ?? UUID()
-        let legacyLines = resolvedPosting?.lines ?? []
-        let description = resolvedPosting?.description
-            ?? normalizedOptionalString(transaction.memo)
-            ?? ""
-        guard !legacyLines.isEmpty else {
-            return .skippedLegacyJournalUnavailable
-        }
-
-        let canonicalIdsByLegacyId = canonicalAccountIdsByLegacyId(businessId: businessId)
-        let canonicalAccountsByLegacyId = canonicalAccountsByLegacyId(businessId: businessId)
-
-        let unmappableAccountIds = Array(
-            Set(
-                legacyLines.compactMap { line in
-                    canonicalAccountId(
-                        for: line.accountId,
-                        canonicalIdsByLegacyId: canonicalIdsByLegacyId
-                    ) == nil ? line.accountId : nil
-                }
-            )
-        ).sorted()
-        guard unmappableAccountIds.isEmpty else {
-            let unmappableList = unmappableAccountIds.joined(separator: ", ")
-            AppLogger.dataStore.info(
-                "Canonical posting sync skipped for transaction \(transaction.id.uuidString): unmappable legacy account ids = \(unmappableList)"
-            )
-            return .skippedUnmappableAccountIds(unmappableAccountIds)
-        }
-
-        let counterparty = counterpartyId.flatMap { canonicalCounterparty(id: $0) }
-        let resolvedTaxCodeId = resolvedCanonicalTaxCodeId(
+        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+        guard let posting = bridge.buildApprovedPosting(
             for: transaction,
-            counterparty: counterparty,
-            legacyLines: legacyLines,
-            canonicalAccountsByLegacyId: canonicalAccountsByLegacyId
-        )
-        let taxYear = fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
-        let taxYearProfile = resolvedTaxYearProfileForExport(
-            fiscalYear: taxYear,
-            businessId: businessId
-        )
-        let pack = try? await BundledTaxYearPackProvider(bundle: .main).pack(for: taxYear)
-        let resolvedTaxAnalysis = makeCanonicalTaxAnalysis(
-            for: transaction,
-            taxCodeId: resolvedTaxCodeId,
-            counterparty: counterparty,
-            taxYearProfile: taxYearProfile,
-            pack: pack
-        )
-
-        let candidateLines = legacyLines.compactMap { line -> PostingCandidateLine? in
-            guard let accountId = canonicalAccountId(
-                for: line.accountId,
-                canonicalIdsByLegacyId: canonicalIdsByLegacyId
-            ) else {
-                return nil
-            }
-            return PostingCandidateLine(
-                debitAccountId: line.debit > 0 ? accountId : nil,
-                creditAccountId: line.credit > 0 ? accountId : nil,
-                amount: Decimal(line.amount),
-                taxCodeId: resolvedTaxCodeId,
-                legalReportLineId: canonicalAccountsByLegacyId[line.accountId]?.defaultLegalReportLineId,
-                memo: normalizedOptionalString(line.memo)
-            )
-        }
-
-        guard !candidateLines.isEmpty else {
-            return .skippedLegacyJournalUnavailable
-        }
-
-        let inferredSource: CandidateSource = source ?? (transaction.recurringId == nil ? .manual : .recurring)
-        let candidate = PostingCandidate(
-            id: transaction.id,
-            evidenceId: nil,
             businessId: businessId,
-            taxYear: taxYear,
-            candidateDate: transaction.date,
             counterpartyId: counterpartyId,
-            proposedLines: candidateLines,
-            taxAnalysis: resolvedTaxAnalysis,
-            confidenceScore: 1.0,
-            status: .approved,
-            source: inferredSource,
-            memo: description,
-            createdAt: transaction.createdAt,
-            updatedAt: transaction.updatedAt
-        )
+            source: source,
+            categories: categories,
+            legacyAccounts: accounts
+        ) else {
+            return .skippedLegacyJournalUnavailable
+        }
 
         do {
             let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
-                candidate,
-                journalId: journalId,
-                entryType: transaction.recurringId == nil ? .normal : .recurring,
-                description: description,
-                approvedAt: transaction.updatedAt
+                posting.candidate,
+                journalId: posting.journalId,
+                entryType: posting.entryType,
+                description: posting.description,
+                approvedAt: posting.approvedAt
             )
             if transaction.journalEntryId != journal.id {
                 transaction.journalEntryId = journal.id
                 save()
                 refreshTransactions()
             }
-            return .synced(candidateId: candidate.id, journalId: journal.id)
+            return .synced(candidateId: posting.candidate.id, journalId: journal.id)
         } catch {
             AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
         }
-    }
-
-    private func resolvedLegacyPostingSnapshot(
-        for transaction: PPTransaction
-    ) -> (journalId: UUID, lines: [LegacyPostingLineSnapshot], description: String?)? {
-        if let legacyJournalId = transaction.journalEntryId,
-           let legacyEntry = journalEntries.first(where: { $0.id == legacyJournalId }) {
-            let legacyLines = journalLines
-                .filter { $0.entryId == legacyJournalId }
-                .sorted { $0.displayOrder < $1.displayOrder }
-                .map {
-                    LegacyPostingLineSnapshot(
-                        accountId: $0.accountId,
-                        debit: $0.debit,
-                        credit: $0.credit,
-                        memo: $0.memo
-                    )
-                }
-            if !legacyLines.isEmpty {
-                return (
-                    journalId: legacyJournalId,
-                    lines: legacyLines,
-                    description: normalizedOptionalString(legacyEntry.memo)
-                )
-            }
-        }
-
-        guard let synthesizedLines = synthesizeLegacyPostingLines(for: transaction),
-              !synthesizedLines.isEmpty else {
-            return nil
-        }
-        return (
-            journalId: transaction.journalEntryId ?? UUID(),
-            lines: synthesizedLines,
-            description: normalizedOptionalString(transaction.memo)
-        )
-    }
-
-    private func synthesizeLegacyPostingLines(
-        for transaction: PPTransaction
-    ) -> [LegacyPostingLineSnapshot]? {
-        switch transaction.type {
-        case .income:
-            return synthesizeIncomePostingLines(for: transaction)
-        case .expense:
-            return synthesizeExpensePostingLines(for: transaction)
-        case .transfer:
-            return synthesizeTransferPostingLines(for: transaction)
-        }
-    }
-
-    private func synthesizeIncomePostingLines(
-        for transaction: PPTransaction
-    ) -> [LegacyPostingLineSnapshot] {
-        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
-        let revenueAccountId = resolvedLegacyLinkedAccountId(
-            categoryId: transaction.categoryId,
-            fallback: AccountingConstants.salesAccountId
-        )
-
-        if let taxAmount = transaction.taxAmount, taxAmount > 0,
-           transaction.taxCategory?.isTaxable == true {
-            let netAmount = transaction.amount - taxAmount
-            return [
-                LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
-                LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: netAmount, memo: ""),
-                LegacyPostingLineSnapshot(accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: taxAmount, memo: "仮受消費税")
-            ]
-        }
-
-        return [
-            LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
-            LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: transaction.amount, memo: "")
-        ]
-    }
-
-    private func synthesizeExpensePostingLines(
-        for transaction: PPTransaction
-    ) -> [LegacyPostingLineSnapshot] {
-        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
-        let expenseAccountId = resolvedLegacyLinkedAccountId(
-            categoryId: transaction.categoryId,
-            fallback: AccountingConstants.miscExpenseAccountId
-        )
-
-        let rate = transaction.effectiveTaxDeductibleRate
-        let amount = transaction.amount
-        let hasTax = (transaction.taxAmount ?? 0) > 0 && transaction.taxCategory?.isTaxable == true
-        let taxAmount = hasTax ? (transaction.taxAmount ?? 0) : 0
-        let expenseBase = hasTax ? (amount - taxAmount) : amount
-
-        if rate >= 100 {
-            var lines = [
-                LegacyPostingLineSnapshot(accountId: expenseAccountId, debit: expenseBase, credit: 0, memo: "")
-            ]
-            if taxAmount > 0 {
-                lines.append(
-                    LegacyPostingLineSnapshot(
-                        accountId: AccountingConstants.inputTaxAccountId,
-                        debit: taxAmount,
-                        credit: 0,
-                        memo: "仮払消費税"
-                    )
-                )
-            }
-            lines.append(LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: 0, credit: amount, memo: ""))
-            return lines
-        }
-
-        let deductibleAmount = expenseBase * rate / 100
-        let personalAmount = expenseBase - deductibleAmount
-        var lines: [LegacyPostingLineSnapshot] = []
-
-        if deductibleAmount > 0 {
-            lines.append(LegacyPostingLineSnapshot(accountId: expenseAccountId, debit: deductibleAmount, credit: 0, memo: ""))
-        }
-        if taxAmount > 0 {
-            let deductibleTax = taxAmount * rate / 100
-            let personalTax = taxAmount - deductibleTax
-            if deductibleTax > 0 {
-                lines.append(
-                    LegacyPostingLineSnapshot(
-                        accountId: AccountingConstants.inputTaxAccountId,
-                        debit: deductibleTax,
-                        credit: 0,
-                        memo: "仮払消費税"
-                    )
-                )
-            }
-            if personalTax > 0 {
-                lines.append(
-                    LegacyPostingLineSnapshot(
-                        accountId: AccountingConstants.ownerDrawingsAccountId,
-                        debit: personalAmount + personalTax,
-                        credit: 0,
-                        memo: ""
-                    )
-                )
-            } else if personalAmount > 0 {
-                lines.append(
-                    LegacyPostingLineSnapshot(
-                        accountId: AccountingConstants.ownerDrawingsAccountId,
-                        debit: personalAmount,
-                        credit: 0,
-                        memo: ""
-                    )
-                )
-            }
-        } else if personalAmount > 0 {
-            lines.append(
-                LegacyPostingLineSnapshot(
-                    accountId: AccountingConstants.ownerDrawingsAccountId,
-                    debit: personalAmount,
-                    credit: 0,
-                    memo: ""
-                )
-            )
-        }
-
-        lines.append(LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: 0, credit: amount, memo: ""))
-        return lines
-    }
-
-    private func synthesizeTransferPostingLines(
-        for transaction: PPTransaction
-    ) -> [LegacyPostingLineSnapshot] {
-        let fromAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
-        let toAccountId = transaction.transferToAccountId ?? AccountingConstants.suspenseAccountId
-        return [
-            LegacyPostingLineSnapshot(accountId: toAccountId, debit: transaction.amount, credit: 0, memo: ""),
-            LegacyPostingLineSnapshot(accountId: fromAccountId, debit: 0, credit: transaction.amount, memo: "")
-        ]
-    }
-
-    private func resolvedLegacyLinkedAccountId(
-        categoryId: String,
-        fallback: String
-    ) -> String {
-        if let category = categories.first(where: { $0.id == categoryId }),
-           let linkedAccountId = category.linkedAccountId {
-            return linkedAccountId
-        }
-        if let mappedAccountId = AccountingConstants.categoryToAccountMapping[categoryId] {
-            return mappedAccountId
-        }
-        return fallback
-    }
-
-    private func resolvedCanonicalTaxCodeId(
-        for transaction: PPTransaction,
-        counterparty: Counterparty?,
-        legacyLines: [LegacyPostingLineSnapshot],
-        canonicalAccountsByLegacyId: [String: CanonicalAccount]
-    ) -> String? {
-        if let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )?.rawValue {
-            return explicitTaxCodeId
-        }
-
-        if let counterpartyDefault = counterparty?.defaultTaxCodeId {
-            return counterpartyDefault
-        }
-
-        for legacyLine in legacyLines {
-            guard let account = canonicalAccountsByLegacyId[legacyLine.accountId] else {
-                continue
-            }
-            guard account.accountType == .expense || account.accountType == .revenue else {
-                continue
-            }
-            if let defaultTaxCodeId = account.defaultTaxCodeId {
-                return defaultTaxCodeId
-            }
-        }
-
-        return nil
-    }
-
-    private func makeCanonicalTaxAnalysis(
-        for transaction: PPTransaction,
-        taxCodeId: String?,
-        counterparty: Counterparty?,
-        taxYearProfile: TaxYearProfile,
-        pack: TaxYearPack?
-    ) -> TaxAnalysis? {
-        guard let taxCode = TaxCode.resolve(id: taxCodeId), taxCode.isTaxable else {
-            return nil
-        }
-        guard let taxAmount = transaction.taxAmount, taxAmount > 0 else {
-            return nil
-        }
-
-        let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
-        let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
-        let grossAmount = Decimal(transaction.amount)
-        let creditMethod: InputTaxCreditMethod
-        if transaction.type == .expense {
-            creditMethod = evaluator.evaluateInputTaxCreditMethod(
-                transactionDate: transaction.date,
-                counterpartyInvoiceStatus: counterpartyInvoiceStatus,
-                amount: grossAmount
-            )
-        } else {
-            creditMethod = .notApplicable
-        }
-
-        let deductibleTaxAmount: Decimal
-        if transaction.type == .expense {
-            deductibleTaxAmount = Decimal(taxAmount) * creditMethod.creditRate
-        } else {
-            deductibleTaxAmount = Decimal(0)
-        }
-
-        return TaxAnalysis(
-            creditMethod: creditMethod,
-            taxRateBreakdown: taxCode.rateBreakdown(using: pack),
-            taxableAmount: Decimal(transaction.netAmount),
-            taxAmount: Decimal(taxAmount),
-            deductibleTaxAmount: deductibleTaxAmount
-        )
     }
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
@@ -1911,13 +1545,7 @@ class DataStore {
         )
         modelContext.insert(transaction)
 
-        // Phase 4B: 仕訳を自動生成（canonical正本モード時はスキップ）
-        if !FeatureFlags.useCanonicalPosting {
-            let engine = AccountingEngine(modelContext: modelContext)
-            if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-                transaction.journalEntryId = entry.id
-            }
-        }
+        // canonical正本では legacy journal を生成しない
 
         save()
         refreshTransactions()
@@ -2122,13 +1750,7 @@ class DataStore {
 
         transaction.updatedAt = Date()
 
-        // Phase 4B: 仕訳を再生成（canonical正本モード時はスキップ）
-        if !FeatureFlags.useCanonicalPosting {
-            let engine = AccountingEngine(modelContext: modelContext)
-            if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-                transaction.journalEntryId = entry.id
-            }
-        }
+        // canonical正本では legacy journal を再生成しない
 
         save()
         refreshTransactions()
@@ -2153,11 +1775,7 @@ class DataStore {
         transaction.deletedAt = Date()
         transaction.updatedAt = Date()
 
-        // Phase 4B: 対応する仕訳を削除（canonical正本モード時はスキップ）
-        if !FeatureFlags.useCanonicalPosting {
-            let engine = AccountingEngine(modelContext: modelContext)
-            engine.deleteJournalEntry(for: transaction.id)
-        }
+        // canonical正本では legacy journal を削除しない
 
         save()
         refreshTransactions()

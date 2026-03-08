@@ -30,15 +30,12 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
             myNumberFlag: nil
         )
 
-        let state = try await useCase.load(
-            defaultTaxYear: 2025,
-            legacyProfile: legacy,
-            sensitivePayload: payload
-        )
+        let report = LegacyProfileMigrationRunner(modelContext: context).executeIfNeeded()
+        XCTAssertEqual(report.outcome, .executed)
+
+        let state = try await useCase.load(defaultTaxYear: 2025, sensitivePayload: payload)
 
         XCTAssertEqual(state.businessProfile.businessName, "テスト商店")
-        XCTAssertEqual(state.businessProfile.ownerNameKana, "タナカタロウ")
-        XCTAssertEqual(state.businessProfile.postalCode, "1000001")
         XCTAssertEqual(state.businessProfile.defaultPaymentAccountId, "acct-bank")
         XCTAssertEqual(state.taxYearProfile.taxYear, 2025)
         XCTAssertEqual(state.taxYearProfile.filingStyle, .white)

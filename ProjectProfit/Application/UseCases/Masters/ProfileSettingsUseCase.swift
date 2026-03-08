@@ -64,7 +64,6 @@ struct ProfileSettingsUseCase {
 
     func load(
         defaultTaxYear: Int,
-        legacyProfile: PPAccountingProfile? = nil,
         sensitivePayload: ProfileSensitivePayload? = nil
     ) async throws -> ProfileSettingsState {
         if let businessProfile = try await businessProfileRepository.findDefault() {
@@ -72,22 +71,6 @@ struct ProfileSettingsUseCase {
                 businessProfile: businessProfile,
                 defaultTaxYear: defaultTaxYear
             )
-            return ProfileSettingsState(businessProfile: businessProfile, taxYearProfile: taxYearProfile)
-        }
-
-        if let legacyProfile {
-            let fallbackVersion = await defaultPackVersion(for: legacyProfile.fiscalYear)
-            let businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
-                from: legacyProfile,
-                sensitivePayload: sensitivePayload
-            )
-            let taxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
-                from: legacyProfile,
-                businessId: businessProfile.id,
-                taxPackVersion: fallbackVersion
-            )
-            try await businessProfileRepository.save(businessProfile)
-            try await taxYearProfileRepository.save(taxYearProfile)
             return ProfileSettingsState(businessProfile: businessProfile, taxYearProfile: taxYearProfile)
         }
 

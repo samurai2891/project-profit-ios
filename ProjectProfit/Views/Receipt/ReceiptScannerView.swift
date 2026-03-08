@@ -10,6 +10,7 @@ struct ReceiptScannerView: View {
     @Environment(\.dismiss) private var dismiss
 
     let defaultProjectId: UUID?
+    let sharedImportItem: SharedImportInboxItem?
 
     @State private var selectedImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
@@ -20,9 +21,11 @@ struct ReceiptScannerView: View {
     @State private var scannerService = ReceiptScannerService()
     @State private var importedPDFData: Data?
     @State private var importError: String?
+    @State private var hasHandledInitialSharedImport = false
 
-    init(defaultProjectId: UUID? = nil) {
+    init(defaultProjectId: UUID? = nil, sharedImportItem: SharedImportInboxItem? = nil) {
         self.defaultProjectId = defaultProjectId
+        self.sharedImportItem = sharedImportItem
     }
 
     var body: some View {
@@ -74,6 +77,9 @@ struct ReceiptScannerView: View {
             }
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
+            }
+            .task(id: sharedImportItem?.id) {
+                importSharedItemIfNeeded()
             }
             .alert("読み込みエラー", isPresented: Binding(
                 get: { importError != nil },
@@ -328,6 +334,7 @@ struct ReceiptScannerView: View {
         importedPDFData = nil
         selectedSourceType = .manualNoFile
         scannerService.reset()
+        hasHandledInitialSharedImport = sharedImportItem != nil
     }
 
     // MARK: - Photo Loading
@@ -386,6 +393,44 @@ struct ReceiptScannerView: View {
             // User cancelled - no error to show
             if (error as NSError).code == NSUserCancelledError { return }
             importError = "ファイルの選択に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func importSharedItemIfNeeded() {
+        guard !hasHandledInitialSharedImport else { return }
+        hasHandledInitialSharedImport = true
+        guard let sharedImportItem else { return }
+        guard let fileURL = ShareImportInboxService.fileURL(for: sharedImportItem) else {
+            importError = "共有ファイルが見つかりません。再度共有してください"
+            return
+        }
+
+        do {
+            let fileData = try Data(contentsOf: fileURL)
+            let isPDF = sharedImportItem.typeIdentifier == UTType.pdf.identifier
+                || UTType(sharedImportItem.typeIdentifier)?.conforms(to: .pdf) == true
+                || fileURL.pathExtension.lowercased() == "pdf"
+
+            if isPDF {
+                guard let renderResult = PDFPageRenderer.renderFirstPage(from: fileData) else {
+                    importError = "共有PDFの読み込みに失敗しました"
+                    return
+                }
+                selectedSourceType = .emailAttachment
+                importedPDFData = renderResult.originalData
+                selectedImage = renderResult.image
+            } else {
+                guard let image = UIImage(data: fileData) else {
+                    importError = "共有画像の読み込みに失敗しました"
+                    return
+                }
+                selectedSourceType = .emailAttachment
+                importedPDFData = nil
+                selectedImage = image
+            }
+            ShareImportInboxService.markConsumed(sharedImportItem)
+        } catch {
+            importError = "共有ファイルの読み込みに失敗しました: \(error.localizedDescription)"
         }
     }
 }

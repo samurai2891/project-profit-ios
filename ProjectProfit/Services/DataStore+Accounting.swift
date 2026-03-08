@@ -495,17 +495,28 @@ extension DataStore {
     // MARK: - Account Balance
 
     func getAccountBalance(accountId: String, upTo date: Date? = nil) -> (debit: Int, credit: Int, balance: Int) {
+        let projected = projectedCanonicalJournals(
+            fiscalYear: date.map { fiscalYear(for: $0, startMonth: FiscalYearSettings.startMonth) }
+        )
+        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
         let relevantLines: [PPJournalLine]
         if let date {
             let postedEntryIds = Set(
-                journalEntries
+                projected.entries
                     .filter { $0.isPosted && $0.date <= date }
                     .map(\.id)
             )
-            relevantLines = journalLines.filter { postedEntryIds.contains($0.entryId) && $0.accountId == accountId }
+            relevantLines = projected.lines.filter { line in
+                guard postedEntryIds.contains(line.entryId),
+                      line.accountId == accountId,
+                      let entry = entryMap[line.entryId] else {
+                    return false
+                }
+                return entry.date <= date
+            }
         } else {
-            let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
-            relevantLines = journalLines.filter { postedEntryIds.contains($0.entryId) && $0.accountId == accountId }
+            let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
+            relevantLines = projected.lines.filter { postedEntryIds.contains($0.entryId) && $0.accountId == accountId }
         }
 
         let debitTotal = relevantLines.reduce(0) { $0 + $1.debit }
@@ -564,11 +575,31 @@ extension DataStore {
         startDate: Date? = nil,
         endDate: Date? = nil
     ) -> [LedgerEntry] {
-        let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
-        let entryMap = Dictionary(uniqueKeysWithValues: journalEntries.map { ($0.id, $0) })
+        let requestedFiscalYear: Int?
+        if let startDate {
+            requestedFiscalYear = fiscalYear(for: startDate, startMonth: FiscalYearSettings.startMonth)
+        } else if let endDate {
+            requestedFiscalYear = fiscalYear(for: endDate, startMonth: FiscalYearSettings.startMonth)
+        } else {
+            requestedFiscalYear = nil
+        }
+        let projected = projectedCanonicalJournals(fiscalYear: requestedFiscalYear)
+        let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
+        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
         let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let canonicalCounterpartyByEntryId: [UUID: UUID] = {
+            guard let businessId = businessProfile?.id else { return [:] }
+            return Dictionary(
+                uniqueKeysWithValues: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear).compactMap { journal in
+                    guard let counterpartyId = journal.lines.compactMap(\.counterpartyId).first else {
+                        return nil
+                    }
+                    return (journal.id, counterpartyId)
+                }
+            )
+        }()
 
-        let relevantLines = journalLines
+        let relevantLines = projected.lines
             .filter { $0.accountId == accountId && postedEntryIds.contains($0.entryId) }
             .compactMap { line -> (line: PPJournalLine, entry: PPJournalEntry)? in
                 guard let entry = entryMap[line.entryId] else { return nil }
@@ -590,7 +621,7 @@ extension DataStore {
             }
 
             let transaction = pair.entry.sourceTransactionId.flatMap { transactionMap[$0] }
-            let resolvedCounterparty = transaction?.counterpartyId
+            let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[pair.entry.id])
                 .flatMap { canonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty
 

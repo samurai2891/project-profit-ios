@@ -68,6 +68,31 @@ final class BundledTaxYearPackProvider: TaxYearPackProviderPort, @unchecked Send
         availableYearsSync().contains(taxYear)
     }
 
+    func packSync(for taxYear: Int) throws -> TaxYearPack {
+        if let cached = cache[taxYear] {
+            return cached
+        }
+
+        guard let url = profileURL(for: taxYear) else {
+            throw TaxYearPackError.packNotFound(taxYear: taxYear)
+        }
+
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let pack: TaxYearPack
+        do {
+            pack = try decoder.decode(TaxYearPack.self, from: data)
+        } catch {
+            throw TaxYearPackError.invalidPackData(
+                taxYear: taxYear,
+                reason: error.localizedDescription
+            )
+        }
+        cache[taxYear] = pack
+        return pack
+    }
+
     // MARK: - Helpers
 
     private func profileURL(for taxYear: Int) -> URL? {
