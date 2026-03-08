@@ -44,13 +44,14 @@
 
 ### REL-P0-04 TaxYearPack を本番経路に接続し、2026年分を埋める
 - 関連既存チケット: `PP-015`
-- 状態: **部分実装**
+- 状態: **完了**
 - 根拠:
   - `ProjectProfit/Services/TaxYearDefinitionLoader.swift` は filing 定義を `Resources/TaxYearPacks/<year>/filing/*.json` から組み立てる。
   - `ProjectProfit/Resources/TaxYearPacks/2025/filing/` と `ProjectProfit/Resources/TaxYearPacks/2026/filing/` に `common.json`、`blue_general.json`、`blue_cash_basis.json`、`white_shushi.json` がある。
   - `ProjectProfit/Resources/TaxYearPacks/2025/consumption_tax/rules.json` と `2026/consumption_tax/rules.json` がある。
+  - `ProjectProfit/Infrastructure/TaxYearPack/BundledTaxYearPackProvider.swift` は `profile.json` と `consumption_tax/rules.json` をマージして `TaxYearPack` を返す。
+  - `ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift` は経過措置判定で `pack.transitionalMeasures` と `pack.smallAmountThreshold` を使う。
   - `ProjectProfit/ViewModels/EtaxExportViewModel.swift`、`ProjectProfit/Services/EtaxXtxExporter.swift`、`ProjectProfit/Services/FormEngine.swift` は `TaxYearDefinitionLoader` を介して pack 定義を使っている。
-  - 一方で `ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift` には経過措置の年次判定に固定分岐が残る。
   - `ProjectProfit/Resources/TaxYear2025.json` と `TaxYear2026.json` はリソースとして残るが、`ProjectProfit` 本体コードからの参照は確認できなかった。
 
 ### REL-P0-05 税務状態エンジンを UI / 出力 / ロックに接続する
@@ -75,16 +76,16 @@
 
 ### REL-P0-07 Evidence intake パイプラインを作り、Receipt 直登録をやめる
 - 関連既存チケット: `PP-022`, `PP-023`, `PP-029`
-- 状態: **部分実装**
+- 状態: **完了**
 - 根拠:
   - `ProjectProfit/Views/Receipt/ReceiptScannerView.swift` に camera / photo library / PDF import / file import の UI がある。
   - `ProjectProfitShareExtension/Info.plist` と `ProjectProfitShareExtension/ShareViewController.swift` に Share Extension 実装がある。
   - `ProjectProfit/Services/ShareImportInboxService.swift`、`ProjectProfit/Features/EvidenceInbox/EvidenceInboxView.swift`、`ProjectProfit/Views/Receipt/ReceiptScannerView.swift` で share-in → inbox → scanner の受け渡しがある。
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift` は `ReceiptEvidenceIntakeUseCase.intake(...)` を呼び、`ProjectProfit/Application/UseCases/Evidence/ReceiptEvidenceIntakeUseCase.swift` は `EvidenceDocument` と `PostingCandidate` を生成する。
+  - `ProjectProfit/Application/UseCases/Evidence/ReceiptEvidenceIntakeUseCase.swift` は `fileHash` 既存照合で重複 evidence を拒否する。
+  - `ProjectProfit/Services/ShareImportInboxService.swift` は `oldestItem()` で pending item を読むだけにし、`markConsumed(_:)` は intake 成功後にだけ呼ばれる。
+  - `ProjectProfit/Views/Receipt/ReceiptScannerView.swift` の shared PDF 経路は `importedPDF` を使い、`ReceiptReviewView.swift` の PDF 判定条件と一致している。
   - receipt review 完了後に `PPTransaction` を直接生成するコードは確認できなかった。
-  - 一方で `ReceiptEvidenceIntakeUseCase` は `fileHash` を作成して保存するが、重複検知の照合処理までは確認できなかった。
-  - `ShareImportInboxService.dequeueOldest()` は scanner 表示前にキューから削除し、失敗時の再キュー処理は確認できなかった。
-  - 共有 PDF は `ReceiptScannerView` で `emailAttachment` として渡され、`ReceiptReviewView` の PDF 判定条件 `importedPDF` / `scannedPDF` に一致しない。
 
 ### REL-P0-08 PostingCandidate フローと PostingEngine を実装する
 - 関連既存チケット: `PP-030`, `PP-031`, `PP-032`
@@ -94,7 +95,8 @@
   - `ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift` は canonical `UUID` ベースの candidate 編集 UI を持つ。
   - `ProjectProfit/Services/AccountingBootstrapService.swift` は `CanonicalTransactionPostingBridge` を使って bootstrap 時の canonical candidate / journal を生成する。
   - `ProjectProfit/Services/DataStore.swift` の add / update / delete では production caller として `AccountingEngine` を使っていない。
-  - 一方で `ProjectProfit/Services/AccountingEngine.swift` 自体は残っており、`ProjectProfit/Models/PPTransaction` を canonical posting に橋渡しする `CanonicalTransactionPostingBridge` も legacy transaction 情報に依存している。
+  - `ProjectProfit/Services/AccountingBootstrapService.swift` の `CanonicalTransactionPostingBridge` は `TransactionSnapshot` を受けるようになり、橋渡し入力は `PPTransaction` 全体ではなく snapshot 化されている。
+  - 一方で `ProjectProfit/Services/DataStore.swift` は transaction 同期で `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼び、`ProjectProfit/Services/AccountingBootstrapService.swift` の bridge candidate status も `.approved` を返す。
 
 ### REL-P0-09 承認・取消・監査ログ・締め前チェックを一つのフローにする
 - 関連既存チケット: `PP-033`, `PP-046`, `PP-051`
@@ -160,8 +162,9 @@
 - 状態: **部分実装**
 - 根拠:
   - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift` と `DataStore.previewRecurringTransactions()` は存在する。
+  - `ProjectProfit/Views/ContentView.swift` は `previewRecurringTransactions()` の結果で `RecurringPreviewView` を表示する。
   - `ProjectProfit/Application/UseCases/Distribution/DistributionTemplateUseCase.swift` と `DistributionTemplateApplicationUseCase.swift` は存在する。
-  - 一方で `ProjectProfit/Views/ContentView.swift` と `ProjectProfit/Services/DataStore.swift` は起動時・更新時に `processRecurringTransactions()` を実行している。
+  - 一方で `ProjectProfit/Views/Components/RecurringFormView.swift` と `ProjectProfit/Views/Components/TransactionFormView.swift` では `DistributionTemplateApplicationUseCase` をフォーム内で直接適用しており、distribution 側の preview → approve ワークフローは確認できなかった。
 
 ### REL-P1-04 canonical 帳簿生成エンジンに統一する
 - 関連既存チケット: `PP-039`, `PP-041`, `PP-044`
@@ -256,17 +259,15 @@
 ## 未完タスクの優先順（現コード基準）
 1. `REL-P0-01` 単一正本の write path 完全統一
 2. `REL-P0-02` `DataStore` 直接依存の縮退
-3. `REL-P0-04` TaxYearPack と tax rule 固定分岐の整理
-4. `REL-P0-05` `lockedYears` 互換依存の縮退
-5. `REL-P0-06` legacy tax 表現の縮退
-6. `REL-P0-07` share-in と重複検知の不整合解消
-7. `REL-P0-08` posting 周辺の legacy bridge 整理
-8. `REL-P0-10` 検索性能条件の確認または条件見直し
-9. `REL-P0-11` migration / restore の実行結果確認
-10. `REL-P0-12` golden / E2E / performance の green 確認
-11. `REL-P1-03` recurring の preview → approve 化
-12. `REL-P1-04` canonical 帳簿生成一本化
-13. `REL-P1-05` form build の canonical 一本化
-14. `REL-P1-07` workflow UI の旧導線整理
-15. `REL-P1-08` export service 集約の完了
-16. `REL-P2-01` 以降のロードマップ項目
+3. `REL-P0-05` `lockedYears` 互換依存の縮退
+4. `REL-P0-06` legacy tax 表現の縮退
+5. `REL-P0-08` posting 周辺の legacy bridge 整理
+6. `REL-P0-10` 検索性能条件の確認または条件見直し
+7. `REL-P0-11` migration / restore の実行結果確認
+8. `REL-P0-12` golden / E2E / performance の green 確認
+9. `REL-P1-03` recurring / distribution の preview → approve 化
+10. `REL-P1-04` canonical 帳簿生成一本化
+11. `REL-P1-05` form build の canonical 一本化
+12. `REL-P1-07` workflow UI の旧導線整理
+13. `REL-P1-08` export service 集約の完了
+14. `REL-P2-01` 以降のロードマップ項目
