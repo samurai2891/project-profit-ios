@@ -54,6 +54,7 @@ enum ExportCoordinator {
     enum ExportError: LocalizedError {
         case dataUnavailable
         case ledgerAccountRequired
+        case preflightBlocked([String])
         case unsupportedFormat(ExportTarget, ExportFormat)
         case fileWriteFailed
 
@@ -63,6 +64,8 @@ enum ExportCoordinator {
                 return "出力データが取得できません"
             case .ledgerAccountRequired:
                 return "元帳出力には勘定科目の指定が必要です"
+            case .preflightBlocked(let messages):
+                return messages.joined(separator: "\n")
             case .unsupportedFormat(let target, let format):
                 return "\(target.label)の\(format.label)出力は未対応です"
             case .fileWriteFailed:
@@ -87,6 +90,8 @@ enum ExportCoordinator {
         dataStore: DataStore,
         ledgerOptions: LedgerExportOptions? = nil
     ) throws -> URL {
+        try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
+
         let content: ExportContent = try generateContent(
             target: target,
             format: format,
@@ -97,6 +102,26 @@ enum ExportCoordinator {
 
         let fileName = makeFileName(target: target, fiscalYear: fiscalYear, format: format)
         return try writeToTempFile(content: content, fileName: fileName)
+    }
+
+    private static func validatePreflight(
+        fiscalYear: Int,
+        dataStore: DataStore
+    ) throws {
+        guard let businessId = dataStore.businessProfile?.id else {
+            return
+        }
+
+        let report = try FilingPreflightUseCase(modelContext: dataStore.modelContext).preflightReport(
+            businessId: businessId,
+            taxYear: fiscalYear,
+            context: .export
+        )
+
+        let blockingMessages = report.blockingIssues.map(\.message)
+        guard blockingMessages.isEmpty else {
+            throw ExportError.preflightBlocked(blockingMessages)
+        }
     }
 
     // MARK: - Content Generation

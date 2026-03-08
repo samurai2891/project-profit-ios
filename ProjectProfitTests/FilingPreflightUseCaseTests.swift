@@ -37,6 +37,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.code == .yearStateTooOpen })
+        XCTAssertTrue(report.issues.contains { $0.message == "帳票出力は税務締め以降でのみ実行できます" })
     }
 
     func testExportPreflightDetectsPendingCandidate() throws {

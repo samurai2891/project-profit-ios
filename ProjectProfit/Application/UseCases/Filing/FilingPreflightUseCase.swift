@@ -132,7 +132,7 @@ struct FilingPreflightUseCase {
                     FilingPreflightIssue(
                         code: .yearStateTooOpen,
                         severity: .error,
-                        message: "e-Tax 出力は税務締め以降でのみ実行できます"
+                        message: "帳票出力は税務締め以降でのみ実行できます"
                     )
                 )
             }
