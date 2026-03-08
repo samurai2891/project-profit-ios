@@ -151,6 +151,37 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         XCTAssertEqual(taxYears.first?.yearLockStateRaw, YearLockState.softClose.rawValue)
     }
 
+    func testExecuteMapsLockedYearsToCanonicalStateAndKeepsLegacyProfile() throws {
+        let container = try makeCanonicalContainer()
+        let context = container.mainContext
+        let legacyId = "legacy-compat-profile"
+        let legacy = PPAccountingProfile(
+            id: legacyId,
+            fiscalYear: 2027,
+            bookkeepingMode: .doubleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            isBlueReturn: true,
+            lockedYears: [2027]
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let runner = LegacyProfileMigrationRunner(modelContext: context)
+        let report = runner.execute()
+
+        XCTAssertEqual(report.outcome, .executed)
+
+        let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let migratedTaxYear = try XCTUnwrap(taxYears.first(where: { $0.taxYear == 2027 }))
+        XCTAssertEqual(migratedTaxYear.yearLockStateRaw, YearLockState.finalLock.rawValue)
+
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+        let preservedLegacy = try XCTUnwrap(legacyProfiles.first(where: { $0.id == legacyId }))
+        XCTAssertEqual(preservedLegacy.lockedYears ?? [], [2027])
+        XCTAssertEqual(preservedLegacy.fiscalYear, 2027)
+    }
+
     func testLegacyOnlyContainerDoesNotReturnDryRunReadyOrCrash() throws {
         let container = try makeLegacyOnlyContainer()
         let context = container.mainContext

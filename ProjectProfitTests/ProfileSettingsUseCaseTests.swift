@@ -179,6 +179,63 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
             )
         }
     }
+
+    func testSaveUpdatesCanonicalYearLockAndKeepsLegacyLockedYearsUntouched() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let legacyId = "legacy-profile-save-path"
+        let legacy = PPAccountingProfile(
+            id: legacyId,
+            fiscalYear: 2027,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            taxOfficeCode: "1111",
+            isBlueReturn: false,
+            defaultPaymentAccountId: "acct-legacy",
+            lockedYears: [2027]
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let report = LegacyProfileMigrationRunner(modelContext: context).executeIfNeeded()
+        XCTAssertEqual(report.outcome, .executed)
+
+        let useCase = ProfileSettingsUseCase(modelContext: context)
+        let initial = try await useCase.load(defaultTaxYear: 2027)
+        let command = SaveProfileSettingsCommand(
+            ownerName: "Canonical Owner",
+            ownerNameKana: "カノニカル",
+            businessName: "Canonical商店",
+            businessAddress: "東京都港区1-1-1",
+            postalCode: "1070001",
+            phoneNumber: "0311111111",
+            openingDate: initial.businessProfile.openingDate,
+            taxOfficeCode: "2222",
+            filingStyle: .white,
+            blueDeductionLevel: .none,
+            bookkeepingBasis: .singleEntry,
+            vatStatus: .exempt,
+            vatMethod: .general,
+            simplifiedBusinessCategory: nil,
+            invoiceIssuerStatusAtYear: .unknown,
+            electronicBookLevel: .none,
+            yearLockState: .finalLock,
+            taxYear: 2027
+        )
+
+        let saved = try await useCase.save(command: command, currentState: initial)
+        XCTAssertEqual(saved.taxYearProfile.yearLockState, .finalLock)
+
+        let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        XCTAssertEqual(taxYears.count, 1)
+        XCTAssertEqual(taxYears.first?.yearLockStateRaw, YearLockState.finalLock.rawValue)
+
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+        let preservedLegacy = try XCTUnwrap(legacyProfiles.first(where: { $0.id == legacyId }))
+        XCTAssertEqual(preservedLegacy.fiscalYear, 2027)
+        XCTAssertEqual(preservedLegacy.lockedYears ?? [], [2027])
+    }
 }
 
 private func XCTAssertThrowsErrorAsync(

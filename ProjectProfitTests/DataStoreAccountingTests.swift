@@ -555,9 +555,8 @@ final class DataStoreAccountingTests: XCTestCase {
             paymentAccountId: "acct-cash",
             taxDeductibleRate: 100,
             taxAmount: 1_200,
-            taxRate: 10,
+            taxCodeId: TaxCode.standard10.rawValue,
             isTaxIncluded: false,
-            taxCategory: .standardRate,
             candidateSource: .manual
         )
 
@@ -619,6 +618,61 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(groupedAmounts[.some(projectA.id)], Decimal(12_000))
         XCTAssertEqual(groupedAmounts[.some(projectB.id)], Decimal(8_000))
         XCTAssertFalse(candidate.proposedLines.contains(where: { $0.projectAllocationId == nil }))
+    }
+
+    func testApproveRecurringItemsCreatesCanonicalJournalWithoutLegacyTransaction() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Recurring Candidate Project", description: "")
+        _ = dataStore.addRecurring(
+            name: "定期費用",
+            type: .expense,
+            amount: 6_000,
+            categoryId: "cat-tools",
+            memo: "preview recurring",
+            allocationMode: .manual,
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            paymentAccountId: "acct-cash",
+            counterparty: "定期先株式会社"
+        )
+
+        let previewItems = dataStore.previewRecurringTransactions()
+        let approvedIds = Set(previewItems.map(\.id))
+        let beforeTransactions = dataStore.transactions.count
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        let generated = await dataStore.approveRecurringItems(approvedIds, from: previewItems)
+
+        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        XCTAssertEqual(generated, 1)
+        XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
+        XCTAssertEqual(journals.count, beforeJournals.count + 1)
+        XCTAssertTrue(journals.contains(where: { $0.entryType == .recurring }))
+    }
+
+    func testImportTransactionsCreatesCanonicalJournalWithoutLegacyTransaction() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let beforeTransactions = dataStore.transactions.count
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,税率,税込区分,税区分
+        2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み,acct-cash,10,税込,課税（10%）
+        """
+
+        let result = await dataStore.importTransactions(from: csv)
+        let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+
+        XCTAssertEqual(result.successCount, 1)
+        XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
+        XCTAssertEqual(journals.count, beforeJournals.count + 1)
+        XCTAssertEqual(Set(journals.last?.lines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
     }
 
     func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {

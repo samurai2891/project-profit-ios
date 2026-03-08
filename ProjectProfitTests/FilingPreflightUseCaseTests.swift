@@ -119,6 +119,34 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         XCTAssertTrue(report.issues.contains { $0.code == .unbalancedJournal })
     }
 
+    func testExportPreflightUsesCanonicalTaxYearStateNotLegacyLockedYears() throws {
+        let targetYear = 2030
+        let legacy = PPAccountingProfile(
+            id: "legacy-preflight-profile",
+            fiscalYear: targetYear,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            isBlueReturn: false,
+            lockedYears: [targetYear]
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let canonicalTaxProfiles = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+            .filter { $0.businessId == businessId && $0.taxYear == targetYear }
+        XCTAssertTrue(canonicalTaxProfiles.isEmpty)
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: targetYear,
+            context: .export
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .yearStateTooOpen })
+        XCTAssertTrue(report.issues.contains { $0.message == "帳票出力は税務締め以降でのみ実行できます" })
+    }
+
     private func seedTaxYearProfile(year: Int, state: YearLockState) {
         let profile = TaxYearProfile(
             businessId: businessId,

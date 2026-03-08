@@ -5,11 +5,16 @@ import XCTest
 
 @MainActor
 final class ReleasePerformanceGateTests: XCTestCase {
+    private enum CorpusSize {
+        static let search = 1_000
+        static let migration = 1_000
+    }
+
     private enum Threshold {
         static let projectionSeconds = 0.75
-        static let searchSeconds = 0.25
+        static let searchSeconds = 0.80
         static let exportSeconds = 1.50
-        static let migrationSeconds = 0.25
+        static let migrationSeconds = 0.80
     }
 
     private var container: ModelContainer!
@@ -64,7 +69,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     func testSearchQueriesStayUnderGate() async throws {
-        try await seedEvidenceAndJournalSearchCorpus(count: 300, fiscalYear: 2025)
+        try await seedEvidenceAndJournalSearchCorpus(count: CorpusSize.search, fiscalYear: 2025)
 
         let elapsed = try await measureSecondsAsync {
             _ = try await EvidenceCatalogUseCase(modelContext: context).search(
@@ -116,7 +121,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     func testMigrationDryRunStaysUnderGate() async throws {
-        try await seedMigrationCorpus(count: 300, fiscalYear: 2025)
+        try await seedMigrationCorpus(count: CorpusSize.migration, fiscalYear: 2025)
 
         let elapsed = try measureSecondsThrowing {
             _ = try MigrationReportRunner(modelContext: context).dryRun()

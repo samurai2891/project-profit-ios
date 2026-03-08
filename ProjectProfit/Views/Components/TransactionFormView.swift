@@ -904,6 +904,7 @@ struct TransactionFormView: View {
         let resolvedCounterpartyName = selectedCounterparty?.displayName
             ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
+        let resolvedTaxCodeId: String? = type != .transfer ? selectedTaxCode?.rawValue : nil
         let resolvedTaxCategory: TaxCategory? = type != .transfer ? selectedTaxCode?.legacyCategory : nil
         let resolvedConsumptionTaxRate: Int? = selectedTaxCode?.isTaxable == true ? selectedTaxCode?.taxRatePercent : nil
         let resolvedIsTaxIncluded: Bool? = selectedTaxCode?.isTaxable == true ? isTaxIncluded : nil
@@ -934,9 +935,8 @@ struct TransactionFormView: View {
                     transferToAccountId: resolvedTransferTo,
                     taxDeductibleRate: resolvedTaxDeductibleRate,
                     taxAmount: resolvedTaxAmount,
-                    taxRate: resolvedConsumptionTaxRate,
+                    taxCodeId: resolvedTaxCodeId,
                     isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory,
                     counterpartyId: selectedCounterpartyId,
                     counterparty: resolvedCounterparty,
                     candidateSource: .manual

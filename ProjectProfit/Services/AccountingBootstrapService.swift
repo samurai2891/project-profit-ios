@@ -385,6 +385,7 @@ struct CanonicalTransactionPostingBridge {
         let transferToAccountId: String?
         let taxDeductibleRate: Int?
         let taxAmount: Int?
+        let taxCodeId: String?
         let taxRate: Int?
         let isTaxIncluded: Bool?
         let taxCategory: TaxCategory?
@@ -404,6 +405,7 @@ struct CanonicalTransactionPostingBridge {
             transferToAccountId = transaction.transferToAccountId
             taxDeductibleRate = transaction.taxDeductibleRate
             taxAmount = transaction.taxAmount
+            taxCodeId = nil
             taxRate = transaction.taxRate
             isTaxIncluded = transaction.isTaxIncluded
             taxCategory = transaction.taxCategory
@@ -424,6 +426,7 @@ struct CanonicalTransactionPostingBridge {
             transferToAccountId: String?,
             taxDeductibleRate: Int?,
             taxAmount: Int?,
+            taxCodeId: String?,
             taxRate: Int?,
             isTaxIncluded: Bool?,
             taxCategory: TaxCategory?,
@@ -442,6 +445,7 @@ struct CanonicalTransactionPostingBridge {
             self.transferToAccountId = transferToAccountId
             self.taxDeductibleRate = taxDeductibleRate
             self.taxAmount = taxAmount
+            self.taxCodeId = taxCodeId
             self.taxRate = taxRate
             self.isTaxIncluded = isTaxIncluded
             self.taxCategory = taxCategory
@@ -459,6 +463,13 @@ struct CanonicalTransactionPostingBridge {
                 return max(0, amount - taxAmount)
             }
             return amount
+        }
+
+        var resolvedTaxCode: TaxCode? {
+            if let taxCodeId {
+                return TaxCode.resolve(id: taxCodeId)
+            }
+            return TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
         }
     }
 
@@ -1045,7 +1056,7 @@ struct CanonicalTransactionPostingBridge {
         )
 
         if let taxAmount = snapshot.taxAmount, taxAmount > 0,
-           snapshot.taxCategory?.isTaxable == true {
+           snapshot.resolvedTaxCode?.isTaxable == true {
             let netAmount = snapshot.amount - taxAmount
             return [
                 LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: snapshot.amount, credit: 0, memo: ""),
@@ -1073,7 +1084,7 @@ struct CanonicalTransactionPostingBridge {
 
         let rate = snapshot.effectiveTaxDeductibleRate
         let amount = snapshot.amount
-        let hasTax = (snapshot.taxAmount ?? 0) > 0 && snapshot.taxCategory?.isTaxable == true
+        let hasTax = (snapshot.taxAmount ?? 0) > 0 && snapshot.resolvedTaxCode?.isTaxable == true
         let taxAmount = hasTax ? (snapshot.taxAmount ?? 0) : 0
         let expenseBase = hasTax ? (amount - taxAmount) : amount
 
@@ -1181,6 +1192,9 @@ struct CanonicalTransactionPostingBridge {
         legacyLines: [LegacyPostingLineSnapshot],
         canonicalAccountsByLegacyId: [String: CanonicalAccount]
     ) -> String? {
+        if let taxCodeId = snapshot.taxCodeId {
+            return taxCodeId
+        }
         if let explicitTaxCodeId = TaxCode.resolve(
             legacyCategory: snapshot.taxCategory,
             taxRate: snapshot.taxRate

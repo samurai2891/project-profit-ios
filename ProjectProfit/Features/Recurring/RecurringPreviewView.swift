@@ -213,7 +213,7 @@ struct RecurringPreviewView: View {
         guard !isProcessing else { return }
         isProcessing = true
         Task {
-            let count = dataStore.approveRecurringItems(selectedIds, from: previewItems)
+            let count = await dataStore.approveRecurringItems(selectedIds, from: previewItems)
             isProcessing = false
             processedCount = count
         }

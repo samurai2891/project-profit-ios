@@ -834,6 +834,7 @@ class DataStore {
         transferToAccountId: String? = nil,
         taxDeductibleRate: Int? = nil,
         taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
@@ -841,6 +842,75 @@ class DataStore {
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) async -> Result<PostingCandidate, AppError> {
+        let result = await buildCanonicalPosting(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: nil,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            source: candidateSource ?? .manual
+        )
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        switch result {
+        case .success(let builtPosting):
+            posting = builtPosting
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let normalizedAllocations = calculateRatioAllocations(
+            amount: amount,
+            allocations: type == .transfer ? [] : allocations
+        )
+        let candidate = candidateWithProjectAllocations(
+            posting.candidate.updated(status: .draft),
+            allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+        )
+
+        do {
+            try await postingWorkflowUseCase.saveCandidate(candidate)
+            lastError = nil
+            return .success(candidate)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
+    private func buildCanonicalPosting(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxCodeId: String?,
+        taxRate: Int?,
+        isTaxIncluded: Bool?,
+        taxCategory: TaxCategory?,
+        counterpartyId: UUID?,
+        counterparty: String?,
+        source: CandidateSource
+    ) async -> Result<CanonicalTransactionPostingBridge.Posting, AppError> {
         guard !cannotPostNormalEntry(for: date) else {
             return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
         }
@@ -858,13 +928,11 @@ class DataStore {
             safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
         }
 
-        let baseAllocations = type == .transfer ? [] : allocations
-        let normalizedAllocations = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
-        let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: taxCategory,
+        let explicitTaxCodeId = resolvedExplicitTaxCodeId(
+            explicitTaxCodeId: taxCodeId,
+            taxCategory: taxCategory,
             taxRate: taxRate
-        )?.rawValue
-
+        )
         let counterpartyStatus = await syncCanonicalCounterparty(
             id: counterpartyId,
             named: counterparty,
@@ -887,11 +955,12 @@ class DataStore {
             date: date,
             categoryId: safeCategoryId,
             memo: memo,
-            recurringId: nil,
+            recurringId: recurringId,
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
             taxDeductibleRate: taxDeductibleRate,
             taxAmount: taxAmount,
+            taxCodeId: explicitTaxCodeId,
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
@@ -904,7 +973,7 @@ class DataStore {
             for: snapshot,
             businessId: businessId,
             counterpartyId: resolvedCounterpartyId,
-            source: candidateSource ?? .manual,
+            source: source,
             categories: categories,
             legacyAccounts: accounts
         ) else {
@@ -913,21 +982,97 @@ class DataStore {
             return .failure(error)
         }
 
-        var candidate = posting.candidate.updated(status: .draft)
-        candidate = candidateWithProjectAllocations(
-            candidate,
+        lastError = nil
+        return .success(posting)
+    }
+
+    private func saveApprovedPosting(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) async -> Result<CanonicalJournalEntry, AppError> {
+        let result = await buildCanonicalPosting(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            source: candidateSource
+        )
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        switch result {
+        case .success(let builtPosting):
+            posting = builtPosting
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let normalizedAllocations = calculateRatioAllocations(
+            amount: amount,
+            allocations: type == .transfer ? [] : allocations
+        )
+        let candidate = candidateWithProjectAllocations(
+            posting.candidate,
             allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
         )
 
         do {
-            try await postingWorkflowUseCase.saveCandidate(candidate)
+            let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
+                candidate,
+                journalId: posting.journalId,
+                entryType: posting.entryType,
+                description: posting.description,
+                approvedAt: posting.approvedAt
+            )
             lastError = nil
-            return .success(candidate)
+            return .success(journal)
         } catch {
             let appError = AppError.saveFailed(underlying: error)
             lastError = appError
             return .failure(appError)
         }
+    }
+
+    private func resolvedExplicitTaxCodeId(
+        explicitTaxCodeId: String?,
+        taxCategory: TaxCategory?,
+        taxRate: Int?
+    ) -> String? {
+        if let explicitTaxCodeId {
+            return explicitTaxCodeId
+        }
+        return TaxCode.resolve(
+            legacyCategory: taxCategory,
+            taxRate: taxRate
+        )?.rawValue
     }
 
     private func candidateWithProjectAllocations(
@@ -2707,7 +2852,7 @@ class DataStore {
     }
 
     /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
-    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) -> Int {
+    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
         let approvedItems = items.filter { approvedIds.contains($0.id) }
         var generatedCount = 0
 
@@ -2732,7 +2877,7 @@ class DataStore {
                 }
 
                 let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-                switch addTransactionResult(
+                let result = await saveApprovedPosting(
                     type: recurring.type,
                     amount: item.amount,
                     date: txDate,
@@ -2746,7 +2891,8 @@ class DataStore {
                     counterpartyId: recurring.counterpartyId,
                     counterparty: recurring.counterparty,
                     candidateSource: .recurring
-                ) {
+                )
+                switch result {
                 case .success:
                     recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
                     recurring.updatedAt = Date()
@@ -2756,7 +2902,94 @@ class DataStore {
                 }
             } else {
                 let isYearly = recurring.frequency == .yearly
-                if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: isYearly, calendar: calendar) != nil {
+                let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
+                var txAllocations: [Allocation]
+                switch recurring.allocationMode {
+                case .equalAll:
+                    let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+                    let completedThisMonth = projects.filter { project in
+                        guard project.status == .completed,
+                              project.isArchived != true,
+                              let completedAt = project.completedAt
+                        else {
+                            return false
+                        }
+                        let completedComponents = calendar.dateComponents([.year, .month], from: completedAt)
+                        let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+                        return completedComponents.year == txComponents.year && completedComponents.month == txComponents.month
+                    }
+                    let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
+                    guard !allEligibleIds.isEmpty else { continue }
+                    txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+
+                    let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+                    if let txYear = txComponents.year, let txMonth = txComponents.month {
+                        let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+                        let needsProRata = txAllocations.contains { allocation in
+                            guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
+                            let activeDays = isYearly
+                                ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                                : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+                            return activeDays < totalDays
+                        }
+                        if needsProRata {
+                            let inputs: [HolisticProRataInput] = txAllocations.map { allocation in
+                                let project = projects.first { $0.id == allocation.projectId }
+                                let activeDays = isYearly
+                                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+                            }
+                            txAllocations = calculateHolisticProRata(
+                                totalAmount: recurring.amount,
+                                totalDays: totalDays,
+                                inputs: inputs
+                            )
+                        }
+                    }
+                case .manual:
+                    txAllocations = recalculateAllocationAmounts(amount: recurring.amount, existingAllocations: recurring.allocations)
+                    let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+                    if let txYear = txComponents.year, let txMonth = txComponents.month {
+                        let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+                        let needsProRata = recurring.allocations.contains { allocation in
+                            guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
+                            return project.startDate != nil || project.effectiveEndDate != nil
+                        }
+                        if needsProRata {
+                            let inputs: [HolisticProRataInput] = recurring.allocations.map { allocation in
+                                let project = projects.first { $0.id == allocation.projectId }
+                                let activeDays = isYearly
+                                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+                            }
+                            txAllocations = calculateHolisticProRata(
+                                totalAmount: recurring.amount,
+                                totalDays: totalDays,
+                                inputs: inputs
+                            )
+                        }
+                    }
+                }
+
+                let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+                let result = await saveApprovedPosting(
+                    type: recurring.type,
+                    amount: recurring.amount,
+                    date: txDate,
+                    categoryId: recurring.categoryId,
+                    memo: memo,
+                    allocations: txRatios,
+                    recurringId: recurring.id,
+                    paymentAccountId: recurring.paymentAccountId,
+                    transferToAccountId: recurring.transferToAccountId,
+                    taxDeductibleRate: recurring.taxDeductibleRate,
+                    counterpartyId: recurring.counterpartyId,
+                    counterparty: recurring.counterparty,
+                    candidateSource: .recurring
+                )
+                if case .success = result {
                     recurring.lastGeneratedDate = txDate
                     recurring.updatedAt = Date()
                     generatedCount += 1
@@ -3396,7 +3629,7 @@ class DataStore {
 
     // MARK: - CSV Import
 
-    func importTransactions(from csvString: String) -> CSVImportResult {
+    func importTransactions(from csvString: String) async -> CSVImportResult {
         var successCount = 0
         var errorCount = 0
         var errors: [String] = []
@@ -3444,7 +3677,12 @@ class DataStore {
                 }
             }
 
-            let result = addTransactionResult(
+            let explicitTaxCodeId = resolvedExplicitTaxCodeId(
+                explicitTaxCodeId: nil,
+                taxCategory: entry.taxCategory,
+                taxRate: entry.taxRate
+            )
+            let result = await saveApprovedPosting(
                 type: entry.type,
                 amount: entry.amount,
                 date: entry.date,
@@ -3455,6 +3693,7 @@ class DataStore {
                 transferToAccountId: entry.type == .transfer ? entry.transferToAccountId : nil,
                 taxDeductibleRate: entry.type == .expense ? entry.taxDeductibleRate : nil,
                 taxAmount: entry.taxAmount,
+                taxCodeId: explicitTaxCodeId,
                 taxRate: entry.taxRate,
                 isTaxIncluded: entry.isTaxIncluded,
                 taxCategory: entry.taxCategory,

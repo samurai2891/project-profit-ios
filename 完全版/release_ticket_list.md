@@ -24,8 +24,9 @@
   - `ProjectProfit/Ledger/Services/LedgerDataStore.swift` は `FeatureFlags.useLegacyLedger == false` のとき書き込みを拒否する。
   - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規入力は `DataStore.saveManualPostingCandidate(...)` を呼び、`PPTransaction` を作らず draft candidate として保存する。
   - `ProjectProfit/Views/Transactions/TransactionsView.swift` の canonical 時の空状態ボタンと FAB は `新規取引` ではなく `最初の候補を作成` / `候補を手入力` 表示になっている。
-  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存で legacy transaction 件数と journal 件数が増えないことを確認するテストがある。
-  - 一方で `ProjectProfit/Services/DataStore.swift` には `addTransactionResult(...)`、`updateTransaction(...)`、`deleteTransaction(...)` が残り、recurring と import もこの legacy transaction API を通る。
+  - `ProjectProfit/Services/DataStore.swift` の `approveRecurringItems(...)` と `importTransactions(from:)` は `saveApprovedPosting(...)` を使い、canonical journal を直接作る。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存、recurring 承認、CSV import の各経路で legacy transaction 件数が増えないことを確認するテストがある。
+  - 一方で `ProjectProfit/Services/DataStore.swift` には `addTransactionResult(...)`、`updateTransaction(...)`、`deleteTransaction(...)` が残る。
   - `ProjectProfit/Services/DataStore.swift` の transaction 同期は `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼ぶため、transaction 起点の posting はまだ即時承認前提である。
 
 ### REL-P0-02 Repository / UseCase 層を完成させる
@@ -36,6 +37,7 @@
   - `ProjectProfit/Application/UseCases/` に masters / evidence / filing / journals / posting / distribution の UseCase 実装がある。
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`、`ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`、`ProjectProfit/Views/Settings/ProfileSettingsView.swift` は UseCase 側へ接続されている。
   - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規保存は `DataStore.saveManualPostingCandidate(...)` を介して `PostingWorkflowUseCase.saveCandidate(...)` に到達する。
+  - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift` は `approveRecurringItems(...)` を await し、`ProjectProfit/Views/Settings/SettingsView.swift` と `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift` の CSV import は async で canonical import を呼ぶ。
   - 一方で `ProjectProfit/Services/DataStore.swift` は orchestration と永続化更新を両方持っており、`addTransactionResult(...)`、`updateTransaction(...)`、`processRecurringTransactions()`、import 系処理などの直接 mutation API が残る。
   - `ProjectProfit/Views/Components/TransactionFormView.swift` の edit mode と、`ProjectProfit/Views/Components/RecurringFormView.swift`、`ProjectProfit/Views/Report/ReportView.swift` など、`DataStore` を直接参照する UI / service 経路はまだ残っている。
 
@@ -76,6 +78,8 @@
 - 根拠:
   - `ProjectProfit/Application/UseCases/Evidence/ReceiptEvidenceIntakeUseCase.swift` は `ReceiptEvidenceIntakeRequest.taxCodeId` を受け、`TaxCode.resolve(id:)` を使う。
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift` は intake request に `taxCodeId` を詰める。
+  - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規候補保存は `selectedTaxCode?.rawValue` を `taxCodeId` として渡す。
+  - `ProjectProfit/Services/AccountingBootstrapService.swift` の `TransactionSnapshot` は `taxCodeId` を持ち、bridge は `taxCodeId` を優先して canonical 税コードを解決する。
   - `ProjectProfit/Services/ConsumptionTaxReportService.swift` は canonical `JournalEntry` と `TaxCode` から worksheet / summary を生成する。
   - 一方で `ProjectProfit/Core/Domain/Tax/TaxCode.swift` には `legacyCategory` と `resolve(legacyCategory:taxRate:)` が残る。
   - `ProjectProfit/Models/Models.swift`、`ProjectProfit/Services/DataStore.swift`、`ProjectProfit/Views/Components/TransactionFormView.swift` などには `taxCategory` / `taxRate` / `isTaxIncluded` の legacy transaction 表現が残る。
@@ -103,7 +107,8 @@
   - `ProjectProfit/Services/DataStore.swift` の add / update / delete では production caller として `AccountingEngine` を使っていない。
   - `ProjectProfit/Services/AccountingBootstrapService.swift` の `CanonicalTransactionPostingBridge` は `TransactionSnapshot` を受けるようになり、橋渡し入力は `PPTransaction` 全体ではなく snapshot 化されている。
   - `ProjectProfit/Services/DataStore.swift` の `saveManualPostingCandidate(...)` は bridge の出力 candidate を `.draft` に更新して `PostingWorkflowUseCase.saveCandidate(...)` だけを呼ぶ。
-  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存で pending candidate が作られ、journal が増えないことを確認するテストがある。
+  - `ProjectProfit/Services/DataStore.swift` の `approveRecurringItems(...)` と `importTransactions(from:)` は `saveApprovedPosting(...)` 経由で canonical journal を作り、legacy transaction を増やさない。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存、recurring 承認、CSV import の各経路を確認するテストがある。
   - 一方で `ProjectProfit/Services/DataStore.swift` は transaction 同期で `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼び、`ProjectProfit/Services/AccountingBootstrapService.swift` の bridge candidate status も `.approved` を返す。
 
 ### REL-P0-09 承認・取消・監査ログ・締め前チェックを一つのフローにする
@@ -118,23 +123,25 @@
 
 ### REL-P0-10 Evidence / Journal 検索インデックスを実装する
 - 関連既存チケット: `PP-012`
-- 状態: **部分実装**
+- 状態: **完了**
 - 根拠:
   - `ProjectProfit/Core/Domain/Evidence/EvidenceSearchCriteria.swift` に日付、金額、取引先、T番号、プロジェクト、ファイルハッシュ条件がある。
   - `ProjectProfit/Infrastructure/Persistence/SwiftData/Entities/EvidenceSearchIndexEntity.swift`、`JournalSearchIndexEntity.swift`、`ProjectProfit/Infrastructure/Search/SearchIndexRebuilder.swift` がある。
   - `ProjectProfit/Infrastructure/Search/LocalEvidenceSearchIndex.swift` と `LocalJournalSearchIndex.swift` は索引検索と再構築を実装している。
   - `ProjectProfit/Features/EvidenceInbox/EvidenceInboxView.swift` と `ProjectProfit/Views/Accounting/JournalListView.swift` に再索引導線がある。
-  - 一方で `ProjectProfitTests/ReleasePerformanceGateTests.swift` の検索性能 seed は 300 件で、原文の「1,000件規模」の完了条件はこの調査では確認できなかった。
+  - `ProjectProfitTests/ReleasePerformanceGateTests.swift` の検索性能 seed は `CorpusSize.search = 1_000` になっている。
+  - 2026-03-09 に `ReleasePerformanceGateTests` を実行し、`performance.search.seconds=0.24588000774383545` で green を確認した。
 
 ### REL-P0-11 Migration Runner と backup/restore を先に入れる
 - 関連既存チケット: `PP-013`, `PP-014`
-- 状態: **部分実装**
+- 状態: **完了**
 - 根拠:
   - `ProjectProfit/Application/Migrations/MigrationReportRunner.swift` は dry-run、差分、孤児検出を実装している。
   - `ProjectProfit/Infrastructure/FileStorage/BackupService.swift` と `RestoreService.swift` は checksum / dry-run / apply / rollback を持つ。
   - `ProjectProfit/Application/Migrations/LegacyDataMigrationExecutor.swift` は transaction / journal / document の execute migration を実装している。
   - `ProjectProfit/Views/Settings/SettingsView.swift` と `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift` に backup / restore / migration dry-run / execute の導線がある。
-  - 一方で原文の完了条件「復元テストが通る」については、この調査では実行結果自体を確認していない。テスト定義は `ProjectProfitTests/BackupRestoreServiceTests.swift` にある。
+  - 2026-03-09 に `ProjectProfitTests/BackupRestoreServiceTests.swift` を実行し、4 tests / 0 failures を確認した。
+  - 2026-03-09 に `ProjectProfitTests/CanonicalFlowE2ETests.swift` を実行し、`testBackupRestoreRoundTripRestoresSearchableCanonicalArtifacts` と `testMigrationRehearsalOnGoldenFixtureHasNoOrphans` が green であることを確認した。
 
 ### REL-P0-12 Golden / E2E / 性能ゲートを閉じる
 - 関連既存チケット: `PP-055`
@@ -143,7 +150,8 @@
   - `ProjectProfitTests/Golden/GoldenBaselineTests.swift` は journal / trial balance / blue return / consumption tax worksheet / migration dry-run の snapshot を持つ。
   - `ProjectProfitTests/CanonicalFlowE2ETests.swift` と `ProjectProfitTests/ReleasePerformanceGateTests.swift` がある。
   - `.github/workflows/release-quality.yml` は `golden-baseline`、`canonical-e2e`、`migration-rehearsal`、`performance-gate` の job を持つ。
-  - 一方で原文の完了条件「golden baseline が green」「主要シナリオが green」の実行結果自体は、この調査では確認していない。
+  - 2026-03-09 に `CanonicalFlowE2ETests` と `ReleasePerformanceGateTests` は green を確認した。
+  - 一方で `GoldenBaselineTests` の実行結果は、この更新時点では確認していない。
 
 ---
 
@@ -270,12 +278,10 @@
 3. `REL-P0-05` `lockedYears` 互換依存の縮退
 4. `REL-P0-06` legacy tax 表現の縮退
 5. `REL-P0-08` posting 周辺の legacy bridge 整理
-6. `REL-P0-10` 検索性能条件の確認または条件見直し
-7. `REL-P0-11` migration / restore の実行結果確認
-8. `REL-P0-12` golden / E2E / performance の green 確認
-9. `REL-P1-03` recurring / distribution の preview → approve 化
-10. `REL-P1-04` canonical 帳簿生成一本化
-11. `REL-P1-05` form build の canonical 一本化
-12. `REL-P1-07` workflow UI の旧導線整理
-13. `REL-P1-08` export service 集約の完了
-14. `REL-P2-01` 以降のロードマップ項目
+6. `REL-P0-12` golden baseline の green 確認
+7. `REL-P1-03` recurring / distribution の preview → approve 化
+8. `REL-P1-04` canonical 帳簿生成一本化
+9. `REL-P1-05` form build の canonical 一本化
+10. `REL-P1-07` workflow UI の旧導線整理
+11. `REL-P1-08` export service 集約の完了
+12. `REL-P2-01` 以降のロードマップ項目

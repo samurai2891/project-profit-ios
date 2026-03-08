@@ -647,15 +647,18 @@ private extension SettingsMainView {
             defer { url.stopAccessingSecurityScopedResource() }
             do {
                 let csvString = try String(contentsOf: url, encoding: .utf8)
-                importResult = dataStore.importTransactions(from: csvString)
+                Task {
+                    importResult = await dataStore.importTransactions(from: csvString)
+                    showImportResultAlert = true
+                }
             } catch {
                 importResult = CSVImportResult(
                     successCount: 0,
                     errorCount: 1,
                     errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"]
                 )
+                showImportResultAlert = true
             }
-            showImportResultAlert = true
         case .failure(let error):
             importResult = CSVImportResult(
                 successCount: 0,
