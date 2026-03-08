@@ -404,6 +404,7 @@
 		FC510C2377B9CF857CD6246D /* AccountingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49F981391FCA44E6C8AB6D5 /* AccountingEngine.swift */; };
 		FEA7603492BC3947AA6142A5 /* Counterparty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A2D258C14F7F17061A13BD /* Counterparty.swift */; };
 		FF2599B004C65ACD2567EADF /* ReceiptStoreNameExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA7DAC6D4DF4B24C0C7FDDA /* ReceiptStoreNameExtractionTests.swift */; };
+		E1FBD001A111111111111111 /* TaxYearPacks in Resources */ = {isa = PBXBuildFile; fileRef = E1FBD002A111111111111111 /* TaxYearPacks */; };
 		FF5BC625905895DDF36945EA /* blue_return_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D046AFB8A285895E856D8AD /* blue_return_2025.json */; };
 /* End PBXBuildFile section */
 
@@ -870,6 +871,7 @@
 		FDFACD44FE2A5A00E32DE1F5 /* TaxYearStateUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearStateUseCaseTests.swift; sourceTree = "<group>"; };
 		FEB249D7386ECBD01D9D1CA3 /* AuditEventEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditEventEntityMapper.swift; sourceTree = "<group>"; };
 		FF9988639C5530093B18A96C /* ClassificationDictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ClassificationDictionary.json; sourceTree = "<group>"; };
+		E1FBD002A111111111111111 /* TaxYearPacks */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TaxYearPacks; sourceTree = "<group>"; };
 		FFC31874A7BB42A137D5FD24 /* master_schema.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = master_schema.json; sourceTree = "<group>"; };
 		FFCB8FC1C6ACB85985794E9A /* DataStore+FixedAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+FixedAsset.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -1529,6 +1531,7 @@
 				FF9988639C5530093B18A96C /* ClassificationDictionary.json */,
 				AC7B430A76A9001283F6D7BE /* TaxYear2025.json */,
 				9A031028085511950C5BED20 /* TaxYear2026.json */,
+				E1FBD002A111111111111111 /* TaxYearPacks */,
 				011E7EB19AAC8E45ECDEC1F6 /* Fixtures */,
 				46BDD93C2E07F1698E324166 /* Seed */,
 			);
@@ -2726,6 +2729,7 @@
 				349D1EB6C16F60F571F7F83F /* PrivacyInfo.xcprivacy in Resources */,
 				3F81648CE6B6C8EEB38F5061 /* TaxYear2025.json in Resources */,
 				A8FA8DB90870CCED43385D01 /* TaxYear2026.json in Resources */,
+				E1FBD001A111111111111111 /* TaxYearPacks in Resources */,
 				7C474E8844847A4D840D601F /* account_categories.csv in Resources */,
 				C8DCD8F7513143795178BC10 /* accounts_payable_book.csv in Resources */,
 				407ACD6C9081402899813A62 /* accounts_receivable_book.csv in Resources */,

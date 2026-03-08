@@ -94,30 +94,15 @@ enum TaxYearDefinitionLoader {
     }
 
     /// 指定年度の全フィールド定義をロードする
-    /// パックシステムのfiling定義を優先し、存在しなければ旧TaxYear{year}.jsonへフォールバック
+    /// filing pack のみを正本として組み立てる
     static func loadDefinition(for fiscalYear: Int) -> TaxYearDefinition? {
         if let cached = cache[fiscalYear] { return cached }
 
-        // 1. パックシステムのfiling定義を優先
         if let packDefinition = loadDefinitionFromPack(for: fiscalYear) {
             cache[fiscalYear] = packDefinition
             return packDefinition
         }
-
-        // 2. 旧 TaxYear{year}.json へフォールバック
-        let fileName = "TaxYear\(fiscalYear)"
-        guard let url = Bundle.main.url(forResource: fileName, withExtension: "json") else {
-            return nil
-        }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let definition = try JSONDecoder().decode(TaxYearDefinition.self, from: data)
-            cache[fiscalYear] = definition
-            return definition
-        } catch {
-            return nil
-        }
+        return nil
     }
 
     /// パック内の filing/*.json からフィールド定義を組み立てる
@@ -127,6 +112,7 @@ enum TaxYearDefinitionLoader {
         }
 
         let filingFiles: [(formKey: String, fileName: String)] = [
+            (commonFormKey, "common.json"),
             ("blue_general", "blue_general.json"),
             ("blue_cash_basis", "blue_cash_basis.json"),
             ("white_shushi", "white_shushi.json")
@@ -159,23 +145,17 @@ enum TaxYearDefinitionLoader {
                         internalKey: field.internalKey,
                         fieldLabel: field.fieldLabel,
                         xmlTag: field.xmlTag,
-                        taxLineRawValue: resolveTaxLineRawValue(for: field.internalKey),
+                        taxLineRawValue: field.taxLineRawValue ?? resolveTaxLineRawValue(for: field.internalKey),
                         section: section.id,
                         dataType: EtaxFieldDataType(rawValue: field.dataType),
                         form: filing.formKey,
-                        idref: nil,
-                        format: nil,
-                        requiredRule: nil
+                        idref: field.idref,
+                        format: field.format,
+                        requiredRule: field.requiredRule
                     )
                     allFields.append(taxFieldDef)
                 }
             }
-        }
-
-        // 共通フィールド（declarant_*）を追加: 旧JSONがあればそこから取得
-        if foundAny {
-            let legacyCommonFields = loadCommonFieldsFromLegacy(for: fiscalYear)
-            allFields.append(contentsOf: legacyCommonFields)
         }
 
         guard foundAny else { return nil }
@@ -185,18 +165,6 @@ enum TaxYearDefinitionLoader {
             forms: forms,
             fields: allFields
         )
-    }
-
-    /// 旧TaxYear{year}.json から common フォームのフィールドだけを取得する
-    private static func loadCommonFieldsFromLegacy(for fiscalYear: Int) -> [TaxFieldDefinition] {
-        let fileName = "TaxYear\(fiscalYear)"
-        guard let url = Bundle.main.url(forResource: fileName, withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let legacy = try? JSONDecoder().decode(TaxYearDefinition.self, from: data)
-        else {
-            return []
-        }
-        return legacy.fields.filter { resolvedFormKey(of: $0) == commonFormKey }
     }
 
     /// パック内の filing ディレクトリ URL を返す
@@ -289,10 +257,7 @@ enum TaxYearDefinitionLoader {
 
     /// 指定様式で利用可能な対応年分一覧を返す
     static func supportedYears(formType: EtaxFormType?) -> [Int] {
-        var years = jsonSupportedYears()
-        years.formUnion(supportedPackYears())
-
-        let sorted = years.sorted()
+        let sorted = supportedPackYears().sorted()
         guard let formType else {
             return sorted
         }
@@ -334,25 +299,6 @@ enum TaxYearDefinitionLoader {
         return "blue_general"
     }
 
-    private static func jsonSupportedYears() -> Set<Int> {
-        let filePaths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
-        let prefix = "TaxYear"
-        let suffix = ".json"
-
-        var years = Set(cache.keys)
-        for path in filePaths {
-            let fileName = URL(fileURLWithPath: path).lastPathComponent
-            guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else { continue }
-            let raw = fileName
-                .replacingOccurrences(of: prefix, with: "")
-                .replacingOccurrences(of: suffix, with: "")
-            if let year = Int(raw) {
-                years.insert(year)
-            }
-        }
-        return years
-    }
-
     private static func supportedPackYears() -> [Int] {
         if let cached = packYearsCache {
             return cached
@@ -388,4 +334,8 @@ private struct PackFilingField: Decodable {
     let fieldLabel: String
     let xmlTag: String?
     let dataType: String
+    let taxLineRawValue: String?
+    let format: String?
+    let requiredRule: String?
+    let idref: String?
 }
