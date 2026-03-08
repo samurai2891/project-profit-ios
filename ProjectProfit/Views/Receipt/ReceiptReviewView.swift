@@ -683,8 +683,7 @@ struct ReceiptReviewView: View {
             let linkedProjectIds = type == .transfer ? [] : allocations.map(\.projectId)
             let resolvedCategoryId = type == .transfer ? "" : categoryId
             let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
-            let resolvedTaxCategory: TaxCategory? = type != .transfer ? selectedTaxCode?.legacyCategory : nil
-            let resolvedTaxRate = selectedTaxCode?.isTaxable == true ? selectedTaxCode?.taxRatePercent ?? 0 : 0
+            let resolvedTaxCodeId = type != .transfer ? selectedTaxCode?.rawValue : nil
             let resolvedIsTaxIncluded = selectedTaxCode?.isTaxable == true ? isTaxIncluded : false
             let resolvedTaxAmount: Int?
             if let tc = selectedTaxCode, tc.isTaxable {
@@ -735,8 +734,7 @@ struct ReceiptReviewView: View {
                     paymentAccountId: paymentAccountId,
                     transferToAccountId: resolvedTransferTo,
                     taxDeductibleRate: type == .expense ? taxDeductibleRate : 100,
-                    taxCategory: resolvedTaxCategory,
-                    taxRate: resolvedTaxRate,
+                    taxCodeId: resolvedTaxCodeId,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxAmount: resolvedTaxAmount,
                     registrationNumber: receiptData.registrationNumber,

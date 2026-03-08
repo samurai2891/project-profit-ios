@@ -33,8 +33,7 @@ struct ReceiptEvidenceIntakeRequest {
     let paymentAccountId: String?
     let transferToAccountId: String?
     let taxDeductibleRate: Int
-    let taxCategory: TaxCategory?
-    let taxRate: Int
+    let taxCodeId: String?
     let isTaxIncluded: Bool
     let taxAmount: Int?
     let registrationNumber: String?
@@ -108,7 +107,7 @@ struct ReceiptEvidenceIntakeUseCase {
             explicitId: request.counterpartyId,
             registrationNumber: request.registrationNumber,
             name: request.counterpartyName,
-            defaultTaxCodeId: resolvedTaxCodeId(for: request)
+            defaultTaxCodeId: request.taxCodeId
         )
         let evidence = EvidenceDocument(
             businessId: businessId,
@@ -262,7 +261,7 @@ struct ReceiptEvidenceIntakeUseCase {
     ) async throws -> [PostingCandidateLine] {
         let amount = request.reviewedAmount
         let taxAmount = resolvedTaxAmount(for: request)
-        let taxCodeId = resolvedTaxCodeId(for: request)
+        let taxCodeId = resolvedTaxCode(for: request)?.rawValue
         let primaryMemo = normalizedOptionalString(request.memo)
 
         switch request.transactionType {
@@ -468,20 +467,18 @@ struct ReceiptEvidenceIntakeUseCase {
     }
 
     private func resolvedTaxAmount(for request: ReceiptEvidenceIntakeRequest) -> Int {
-        guard let taxCategory = request.taxCategory, taxCategory.isTaxable else {
+        guard let taxCode = resolvedTaxCode(for: request), taxCode.isTaxable else {
             return 0
         }
         if request.isTaxIncluded {
-            return request.reviewedAmount * request.taxRate / (100 + request.taxRate)
+            let taxRate = taxCode.taxRatePercent
+            return request.reviewedAmount * taxRate / (100 + taxRate)
         }
         return max(0, request.taxAmount ?? 0)
     }
 
-    private func resolvedTaxCodeId(for request: ReceiptEvidenceIntakeRequest) -> String? {
-        TaxCode.resolve(
-            legacyCategory: request.taxCategory,
-            taxRate: request.taxCategory?.isTaxable == true ? request.taxRate : nil
-        )?.rawValue
+    private func resolvedTaxCode(for request: ReceiptEvidenceIntakeRequest) -> TaxCode? {
+        TaxCode.resolve(id: request.taxCodeId)
     }
 
     private func resolveLinkedLegacyAccountId(categoryId: String, fallback: String) -> String {
@@ -568,7 +565,8 @@ struct ReceiptEvidenceIntakeUseCase {
         let taxAmount = Decimal(resolvedTaxAmount(for: request))
         let totalAmount = Decimal(request.reviewedAmount)
         let subtotal = max(0, request.reviewedAmount - Int(truncating: taxAmount as NSNumber))
-        let taxRateDecimal: Decimal? = request.taxCategory?.isTaxable == true ? Decimal(request.taxRate) : nil
+        let taxCode = resolvedTaxCode(for: request)
+        let taxRateDecimal: Decimal? = taxCode?.isTaxable == true ? Decimal(taxCode?.taxRatePercent ?? 0) : nil
         let evidenceLineItems = request.lineItems.map { item in
             EvidenceLineItem(
                 description: item.name,
@@ -583,8 +581,8 @@ struct ReceiptEvidenceIntakeUseCase {
         let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(request.registrationNumber)
         let subtotalDecimal = subtotal > 0 ? Decimal(subtotal) : nil
 
-        switch request.taxRate {
-        case 8 where taxAmount > 0:
+        switch taxCode {
+        case .some(.reduced8) where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
                 registrationNumber: normalizedRegistrationNumber,
@@ -595,7 +593,7 @@ struct ReceiptEvidenceIntakeUseCase {
                 lineItems: evidenceLineItems,
                 confidence: request.receiptData.confidence
             )
-        case 10 where taxAmount > 0:
+        case .some(.standard10) where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
                 registrationNumber: normalizedRegistrationNumber,
@@ -619,6 +617,7 @@ struct ReceiptEvidenceIntakeUseCase {
     }
 
     private func makeSearchTokens(from request: ReceiptEvidenceIntakeRequest) -> [String] {
+        let taxRateToken = resolvedTaxCode(for: request).map { String($0.taxRatePercent) } ?? "0"
         var tokens: [String] = [
             request.originalFileName,
             request.memo,
@@ -626,7 +625,7 @@ struct ReceiptEvidenceIntakeUseCase {
             request.receiptData.itemSummary,
             request.receiptData.estimatedCategory,
             String(request.reviewedAmount),
-            String(request.taxRate),
+            taxRateToken,
             request.registrationNumber ?? request.receiptData.registrationNumber ?? "",
         ]
         tokens.append(contentsOf: request.lineItems.map(\.name))

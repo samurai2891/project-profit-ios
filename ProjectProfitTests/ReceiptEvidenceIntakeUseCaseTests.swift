@@ -65,8 +65,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             paymentAccountId: "acct-cash",
             transferToAccountId: nil,
             taxDeductibleRate: 100,
-            taxCategory: nil,
-            taxRate: 0,
+            taxCodeId: nil,
             isTaxIncluded: false,
             taxAmount: nil,
             registrationNumber: nil,
@@ -167,8 +166,7 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             paymentAccountId: "acct-cash",
             transferToAccountId: nil,
             taxDeductibleRate: 100,
-            taxCategory: .standardRate,
-            taxRate: 10,
+            taxCodeId: TaxCode.standard10.rawValue,
             isTaxIncluded: false,
             taxAmount: 100,
             registrationNumber: "T1234567890123",
@@ -189,6 +187,81 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             result.candidate.proposedLines.compactMap(\.taxCodeId),
             [TaxCode.standard10.rawValue]
         )
+        XCTAssertEqual(result.evidence.structuredFields?.taxStandardRate, Decimal(100))
+        XCTAssertNil(result.evidence.structuredFields?.taxReducedRate)
+    }
+
+    func testIntakeBuildsReducedRateStructuredFieldsFromCanonicalTaxCode() async throws {
+        let businessId = try await seedBusinessProfile()
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies",
+            code: "611",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.inputTaxAccountId,
+            code: "142",
+            name: "仮払消費税",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 3
+        )
+
+        let useCase = ReceiptEvidenceIntakeUseCase(modelContext: context)
+        let request = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 1080,
+                taxAmount: 80,
+                subtotalAmount: 1000,
+                date: "2026-03-07",
+                storeName: "食品ストア",
+                registrationNumber: nil,
+                estimatedCategory: "supplies",
+                itemSummary: "軽減税率商品"
+            ),
+            ocrText: "食品ストア\n小計 1,000円\n消費税 80円\n合計 1,080円",
+            sourceType: .camera,
+            fileData: Data("jpeg-reduced".utf8),
+            originalFileName: "reduced-rate.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 1080,
+            reviewedDate: date(2026, 3, 7),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "[レシート] 食品ストア - 軽減税率商品",
+            lineItems: [LineItem(name: "軽減税率商品", quantity: 1, unitPrice: 1080)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: TaxCode.reduced8.rawValue,
+            isTaxIncluded: false,
+            taxAmount: 80,
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: "食品ストア"
+        )
+
+        let result = try await useCase.intake(request)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        XCTAssertEqual(result.candidate.proposedLines.compactMap(\.taxCodeId), [TaxCode.reduced8.rawValue])
+        XCTAssertEqual(result.evidence.structuredFields?.taxReducedRate, Decimal(80))
+        XCTAssertNil(result.evidence.structuredFields?.taxStandardRate)
     }
 
     private func seedBusinessProfile() async throws -> UUID {
