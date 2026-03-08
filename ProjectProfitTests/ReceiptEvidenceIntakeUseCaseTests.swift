@@ -93,12 +93,127 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(candidates.first?.source, .ocr)
         XCTAssertEqual(documents.map(\.id), [result.documentRecordId])
         XCTAssertTrue(transactions.isEmpty)
+        XCTAssertFalse(result.duplicateDetected)
         XCTAssertEqual(result.evidence.structuredFields?.counterpartyName, "文具センター")
         XCTAssertEqual(result.candidate.proposedLines.count, 2)
         XCTAssertEqual(
             Set(auditEvents.map(\.eventTypeRaw)),
             Set([AuditEventType.evidenceCreated.rawValue, AuditEventType.candidateCreated.rawValue])
         )
+    }
+
+    func testIntakeThrowsDuplicateEvidenceWhenSameFileHashAlreadyExists() async throws {
+        let businessId = try await seedBusinessProfile()
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies",
+            code: "611",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+
+        let useCase = ReceiptEvidenceIntakeUseCase(modelContext: context)
+        let firstRequest = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 1200,
+                date: "2026-03-07",
+                storeName: "重複チェック商店",
+                registrationNumber: nil,
+                estimatedCategory: "tools",
+                itemSummary: "ノート"
+            ),
+            ocrText: "重複チェック商店\n合計 1,200円",
+            sourceType: .camera,
+            fileData: Data("same-file-binary".utf8),
+            originalFileName: "duplicate-base.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 1200,
+            reviewedDate: date(2026, 3, 7),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "[レシート] 重複チェック商店 - ノート",
+            lineItems: [LineItem(name: "ノート", quantity: 1, unitPrice: 1200)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: nil,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: "重複チェック商店"
+        )
+        let firstResult = try await useCase.intake(firstRequest)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: firstResult.evidence.originalFilePath) }
+
+        let duplicateRequest = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 1200,
+                date: "2026-03-08",
+                storeName: "重複チェック商店",
+                registrationNumber: nil,
+                estimatedCategory: "tools",
+                itemSummary: "ノート再取込"
+            ),
+            ocrText: "重複チェック商店\n合計 1,200円",
+            sourceType: .photoLibrary,
+            fileData: Data("same-file-binary".utf8),
+            originalFileName: "duplicate-second.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 1200,
+            reviewedDate: date(2026, 3, 8),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "[レシート] 重複チェック商店 - ノート再取込",
+            lineItems: [LineItem(name: "ノート再取込", quantity: 1, unitPrice: 1200)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: nil,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: "重複チェック商店"
+        )
+
+        do {
+            _ = try await useCase.intake(duplicateRequest)
+            XCTFail("duplicate intake should throw an error")
+        } catch let error as ReceiptEvidenceIntakeUseCaseError {
+            switch error {
+            case let .duplicateEvidence(existingEvidenceId, fileHash):
+                XCTAssertEqual(existingEvidenceId, firstResult.evidence.id)
+                XCTAssertEqual(fileHash, firstResult.evidence.fileHash)
+            default:
+                XCTFail("unexpected error: \(error)")
+            }
+        }
+
+        let evidences = try await EvidenceCatalogUseCase(modelContext: context).search(
+            EvidenceSearchCriteria(businessId: businessId)
+        )
+        let candidates = try await PostingWorkflowUseCase(modelContext: context).candidates(
+            evidenceId: firstResult.evidence.id
+        )
+        let documents = try context.fetch(FetchDescriptor<PPDocumentRecord>())
+
+        XCTAssertEqual(evidences.count, 1)
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(documents.count, 1)
     }
 
     func testIntakeMatchesExistingCounterpartyAndBuildsTaxLines() async throws {

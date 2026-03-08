@@ -25,7 +25,8 @@ final class BundledTaxYearPackProvider: TaxYearPackProviderPort, @unchecked Send
         decoder.dateDecodingStrategy = .iso8601
         let pack: TaxYearPack
         do {
-            pack = try decoder.decode(TaxYearPack.self, from: data)
+            let profilePack = try decoder.decode(TaxYearPack.self, from: data)
+            pack = try loadConsumptionTaxRules(for: taxYear, fallback: profilePack)
         } catch {
             throw TaxYearPackError.invalidPackData(
                 taxYear: taxYear,
@@ -82,7 +83,8 @@ final class BundledTaxYearPackProvider: TaxYearPackProviderPort, @unchecked Send
         decoder.dateDecodingStrategy = .iso8601
         let pack: TaxYearPack
         do {
-            pack = try decoder.decode(TaxYearPack.self, from: data)
+            let profilePack = try decoder.decode(TaxYearPack.self, from: data)
+            pack = try loadConsumptionTaxRules(for: taxYear, fallback: profilePack)
         } catch {
             throw TaxYearPackError.invalidPackData(
                 taxYear: taxYear,
@@ -129,6 +131,123 @@ final class BundledTaxYearPackProvider: TaxYearPackProviderPort, @unchecked Send
             .appendingPathComponent("TaxYearPacks", isDirectory: true)
 
         return fileManager.fileExists(atPath: sourcePacks.path) ? sourcePacks : nil
+    }
+
+    private func loadConsumptionTaxRules(for taxYear: Int, fallback profilePack: TaxYearPack) throws -> TaxYearPack {
+        guard let rulesURL = bundle.url(
+            forResource: "rules",
+            withExtension: "json",
+            subdirectory: "TaxYearPacks/\(taxYear)/consumption_tax"
+        ) ?? taxYearPacksRootURL()?
+            .appendingPathComponent(String(taxYear), isDirectory: true)
+            .appendingPathComponent("consumption_tax", isDirectory: true)
+            .appendingPathComponent("rules.json"),
+            fileManager.fileExists(atPath: rulesURL.path)
+        else {
+            return profilePack
+        }
+
+        let rulesData = try Data(contentsOf: rulesURL)
+        let decoder = JSONDecoder()
+        let rules = try decoder.decode(ConsumptionTaxRules.self, from: rulesData)
+        return TaxYearPack(
+            id: profilePack.id,
+            taxYear: profilePack.taxYear,
+            version: profilePack.version,
+            incomeTaxRateBrackets: profilePack.incomeTaxRateBrackets,
+            consumptionTaxStandardRate: rules.standardRate ?? profilePack.consumptionTaxStandardRate,
+            consumptionTaxReducedRate: rules.reducedRate ?? profilePack.consumptionTaxReducedRate,
+            nationalRateStandard: rules.nationalRateStandard ?? profilePack.nationalRateStandard,
+            localRateStandard: rules.localRateStandard ?? profilePack.localRateStandard,
+            nationalRateReduced: rules.nationalRateReduced ?? profilePack.nationalRateReduced,
+            localRateReduced: rules.localRateReduced ?? profilePack.localRateReduced,
+            smallAmountThreshold: rules.smallAmountThreshold ?? profilePack.smallAmountThreshold,
+            transitionalCreditRate: rules.transitionalMeasures.first?.creditRate ?? profilePack.transitionalCreditRate,
+            transitionalMeasures: rules.transitionalMeasures.isEmpty ? profilePack.transitionalMeasures : rules.transitionalMeasures,
+            twoTenthsSpecialAvailable: rules.twoTenthsSpecialAvailable ?? profilePack.twoTenthsSpecialAvailable,
+            blueDeductionOptions: profilePack.blueDeductionOptions,
+            filingDeadlineMonth: profilePack.filingDeadlineMonth,
+            filingDeadlineDay: profilePack.filingDeadlineDay,
+            releaseDate: profilePack.releaseDate,
+            effectiveFrom: profilePack.effectiveFrom,
+            deprecatedAt: profilePack.deprecatedAt
+        )
+    }
+}
+
+private struct ConsumptionTaxRules: Decodable {
+    let standardRate: Decimal?
+    let reducedRate: Decimal?
+    let nationalRateStandard: Decimal?
+    let localRateStandard: Decimal?
+    let nationalRateReduced: Decimal?
+    let localRateReduced: Decimal?
+    let transitionalMeasures: [TransitionalTaxCreditMeasure]
+    let smallAmountThreshold: Decimal?
+    let twoTenthsSpecialAvailable: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case standardRate
+        case reducedRate
+        case nationalRateStandard
+        case localRateStandard
+        case nationalRateReduced
+        case localRateReduced
+        case transitionalMeasures
+        case specialProvisions
+    }
+
+    private struct SpecialProvision: Decodable {
+        let id: String
+        let available: Bool?
+        let threshold: Decimal?
+
+        private enum CodingKeys: String, CodingKey {
+            case id
+            case available
+            case threshold
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            available = try container.decodeIfPresent(Bool.self, forKey: .available)
+            threshold = try container.decodeDecimalIfPresent(forKey: .threshold)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        standardRate = try container.decodeDecimalIfPresent(forKey: .standardRate)
+        reducedRate = try container.decodeDecimalIfPresent(forKey: .reducedRate)
+        nationalRateStandard = try container.decodeDecimalIfPresent(forKey: .nationalRateStandard)
+        localRateStandard = try container.decodeDecimalIfPresent(forKey: .localRateStandard)
+        nationalRateReduced = try container.decodeDecimalIfPresent(forKey: .nationalRateReduced)
+        localRateReduced = try container.decodeDecimalIfPresent(forKey: .localRateReduced)
+        transitionalMeasures = try container.decodeIfPresent([TransitionalTaxCreditMeasure].self, forKey: .transitionalMeasures) ?? []
+
+        let provisions = try container.decodeIfPresent([SpecialProvision].self, forKey: .specialProvisions) ?? []
+        smallAmountThreshold = provisions.first(where: { $0.id == "small_amount_special" })?.threshold
+        twoTenthsSpecialAvailable = provisions.first(where: { $0.id == "two_tenths_special" })?.available
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeDecimalIfPresent(forKey key: Key) throws -> Decimal? {
+        if let stringValue = try decodeIfPresent(String.self, forKey: key),
+           let decimal = Decimal(string: stringValue) {
+            return decimal
+        }
+        if let decimal = try decodeIfPresent(Decimal.self, forKey: key) {
+            return decimal
+        }
+        if let doubleValue = try decodeIfPresent(Double.self, forKey: key) {
+            return Decimal(doubleValue)
+        }
+        if let intValue = try decodeIfPresent(Int.self, forKey: key) {
+            return Decimal(intValue)
+        }
+        return nil
     }
 }
 

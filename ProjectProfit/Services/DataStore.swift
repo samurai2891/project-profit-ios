@@ -94,6 +94,10 @@ class DataStore {
         PostingWorkflowUseCase(modelContext: modelContext)
     }
 
+    private var bundledTaxYearPackProvider: BundledTaxYearPackProvider {
+        BundledTaxYearPackProvider(bundle: .main)
+    }
+
     var profileSensitivePayload: ProfileSensitivePayload? {
         loadSensitivePayload()
     }
@@ -603,7 +607,7 @@ class DataStore {
                     currentTaxYearProfile = TaxYearProfile(
                         businessId: businessProfile.id,
                         taxYear: defaultTaxYear,
-                        taxPackVersion: "\(defaultTaxYear)-v1"
+                        taxPackVersion: resolvedPackVersion(for: defaultTaxYear)
                     )
                 }
             } else {
@@ -717,14 +721,14 @@ class DataStore {
                 electronicBookLevel: currentTaxYearProfile.electronicBookLevel,
                 etaxSubmissionPlanned: currentTaxYearProfile.etaxSubmissionPlanned,
                 yearLockState: currentTaxYearProfile.yearLockState,
-                taxPackVersion: "\(fiscalYear)-v1"
+                taxPackVersion: resolvedPackVersion(for: fiscalYear)
             )
         }
 
         return TaxYearProfile(
             businessId: businessId,
             taxYear: fiscalYear,
-            taxPackVersion: "\(fiscalYear)-v1"
+            taxPackVersion: resolvedPackVersion(for: fiscalYear)
         )
     }
 
@@ -738,6 +742,10 @@ class DataStore {
 
     private func currentFiscalYear() -> Int {
         Calendar.current.component(.year, from: Date())
+    }
+
+    private func resolvedPackVersion(for taxYear: Int) -> String {
+        (try? bundledTaxYearPackProvider.packSync(for: taxYear).version) ?? "\(taxYear)-v1"
     }
 
     private func guardLegacyTransactionMutationAllowed(
@@ -868,8 +876,9 @@ class DataStore {
         }
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
         let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(transaction: transaction)
         guard let posting = bridge.buildApprovedPosting(
-            for: transaction,
+            for: snapshot,
             businessId: businessId,
             counterpartyId: counterpartyId,
             source: source,
@@ -1173,7 +1182,6 @@ class DataStore {
         save()
         refreshProjects()
         reprocessEqualAllCurrentPeriodTransactions()
-        processRecurringTransactions()
         refreshTransactions()
         return project
     }
@@ -1252,7 +1260,6 @@ class DataStore {
                 // 他のプロジェクトの日割りを再適用
                 recalculateAllPartialPeriodProjects()
             }
-            processRecurringTransactions()
             refreshTransactions()
         }
     }
@@ -1975,8 +1982,6 @@ class DataStore {
         modelContext.insert(recurring)
         save()
         refreshRecurring()
-        processRecurringTransactions()
-        refreshTransactions()
         onRecurringScheduleChanged?(recurringTransactions)
         enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
         return recurring
@@ -2086,8 +2091,6 @@ class DataStore {
         recurring.updatedAt = Date()
         save()
         refreshRecurring()
-        processRecurringTransactions()
-        refreshTransactions()
         onRecurringScheduleChanged?(recurringTransactions)
         enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
     }

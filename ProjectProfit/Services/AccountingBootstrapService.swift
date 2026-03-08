@@ -288,8 +288,9 @@ final class AccountingBootstrapService {
             guard transaction.deletedAt == nil else { continue }
             guard transaction.journalEntryId == nil else { continue }
 
+            let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(transaction: transaction)
             guard let posting = bridge.buildApprovedPosting(
-                for: transaction,
+                for: snapshot,
                 businessId: businessId,
                 categories: categories,
                 legacyAccounts: accounts
@@ -372,6 +373,57 @@ struct CanonicalTransactionPostingBridge {
         let approvedAt: Date
     }
 
+    struct TransactionSnapshot: Sendable {
+        let id: UUID
+        let type: TransactionType
+        let amount: Int
+        let date: Date
+        let categoryId: String
+        let memo: String
+        let recurringId: UUID?
+        let paymentAccountId: String?
+        let transferToAccountId: String?
+        let taxDeductibleRate: Int?
+        let taxAmount: Int?
+        let taxRate: Int?
+        let isTaxIncluded: Bool?
+        let taxCategory: TaxCategory?
+        let createdAt: Date
+        let updatedAt: Date
+        let journalEntryId: UUID?
+
+        init(transaction: PPTransaction) {
+            id = transaction.id
+            type = transaction.type
+            amount = transaction.amount
+            date = transaction.date
+            categoryId = transaction.categoryId
+            memo = transaction.memo
+            recurringId = transaction.recurringId
+            paymentAccountId = transaction.paymentAccountId
+            transferToAccountId = transaction.transferToAccountId
+            taxDeductibleRate = transaction.taxDeductibleRate
+            taxAmount = transaction.taxAmount
+            taxRate = transaction.taxRate
+            isTaxIncluded = transaction.isTaxIncluded
+            taxCategory = transaction.taxCategory
+            createdAt = transaction.createdAt
+            updatedAt = transaction.updatedAt
+            journalEntryId = transaction.journalEntryId
+        }
+
+        var effectiveTaxDeductibleRate: Int {
+            max(0, min(100, taxDeductibleRate ?? 100))
+        }
+
+        var netAmount: Int {
+            if let taxAmount, taxAmount > 0 {
+                return max(0, amount - taxAmount)
+            }
+            return amount
+        }
+    }
+
     private struct LegacyPostingLineSnapshot: Sendable {
         let accountId: String
         let debit: Int
@@ -390,7 +442,7 @@ struct CanonicalTransactionPostingBridge {
     }
 
     func buildApprovedPosting(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         businessId: UUID,
         counterpartyId: UUID? = nil,
         source: CandidateSource? = nil,
@@ -402,10 +454,7 @@ struct CanonicalTransactionPostingBridge {
             legacyAccounts: legacyAccounts
         )
 
-        let legacyLines = synthesizeLegacyPostingLines(
-            for: transaction,
-            categories: categories
-        )
+        let legacyLines = synthesizeLegacyPostingLines(for: snapshot, categories: categories)
         guard !legacyLines.isEmpty else {
             return nil
         }
@@ -426,19 +475,19 @@ struct CanonicalTransactionPostingBridge {
 
         let counterparty = counterpartyId.flatMap(canonicalCounterparty(id:))
         let resolvedTaxCodeId = resolvedCanonicalTaxCodeId(
-            for: transaction,
+            for: snapshot,
             counterparty: counterparty,
             legacyLines: legacyLines,
             canonicalAccountsByLegacyId: canonicalAccountsByLegacyId
         )
-        let taxYear = fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
+        let taxYear = fiscalYear(for: snapshot.date, startMonth: FiscalYearSettings.startMonth)
         let taxYearProfile = resolvedTaxYearProfile(
             businessId: businessId,
             taxYear: taxYear
         )
         let pack = try? BundledTaxYearPackProvider(bundle: .main).packSync(for: taxYear)
         let resolvedTaxAnalysis = makeCanonicalTaxAnalysis(
-            for: transaction,
+            for: snapshot,
             taxCodeId: resolvedTaxCodeId,
             counterparty: counterparty,
             taxYearProfile: taxYearProfile,
@@ -466,15 +515,15 @@ struct CanonicalTransactionPostingBridge {
             return nil
         }
 
-        let now = transaction.updatedAt
-        let description = normalizedOptionalString(transaction.memo) ?? ""
-        let inferredSource: CandidateSource = source ?? (transaction.recurringId == nil ? .manual : .recurring)
+        let now = snapshot.updatedAt
+        let description = normalizedOptionalString(snapshot.memo) ?? ""
+        let inferredSource: CandidateSource = source ?? (snapshot.recurringId == nil ? .manual : .recurring)
         let candidate = PostingCandidate(
-            id: transaction.id,
+            id: snapshot.id,
             evidenceId: nil,
             businessId: businessId,
             taxYear: taxYear,
-            candidateDate: transaction.date,
+            candidateDate: snapshot.date,
             counterpartyId: counterpartyId,
             proposedLines: candidateLines,
             taxAnalysis: resolvedTaxAnalysis,
@@ -482,14 +531,14 @@ struct CanonicalTransactionPostingBridge {
             status: .approved,
             source: inferredSource,
             memo: description,
-            createdAt: transaction.createdAt,
+            createdAt: snapshot.createdAt,
             updatedAt: now
         )
 
         return Posting(
             candidate: candidate,
-            journalId: transaction.journalEntryId ?? stableJournalId(for: transaction.id),
-            entryType: transaction.recurringId == nil ? .normal : .recurring,
+            journalId: snapshot.journalEntryId ?? stableJournalId(for: snapshot.id),
+            entryType: snapshot.recurringId == nil ? .normal : .recurring,
             description: description,
             approvedAt: now
         )
@@ -933,61 +982,61 @@ struct CanonicalTransactionPostingBridge {
     }
 
     private func synthesizeLegacyPostingLines(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         categories: [PPCategory]
     ) -> [LegacyPostingLineSnapshot] {
-        switch transaction.type {
+        switch snapshot.type {
         case .income:
-            return synthesizeIncomePostingLines(for: transaction, categories: categories)
+            return synthesizeIncomePostingLines(for: snapshot, categories: categories)
         case .expense:
-            return synthesizeExpensePostingLines(for: transaction, categories: categories)
+            return synthesizeExpensePostingLines(for: snapshot, categories: categories)
         case .transfer:
-            return synthesizeTransferPostingLines(for: transaction)
+            return synthesizeTransferPostingLines(for: snapshot)
         }
     }
 
     private func synthesizeIncomePostingLines(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         categories: [PPCategory]
     ) -> [LegacyPostingLineSnapshot] {
-        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let paymentAccountId = snapshot.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
         let revenueAccountId = resolvedLegacyLinkedAccountId(
-            categoryId: transaction.categoryId,
+            categoryId: snapshot.categoryId,
             categories: categories,
             fallback: AccountingConstants.salesAccountId
         )
 
-        if let taxAmount = transaction.taxAmount, taxAmount > 0,
-           transaction.taxCategory?.isTaxable == true {
-            let netAmount = transaction.amount - taxAmount
+        if let taxAmount = snapshot.taxAmount, taxAmount > 0,
+           snapshot.taxCategory?.isTaxable == true {
+            let netAmount = snapshot.amount - taxAmount
             return [
-                LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
+                LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: snapshot.amount, credit: 0, memo: ""),
                 LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: netAmount, memo: ""),
                 LegacyPostingLineSnapshot(accountId: AccountingConstants.outputTaxAccountId, debit: 0, credit: taxAmount, memo: "仮受消費税")
             ]
         }
 
         return [
-            LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: transaction.amount, credit: 0, memo: ""),
-            LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: transaction.amount, memo: "")
+            LegacyPostingLineSnapshot(accountId: paymentAccountId, debit: snapshot.amount, credit: 0, memo: ""),
+            LegacyPostingLineSnapshot(accountId: revenueAccountId, debit: 0, credit: snapshot.amount, memo: "")
         ]
     }
 
     private func synthesizeExpensePostingLines(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         categories: [PPCategory]
     ) -> [LegacyPostingLineSnapshot] {
-        let paymentAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let paymentAccountId = snapshot.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
         let expenseAccountId = resolvedLegacyLinkedAccountId(
-            categoryId: transaction.categoryId,
+            categoryId: snapshot.categoryId,
             categories: categories,
             fallback: AccountingConstants.miscExpenseAccountId
         )
 
-        let rate = transaction.effectiveTaxDeductibleRate
-        let amount = transaction.amount
-        let hasTax = (transaction.taxAmount ?? 0) > 0 && transaction.taxCategory?.isTaxable == true
-        let taxAmount = hasTax ? (transaction.taxAmount ?? 0) : 0
+        let rate = snapshot.effectiveTaxDeductibleRate
+        let amount = snapshot.amount
+        let hasTax = (snapshot.taxAmount ?? 0) > 0 && snapshot.taxCategory?.isTaxable == true
+        let taxAmount = hasTax ? (snapshot.taxAmount ?? 0) : 0
         let expenseBase = hasTax ? (amount - taxAmount) : amount
 
         if rate >= 100 {
@@ -1063,13 +1112,13 @@ struct CanonicalTransactionPostingBridge {
     }
 
     private func synthesizeTransferPostingLines(
-        for transaction: PPTransaction
+        for snapshot: TransactionSnapshot
     ) -> [LegacyPostingLineSnapshot] {
-        let fromAccountId = transaction.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
-        let toAccountId = transaction.transferToAccountId ?? AccountingConstants.suspenseAccountId
+        let fromAccountId = snapshot.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+        let toAccountId = snapshot.transferToAccountId ?? AccountingConstants.suspenseAccountId
         return [
-            LegacyPostingLineSnapshot(accountId: toAccountId, debit: transaction.amount, credit: 0, memo: ""),
-            LegacyPostingLineSnapshot(accountId: fromAccountId, debit: 0, credit: transaction.amount, memo: "")
+            LegacyPostingLineSnapshot(accountId: toAccountId, debit: snapshot.amount, credit: 0, memo: ""),
+            LegacyPostingLineSnapshot(accountId: fromAccountId, debit: 0, credit: snapshot.amount, memo: "")
         ]
     }
 
@@ -1089,14 +1138,14 @@ struct CanonicalTransactionPostingBridge {
     }
 
     private func resolvedCanonicalTaxCodeId(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         counterparty: Counterparty?,
         legacyLines: [LegacyPostingLineSnapshot],
         canonicalAccountsByLegacyId: [String: CanonicalAccount]
     ) -> String? {
         if let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
+            legacyCategory: snapshot.taxCategory,
+            taxRate: snapshot.taxRate
         )?.rawValue {
             return explicitTaxCodeId
         }
@@ -1118,7 +1167,7 @@ struct CanonicalTransactionPostingBridge {
     }
 
     private func makeCanonicalTaxAnalysis(
-        for transaction: PPTransaction,
+        for snapshot: TransactionSnapshot,
         taxCodeId: String?,
         counterparty: Counterparty?,
         taxYearProfile: TaxYearProfile,
@@ -1127,17 +1176,17 @@ struct CanonicalTransactionPostingBridge {
         guard let taxCode = TaxCode.resolve(id: taxCodeId), taxCode.isTaxable else {
             return nil
         }
-        guard let taxAmount = transaction.taxAmount, taxAmount > 0 else {
+        guard let taxAmount = snapshot.taxAmount, taxAmount > 0 else {
             return nil
         }
 
         let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
         let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
-        let grossAmount = Decimal(transaction.amount)
+        let grossAmount = Decimal(snapshot.amount)
         let creditMethod: InputTaxCreditMethod
-        if transaction.type == .expense {
+        if snapshot.type == .expense {
             creditMethod = evaluator.evaluateInputTaxCreditMethod(
-                transactionDate: transaction.date,
+                transactionDate: snapshot.date,
                 counterpartyInvoiceStatus: counterpartyInvoiceStatus,
                 amount: grossAmount
             )
@@ -1146,7 +1195,7 @@ struct CanonicalTransactionPostingBridge {
         }
 
         let deductibleTaxAmount: Decimal
-        if transaction.type == .expense {
+        if snapshot.type == .expense {
             deductibleTaxAmount = Decimal(taxAmount) * creditMethod.creditRate
         } else {
             deductibleTaxAmount = 0
@@ -1155,7 +1204,7 @@ struct CanonicalTransactionPostingBridge {
         return TaxAnalysis(
             creditMethod: creditMethod,
             taxRateBreakdown: taxCode.rateBreakdown(using: pack),
-            taxableAmount: Decimal(transaction.netAmount),
+            taxableAmount: Decimal(snapshot.netAmount),
             taxAmount: Decimal(taxAmount),
             deductibleTaxAmount: deductibleTaxAmount
         )
@@ -1181,7 +1230,8 @@ struct CanonicalTransactionPostingBridge {
         return TaxYearProfile(
             businessId: businessId,
             taxYear: taxYear,
-            taxPackVersion: "\(taxYear)-v1"
+            taxPackVersion: (try? BundledTaxYearPackProvider(bundle: .main).packSync(for: taxYear).version)
+                ?? "\(taxYear)-v1"
         )
     }
 

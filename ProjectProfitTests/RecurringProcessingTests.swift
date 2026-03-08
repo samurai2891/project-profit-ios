@@ -99,9 +99,9 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        // addRecurring auto-processes; explicit call should be idempotent
+        // 明示実行時のみ生成される
         let count = dataStore.processRecurringTransactions()
-        XCTAssertEqual(count, 0, "Already processed by addRecurring — no new transactions")
+        XCTAssertEqual(count, 1, "Should generate one transaction when explicitly processed")
 
         let transactions = fetchAllTransactions()
         XCTAssertEqual(transactions.count, 1)
@@ -155,7 +155,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        let recurring = dataStore.addRecurring(
+        dataStore.addRecurring(
             name: "Already Done",
             type: .income,
             amount: 20000,
@@ -166,13 +166,12 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        // addRecurring auto-generated 1 transaction; lastGeneratedDate is already set
-        XCTAssertEqual(fetchAllTransactions().count, 1, "addRecurring should auto-generate 1 transaction")
+        XCTAssertEqual(fetchAllTransactions().count, 0, "addRecurring only schedules; it should not auto-generate")
+        let firstCount = dataStore.processRecurringTransactions()
+        XCTAssertEqual(firstCount, 1, "First explicit processing should generate one transaction")
+        let secondCount = dataStore.processRecurringTransactions()
 
-        // Calling processRecurringTransactions again should not create a duplicate
-        let count = dataStore.processRecurringTransactions()
-
-        XCTAssertEqual(count, 0, "Should not generate a duplicate for the same month")
+        XCTAssertEqual(secondCount, 0, "Should not generate a duplicate for the same month")
         XCTAssertEqual(fetchAllTransactions().count, 1, "Still only 1 transaction — no duplicate")
     }
 
@@ -199,9 +198,9 @@ final class RecurringProcessingTests: XCTestCase {
             monthOfYear: passedMonth
         )
 
-        // addRecurring auto-processes; explicit call should be idempotent
+        // 明示実行時のみ生成される
         let count = dataStore.processRecurringTransactions()
-        XCTAssertEqual(count, 0, "Already processed by addRecurring — no new transactions")
+        XCTAssertEqual(count, 1, "Should generate one transaction when explicitly processed")
 
         let transactions = fetchAllTransactions()
         XCTAssertEqual(transactions.count, 1)
@@ -343,7 +342,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        // Eligible recurring 1 — auto-generates on add
+        // Eligible recurring 1
         dataStore.addRecurring(
             name: "Recurring A",
             type: .expense,
@@ -355,7 +354,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        // Eligible recurring 2 — auto-generates on add
+        // Eligible recurring 2
         dataStore.addRecurring(
             name: "Recurring B",
             type: .income,
@@ -367,7 +366,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        // Ineligible: inactive — insert directly to avoid auto-generation
+        // Ineligible: inactive
         let inactive = PPRecurringTransaction(
             name: "Recurring C",
             type: .expense,
@@ -383,10 +382,9 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        // Both eligible recurring already auto-generated; explicit call should be idempotent
         let count = dataStore.processRecurringTransactions()
 
-        XCTAssertEqual(count, 0, "Already processed by addRecurring — no new transactions")
+        XCTAssertEqual(count, 2, "Two eligible recurring entries should be generated")
         XCTAssertEqual(fetchAllTransactions().count, 2, "Only 2 eligible recurring should have generated transactions")
     }
 
@@ -434,13 +432,12 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(transactions.first?.memo, "[定期] Domain")
     }
 
-    // MARK: - 11. equalAll Auto-Generation on Add (expense)
+    // MARK: - 11. equalAll Processing (expense)
 
     func testEqualAllMode_autoGeneratesOnAdd() {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        // addRecurring should trigger processRecurringTransactions automatically
         let recurring = dataStore.addRecurring(
             name: "EqualAll Expense",
             type: .expense,
@@ -453,9 +450,12 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        // Transactions should already be generated — no explicit processRecurringTransactions call
+        XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
+        let generated = dataStore.processRecurringTransactions()
+        XCTAssertEqual(generated, 1, "equalAll recurring should generate on explicit processing")
+
         let transactions = fetchAllTransactions()
-        XCTAssertEqual(transactions.count, 1, "equalAll add should auto-generate a transaction")
+        XCTAssertEqual(transactions.count, 1, "equalAll recurring should generate one transaction")
 
         let tx = transactions.first!
         XCTAssertEqual(tx.type, .expense)
@@ -467,7 +467,7 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(tx.allocations.first?.projectId, project.id)
     }
 
-    // MARK: - 12. equalAll Auto-Generation on Add (income)
+    // MARK: - 12. equalAll Processing (income)
 
     func testEqualAllMode_income_autoGenerates() {
         let project = makeProject()
@@ -485,8 +485,12 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
+        XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
+        let generated = dataStore.processRecurringTransactions()
+        XCTAssertEqual(generated, 1, "equalAll income recurring should generate on explicit processing")
+
         let transactions = fetchAllTransactions()
-        XCTAssertEqual(transactions.count, 1, "equalAll income should auto-generate a transaction")
+        XCTAssertEqual(transactions.count, 1, "equalAll income recurring should generate one transaction")
 
         let tx = transactions.first!
         XCTAssertEqual(tx.type, .income)
@@ -494,7 +498,7 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(tx.allocations.first?.projectId, project.id)
     }
 
-    // MARK: - 13. updateRecurring triggers auto-generation when now due
+    // MARK: - 13. updateRecurring requires explicit processing when now due
 
     func testUpdateRecurring_autoGeneratesIfNowDue() {
         let project = makeProject()
@@ -519,11 +523,15 @@ final class RecurringProcessingTests: XCTestCase {
         // No transaction should exist yet
         XCTAssertTrue(fetchAllTransactions().isEmpty, "Future dayOfMonth should not generate on add")
 
-        // Update dayOfMonth to a past day — should trigger processing
+        // Update dayOfMonth to a past day
         dataStore.updateRecurring(id: recurring.id, dayOfMonth: pastDayOfMonth)
 
+        XCTAssertTrue(fetchAllTransactions().isEmpty, "updateRecurring should not auto-generate")
+        let generated = dataStore.processRecurringTransactions()
+        XCTAssertEqual(generated, 1, "Updated recurring should generate on explicit processing")
+
         let transactions = fetchAllTransactions()
-        XCTAssertEqual(transactions.count, 1, "Updating dayOfMonth to past should auto-generate")
+        XCTAssertEqual(transactions.count, 1, "Updating dayOfMonth to past should become due")
         XCTAssertEqual(transactions.first?.recurringId, recurring.id)
     }
 
@@ -533,7 +541,6 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        // addRecurring auto-generates a transaction
         let recurring = dataStore.addRecurring(
             name: "NoDup",
             type: .expense,
@@ -545,12 +552,17 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: dayOfMonth
         )
 
-        XCTAssertEqual(fetchAllTransactions().count, 1, "Should have 1 transaction after add")
+        XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
+        let generated = dataStore.processRecurringTransactions()
+        XCTAssertEqual(generated, 1, "Should generate one transaction on explicit processing")
+        XCTAssertEqual(fetchAllTransactions().count, 1, "Should have 1 transaction after explicit processing")
 
-        // updateRecurring should NOT create a duplicate (lastGeneratedDate already set)
+        // updateRecurring alone should NOT create a duplicate
         dataStore.updateRecurring(id: recurring.id, memo: "updated memo")
 
         XCTAssertEqual(fetchAllTransactions().count, 1, "Should still have 1 transaction — no duplicate")
+        let duplicateCount = dataStore.processRecurringTransactions()
+        XCTAssertEqual(duplicateCount, 0, "Should still avoid duplicates after update")
     }
 
     // MARK: - 15. recurringId Link
@@ -612,6 +624,7 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = dataStore.processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("regression") }
@@ -655,6 +668,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: 1,
             monthOfYear: passedMonth
         )
+        _ = dataStore.processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         let yearlyTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("Annual Fee") }
@@ -722,9 +736,11 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: pastDayOfMonth,
             endDate: futureEndDate
         )
+        let generated = dataStore.processRecurringTransactions()
+        XCTAssertEqual(generated, 1, "Should generate for recurring with future endDate")
 
         let transactions = fetchAllTransactions()
-        XCTAssertEqual(transactions.count, 1, "Should generate for recurring with future endDate")
+        XCTAssertEqual(transactions.count, 1, "Should have one generated transaction")
 
         let updated = fetchRecurring(id: recurring.id)
         XCTAssertEqual(updated?.isActive, true, "Should remain active")
@@ -747,6 +763,7 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: pastDayOfMonth
         )
+        _ = dataStore.processRecurringTransactions()
 
         // Verify only project A allocated
         var transactions = fetchAllTransactions()
@@ -1135,8 +1152,9 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: useDayOfMonth
         )
+        _ = dataStore.processRecurringTransactions()
 
-        // Verify transaction was auto-generated
+        // Verify transaction was generated
         let generatedTxs = dataStore.transactions.filter { $0.recurringId == recurring.id }
         guard let generatedTx = generatedTxs.first else {
             return // dayOfMonth hasn't passed, skip
@@ -1273,9 +1291,9 @@ final class RecurringProcessingTests: XCTestCase {
             transferToAccountId: nil,
             taxDeductibleRate: 80
         )
+        _ = dataStore.processRecurringTransactions()
 
-        // processRecurringTransactionsはaddRecurring内で自動呼出されるので
-        // 生成されたトランザクションを確認
+        // 明示処理後に生成されたトランザクションを確認
         let generated = dataStore.transactions.filter { $0.recurringId == recurring.id }
         guard let tx = generated.first else {
             XCTFail("定期取引からトランザクションが生成されるべき")

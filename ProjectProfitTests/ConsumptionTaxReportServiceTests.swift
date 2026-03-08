@@ -156,6 +156,51 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
         XCTAssertEqual(worksheet.taxPayable, -1_000)
     }
 
+    func testGenerateWorksheetUsesPackTransitionalMeasuresInsteadOfFixedDateBranches() {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2026,
+            vatStatus: .taxable,
+            vatMethod: .general,
+            taxPackVersion: "2026-v1"
+        )
+        let pack = TaxYearPack(
+            taxYear: 2026,
+            version: "2026-v1",
+            transitionalMeasures: []
+        )
+        let counterparties = [
+            Counterparty(
+                id: unregisteredCounterpartyId,
+                businessId: businessId,
+                displayName: "未登録取引先",
+                invoiceIssuerStatus: .unregistered
+            )
+        ]
+
+        let worksheet = ConsumptionTaxReportService.generateWorksheet(
+            fiscalYear: 2026,
+            taxYearProfile: profile,
+            journalEntries: [
+                makeInputEntry(
+                    year: 2026,
+                    month: 11,
+                    day: 10,
+                    taxableAmount: 20_000,
+                    taxAmount: 2_000,
+                    counterpartyId: unregisteredCounterpartyId
+                )
+            ],
+            accounts: canonicalAccounts,
+            counterparties: counterparties,
+            pack: pack
+        )
+
+        let inputLine = try! XCTUnwrap(worksheet.lines.first)
+        XCTAssertEqual(inputLine.purchaseCreditMethod, .notDeductible)
+        XCTAssertEqual(inputLine.deductibleTaxAmount, 0)
+    }
+
     func testGenerateWorksheetFiltersEntriesOutsideFiscalYear() {
         let profile = TaxYearProfile(
             businessId: businessId,

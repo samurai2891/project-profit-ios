@@ -10,6 +10,7 @@ struct ReceiptReviewView: View {
     let evidenceSourceType: EvidenceSourceType
     let originalFileData: Data?
     let defaultProjectId: UUID?
+    let onIntakeSucceeded: (() -> Void)?
     let onDismiss: () -> Void
 
     @State private var amountText: String = ""
@@ -39,6 +40,7 @@ struct ReceiptReviewView: View {
         evidenceSourceType: EvidenceSourceType = .manualNoFile,
         originalFileData: Data? = nil,
         defaultProjectId: UUID? = nil,
+        onIntakeSucceeded: (() -> Void)? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.receiptData = receiptData
@@ -47,6 +49,7 @@ struct ReceiptReviewView: View {
         self.evidenceSourceType = evidenceSourceType
         self.originalFileData = originalFileData
         self.defaultProjectId = defaultProjectId
+        self.onIntakeSucceeded = onIntakeSucceeded
         self.onDismiss = onDismiss
     }
 
@@ -742,6 +745,7 @@ struct ReceiptReviewView: View {
                     counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty
                 )
                 _ = try await ReceiptEvidenceIntakeUseCase(modelContext: modelContext).intake(request)
+                onIntakeSucceeded?()
                 onDismiss()
             } catch {
                 saveError = error.localizedDescription

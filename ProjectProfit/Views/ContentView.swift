@@ -29,18 +29,25 @@ struct ContentView: View {
             let store = DataStore(modelContext: modelContext)
             let notifService = notificationService
             store.onRecurringScheduleChanged = { recurrings in
-                Task { @MainActor in await notifService.rescheduleAll(recurringTransactions: recurrings) }
+                Task { @MainActor in
+                    await notifService.rescheduleAll(recurringTransactions: recurrings)
+                    refreshRecurringPreviewState(for: store)
+                }
             }
             store.loadData()
             _ = await store.reloadProfileSettings()
             store.recalculateAllPartialPeriodProjects()
-            let pendingItems = store.previewRecurringTransactions()
-            pendingRecurringCount = pendingItems.count
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store
-            if !pendingItems.isEmpty {
-                showRecurringPreview = true
-            }
+            refreshRecurringPreviewState(for: store)
+        }
+    }
+
+    private func refreshRecurringPreviewState(for store: DataStore) {
+        let pendingItems = store.previewRecurringTransactions()
+        pendingRecurringCount = pendingItems.count
+        if pendingRecurringCount > 0 {
+            showRecurringPreview = true
         }
     }
 }

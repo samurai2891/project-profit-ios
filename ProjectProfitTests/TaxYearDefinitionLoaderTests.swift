@@ -119,6 +119,9 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
         XCTAssertEqual(pack.taxYear, 2026)
         XCTAssertEqual(pack.version, "2026-v1")
+        XCTAssertEqual(pack.transitionalMeasures.count, 2)
+        XCTAssertEqual(pack.transitionalMeasures.first?.id, "transitional_80")
+        XCTAssertEqual(pack.transitionalMeasures.last?.id, "transitional_50")
     }
 
     // MARK: - 2026 Pack-based Definition

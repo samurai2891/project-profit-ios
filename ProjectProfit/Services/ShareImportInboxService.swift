@@ -20,12 +20,8 @@ enum ShareImportInboxService {
         normalizedQueue().count
     }
 
-    static func dequeueOldest() -> SharedImportInboxItem? {
-        var queue = normalizedQueue()
-        guard !queue.isEmpty else { return nil }
-        let item = queue.removeFirst()
-        persistQueue(queue)
-        return item
+    static func oldestItem() -> SharedImportInboxItem? {
+        normalizedQueue().first
     }
 
     static func fileURL(for item: SharedImportInboxItem) -> URL? {
@@ -40,6 +36,7 @@ enum ShareImportInboxService {
     }
 
     static func markConsumed(_ item: SharedImportInboxItem) {
+        removeFromQueue(item)
         guard let fileURL = fileURL(for: item) else { return }
         do {
             try FileManager.default.removeItem(at: fileURL)
@@ -94,6 +91,11 @@ enum ShareImportInboxService {
         } catch {
             logger.warning("Failed to encode shared import queue: \(error.localizedDescription)")
         }
+    }
+
+    private static func removeFromQueue(_ item: SharedImportInboxItem) {
+        let queue = normalizedQueue().filter { $0.id != item.id }
+        persistQueue(queue)
     }
 
     private static func sharedInboxDirectoryURL(createIfNeeded: Bool) -> URL? {

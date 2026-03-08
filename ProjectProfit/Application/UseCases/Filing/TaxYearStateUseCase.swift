@@ -122,7 +122,7 @@ struct TaxYearStateUseCase {
         return TaxYearProfile(
             businessId: businessId,
             taxYear: taxYear,
-            taxPackVersion: "\(taxYear)-v1"
+            taxPackVersion: resolvedPackVersion(for: taxYear)
         )
     }
 
@@ -136,5 +136,9 @@ struct TaxYearStateUseCase {
             modelContext.insert(TaxYearProfileEntityMapper.toEntity(profile))
         }
         try modelContext.save()
+    }
+
+    private func resolvedPackVersion(for taxYear: Int) -> String {
+        (try? BundledTaxYearPackProvider(bundle: .main).packSync(for: taxYear).version) ?? "\(taxYear)-v1"
     }
 }

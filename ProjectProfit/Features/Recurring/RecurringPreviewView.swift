@@ -38,7 +38,10 @@ struct RecurringPreviewView: View {
             )) {
                 Button("OK") {
                     processedCount = nil
-                    dismiss()
+                    loadPreview()
+                    if previewItems.isEmpty {
+                        dismiss()
+                    }
                 }
             } message: {
                 Text("\(processedCount ?? 0)件の取引を登録しました")

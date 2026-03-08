@@ -44,6 +44,7 @@ struct ReceiptScannerView: View {
                         evidenceSourceType: selectedSourceType,
                         originalFileData: importedPDFData,
                         defaultProjectId: defaultProjectId,
+                        onIntakeSucceeded: consumeSharedImportIfNeeded,
                         onDismiss: { dismiss() }
                     )
                 case .failed(let message):
@@ -416,7 +417,7 @@ struct ReceiptScannerView: View {
                     importError = "共有PDFの読み込みに失敗しました"
                     return
                 }
-                selectedSourceType = .emailAttachment
+                selectedSourceType = .importedPDF
                 importedPDFData = renderResult.originalData
                 selectedImage = renderResult.image
             } else {
@@ -428,10 +429,14 @@ struct ReceiptScannerView: View {
                 importedPDFData = nil
                 selectedImage = image
             }
-            ShareImportInboxService.markConsumed(sharedImportItem)
         } catch {
             importError = "共有ファイルの読み込みに失敗しました: \(error.localizedDescription)"
         }
+    }
+
+    private func consumeSharedImportIfNeeded() {
+        guard let sharedImportItem else { return }
+        ShareImportInboxService.markConsumed(sharedImportItem)
     }
 }
 

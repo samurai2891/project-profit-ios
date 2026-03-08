@@ -5,6 +5,7 @@ import SwiftData
 enum ReceiptEvidenceIntakeUseCaseError: LocalizedError {
     case businessProfileUnavailable
     case invalidFileData
+    case duplicateEvidence(existingEvidenceId: UUID, fileHash: String)
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +13,8 @@ enum ReceiptEvidenceIntakeUseCaseError: LocalizedError {
             return "事業者プロフィールが見つかりません"
         case .invalidFileData:
             return "書類ファイルの保存に失敗しました"
+        case let .duplicateEvidence(existingEvidenceId, _):
+            return "同一ファイルの証憑が既に登録されています（evidenceId: \(existingEvidenceId.uuidString)）"
         }
     }
 }
@@ -45,6 +48,7 @@ struct ReceiptEvidenceIntakeResult {
     let evidence: EvidenceDocument
     let candidate: PostingCandidate
     let documentRecordId: UUID
+    let duplicateDetected: Bool
 }
 
 @MainActor
@@ -97,11 +101,17 @@ struct ReceiptEvidenceIntakeUseCase {
 
         let businessId = businessProfile.id
         let taxYear = fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth)
+        let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
+        if let existingEvidenceId = try existingEvidenceId(businessId: businessId, fileHash: contentHash) {
+            throw ReceiptEvidenceIntakeUseCaseError.duplicateEvidence(
+                existingEvidenceId: existingEvidenceId,
+                fileHash: contentHash
+            )
+        }
         let storedFileName = try ReceiptImageStore.saveDocumentData(
             request.fileData,
             originalFileName: request.originalFileName
         )
-        let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
         let counterpartyId = try await matchedCounterpartyId(
             businessId: businessId,
             explicitId: request.counterpartyId,
@@ -215,7 +225,8 @@ struct ReceiptEvidenceIntakeUseCase {
             return ReceiptEvidenceIntakeResult(
                 evidence: evidence,
                 candidate: candidate,
-                documentRecordId: documentRecord.id
+                documentRecordId: documentRecord.id,
+                duplicateDetected: false
             )
         } catch {
             modelContext.delete(documentRecord)
@@ -696,6 +707,18 @@ struct ReceiptEvidenceIntakeUseCase {
             bytes[12], bytes[13], bytes[14], bytes[15]
         )
         return UUID(uuid: uuid)
+    }
+
+    private func existingEvidenceId(businessId: UUID, fileHash: String) throws -> UUID? {
+        let descriptor = FetchDescriptor<EvidenceRecordEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId &&
+                    $0.fileHash == fileHash &&
+                    $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.evidenceId
     }
 
     private func stateHash<T: Encodable>(_ value: T) -> String? {

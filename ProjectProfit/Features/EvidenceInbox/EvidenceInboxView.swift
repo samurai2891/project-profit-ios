@@ -240,7 +240,7 @@ struct EvidenceInboxView: View {
 
     private func openSharedImportScanner() {
         guard !isCurrentYearLocked else { return }
-        guard let item = ShareImportInboxService.dequeueOldest() else {
+        guard let item = ShareImportInboxService.oldestItem() else {
             refreshSharedImportBadge()
             return
         }

@@ -150,7 +150,8 @@ extension DataStore {
                     businessId: businessId,
                     taxYear: year,
                     yearLockState: state,
-                    taxPackVersion: "\(year)-v1"
+                    taxPackVersion: (try? BundledTaxYearPackProvider(bundle: .main).packSync(for: year).version)
+                        ?? "\(year)-v1"
                 )
                 modelContext.insert(TaxYearProfileEntityMapper.toEntity(profile))
                 if currentTaxYearProfile?.taxYear == year {
