@@ -94,6 +94,10 @@ class DataStore {
         PostingWorkflowUseCase(modelContext: modelContext)
     }
 
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(dataStore: self)
+    }
+
     private var bundledTaxYearPackProvider: BundledTaxYearPackProvider {
         BundledTaxYearPackProvider(bundle: .main)
     }
@@ -839,48 +843,32 @@ class DataStore {
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) async -> Result<PostingCandidate, AppError> {
-        let result = buildCanonicalPostingSync(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: categoryId,
-            memo: memo,
-            allocations: allocations,
-            recurringId: nil,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxCodeId: taxCodeId,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyId: counterpartyId,
-            counterparty: counterparty,
-            source: candidateSource ?? .manual
-        )
-
-        let posting: CanonicalTransactionPostingBridge.Posting
-        switch result {
-        case .success(let builtPosting):
-            posting = builtPosting
-        case .failure(let error):
-            return .failure(error)
-        }
-
-        let normalizedAllocations = calculateRatioAllocations(
-            amount: amount,
-            allocations: type == .transfer ? [] : allocations
-        )
-        let candidate = candidateWithProjectAllocations(
-            posting.candidate.updated(status: .draft),
-            allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        )
-
         do {
-            try await postingWorkflowUseCase.saveCandidate(candidate)
-            lastError = nil
-            return .success(candidate)
+            return .success(
+                try await postingIntakeUseCase.saveManualCandidate(
+                    input: ManualPostingCandidateInput(
+                        type: type,
+                        amount: amount,
+                        date: date,
+                        categoryId: categoryId,
+                        memo: memo,
+                        allocations: allocations,
+                        paymentAccountId: paymentAccountId,
+                        transferToAccountId: transferToAccountId,
+                        taxDeductibleRate: taxDeductibleRate,
+                        taxAmount: taxAmount,
+                        taxCodeId: taxCodeId,
+                        taxRate: taxRate,
+                        isTaxIncluded: isTaxIncluded,
+                        taxCategory: taxCategory,
+                        counterpartyId: counterpartyId,
+                        counterparty: counterparty,
+                        candidateSource: candidateSource ?? .manual
+                    )
+                )
+            )
+        } catch let error as AppError {
+            return .failure(error)
         } catch {
             let appError = AppError.saveFailed(underlying: error)
             lastError = appError
@@ -888,7 +876,7 @@ class DataStore {
         }
     }
 
-    private func buildCanonicalPostingSync(
+    func buildCanonicalPostingSync(
         type: TransactionType,
         amount: Int,
         date: Date,
@@ -984,7 +972,7 @@ class DataStore {
         return .success(posting)
     }
 
-    private func saveApprovedPostingSync(
+    func saveApprovedPostingSync(
         type: TransactionType,
         amount: Int,
         date: Date,
@@ -3808,89 +3796,7 @@ class DataStore {
     // MARK: - CSV Import
 
     func importTransactions(from csvString: String) async -> CSVImportResult {
-        var successCount = 0
-        var errorCount = 0
-        var errors: [String] = []
-
-        let parsed = parseCSV(csvString: csvString)
-
-        for entry in parsed {
-            let allocations: [(projectId: UUID, ratio: Int)] = entry.allocations.compactMap { allocation in
-                if let existing = projects.first(where: { $0.name == allocation.projectName }) {
-                    return (projectId: existing.id, ratio: allocation.ratio)
-                }
-                let created = addProject(name: allocation.projectName, description: "")
-                return (projectId: created.id, ratio: allocation.ratio)
-            }
-
-            if entry.type != .transfer {
-                guard !allocations.isEmpty else {
-                    errorCount += 1
-                    errors.append("プロジェクトが見つかりません")
-                    continue
-                }
-
-                let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-                guard totalRatio == 100 else {
-                    errorCount += 1
-                    errors.append("配分比率が不正です（合計: \(totalRatio)%）")
-                    continue
-                }
-            }
-
-            let categoryId: String
-            switch entry.type {
-            case .transfer:
-                categoryId = ""
-            case .income, .expense:
-                let categoryType: CategoryType = entry.type == .income ? .income : .expense
-                if let existing = categories.first(where: { $0.name == entry.categoryName && $0.type == categoryType }) {
-                    categoryId = existing.id
-                } else if let fallback = categories.first(where: { $0.name == entry.categoryName }) {
-                    categoryId = fallback.id
-                } else {
-                    errorCount += 1
-                    errors.append("カテゴリが見つかりません: \(entry.categoryName)")
-                    continue
-                }
-            }
-
-            let explicitTaxCodeId = resolvedExplicitTaxCodeId(
-                explicitTaxCodeId: nil,
-                taxCategory: entry.taxCategory,
-                taxRate: entry.taxRate
-            )
-            let result = await saveApprovedPosting(
-                type: entry.type,
-                amount: entry.amount,
-                date: entry.date,
-                categoryId: categoryId,
-                memo: entry.memo,
-                allocations: entry.type == .transfer ? [] : allocations,
-                paymentAccountId: entry.paymentAccountId,
-                transferToAccountId: entry.type == .transfer ? entry.transferToAccountId : nil,
-                taxDeductibleRate: entry.type == .expense ? entry.taxDeductibleRate : nil,
-                taxAmount: entry.taxAmount,
-                taxCodeId: explicitTaxCodeId,
-                taxRate: entry.taxRate,
-                isTaxIncluded: entry.isTaxIncluded,
-                taxCategory: entry.taxCategory,
-                counterparty: entry.counterparty,
-                candidateSource: .importFile
-            )
-
-            switch result {
-            case .success:
-                break
-            case .failure(let error):
-                errorCount += 1
-                errors.append(error.localizedDescription)
-                continue
-            }
-            successCount += 1
-        }
-
-        return CSVImportResult(successCount: successCount, errorCount: errorCount, errors: errors)
+        await postingIntakeUseCase.importTransactions(csvString: csvString)
     }
 
     // MARK: - Bulk Delete

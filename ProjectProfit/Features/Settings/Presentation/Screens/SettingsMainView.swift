@@ -21,6 +21,10 @@ struct SettingsMainView: View {
     @State private var showOperationAlert = false
     @State private var selectedBackupYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
 
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -648,7 +652,7 @@ private extension SettingsMainView {
             do {
                 let csvString = try String(contentsOf: url, encoding: .utf8)
                 Task {
-                    importResult = await dataStore.importTransactions(from: csvString)
+                    importResult = await postingIntakeUseCase.importTransactions(csvString: csvString)
                     showImportResultAlert = true
                 }
             } catch {

@@ -2200,12 +2200,12 @@ final class DataStoreCRUDTests: XCTestCase {
         let comps = calendar.dateComponents([.year, .month, .day], from: today)
         let day = comps.day!
 
-        let projectA = dataStore.addProject(name: "EqA", description: "")
-        let projectB = dataStore.addProject(name: "EqB", description: "")
+        _ = dataStore.addProject(name: "EqA", description: "")
+        _ = dataStore.addProject(name: "EqB", description: "")
         let projectC = dataStore.addProject(name: "EqC", description: "")
 
         // Create monthly recurring with equalAll
-        _ = dataStore.addRecurring(
+        let recurring = dataStore.addRecurring(
             name: "Monthly Equal",
             type: .expense,
             amount: 90000,
@@ -2218,10 +2218,10 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         _ = dataStore.processRecurringTransactions()
 
-        // Should have generated a transaction with 3-way split
-        let txBefore = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
-        guard let generated = txBefore.last else {
-            XCTFail("Should have generated a transaction")
+        // Should have generated a canonical recurring posting with 3-way split
+        let postingsBefore = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        guard let generated = postingsBefore.last else {
+            XCTFail("Should have generated a recurring posting")
             return
         }
         XCTAssertEqual(generated.allocations.count, 3, "Should allocate to 3 projects")
@@ -2229,10 +2229,10 @@ final class DataStoreCRUDTests: XCTestCase {
         // Delete one project
         dataStore.deleteProject(id: projectC.id)
 
-        // After deletion, the equalAll transaction should be recalculated to 2-way split
-        let txAfter = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
-        guard let recalculated = txAfter.last else {
-            XCTFail("Transaction should still exist after project deletion")
+        // After deletion, the equalAll posting should be recalculated to 2-way split
+        let postingsAfter = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        guard let recalculated = postingsAfter.last else {
+            XCTFail("Posting should still exist after project deletion")
             return
         }
         XCTAssertEqual(recalculated.allocations.count, 2, "Should reallocate to 2 projects")
@@ -2248,44 +2248,8 @@ final class DataStoreCRUDTests: XCTestCase {
 
     // MARK: - H10: equalAll reprocess user edit protection
 
-    func testReprocessEqualAll_skipsManuallyEditedTransaction() {
-        let projectA = dataStore.addProject(name: "A", description: "")
-
-        // equalAll定期取引を作成（dayOfMonth=1で今月分が自動生成される）
-        let recurring = dataStore.addRecurring(
-            name: "EqualAll Monthly",
-            type: .expense,
-            amount: 10000,
-            categoryId: "cat-hosting",
-            memo: "",
-            allocationMode: .equalAll,
-            allocations: [],
-            frequency: .monthly,
-            dayOfMonth: 1
-        )
-        _ = dataStore.processRecurringTransactions()
-
-        // 生成されたトランザクションを取得
-        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
-        XCTAssertNotNil(generatedTx, "equalAllトランザクションが生成されるべき")
-
-        // ユーザーがアロケーションを手動編集
-        dataStore.updateTransaction(
-            id: generatedTx!.id,
-            allocations: [(projectId: projectA.id, ratio: 100)]
-        )
-
-        // 手動編集フラグを確認
-        let edited = dataStore.getTransaction(id: generatedTx!.id)
-        XCTAssertEqual(edited?.isManuallyEdited, true, "equalAll配分の手動編集でフラグが立つべき")
-
-        // 新プロジェクト追加 → reprocessEqualAll が呼ばれる
-        _ = dataStore.addProject(name: "B", description: "")
-
-        // 手動編集済みトランザクションは上書きされないべき
-        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
-        XCTAssertEqual(afterReprocess?.allocations.count, 1, "手動編集済みトランザクションはスキップされるべき")
-        XCTAssertEqual(afterReprocess?.allocations.first?.projectId, projectA.id, "元の配分が保持されるべき")
+    func testReprocessEqualAll_skipsManuallyEditedTransaction() throws {
+        throw XCTSkip("recurring equalAll no longer materializes editable legacy transactions")
     }
 
     func testReprocessEqualAll_updatesNonEditedTransaction() {
@@ -2305,17 +2269,16 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         _ = dataStore.processRecurringTransactions()
 
-        // 生成されたトランザクションを取得
-        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
-        XCTAssertNotNil(generatedTx)
-        XCTAssertEqual(generatedTx?.allocations.count, 1, "1プロジェクトのみに配分")
-        XCTAssertNil(generatedTx?.isManuallyEdited, "手動編集フラグは未設定")
+        // 生成された canonical recurring posting を取得
+        let generatedPosting = fetchRecurringGeneratedPostings().first { $0.recurringId == recurring.id }
+        XCTAssertNotNil(generatedPosting)
+        XCTAssertEqual(generatedPosting?.allocations.count, 1, "1プロジェクトのみに配分")
 
         // 新プロジェクト追加 → reprocessEqualAll で再計算される
         let projectB = dataStore.addProject(name: "B", description: "")
 
-        // 未編集トランザクションは再処理されるべき
-        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
+        // canonical posting は再処理されるべき
+        let afterReprocess = fetchRecurringGeneratedPostings().first { $0.recurringId == recurring.id }
         XCTAssertEqual(afterReprocess?.allocations.count, 2, "2プロジェクトに再分配されるべき")
         let hasA = afterReprocess?.allocations.contains { $0.projectId == projectA.id } ?? false
         let hasB = afterReprocess?.allocations.contains { $0.projectId == projectB.id } ?? false
@@ -2404,21 +2367,87 @@ final class DataStoreCRUDTests: XCTestCase {
         // 新プロジェクト追加
         let projectB = dataStore.addProject(name: "B", description: "")
 
-        // equalAllの定期取引で生成されたトランザクションを確認
-        let recurringTxs = fetchAllTransactions().filter { $0.recurringId == recurring.id }
-        if let latestTx = recurringTxs.sorted(by: { $0.date > $1.date }).first {
-            let hasArchived = latestTx.allocations.contains { $0.projectId == projectA.id }
+        // equalAll の定期取引で生成された canonical posting を確認
+        let recurringPostings = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        if let latestPosting = recurringPostings.sorted(by: { $0.date > $1.date }).first {
+            let hasArchived = latestPosting.allocations.contains { $0.projectId == projectA.id }
             XCTAssertFalse(hasArchived, "アーカイブ済みプロジェクトはequalAll再処理から除外されるべき")
-            let hasB = latestTx.allocations.contains { $0.projectId == projectB.id }
+            let hasB = latestPosting.allocations.contains { $0.projectId == projectB.id }
             XCTAssertTrue(hasB, "新プロジェクトBが含まれるべき")
         }
     }
 
     // MARK: - Helpers for Wave 2 tests
 
+    private struct GeneratedRecurringPosting {
+        let journalId: UUID
+        let candidateId: UUID
+        let date: Date
+        let recurringId: UUID?
+        let allocations: [Allocation]
+    }
+
     private func fetchAllTransactions() -> [PPTransaction] {
         let descriptor = FetchDescriptor<PPTransaction>()
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func fetchRecurringGeneratedPostings() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(0) { partialResult, line in
+                partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocationAmounts = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = allocationAmounts.map { projectId, allocationAmount in
+                Allocation(
+                    projectId: projectId,
+                    ratio: amount == 0 ? 0 : Int((Double(allocationAmount) / Double(amount) * 100.0).rounded()),
+                    amount: allocationAmount
+                )
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                journalId: journal.id,
+                candidateId: candidate.id,
+                date: journal.journalDate,
+                recurringId: snapshot.recurringId,
+                allocations: allocations
+            )
+        }
     }
 
     // MARK: - M15: Date Validation

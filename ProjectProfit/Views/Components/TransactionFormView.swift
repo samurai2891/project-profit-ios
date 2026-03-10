@@ -108,6 +108,10 @@ struct TransactionFormView: View {
         return "\(businessId)-\(day)"
     }
 
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(dataStore: dataStore)
+    }
+
     private struct DistributionTemplatePreview {
         let templateName: String
         let allocations: [(projectId: UUID, ratio: Int)]
@@ -986,31 +990,33 @@ struct TransactionFormView: View {
             defer { isSubmitting = false }
             saveError = nil
 
-            let result = await dataStore.saveManualPostingCandidate(
-                type: type,
-                amount: amount,
-                date: date,
-                categoryId: resolvedCategoryId,
-                memo: memo,
-                allocations: allocs,
-                paymentAccountId: paymentAccountId,
-                transferToAccountId: resolvedTransferTo,
-                taxDeductibleRate: resolvedTaxDeductibleRate,
-                taxAmount: resolvedTaxAmount,
-                taxCodeId: resolvedTaxCodeId,
-                isTaxIncluded: resolvedIsTaxIncluded,
-                counterpartyId: selectedCounterpartyId,
-                counterparty: resolvedCounterparty,
-                candidateSource: .manual
-            )
-
-            switch result {
-            case .success:
+            do {
+                _ = try await postingIntakeUseCase.saveManualCandidate(
+                    input: ManualPostingCandidateInput(
+                        type: type,
+                        amount: amount,
+                        date: date,
+                        categoryId: resolvedCategoryId,
+                        memo: memo,
+                        allocations: allocs,
+                        paymentAccountId: paymentAccountId,
+                        transferToAccountId: resolvedTransferTo,
+                        taxDeductibleRate: resolvedTaxDeductibleRate,
+                        taxAmount: resolvedTaxAmount,
+                        taxCodeId: resolvedTaxCodeId,
+                        taxRate: selectedTaxCode?.taxRatePercent,
+                        isTaxIncluded: resolvedIsTaxIncluded,
+                        taxCategory: selectedTaxCode?.legacyCategory,
+                        counterpartyId: selectedCounterpartyId,
+                        counterparty: resolvedCounterparty,
+                        candidateSource: .manual
+                    )
+                )
                 if let imagePath {
                     ReceiptImageStore.deleteImage(fileName: imagePath)
                 }
                 dismiss()
-            case .failure(let error):
+            } catch {
                 if let imagePath {
                     ReceiptImageStore.deleteImage(fileName: imagePath)
                 }

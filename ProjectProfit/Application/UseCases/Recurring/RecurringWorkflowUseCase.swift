@@ -109,4 +109,12 @@ struct RecurringWorkflowUseCase {
     func setNotificationTiming(id: UUID, timing: NotificationTiming) {
         dataStore.updateRecurring(id: id, notificationTiming: timing)
     }
+
+    func previewRecurringTransactions() -> [RecurringPreviewItem] {
+        dataStore.previewRecurringTransactions()
+    }
+
+    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
+        await dataStore.approveRecurringItems(approvedIds, from: items)
+    }
 }

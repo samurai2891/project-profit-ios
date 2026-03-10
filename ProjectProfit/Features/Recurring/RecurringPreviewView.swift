@@ -10,6 +10,10 @@ struct RecurringPreviewView: View {
     @State private var isProcessing = false
     @State private var processedCount: Int?
 
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -205,7 +209,7 @@ struct RecurringPreviewView: View {
     // MARK: - Actions
 
     private func loadPreview() {
-        previewItems = dataStore.previewRecurringTransactions()
+        previewItems = recurringWorkflowUseCase.previewRecurringTransactions()
         selectedIds = Set(previewItems.map(\.id))
     }
 
@@ -213,7 +217,7 @@ struct RecurringPreviewView: View {
         guard !isProcessing else { return }
         isProcessing = true
         Task {
-            let count = await dataStore.approveRecurringItems(selectedIds, from: previewItems)
+            let count = await recurringWorkflowUseCase.approveRecurringItems(selectedIds, from: previewItems)
             isProcessing = false
             processedCount = count
         }

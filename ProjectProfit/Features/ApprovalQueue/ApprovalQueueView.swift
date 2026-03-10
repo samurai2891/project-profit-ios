@@ -737,12 +737,17 @@ struct ApprovalCandidateDetailView: View {
             try await workflow.saveCandidate(updated)
             self.candidate = updated
             if approveAfterSave {
-                let approval = try await dataStore.approvePostingCandidate(
+                let journal = try await workflow.approveCandidate(
                     candidateId: updated.id,
                     description: normalizedOptionalString(memo)
                 )
-                generatedJournal = approval.journal
-                self.candidate = approval.candidate
+                guard let approvedCandidate = try await workflow.candidate(updated.id) else {
+                    throw AppError.invalidInput(message: "承認後の候補を再取得できませんでした")
+                }
+                dataStore.refreshJournalEntries()
+                dataStore.refreshJournalLines()
+                generatedJournal = journal
+                self.candidate = approvedCandidate
                 onStatusChanged?()
             } else {
                 onStatusChanged?()

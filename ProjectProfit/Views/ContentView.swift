@@ -43,8 +43,10 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
     private func refreshRecurringPreviewState(for store: DataStore) {
-        let pendingItems = store.previewRecurringTransactions()
+        let recurringWorkflowUseCase = RecurringWorkflowUseCase(dataStore: store)
+        let pendingItems = recurringWorkflowUseCase.previewRecurringTransactions()
         pendingRecurringCount = pendingItems.count
         if pendingRecurringCount > 0 {
             showRecurringPreview = true

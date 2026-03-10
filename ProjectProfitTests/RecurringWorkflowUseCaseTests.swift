@@ -161,6 +161,62 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .dayBefore)
     }
 
+    func testPreviewRecurringTransactionsReturnsDueItems() {
+        let project = dataStore.addProject(name: "Preview PJ", description: "desc")
+        let recurring = insertRecurringDirectly(
+            name: "定期サブスク",
+            type: .expense,
+            amount: 3_000,
+            categoryId: "cat-tools",
+            projectId: project.id,
+            dayOfMonth: 1
+        )
+
+        let previewItems = useCase.previewRecurringTransactions()
+
+        let matching = previewItems.filter { $0.recurringId == recurring.id }
+        XCTAssertEqual(matching.count, 1)
+        XCTAssertEqual(matching.first?.recurringName, "定期サブスク")
+        XCTAssertEqual(matching.first?.amount, 3_000)
+    }
+
+    func testApproveRecurringItemsCreatesCanonicalJournalAndUpdatesBookkeeping() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Approve PJ", description: "desc")
+        let recurring = dataStore.addRecurring(
+            name: "承認テスト定期",
+            type: .expense,
+            amount: 6_000,
+            categoryId: "cat-tools",
+            memo: "usecase preview approve",
+            allocationMode: .manual,
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            paymentAccountId: "acct-cash"
+        )
+        let beforeGeneratedMonthsCount = recurring.lastGeneratedMonths.count
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        let previewItems = useCase.previewRecurringTransactions()
+        let approvedIds = Set(previewItems.map(\.id))
+
+        let generated = await useCase.approveRecurringItems(approvedIds, from: previewItems)
+
+        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let updated = try XCTUnwrap(dataStore.getRecurring(id: recurring.id))
+
+        XCTAssertEqual(generated, 1)
+        XCTAssertEqual(journals.count, beforeJournals.count + 1)
+        XCTAssertTrue(journals.contains(where: { $0.entryType == .recurring }))
+        XCTAssertNotNil(updated.lastGeneratedDate)
+        XCTAssertEqual(updated.lastGeneratedMonths.count, beforeGeneratedMonthsCount + 1)
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 6_000)
+    }
+
     private func makeRecurring() -> PPRecurringTransaction {
         let project = dataStore.addProject(name: "Recurring PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
@@ -170,6 +226,40 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
                 allocations: [RecurringAllocationInput(projectId: project.id, ratio: 100)]
             )
         )
+    }
+
+    private func insertRecurringDirectly(
+        name: String,
+        type: TransactionType,
+        amount: Int,
+        categoryId: String,
+        projectId: UUID,
+        dayOfMonth: Int,
+        isActive: Bool = true,
+        endDate: Date? = nil,
+        skipDates: [Date] = [],
+        lastGeneratedDate: Date? = nil
+    ) -> PPRecurringTransaction {
+        let allocations = [Allocation(projectId: projectId, ratio: 100, amount: amount)]
+        let recurring = PPRecurringTransaction(
+            name: name,
+            type: type,
+            amount: amount,
+            categoryId: categoryId,
+            memo: "[定期] \(name)",
+            allocationMode: .manual,
+            allocations: allocations,
+            frequency: .monthly,
+            dayOfMonth: dayOfMonth,
+            isActive: isActive,
+            endDate: endDate,
+            lastGeneratedDate: lastGeneratedDate,
+            skipDates: skipDates
+        )
+        context.insert(recurring)
+        try? context.save()
+        dataStore.loadData()
+        return recurring
     }
 
     private func makeInput(
