@@ -384,6 +384,232 @@ extension DataStore {
         refreshJournalLines()
     }
 
+    @discardableResult
+    func saveApprovedPostingSynchronously(
+        _ posting: CanonicalTransactionPostingBridge.Posting,
+        allocations: [(projectId: UUID, ratio: Int)],
+        actor: String
+    ) throws -> CanonicalJournalEntry {
+        let candidate = candidateWithProjectAllocations(posting.candidate, allocations: allocations)
+        let approvedCandidate = candidate.updated(status: .approved)
+        let journal = try upsertCanonicalJournal(
+            from: approvedCandidate,
+            journalId: posting.journalId,
+            entryType: posting.entryType,
+            description: posting.description,
+            approvedAt: posting.approvedAt
+        )
+
+        let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
+            predicate: #Predicate { $0.candidateId == approvedCandidate.id }
+        )
+        if let existingCandidate = try modelContext.fetch(candidateDescriptor).first {
+            PostingCandidateEntityMapper.update(existingCandidate, from: approvedCandidate)
+        } else {
+            modelContext.insert(PostingCandidateEntityMapper.toEntity(approvedCandidate))
+        }
+
+        appendAuditEvent(
+            AuditEvent(
+                businessId: approvedCandidate.businessId,
+                eventType: .candidateApproved,
+                aggregateType: "PostingCandidate",
+                aggregateId: approvedCandidate.id,
+                actor: actor,
+                reason: posting.description.isEmpty ? approvedCandidate.memo : posting.description,
+                relatedEvidenceId: approvedCandidate.evidenceId,
+                relatedJournalId: journal.id
+            )
+        )
+        appendAuditEvent(
+            AuditEvent(
+                businessId: journal.businessId,
+                eventType: .journalApproved,
+                aggregateType: "CanonicalJournalEntry",
+                aggregateId: journal.id,
+                actor: actor,
+                reason: posting.description,
+                relatedEvidenceId: journal.sourceEvidenceId,
+                relatedJournalId: journal.id
+            )
+        )
+
+        try modelContext.save()
+        try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+            businessId: journal.businessId,
+            taxYear: journal.taxYear
+        )
+        return journal
+    }
+
+    private func upsertCanonicalJournal(
+        from candidate: PostingCandidate,
+        journalId: UUID,
+        entryType: CanonicalJournalEntryType,
+        description: String?,
+        approvedAt: Date
+    ) throws -> CanonicalJournalEntry {
+        guard !candidate.proposedLines.isEmpty else {
+            throw AppError.invalidInput(message: "仕訳候補に明細がありません")
+        }
+
+        let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate { $0.journalId == journalId }
+        )
+        let existingJournalEntity = try modelContext.fetch(journalDescriptor).first
+        let voucherNo: String
+        if let existingJournalEntity {
+            voucherNo = existingJournalEntity.voucherNo
+        } else {
+            let voucherMonth = Calendar.current.component(.month, from: candidate.candidateDate)
+            voucherNo = try nextCanonicalVoucherNumber(
+                businessId: candidate.businessId,
+                taxYear: candidate.taxYear,
+                month: voucherMonth
+            ).value
+        }
+
+        let journal = CanonicalJournalEntry(
+            id: journalId,
+            businessId: candidate.businessId,
+            taxYear: candidate.taxYear,
+            journalDate: candidate.candidateDate,
+            voucherNo: voucherNo,
+            sourceEvidenceId: candidate.evidenceId,
+            sourceCandidateId: candidate.id,
+            entryType: entryType,
+            description: description ?? candidate.memo ?? "",
+            lines: try makeJournalLinesSynchronously(from: candidate, journalId: journalId),
+            approvedAt: approvedAt,
+            createdAt: existingJournalEntity?.createdAt ?? approvedAt,
+            updatedAt: approvedAt
+        )
+
+        guard journal.isBalanced else {
+            throw AppError.invalidInput(message: "仕訳候補から生成した仕訳が借貸不一致です")
+        }
+
+        if let existingJournalEntity {
+            let previousLines = existingJournalEntity.lines
+            CanonicalJournalEntryEntityMapper.update(existingJournalEntity, from: journal)
+            existingJournalEntity.lines = []
+            previousLines.forEach(modelContext.delete)
+            existingJournalEntity.lines = CanonicalJournalEntryEntityMapper.makeLineEntities(
+                from: journal.lines,
+                journalEntry: existingJournalEntity
+            )
+        } else {
+            modelContext.insert(CanonicalJournalEntryEntityMapper.toEntity(journal))
+        }
+
+        return journal
+    }
+
+    private func makeJournalLinesSynchronously(
+        from candidate: PostingCandidate,
+        journalId: UUID
+    ) throws -> [JournalLine] {
+        var journalLines: [JournalLine] = []
+        var sortOrder = 0
+
+        for line in candidate.proposedLines {
+            guard line.amount > 0 else {
+                throw AppError.invalidInput(message: "仕訳候補の金額が不正です")
+            }
+            guard line.debitAccountId != nil || line.creditAccountId != nil else {
+                throw AppError.invalidInput(message: "仕訳候補に勘定科目が設定されていません")
+            }
+
+            if let debitAccountId = line.debitAccountId {
+                journalLines.append(
+                    JournalLine(
+                        journalId: journalId,
+                        accountId: debitAccountId,
+                        debitAmount: line.amount,
+                        creditAmount: 0,
+                        taxCodeId: line.taxCodeId,
+                        legalReportLineId: try resolvedCanonicalLegalReportLineId(
+                            accountId: debitAccountId,
+                            fallback: line.legalReportLineId
+                        ),
+                        counterpartyId: candidate.counterpartyId,
+                        projectAllocationId: line.projectAllocationId,
+                        evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
+                        sortOrder: sortOrder,
+                        withholdingTaxCodeId: line.withholdingTaxCodeId,
+                        withholdingTaxAmount: line.withholdingTaxAmount
+                    )
+                )
+                sortOrder += 1
+            }
+
+            if let creditAccountId = line.creditAccountId {
+                journalLines.append(
+                    JournalLine(
+                        journalId: journalId,
+                        accountId: creditAccountId,
+                        debitAmount: 0,
+                        creditAmount: line.amount,
+                        taxCodeId: line.taxCodeId,
+                        legalReportLineId: try resolvedCanonicalLegalReportLineId(
+                            accountId: creditAccountId,
+                            fallback: line.legalReportLineId
+                        ),
+                        counterpartyId: candidate.counterpartyId,
+                        projectAllocationId: line.projectAllocationId,
+                        evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
+                        sortOrder: sortOrder,
+                        withholdingTaxCodeId: line.withholdingTaxCodeId,
+                        withholdingTaxAmount: line.withholdingTaxAmount
+                    )
+                )
+                sortOrder += 1
+            }
+        }
+
+        return journalLines
+    }
+
+    private func resolvedCanonicalLegalReportLineId(
+        accountId: UUID,
+        fallback: String?
+    ) throws -> String {
+        guard let businessId = businessProfile?.id else {
+            throw AppError.invalidInput(message: "事業者プロフィールが未設定です")
+        }
+        guard let account = fetchCanonicalAccounts(businessId: businessId).first(where: { $0.id == accountId }) else {
+            throw AppError.invalidInput(message: "勘定科目が見つかりません")
+        }
+
+        if let lineId = account.defaultLegalReportLineId,
+           LegalReportLine(rawValue: lineId) != nil {
+            return lineId
+        }
+        if let fallback, LegalReportLine(rawValue: fallback) != nil {
+            return fallback
+        }
+        throw AppError.invalidInput(message: "勘定科目に決算書表示行が設定されていません")
+    }
+
+    private func nextCanonicalVoucherNumber(
+        businessId: UUID,
+        taxYear: Int,
+        month: Int
+    ) throws -> VoucherNumber {
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId && $0.taxYear == taxYear
+            },
+            sortBy: [SortDescriptor(\.voucherNo, order: .reverse)]
+        )
+        let sequence = try modelContext.fetch(descriptor)
+            .compactMap { VoucherNumber(rawValue: $0.voucherNo) }
+            .filter { $0.taxYear == taxYear && $0.month == month }
+            .compactMap(\.sequence)
+            .max() ?? 0
+        return VoucherNumber(taxYear: taxYear, month: month, sequence: sequence + 1)
+    }
+
     // MARK: - Closing Entry (決算仕訳)
 
     /// 指定年度の決算仕訳を生成する

@@ -160,12 +160,6 @@ final class TransactionsViewModel {
         }
     }
 
-    // MARK: - Actions
-
-    func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id, mutationSource: .userInitiated)
-    }
-
     func exportURL(exportAll: Bool = false) throws -> URL {
         let target = exportAll ? dataStore.transactions : filteredTransactions
         return try ExportCoordinator.export(

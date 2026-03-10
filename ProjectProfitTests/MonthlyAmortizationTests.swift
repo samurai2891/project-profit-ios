@@ -51,9 +51,72 @@ final class MonthlyAmortizationTests: XCTestCase {
         return month >= 2 ? month - 1 : nil
     }
 
-    private func fetchAllTransactions() -> [PPTransaction] {
-        let descriptor = FetchDescriptor<PPTransaction>()
-        return (try? context.fetch(descriptor)) ?? []
+    private struct GeneratedRecurringPosting {
+        let id: UUID
+        let date: Date
+        let amount: Int
+        let memo: String
+        let counterparty: String?
+        let allocations: [Allocation]
+    }
+
+    private func fetchAllTransactions() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(0) { partialResult, line in
+                partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocationAmounts = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = allocationAmounts.map { projectId, allocationAmount in
+                Allocation(
+                    projectId: projectId,
+                    ratio: amount == 0 ? 0 : Int((Double(allocationAmount) / Double(amount) * 100.0).rounded()),
+                    amount: allocationAmount
+                )
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                id: journal.id,
+                date: journal.journalDate,
+                amount: amount,
+                memo: journal.description,
+                counterparty: snapshot.counterpartyName,
+                allocations: allocations
+            )
+        }
     }
 
     private func fetchRecurring(id: UUID) -> PPRecurringTransaction? {
@@ -82,6 +145,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
 
@@ -119,6 +183,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             counterparty: "年次配賦先株式会社"
         )
 
+        _ = dataStore.processRecurringTransactions()
         let spreadTx = fetchAllTransactions().filter { $0.memo.contains("[定期/月次]") }
 
         XCTAssertFalse(spreadTx.isEmpty)
@@ -157,6 +222,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let countBefore = fetchAllTransactions().count
 
         // Process again - should not create duplicates
@@ -186,6 +252,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let updated = fetchRecurring(id: recurring.id)
         XCTAssertFalse(updated?.lastGeneratedMonths.isEmpty ?? true, "lastGeneratedMonths should be populated")
 
@@ -215,6 +282,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty)
@@ -243,6 +311,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty)
@@ -271,6 +340,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .lumpSum
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         // Lump sum generates 1 transaction with full amount
         let lumpTx = transactions.filter { $0.memo.contains("[定期] Lump Sum") }
@@ -297,6 +367,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             // yearlyAmortizationMode not specified, defaults to .lumpSum
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let tx = transactions.filter { $0.memo.contains("[定期] Default") }
         XCTAssertEqual(tx.count, 1, "nil mode should behave like lumpSum")
@@ -334,6 +405,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("prorata") }
         XCTAssertFalse(spreadTx.isEmpty, "Should have generated spread transactions")
@@ -421,6 +493,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         // Verify lastGeneratedMonths is populated
         var updated = fetchRecurring(id: recurring.id)
         XCTAssertFalse(updated?.lastGeneratedMonths.isEmpty ?? true)
@@ -479,6 +552,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty, "equalAll with monthly spread should generate transactions")
@@ -524,6 +598,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h4test") }
 
@@ -574,6 +649,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         // skipDatesはaddRecurringに直接渡せないため、updateRecurringで設定
         dataStore.updateRecurring(id: recurring.id, skipDates: [skipDate])
 
+        _ = dataStore.processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions
             .filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h3test") }

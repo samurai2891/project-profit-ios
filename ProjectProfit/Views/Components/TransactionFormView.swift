@@ -961,8 +961,6 @@ struct TransactionFormView: View {
             ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
         let resolvedTaxCodeId: String? = type != .transfer ? selectedTaxCode?.rawValue : nil
-        let resolvedTaxCategory: TaxCategory? = type != .transfer ? selectedTaxCode?.legacyCategory : nil
-        let resolvedConsumptionTaxRate: Int? = selectedTaxCode?.isTaxable == true ? selectedTaxCode?.taxRatePercent : nil
         let resolvedIsTaxIncluded: Bool? = selectedTaxCode?.isTaxable == true ? isTaxIncluded : nil
         let resolvedTaxAmount: Int?
         if let tc = selectedTaxCode, tc.isTaxable {
@@ -975,133 +973,47 @@ struct TransactionFormView: View {
             resolvedTaxAmount = nil
         }
 
-        if isCanonicalDraftMode {
-            Task { @MainActor in
-                defer { isSubmitting = false }
-                saveError = nil
-
-                let result = await dataStore.saveManualPostingCandidate(
-                    type: type,
-                    amount: amount,
-                    date: date,
-                    categoryId: resolvedCategoryId,
-                    memo: memo,
-                    allocations: allocs,
-                    paymentAccountId: paymentAccountId,
-                    transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    taxAmount: resolvedTaxAmount,
-                    taxCodeId: resolvedTaxCodeId,
-                    isTaxIncluded: resolvedIsTaxIncluded,
-                    counterpartyId: selectedCounterpartyId,
-                    counterparty: resolvedCounterparty,
-                    candidateSource: .manual
-                )
-
-                switch result {
-                case .success:
-                    if let imagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
-                    }
-                    dismiss()
-                case .failure(let error):
-                    if let imagePath {
-                        ReceiptImageStore.deleteImage(fileName: imagePath)
-                    }
-                    saveError = error.localizedDescription
-                }
+        guard isCanonicalDraftMode else {
+            if let imagePath {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
             }
+            isSubmitting = false
+            saveError = dataStore.legacyTransactionMutationDisabledMessage
             return
         }
 
-        defer { isSubmitting = false }
-        saveError = nil
+        Task { @MainActor in
+            defer { isSubmitting = false }
+            saveError = nil
 
-        if let t = transaction {
-            let didUpdate: Bool
-            if selectedImage != nil {
-                didUpdate = dataStore.updateTransaction(
-                    id: t.id, type: type, amount: amount, date: date,
-                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
-                    receiptImagePath: imagePath,
-                    paymentAccountId: paymentAccountId,
-                    transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    taxAmount: resolvedTaxAmount,
-                    taxRate: resolvedConsumptionTaxRate,
-                    isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory,
-                    counterpartyId: selectedCounterpartyId,
-                    counterparty: resolvedCounterparty,
-                    candidateSource: .manual,
-                    mutationSource: .userInitiated
-                )
-                if didUpdate, let oldPath = t.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-            } else if imageRemoved {
-                didUpdate = dataStore.updateTransaction(
-                    id: t.id, type: type, amount: amount, date: date,
-                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
-                    receiptImagePath: .some(nil),
-                    paymentAccountId: paymentAccountId,
-                    transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    taxAmount: resolvedTaxAmount,
-                    taxRate: resolvedConsumptionTaxRate,
-                    isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory,
-                    counterpartyId: selectedCounterpartyId,
-                    counterparty: resolvedCounterparty,
-                    candidateSource: .manual,
-                    mutationSource: .userInitiated
-                )
-                if didUpdate, let oldPath = t.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-            } else {
-                didUpdate = dataStore.updateTransaction(
-                    id: t.id, type: type, amount: amount, date: date,
-                    categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
-                    paymentAccountId: paymentAccountId,
-                    transferToAccountId: resolvedTransferTo,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    taxAmount: resolvedTaxAmount,
-                    taxRate: resolvedConsumptionTaxRate,
-                    isTaxIncluded: resolvedIsTaxIncluded,
-                    taxCategory: resolvedTaxCategory,
-                    counterpartyId: selectedCounterpartyId,
-                    counterparty: resolvedCounterparty,
-                    candidateSource: .manual,
-                    mutationSource: .userInitiated
-                )
-            }
-            if didUpdate {
-                dismiss()
-            } else {
-                saveError = dataStore.lastError?.errorDescription ?? "保存に失敗しました"
-            }
-        } else {
-            let result = dataStore.addTransactionResult(
-                type: type, amount: amount, date: date,
-                categoryId: resolvedCategoryId, memo: memo, allocations: allocs,
-                receiptImagePath: imagePath,
+            let result = await dataStore.saveManualPostingCandidate(
+                type: type,
+                amount: amount,
+                date: date,
+                categoryId: resolvedCategoryId,
+                memo: memo,
+                allocations: allocs,
                 paymentAccountId: paymentAccountId,
                 transferToAccountId: resolvedTransferTo,
                 taxDeductibleRate: resolvedTaxDeductibleRate,
                 taxAmount: resolvedTaxAmount,
-                taxRate: resolvedConsumptionTaxRate,
+                taxCodeId: resolvedTaxCodeId,
                 isTaxIncluded: resolvedIsTaxIncluded,
-                taxCategory: resolvedTaxCategory,
                 counterpartyId: selectedCounterpartyId,
                 counterparty: resolvedCounterparty,
-                candidateSource: .manual,
-                mutationSource: .userInitiated
+                candidateSource: .manual
             )
+
             switch result {
             case .success:
+                if let imagePath {
+                    ReceiptImageStore.deleteImage(fileName: imagePath)
+                }
                 dismiss()
             case .failure(let error):
+                if let imagePath {
+                    ReceiptImageStore.deleteImage(fileName: imagePath)
+                }
                 saveError = error.localizedDescription
             }
         }

@@ -8,7 +8,6 @@ struct TransactionDetailView: View {
 
     @State private var showReceiptPreview = false
     @State private var showEditSheet = false
-    @State private var showDeleteAlert = false
     @State private var showRecurringHistory = false
 
     private var canMutateLegacyTransaction: Bool {
@@ -110,15 +109,6 @@ struct TransactionDetailView: View {
             }
             .navigationDestination(for: UUID.self) { projectId in
                 ProjectDetailView(projectId: projectId)
-            }
-            .alert("取引を削除", isPresented: $showDeleteAlert) {
-                Button("キャンセル", role: .cancel) {}
-                Button("削除", role: .destructive) {
-                    dataStore.deleteTransaction(id: transaction.id, mutationSource: .userInitiated)
-                    dismiss()
-                }
-            } message: {
-                Text("この取引を削除してもよろしいですか？")
             }
             .sheet(isPresented: $showRecurringHistory) {
                 if let recurringId = transaction.recurringId {
@@ -521,21 +511,6 @@ struct TransactionDetailView: View {
 
     @ViewBuilder
     private var actionButtons: some View {
-        if canMutateLegacyTransaction {
-            Button(role: .destructive) {
-                showDeleteAlert = true
-            } label: {
-                HStack {
-                    Image(systemName: "trash")
-                    Text("この取引を削除")
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppColors.error)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(AppColors.error.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-        }
+        EmptyView()
     }
 }

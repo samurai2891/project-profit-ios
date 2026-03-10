@@ -255,7 +255,7 @@ class DataStore {
         return fetchCanonicalCounterparties(businessId: businessId)
     }
 
-    private func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
+    func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
         do {
             let descriptor = FetchDescriptor<CanonicalAccountEntity>(
                 predicate: #Predicate { $0.businessId == businessId },
@@ -766,8 +766,9 @@ class DataStore {
         }
     }
 
+    #if DEBUG
     /// Legacy transaction から canonical artifact を明示同期する互換ヘルパー。
-    /// Production の write path からは呼ばず、bootstrap / migration / tests に限定する。
+    /// テスト / fixture 互換専用で、production surface からは除外する。
     func syncCanonicalArtifacts(
         forTransactionId transactionId: UUID,
         source: CandidateSource? = nil
@@ -806,6 +807,7 @@ class DataStore {
             postingStatus: postingStatus
         )
     }
+    #endif
 
     func syncCanonicalCounterparty(forRecurringId recurringId: UUID) async -> CanonicalCounterpartySyncStatus {
         guard let recurring = recurringTransactions.first(where: { $0.id == recurringId }) else {
@@ -837,7 +839,7 @@ class DataStore {
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) async -> Result<PostingCandidate, AppError> {
-        let result = await buildCanonicalPosting(
+        let result = buildCanonicalPostingSync(
             type: type,
             amount: amount,
             date: date,
@@ -886,7 +888,7 @@ class DataStore {
         }
     }
 
-    private func buildCanonicalPosting(
+    private func buildCanonicalPostingSync(
         type: TransactionType,
         amount: Int,
         date: Date,
@@ -905,7 +907,7 @@ class DataStore {
         counterpartyId: UUID?,
         counterparty: String?,
         source: CandidateSource
-    ) async -> Result<CanonicalTransactionPostingBridge.Posting, AppError> {
+    ) -> Result<CanonicalTransactionPostingBridge.Posting, AppError> {
         guard !cannotPostNormalEntry(for: date) else {
             return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
         }
@@ -928,7 +930,7 @@ class DataStore {
             taxCategory: taxCategory,
             taxRate: taxRate
         )
-        let counterpartyStatus = await syncCanonicalCounterparty(
+        let counterpartyStatus = syncCanonicalCounterpartyNow(
             id: counterpartyId,
             named: counterparty,
             defaultTaxCodeId: explicitTaxCodeId
@@ -982,7 +984,7 @@ class DataStore {
         return .success(posting)
     }
 
-    private func saveApprovedPosting(
+    private func saveApprovedPostingSync(
         type: TransactionType,
         amount: Int,
         date: Date,
@@ -1001,8 +1003,8 @@ class DataStore {
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource
-    ) async -> Result<CanonicalJournalEntry, AppError> {
-        let result = await buildCanonicalPosting(
+    ) -> Result<CanonicalJournalEntry, AppError> {
+        let result = buildCanonicalPostingSync(
             type: type,
             amount: amount,
             date: date,
@@ -1035,18 +1037,13 @@ class DataStore {
             amount: amount,
             allocations: type == .transfer ? [] : allocations
         )
-        let candidate = candidateWithProjectAllocations(
-            posting.candidate,
-            allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        )
 
         do {
-            let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
-                candidate,
-                journalId: posting.journalId,
-                entryType: posting.entryType,
-                description: posting.description,
-                approvedAt: posting.approvedAt
+            let actor = candidateSource == .importFile ? "user" : "system"
+            let journal = try saveApprovedPostingSynchronously(
+                posting,
+                allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                actor: actor
             )
             lastError = nil
             return .success(journal)
@@ -1055,6 +1052,48 @@ class DataStore {
             lastError = appError
             return .failure(appError)
         }
+    }
+
+    private func saveApprovedPosting(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) async -> Result<CanonicalJournalEntry, AppError> {
+        saveApprovedPostingSync(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            candidateSource: candidateSource
+        )
     }
 
     func approvePostingCandidate(
@@ -1098,7 +1137,7 @@ class DataStore {
         )?.rawValue
     }
 
-    private func candidateWithProjectAllocations(
+    func candidateWithProjectAllocations(
         _ candidate: PostingCandidate,
         allocations: [(projectId: UUID, ratio: Int)]
     ) -> PostingCandidate {
@@ -1143,11 +1182,11 @@ class DataStore {
         return candidate.updated(proposedLines: expandedLines)
     }
 
-    private func syncCanonicalCounterparty(
+    private func syncCanonicalCounterpartyNow(
         id explicitId: UUID?,
         named rawName: String?,
         defaultTaxCodeId: String?
-    ) async -> CanonicalCounterpartySyncStatus {
+    ) -> CanonicalCounterpartySyncStatus {
         do {
             let resolved = resolveLegacyCounterpartyReference(
                 explicitId: explicitId,
@@ -1166,6 +1205,18 @@ class DataStore {
             AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
         }
+    }
+
+    private func syncCanonicalCounterparty(
+        id explicitId: UUID?,
+        named rawName: String?,
+        defaultTaxCodeId: String?
+    ) async -> CanonicalCounterpartySyncStatus {
+        syncCanonicalCounterpartyNow(
+            id: explicitId,
+            named: rawName,
+            defaultTaxCodeId: defaultTaxCodeId
+        )
     }
 
     private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {
@@ -1586,6 +1637,18 @@ class DataStore {
 
     // MARK: - Archive / Unarchive
 
+    private func projectHasHistoricalReferences(_ id: UUID) -> Bool {
+        if transactions.contains(where: { transaction in
+            transaction.allocations.contains { $0.projectId == id }
+        }) {
+            return true
+        }
+
+        return canonicalJournalEntries().contains { journal in
+            journal.lines.contains { $0.projectAllocationId == id }
+        }
+    }
+
     /// H9: トランザクション参照がある場合はアーカイブ（ソフトデリート）
     func archiveProject(id: UUID) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
@@ -1647,9 +1710,7 @@ class DataStore {
         guard let project = projects.first(where: { $0.id == id }) else { return }
 
         // トランザクション参照があるか確認
-        let hasTransactionReferences = transactions.contains { tx in
-            tx.allocations.contains { $0.projectId == id }
-        }
+        let hasTransactionReferences = projectHasHistoricalReferences(id)
 
         // 参照がある場合はアーカイブに委譲
         if hasTransactionReferences {
@@ -1700,9 +1761,7 @@ class DataStore {
         var idsToArchive = Set<UUID>()
         var idsToHardDelete = Set<UUID>()
         for id in ids {
-            let hasReferences = transactions.contains { tx in
-                tx.allocations.contains { $0.projectId == id }
-            }
+            let hasReferences = projectHasHistoricalReferences(id)
             if hasReferences {
                 idsToArchive.insert(id)
             } else {
@@ -2515,6 +2574,129 @@ class DataStore {
             latestTx.allocations = newAllocations
             latestTx.updatedAt = Date()
         }
+
+        guard let businessId = businessProfile?.id else {
+            save()
+            return
+        }
+
+        let recurringJournals = canonicalJournalEntries().filter { $0.entryType == .recurring }
+        let candidateIds = Set(recurringJournals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        for recurring in recurringTransactions {
+            guard recurring.isActive,
+                  recurring.allocationMode == .equalAll
+            else { continue }
+
+            guard let latestPosting = recurringJournals
+                .compactMap({ journal -> (journal: CanonicalJournalEntry, candidate: PostingCandidate)? in
+                    guard let candidateId = journal.sourceCandidateId,
+                          let candidate = candidatesById[candidateId],
+                          candidate.legacySnapshot?.recurringId == recurring.id else {
+                        return nil
+                    }
+                    return (journal, candidate)
+                })
+                .sorted(by: { $0.journal.journalDate > $1.journal.journalDate })
+                .first
+            else {
+                continue
+            }
+
+            let txComps = calendar.dateComponents([.year, .month], from: latestPosting.journal.journalDate)
+            let isCurrentPeriod: Bool
+            if recurring.frequency == .monthly {
+                isCurrentPeriod = txComps.year == todayComps.year && txComps.month == todayComps.month
+            } else {
+                isCurrentPeriod = txComps.year == todayComps.year
+            }
+            guard isCurrentPeriod else { continue }
+
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+            let completedThisPeriod = projects.filter { project in
+                guard project.status == .completed,
+                      project.isArchived != true,
+                      let completedAt = project.completedAt else {
+                    return false
+                }
+                let compComps = calendar.dateComponents([.year, .month], from: completedAt)
+                return compComps.year == txComps.year && compComps.month == txComps.month
+            }
+            let allEligibleIds = activeProjectIds + completedThisPeriod.map(\.id)
+            guard !allEligibleIds.isEmpty else { continue }
+
+            var newAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+
+            let isYearly = recurring.frequency == .yearly
+            if let txYear = txComps.year, let txMonth = txComps.month {
+                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+                let needsProRata = newAllocations.contains { allocation in
+                    guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
+                    let activeDays = isYearly
+                        ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                        : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+                    return activeDays < totalDays
+                }
+                if needsProRata {
+                    let inputs: [HolisticProRataInput] = newAllocations.map { allocation in
+                        let project = projects.first { $0.id == allocation.projectId }
+                        let activeDays = isYearly
+                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                        return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+                    }
+                    newAllocations = calculateHolisticProRata(
+                        totalAmount: recurring.amount,
+                        totalDays: totalDays,
+                        inputs: inputs
+                    )
+                }
+            }
+
+            let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
+                id: latestPosting.candidate.id,
+                type: recurring.type,
+                amount: recurring.amount,
+                date: latestPosting.journal.journalDate,
+                categoryId: recurring.categoryId,
+                memo: latestPosting.journal.description,
+                recurringId: recurring.id,
+                paymentAccountId: recurring.paymentAccountId,
+                transferToAccountId: recurring.transferToAccountId,
+                taxDeductibleRate: recurring.taxDeductibleRate,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                counterpartyName: recurring.counterparty,
+                createdAt: latestPosting.candidate.createdAt,
+                updatedAt: Date(),
+                journalEntryId: latestPosting.journal.id
+            )
+            let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+            guard let posting = bridge.buildApprovedPosting(
+                for: snapshot,
+                businessId: businessId,
+                counterpartyId: latestPosting.candidate.counterpartyId,
+                source: .recurring,
+                categories: categories,
+                legacyAccounts: accounts
+            ) else {
+                continue
+            }
+
+            do {
+                _ = try saveApprovedPostingSynchronously(
+                    posting,
+                    allocations: newAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                    actor: "system"
+                )
+            } catch {
+                AppLogger.dataStore.warning("Failed to reprocess canonical equalAll posting: \(error.localizedDescription)")
+            }
+        }
         save()
     }
 
@@ -2642,400 +2824,487 @@ class DataStore {
 
     // MARK: - Process Recurring Transactions
 
-    /// 1件の定期取引から実取引を生成する共通ヘルパー
-    @discardableResult
-    private func createTransactionFromRecurring(
-        _ recurring: PPRecurringTransaction,
-        txDate: Date,
-        isYearly: Bool,
-        calendar: Calendar
-    ) -> PPTransaction? {
-        let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-        var txAllocations: [Allocation]
-        switch recurring.allocationMode {
-        case .equalAll:
-            // H9: アーカイブ済みプロジェクトを除外
-            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-            let completedThisMonth = projects.filter { p in
-                guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
-                let compComps = calendar.dateComponents([.year, .month], from: completedAt)
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                return compComps.year == txComps.year && compComps.month == txComps.month
-            }
-            let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
-            guard !allEligibleIds.isEmpty else { return nil }
-            txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+    private struct RecurringDueOccurrence {
+        let recurringId: UUID
+        let scheduledDate: Date
+        let amount: Int
+        let previewMemo: String
+        let postingMemo: String
+        let categoryId: String
+        let isMonthlySpread: Bool
+        let monthKey: String?
+        let projectName: String?
+        let allocationMode: AllocationMode
+        let isSkipped: Bool
+        let isYearLocked: Bool
+    }
 
-            let txCompsEq = calendar.dateComponents([.year, .month], from: txDate)
-            if let txYear = txCompsEq.year, let txMonth = txCompsEq.month {
-                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                let needsProRata = txAllocations.contains { alloc in
-                    guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                    let activeDays = isYearly
-                        ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
-                        : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
-                    return activeDays < totalDays
-                }
-                if needsProRata {
-                    let inputs: [HolisticProRataInput] = txAllocations.map { alloc in
-                        let project = projects.first { $0.id == alloc.projectId }
-                        let activeDays = isYearly
-                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                        return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                    }
-                    txAllocations = calculateHolisticProRata(
-                        totalAmount: recurring.amount,
-                        totalDays: totalDays,
-                        inputs: inputs
-                    )
-                }
-            }
-        case .manual:
-            txAllocations = recalculateAllocationAmounts(amount: recurring.amount, existingAllocations: recurring.allocations)
-            let txCompsMan = calendar.dateComponents([.year, .month], from: txDate)
-            if let txYear = txCompsMan.year, let txMonth = txCompsMan.month {
-                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                let needsProRata = recurring.allocations.contains { alloc in
-                    guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                    return project.startDate != nil || project.effectiveEndDate != nil
-                }
-                if needsProRata {
-                    let inputs: [HolisticProRataInput] = recurring.allocations.map { alloc in
-                        let project = projects.first { $0.id == alloc.projectId }
-                        let activeDays = isYearly
-                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                        return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                    }
-                    txAllocations = calculateHolisticProRata(
-                        totalAmount: recurring.amount,
-                        totalDays: totalDays,
-                        inputs: inputs
-                    )
-                }
-            }
-        }
-        let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        switch addTransactionResult(
-            type: recurring.type,
-            amount: recurring.amount,
-            date: txDate,
-            categoryId: recurring.categoryId,
-            memo: memo,
-            allocations: txRatios,
-            recurringId: recurring.id,
-            paymentAccountId: recurring.paymentAccountId,
-            transferToAccountId: recurring.transferToAccountId,
-            taxDeductibleRate: recurring.taxDeductibleRate,
-            counterpartyId: recurring.counterpartyId,
-            counterparty: recurring.counterparty,
-            candidateSource: .recurring
-        ) {
-        case .success(let transaction):
-            transaction.allocations = txAllocations
-            transaction.updatedAt = Date()
-            return transaction
-        case .failure:
-            return nil
+    private func recurringProjectName(_ recurring: PPRecurringTransaction) -> String? {
+        recurring.allocations.first.flatMap { allocation in
+            projects.first(where: { $0.id == allocation.projectId })?.name
         }
     }
 
-    /// 定期取引の生成プレビュー（dry-run）。実際の取引は生成しない。
-    func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        let calendar = Calendar.current
-        let today = todayDate()
-        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
-        guard let currentYear = todayComps.year, let currentMonth = todayComps.month, let currentDay = todayComps.day else { return [] }
+    private func recurringPostingMemo(for recurring: PPRecurringTransaction, isMonthlySpread: Bool) -> String {
+        let prefix = isMonthlySpread ? "[定期/月次]" : "[定期]"
+        return "\(prefix) \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
+    }
 
-        var items: [RecurringPreviewItem] = []
+    private func recurringPreviewMemo(for recurring: PPRecurringTransaction, isMonthlySpread: Bool) -> String {
+        let prefix = isMonthlySpread ? "[定期/月次]" : "[定期]"
+        return "\(prefix) \(recurring.name)"
+    }
+
+    private func monthlySpreadEligibleRemainderMonth(
+        recurring: PPRecurringTransaction,
+        year: Int,
+        calendar: Calendar
+    ) -> Int? {
+        let startMonth = recurring.monthOfYear ?? 1
+        var lastEligibleMonth = 12
+
+        if let endDate = recurring.endDate {
+            for month in stride(from: 12, through: startMonth, by: -1) {
+                if let date = calendar.date(from: DateComponents(year: year, month: month, day: recurring.dayOfMonth)),
+                   date <= endDate {
+                    lastEligibleMonth = month
+                    break
+                }
+                if month == startMonth {
+                    lastEligibleMonth = startMonth
+                }
+            }
+        }
+
+        for month in stride(from: lastEligibleMonth, through: startMonth, by: -1) {
+            guard let date = calendar.date(from: DateComponents(year: year, month: month, day: recurring.dayOfMonth)) else {
+                continue
+            }
+            if !recurring.skipDates.contains(where: { calendar.isDate($0, inSameDayAs: date) }) {
+                return month
+            }
+        }
+        return nil
+    }
+
+    private func dueRecurringOccurrences(on today: Date = todayDate()) -> [RecurringDueOccurrence] {
+        let calendar = Calendar.current
+        let todayComponents = calendar.dateComponents([.year, .month, .day], from: today)
+        guard let currentYear = todayComponents.year,
+              let currentMonth = todayComponents.month,
+              let currentDay = todayComponents.day else {
+            return []
+        }
+
+        var occurrences: [RecurringDueOccurrence] = []
 
         for recurring in recurringTransactions {
             guard recurring.isActive else { continue }
             if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
 
-            let projectName = recurring.allocations.first.flatMap { alloc in
-                projects.first(where: { $0.id == alloc.projectId })?.name
-            }
+            let projectName = recurringProjectName(recurring)
 
             if recurring.frequency == .monthly {
                 var iterYear: Int
                 var iterMonth: Int
 
                 if let lastGen = recurring.lastGeneratedDate {
-                    let lastComps = calendar.dateComponents([.year, .month], from: lastGen)
-                    iterYear = lastComps.year!
-                    iterMonth = lastComps.month!
-                    iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                    let lastComponents = calendar.dateComponents([.year, .month], from: lastGen)
+                    iterYear = lastComponents.year ?? currentYear
+                    iterMonth = (lastComponents.month ?? currentMonth) + 1
+                    if iterMonth > 12 {
+                        iterMonth = 1
+                        iterYear += 1
+                    }
                 } else {
                     iterYear = currentYear
                     iterMonth = currentMonth
                 }
 
                 while iterYear < currentYear || (iterYear == currentYear && iterMonth <= currentMonth) {
-                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth { break }
+                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth {
+                        break
+                    }
 
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
+                    guard let scheduledDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
                         iterMonth += 1
-                        if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                        if iterMonth > 12 {
+                            iterMonth = 1
+                            iterYear += 1
+                        }
                         continue
                     }
 
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    let yearLocked = isYearLocked(for: txDate)
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !yearLocked && !isSkipped {
-                        items.append(RecurringPreviewItem(
-                            recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: recurring.amount,
-                            scheduledDate: txDate,
-                            categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)",
-                            projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
+                    if let endDate = recurring.endDate, scheduledDate > endDate {
+                        break
                     }
 
+                    occurrences.append(
+                        RecurringDueOccurrence(
+                            recurringId: recurring.id,
+                            scheduledDate: scheduledDate,
+                            amount: recurring.amount,
+                            previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: false),
+                            postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: false),
+                            categoryId: recurring.categoryId,
+                            isMonthlySpread: false,
+                            monthKey: nil,
+                            projectName: projectName,
+                            allocationMode: recurring.allocationMode,
+                            isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                            isYearLocked: isYearLocked(for: scheduledDate)
+                        )
+                    )
+
                     iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                    if iterMonth > 12 {
+                        iterMonth = 1
+                        iterYear += 1
+                    }
                 }
-            } else if recurring.yearlyAmortizationMode == .monthlySpread {
-                if let endDate = recurring.endDate, today > endDate { continue }
+                continue
+            }
+
+            if recurring.yearlyAmortizationMode == .monthlySpread {
+                if let endDate = recurring.endDate, today > endDate {
+                    continue
+                }
+
                 let startMonth = recurring.monthOfYear ?? 1
                 let actualMonthCount = 12 - startMonth + 1
                 let monthlyAmount = recurring.amount / actualMonthCount
                 let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
+                let eligibleRemainderMonth = monthlySpreadEligibleRemainderMonth(
+                    recurring: recurring,
+                    year: currentYear,
+                    calendar: calendar
+                )
                 let currentYearPrefix = String(format: "%d-", currentYear)
-                let generatedMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
+                let generatedMonths = Set(recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) })
 
                 for month in startMonth...12 {
-                    guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else { continue }
+                    guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else {
+                        continue
+                    }
                     let monthKey = String(format: "%d-%02d", currentYear, month)
                     guard !generatedMonths.contains(monthKey) else { continue }
-                    guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
-                    if let endDate = recurring.endDate, txDate > endDate { continue }
-                    if isYearLocked(for: txDate) { continue }
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !isSkipped {
-                        let txAmount = month == 12 ? monthlyAmount + remainder : monthlyAmount
-                        items.append(RecurringPreviewItem(
+                    guard let scheduledDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else {
+                        continue
+                    }
+                    if let endDate = recurring.endDate, scheduledDate > endDate {
+                        continue
+                    }
+
+                    occurrences.append(
+                        RecurringDueOccurrence(
                             recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: txAmount,
-                            scheduledDate: txDate,
+                            scheduledDate: scheduledDate,
+                            amount: month == eligibleRemainderMonth ? monthlyAmount + remainder : monthlyAmount,
+                            previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: true),
+                            postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: true),
                             categoryId: recurring.categoryId,
-                            memo: "[定期/月次] \(recurring.name)",
                             isMonthlySpread: true,
+                            monthKey: monthKey,
                             projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
-                    }
+                            allocationMode: recurring.allocationMode,
+                            isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                            isYearLocked: isYearLocked(for: scheduledDate)
+                        )
+                    )
                 }
+                continue
+            }
+
+            let targetMonth = recurring.monthOfYear ?? 1
+            let startYear: Int
+            if let lastGen = recurring.lastGeneratedDate {
+                startYear = calendar.component(.year, from: lastGen) + 1
             } else {
-                let targetMonth = recurring.monthOfYear ?? 1
-                let startYear: Int
-                if let lastGen = recurring.lastGeneratedDate {
-                    startYear = calendar.component(.year, from: lastGen) + 1
-                } else {
-                    startYear = currentYear
+                startYear = currentYear
+            }
+
+            guard startYear <= currentYear else { continue }
+            for iterYear in startYear...currentYear {
+                if iterYear == currentYear,
+                   (currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth)) {
+                    break
                 }
-                guard startYear <= currentYear else { continue }
-                for iterYear in startYear...currentYear {
-                    if iterYear == currentYear {
-                        if currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth) { break }
-                    }
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-                    if isYearLocked(for: txDate) { continue }
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !isSkipped {
-                        items.append(RecurringPreviewItem(
-                            recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: recurring.amount,
-                            scheduledDate: txDate,
-                            categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)",
-                            projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
-                    }
+
+                guard let scheduledDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else {
+                    continue
                 }
+                if let endDate = recurring.endDate, scheduledDate > endDate {
+                    break
+                }
+
+                occurrences.append(
+                    RecurringDueOccurrence(
+                        recurringId: recurring.id,
+                        scheduledDate: scheduledDate,
+                        amount: recurring.amount,
+                        previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: false),
+                        postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: false),
+                        categoryId: recurring.categoryId,
+                        isMonthlySpread: false,
+                        monthKey: nil,
+                        projectName: projectName,
+                        allocationMode: recurring.allocationMode,
+                        isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                        isYearLocked: isYearLocked(for: scheduledDate)
+                    )
+                )
             }
         }
 
-        return items.sorted { $0.scheduledDate < $1.scheduledDate }
+        return occurrences.sorted { lhs, rhs in
+            if lhs.scheduledDate == rhs.scheduledDate {
+                return lhs.recurringId.uuidString < rhs.recurringId.uuidString
+            }
+            return lhs.scheduledDate < rhs.scheduledDate
+        }
+    }
+
+    private func recurringAllocations(
+        for recurring: PPRecurringTransaction,
+        amount: Int,
+        txDate: Date,
+        treatAsYearly: Bool
+    ) -> [Allocation]? {
+        let calendar = Calendar.current
+        var resolvedAllocations: [Allocation]
+
+        switch recurring.allocationMode {
+        case .equalAll:
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+            let completedInPeriod = projects.filter { project in
+                guard project.status == .completed,
+                      project.isArchived != true,
+                      let completedAt = project.completedAt else {
+                    return false
+                }
+                let completedComponents = calendar.dateComponents([.year, .month], from: completedAt)
+                let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+                return completedComponents.year == txComponents.year && completedComponents.month == txComponents.month
+            }
+            let projectIds = activeProjectIds + completedInPeriod.map(\.id)
+            guard !projectIds.isEmpty else { return nil }
+            resolvedAllocations = calculateEqualSplitAllocations(amount: amount, projectIds: projectIds)
+        case .manual:
+            resolvedAllocations = recalculateAllocationAmounts(amount: amount, existingAllocations: recurring.allocations)
+        }
+
+        let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+        guard let txYear = txComponents.year, let txMonth = txComponents.month else {
+            return resolvedAllocations
+        }
+
+        let totalDays = treatAsYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+        let needsProRata: Bool
+        switch recurring.allocationMode {
+        case .equalAll:
+            needsProRata = resolvedAllocations.contains { allocation in
+                guard let project = projects.first(where: { $0.id == allocation.projectId }) else {
+                    return false
+                }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+                return activeDays < totalDays
+            }
+        case .manual:
+            needsProRata = recurring.allocations.contains { allocation in
+                guard let project = projects.first(where: { $0.id == allocation.projectId }) else {
+                    return false
+                }
+                return project.startDate != nil || project.effectiveEndDate != nil
+            }
+        }
+
+        guard needsProRata else { return resolvedAllocations }
+
+        let inputs: [HolisticProRataInput]
+        switch recurring.allocationMode {
+        case .equalAll:
+            inputs = resolvedAllocations.map { allocation in
+                let project = projects.first { $0.id == allocation.projectId }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+            }
+        case .manual:
+            inputs = recurring.allocations.map { allocation in
+                let project = projects.first { $0.id == allocation.projectId }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+            }
+        }
+
+        return calculateHolisticProRata(
+            totalAmount: amount,
+            totalDays: totalDays,
+            inputs: inputs
+        )
+    }
+
+    @discardableResult
+    private func consumeRecurringSkipOccurrence(
+        _ occurrence: RecurringDueOccurrence,
+        recurring: PPRecurringTransaction
+    ) -> Bool {
+        let calendar = Calendar.current
+        guard occurrence.isSkipped else { return false }
+
+        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: occurrence.scheduledDate) }
+        if occurrence.isMonthlySpread {
+            if let monthKey = occurrence.monthKey, !recurring.lastGeneratedMonths.contains(monthKey) {
+                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
+            }
+        } else {
+            recurring.lastGeneratedDate = occurrence.scheduledDate
+        }
+        recurring.updatedAt = Date()
+        return true
+    }
+
+    @discardableResult
+    private func applyRecurringProcessedOccurrence(
+        _ occurrence: RecurringDueOccurrence,
+        recurring: PPRecurringTransaction
+    ) -> Bool {
+        if occurrence.isMonthlySpread,
+           let monthKey = occurrence.monthKey,
+           !recurring.lastGeneratedMonths.contains(monthKey) {
+            recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
+        }
+        recurring.lastGeneratedDate = occurrence.scheduledDate
+        recurring.updatedAt = Date()
+        return true
+    }
+
+    @discardableResult
+    private func pruneRecurringGeneratedMonthsForCurrentYear(on today: Date) -> Bool {
+        let currentYear = Calendar.current.component(.year, from: today)
+        let currentYearPrefix = String(format: "%d-", currentYear)
+        var mutated = false
+
+        for recurring in recurringTransactions where recurring.yearlyAmortizationMode == .monthlySpread {
+            let filteredMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
+            if filteredMonths.count != recurring.lastGeneratedMonths.count {
+                recurring.lastGeneratedMonths = filteredMonths
+                recurring.updatedAt = Date()
+                mutated = true
+            }
+        }
+        return mutated
+    }
+
+    /// 定期取引の生成プレビュー（dry-run）。実際の取引は生成しない。
+    func previewRecurringTransactions() -> [RecurringPreviewItem] {
+        dueRecurringOccurrences()
+            .filter { !$0.isSkipped && !$0.isYearLocked }
+            .map { occurrence in
+                RecurringPreviewItem(
+                    recurringId: occurrence.recurringId,
+                    recurringName: recurringTransactions.first(where: { $0.id == occurrence.recurringId })?.name ?? "",
+                    type: recurringTransactions.first(where: { $0.id == occurrence.recurringId })?.type ?? .expense,
+                    amount: occurrence.amount,
+                    scheduledDate: occurrence.scheduledDate,
+                    categoryId: occurrence.categoryId,
+                    memo: occurrence.previewMemo,
+                    isMonthlySpread: occurrence.isMonthlySpread,
+                    projectName: occurrence.projectName,
+                    allocationMode: occurrence.allocationMode
+                )
+            }
     }
 
     /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
     func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
         let approvedItems = items.filter { approvedIds.contains($0.id) }
         var generatedCount = 0
+        var didMutateRecurringState = pruneRecurringGeneratedMonthsForCurrentYear(on: todayDate())
+
+        for occurrence in dueRecurringOccurrences().filter(\.isSkipped) {
+            guard let recurring = recurringTransactions.first(where: { $0.id == occurrence.recurringId }) else { continue }
+            didMutateRecurringState = consumeRecurringSkipOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
+        }
 
         for item in approvedItems {
             guard let recurring = recurringTransactions.first(where: { $0.id == item.recurringId }) else { continue }
             if isYearLocked(for: item.scheduledDate) { continue }
-            let calendar = Calendar.current
-            let txDate = item.scheduledDate
+            guard let allocations = recurringAllocations(
+                for: recurring,
+                amount: item.amount,
+                txDate: item.scheduledDate,
+                treatAsYearly: recurring.frequency == .yearly && !item.isMonthlySpread
+            ) else {
+                continue
+            }
 
-            if item.isMonthlySpread {
-                let monthKey = String(format: "%d-%02d", calendar.component(.year, from: txDate), calendar.component(.month, from: txDate))
-                let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-
-                var txAllocations: [Allocation]
-                switch recurring.allocationMode {
-                case .equalAll:
-                    let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-                    guard !activeProjectIds.isEmpty else { continue }
-                    txAllocations = calculateEqualSplitAllocations(amount: item.amount, projectIds: activeProjectIds)
-                case .manual:
-                    txAllocations = recalculateAllocationAmounts(amount: item.amount, existingAllocations: recurring.allocations)
-                }
-
-                let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-                let result = await saveApprovedPosting(
-                    type: recurring.type,
-                    amount: item.amount,
-                    date: txDate,
-                    categoryId: recurring.categoryId,
-                    memo: memo,
-                    allocations: txRatios,
-                    recurringId: recurring.id,
-                    paymentAccountId: recurring.paymentAccountId,
-                    transferToAccountId: recurring.transferToAccountId,
-                    taxDeductibleRate: recurring.taxDeductibleRate,
-                    counterpartyId: recurring.counterpartyId,
-                    counterparty: recurring.counterparty,
-                    candidateSource: .recurring
-                )
-                switch result {
-                case .success:
-                    recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-                    recurring.updatedAt = Date()
-                    generatedCount += 1
-                case .failure:
-                    break
-                }
-            } else {
-                let isYearly = recurring.frequency == .yearly
-                let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-                var txAllocations: [Allocation]
-                switch recurring.allocationMode {
-                case .equalAll:
-                    let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-                    let completedThisMonth = projects.filter { project in
-                        guard project.status == .completed,
-                              project.isArchived != true,
-                              let completedAt = project.completedAt
-                        else {
-                            return false
-                        }
-                        let completedComponents = calendar.dateComponents([.year, .month], from: completedAt)
-                        let txComponents = calendar.dateComponents([.year, .month], from: txDate)
-                        return completedComponents.year == txComponents.year && completedComponents.month == txComponents.month
-                    }
-                    let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
-                    guard !allEligibleIds.isEmpty else { continue }
-                    txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
-
-                    let txComponents = calendar.dateComponents([.year, .month], from: txDate)
-                    if let txYear = txComponents.year, let txMonth = txComponents.month {
-                        let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                        let needsProRata = txAllocations.contains { allocation in
-                            guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
-                            let activeDays = isYearly
-                                ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
-                                : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
-                            return activeDays < totalDays
-                        }
-                        if needsProRata {
-                            let inputs: [HolisticProRataInput] = txAllocations.map { allocation in
-                                let project = projects.first { $0.id == allocation.projectId }
-                                let activeDays = isYearly
-                                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
-                            }
-                            txAllocations = calculateHolisticProRata(
-                                totalAmount: recurring.amount,
-                                totalDays: totalDays,
-                                inputs: inputs
-                            )
-                        }
-                    }
-                case .manual:
-                    txAllocations = recalculateAllocationAmounts(amount: recurring.amount, existingAllocations: recurring.allocations)
-                    let txComponents = calendar.dateComponents([.year, .month], from: txDate)
-                    if let txYear = txComponents.year, let txMonth = txComponents.month {
-                        let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                        let needsProRata = recurring.allocations.contains { allocation in
-                            guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
-                            return project.startDate != nil || project.effectiveEndDate != nil
-                        }
-                        if needsProRata {
-                            let inputs: [HolisticProRataInput] = recurring.allocations.map { allocation in
-                                let project = projects.first { $0.id == allocation.projectId }
-                                let activeDays = isYearly
-                                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
-                            }
-                            txAllocations = calculateHolisticProRata(
-                                totalAmount: recurring.amount,
-                                totalDays: totalDays,
-                                inputs: inputs
-                            )
-                        }
-                    }
-                }
-
-                let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-                let result = await saveApprovedPosting(
-                    type: recurring.type,
-                    amount: recurring.amount,
-                    date: txDate,
-                    categoryId: recurring.categoryId,
-                    memo: memo,
-                    allocations: txRatios,
-                    recurringId: recurring.id,
-                    paymentAccountId: recurring.paymentAccountId,
-                    transferToAccountId: recurring.transferToAccountId,
-                    taxDeductibleRate: recurring.taxDeductibleRate,
-                    counterpartyId: recurring.counterpartyId,
-                    counterparty: recurring.counterparty,
-                    candidateSource: .recurring
-                )
-                if case .success = result {
-                    recurring.lastGeneratedDate = txDate
-                    recurring.updatedAt = Date()
-                    generatedCount += 1
-                }
+            let occurrence = RecurringDueOccurrence(
+                recurringId: recurring.id,
+                scheduledDate: item.scheduledDate,
+                amount: item.amount,
+                previewMemo: item.memo,
+                postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: item.isMonthlySpread),
+                categoryId: recurring.categoryId,
+                isMonthlySpread: item.isMonthlySpread,
+                monthKey: item.isMonthlySpread
+                    ? String(
+                        format: "%d-%02d",
+                        Calendar.current.component(.year, from: item.scheduledDate),
+                        Calendar.current.component(.month, from: item.scheduledDate)
+                    )
+                    : nil,
+                projectName: item.projectName,
+                allocationMode: recurring.allocationMode,
+                isSkipped: false,
+                isYearLocked: false
+            )
+            let ratios = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+            let result = saveApprovedPostingSync(
+                type: recurring.type,
+                amount: item.amount,
+                date: item.scheduledDate,
+                categoryId: recurring.categoryId,
+                memo: occurrence.postingMemo,
+                allocations: ratios,
+                recurringId: recurring.id,
+                paymentAccountId: recurring.paymentAccountId,
+                transferToAccountId: recurring.transferToAccountId,
+                taxDeductibleRate: recurring.taxDeductibleRate,
+                counterpartyId: recurring.counterpartyId,
+                counterparty: recurring.counterparty,
+                candidateSource: .recurring
+            )
+            if case .success = result {
+                didMutateRecurringState = applyRecurringProcessedOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
+                generatedCount += 1
             }
         }
 
-        if generatedCount > 0 {
-            save()
+        if didMutateRecurringState || generatedCount > 0 {
+            _ = save()
             refreshRecurring()
-            refreshTransactions()
-            refreshJournalEntries()
-            refreshJournalLines()
+            if generatedCount > 0 {
+                refreshTransactions()
+                refreshJournalEntries()
+                refreshJournalLines()
 
-            if let businessId = businessProfile?.id {
-                let auditEvent = AuditEvent(
-                    businessId: businessId,
-                    eventType: .recurringApproved,
-                    aggregateType: "RecurringTransaction",
-                    aggregateId: UUID(),
-                    actor: "system",
-                    reason: "\(generatedCount)件の定期取引を承認"
-                )
-                appendAuditEvent(auditEvent)
+                if let businessId = businessProfile?.id {
+                    let auditEvent = AuditEvent(
+                        businessId: businessId,
+                        eventType: .recurringApproved,
+                        aggregateType: "RecurringTransaction",
+                        aggregateId: UUID(),
+                        actor: "system",
+                        reason: "\(generatedCount)件の定期取引を承認"
+                    )
+                    appendAuditEvent(auditEvent)
+                }
             }
         }
 
@@ -3044,290 +3313,37 @@ class DataStore {
 
     @discardableResult
     func processRecurringTransactions() -> Int {
-        let calendar = Calendar.current
         let today = todayDate()
-        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
-        guard let currentYear = todayComps.year, let currentMonth = todayComps.month, let currentDay = todayComps.day else { return 0 }
-
         var generatedCount = 0
+        var didMutateRecurringState = pruneRecurringGeneratedMonthsForCurrentYear(on: today)
 
-        for recurring in recurringTransactions {
-            guard recurring.isActive else { continue }
-            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
+        for occurrence in dueRecurringOccurrences(on: today) {
+            guard let recurring = recurringTransactions.first(where: { $0.id == occurrence.recurringId }) else { continue }
 
-            if recurring.frequency == .monthly {
-                // 月次キャッチアップループ: lastGeneratedDate の翌月から現在月まで
-                var iterYear: Int
-                var iterMonth: Int
-
-                if let lastGen = recurring.lastGeneratedDate {
-                    let lastComps = calendar.dateComponents([.year, .month], from: lastGen)
-                    iterYear = lastComps.year!
-                    iterMonth = lastComps.month!
-                    // lastGeneratedDate の翌月から開始
-                    iterMonth += 1
-                    if iterMonth > 12 {
-                        iterMonth = 1
-                        iterYear += 1
-                    }
-                } else {
-                    // 初回: 現在月から
-                    iterYear = currentYear
-                    iterMonth = currentMonth
-                }
-
-                while iterYear < currentYear || (iterYear == currentYear && iterMonth <= currentMonth) {
-                    // 今月の場合、dayOfMonth がまだ来ていなければ生成しない
-                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth {
-                        break
-                    }
-
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
-                        iterMonth += 1
-                        if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
-                        continue
-                    }
-
-                    // endDate チェック
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    // skipDates チェック
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if isSkipped {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                        recurring.updatedAt = Date()
-                    } else if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: false, calendar: calendar) != nil {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.updatedAt = Date()
-                        generatedCount += 1
-                    }
-
-                    iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
-                }
-            } else if recurring.yearlyAmortizationMode == .monthlySpread {
-                // endDateを過ぎた定期取引は月次分割前に停止チェック
-                if let endDate = recurring.endDate, today > endDate {
-                    recurring.isActive = false
-                    recurring.updatedAt = Date()
-                    continue
-                }
-                // 月次分割モード: monthOfYear月から12月まで毎月生成
-                let generated = generateMonthlySpreadTransactions(
-                    recurring: recurring,
-                    currentYear: currentYear,
-                    currentMonth: currentMonth,
-                    currentDay: currentDay,
-                    calendar: calendar
-                )
-                generatedCount += generated
+            if occurrence.isSkipped {
+                didMutateRecurringState = consumeRecurringSkipOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
                 continue
-            } else {
-                // 年次キャッチアップループ: lastGeneratedDate の翌年から現在年まで
-                let targetMonth = recurring.monthOfYear ?? 1
-                let startYear: Int
-                if let lastGen = recurring.lastGeneratedDate {
-                    startYear = calendar.component(.year, from: lastGen) + 1
-                } else {
-                    startYear = currentYear
-                }
-
-                guard startYear <= currentYear else { continue }
-                for iterYear in startYear...currentYear {
-                    // 今年の場合、対象月/日がまだ来ていなければ生成しない
-                    if iterYear == currentYear {
-                        if currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth) {
-                            break
-                        }
-                    }
-
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
-
-                    // endDate チェック
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    // skipDates チェック
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if isSkipped {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                        recurring.updatedAt = Date()
-                    } else if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: true, calendar: calendar) != nil {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.updatedAt = Date()
-                        generatedCount += 1
-                    }
-                }
             }
-
-            // endDateを過ぎた定期取引はキャッチアップ完了後に自動停止
-            if let endDate = recurring.endDate, today > endDate {
-                recurring.isActive = false
-                recurring.updatedAt = Date()
+            if occurrence.isYearLocked {
+                continue
             }
-        }
-
-        if generatedCount > 0 {
-            save()
-            refreshRecurring()
-            refreshTransactions()
-            refreshJournalEntries()
-            refreshJournalLines()
-        }
-
-        return generatedCount
-    }
-
-    // MARK: - Monthly Spread Generation
-
-    /// 年次定期取引を月次分割で生成する
-    /// monthOfYear月から12月まで、各月のdayOfMonth日に取引を生成する
-    private func generateMonthlySpreadTransactions(
-        recurring: PPRecurringTransaction,
-        currentYear: Int,
-        currentMonth: Int,
-        currentDay: Int,
-        calendar: Calendar
-    ) -> Int {
-        let startMonth = recurring.monthOfYear ?? 1
-        var generatedCount = 0
-
-        // 年が変わったら前年のエントリをクリア
-        let currentYearPrefix = String(format: "%d-", currentYear)
-        let filteredMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
-        if filteredMonths.count != recurring.lastGeneratedMonths.count {
-            recurring.lastGeneratedMonths = filteredMonths
-        }
-
-        // H4: 月額計算: 実際の生成月数で除算（年途中開始を考慮）
-        let actualMonthCount = 12 - startMonth + 1
-        let monthlyAmount = recurring.amount / actualMonthCount
-        let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
-
-        // 最終生成月を事前計算（endDateやskipDatesを考慮し、端数を正しい月に加算するため）
-        var lastEligibleMonth = 12
-        if let endDate = recurring.endDate {
-            for m in stride(from: 12, through: startMonth, by: -1) {
-                if let d = calendar.date(from: DateComponents(year: currentYear, month: m, day: recurring.dayOfMonth)), d <= endDate {
-                    lastEligibleMonth = m
-                    break
-                }
-                if m == startMonth { lastEligibleMonth = startMonth }
-            }
-        }
-
-        // H3: skipDatesを考慮して端数加算月を調整（スキップ月に端数が消失するのを防止）
-        var foundEligibleMonth = false
-        for m in stride(from: lastEligibleMonth, through: startMonth, by: -1) {
-            guard let d = calendar.date(from: DateComponents(year: currentYear, month: m, day: recurring.dayOfMonth)) else { continue }
-            if !recurring.skipDates.contains(where: { calendar.isDate($0, inSameDayAs: d) }) {
-                lastEligibleMonth = m
-                foundEligibleMonth = true
-                break
-            }
-        }
-        // 全月がスキップの場合、端数を付与する対象月がないためsentinel値を設定
-        if !foundEligibleMonth {
-            lastEligibleMonth = -1
-        }
-
-        for month in startMonth...12 {
-            // まだ到来していない月はスキップ
-            guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else { continue }
-
-            let monthKey = String(format: "%d-%02d", currentYear, month)
-
-            // 重複防止
-            guard !recurring.lastGeneratedMonths.contains(monthKey) else { continue }
-
-            // endDateチェック
-            guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
-            if let endDate = recurring.endDate, txDate > endDate { continue }
-
-            // skipDatesチェック
-            let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-            if isSkipped {
-                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-                recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                recurring.updatedAt = Date()
+            guard let allocations = recurringAllocations(
+                for: recurring,
+                amount: occurrence.amount,
+                txDate: occurrence.scheduledDate,
+                treatAsYearly: recurring.frequency == .yearly && !occurrence.isMonthlySpread
+            ) else {
                 continue
             }
 
-            // 最終生成月に端数を加算
-            let txAmount = month == lastEligibleMonth ? monthlyAmount + remainder : monthlyAmount
-
-            let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-
-            var txAllocations: [Allocation]
-            switch recurring.allocationMode {
-            case .equalAll:
-                // H9: アーカイブ済みプロジェクトを除外
-                let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-                let completedThisMonth = projects.filter { p in
-                    guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
-                    let compComps = calendar.dateComponents([.year, .month], from: completedAt)
-                    return compComps.year == currentYear && compComps.month == month
-                }
-                let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
-                guard !allEligibleIds.isEmpty else { continue }
-                txAllocations = calculateEqualSplitAllocations(amount: txAmount, projectIds: allEligibleIds)
-
-                // 月次プロラタ適用
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                if let txYear = txComps.year, let txMonth = txComps.month {
-                    let totalDays = daysInMonth(year: txYear, month: txMonth)
-                    let needsProRata = txAllocations.contains { alloc in
-                        guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                        let activeDays = calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
-                        return activeDays < totalDays
-                    }
-                    if needsProRata {
-                        let inputs: [HolisticProRataInput] = txAllocations.map { alloc in
-                            let project = projects.first { $0.id == alloc.projectId }
-                            let activeDays = calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                            return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                        }
-                        txAllocations = calculateHolisticProRata(
-                            totalAmount: txAmount,
-                            totalDays: totalDays,
-                            inputs: inputs
-                        )
-                    }
-                }
-            case .manual:
-                txAllocations = recalculateAllocationAmounts(amount: txAmount, existingAllocations: recurring.allocations)
-                // 月次プロラタ適用
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                if let txYear = txComps.year, let txMonth = txComps.month {
-                    let totalDays = daysInMonth(year: txYear, month: txMonth)
-                    let needsProRata = recurring.allocations.contains { alloc in
-                        guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                        return project.startDate != nil || project.effectiveEndDate != nil
-                    }
-                    if needsProRata {
-                        let inputs: [HolisticProRataInput] = recurring.allocations.map { alloc in
-                            let project = projects.first { $0.id == alloc.projectId }
-                            let activeDays = calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                            return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                        }
-                        txAllocations = calculateHolisticProRata(
-                            totalAmount: txAmount,
-                            totalDays: totalDays,
-                            inputs: inputs
-                        )
-                    }
-                }
-            }
-
-            let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-            switch addTransactionResult(
+            let ratios = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
+            let result = saveApprovedPostingSync(
                 type: recurring.type,
-                amount: txAmount,
-                date: txDate,
+                amount: occurrence.amount,
+                date: occurrence.scheduledDate,
                 categoryId: recurring.categoryId,
-                memo: memo,
-                allocations: txRatios,
+                memo: occurrence.postingMemo,
+                allocations: ratios,
                 recurringId: recurring.id,
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,
@@ -3335,18 +3351,29 @@ class DataStore {
                 counterpartyId: recurring.counterpartyId,
                 counterparty: recurring.counterparty,
                 candidateSource: .recurring
-            ) {
-            case .success(let transaction):
-                transaction.allocations = txAllocations
-                transaction.updatedAt = Date()
-            case .failure:
-                continue
+            )
+            if case .success = result {
+                didMutateRecurringState = applyRecurringProcessedOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
+                generatedCount += 1
             }
+        }
 
-            recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-            recurring.lastGeneratedDate = txDate
-            recurring.updatedAt = Date()
-            generatedCount += 1
+        for recurring in recurringTransactions where recurring.isActive {
+            if let endDate = recurring.endDate, today > endDate {
+                recurring.isActive = false
+                recurring.updatedAt = Date()
+                didMutateRecurringState = true
+            }
+        }
+
+        if didMutateRecurringState || generatedCount > 0 {
+            _ = save()
+            refreshRecurring()
+            if generatedCount > 0 {
+                refreshTransactions()
+                refreshJournalEntries()
+                refreshJournalLines()
+            }
         }
 
         return generatedCount

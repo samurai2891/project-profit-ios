@@ -12,8 +12,6 @@ struct ProjectDetailView: View {
     @State private var showAddTransactionSheet = false
     @State private var showReceiptScanner = false
     @State private var selectedTransaction: PPTransaction?
-    @State private var transactionToDelete: PPTransaction?
-    @State private var showDeleteConfirmation = false
 
     private var resolvedViewModel: ProjectDetailViewModel {
         viewModel ?? ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
@@ -59,11 +57,6 @@ struct ProjectDetailView: View {
         }
         .sheet(item: $selectedTransaction) { transaction in
             TransactionDetailView(transaction: transaction)
-        }
-        .alert("取引を削除", isPresented: $showDeleteConfirmation) {
-            deleteAlertActions
-        } message: {
-            Text("この取引を削除しますか？この操作は取り消せません。")
         }
         .task {
             if viewModel == nil {
@@ -410,12 +403,7 @@ private extension ProjectDetailView {
                     TransactionRow(
                         transaction: transaction,
                         projectId: projectId,
-                        viewModel: resolvedViewModel,
-                        showDeleteButton: resolvedViewModel.canMutateLegacyTransactions,
-                        onDelete: {
-                            transactionToDelete = transaction
-                            showDeleteConfirmation = true
-                        }
+                        viewModel: resolvedViewModel
                     )
                 }
                 .buttonStyle(.plain)
@@ -474,20 +462,6 @@ private extension ProjectDetailView {
         }
     }
 
-    @ViewBuilder
-    var deleteAlertActions: some View {
-        Button("キャンセル", role: .cancel) {
-            transactionToDelete = nil
-        }
-        Button("削除", role: .destructive) {
-            if let transaction = transactionToDelete {
-                withAnimation {
-                    viewModel?.deleteTransaction(id: transaction.id)
-                    transactionToDelete = nil
-                }
-            }
-        }
-    }
 }
 
 // MARK: - TransactionRow
@@ -496,8 +470,6 @@ private struct TransactionRow: View {
     let transaction: PPTransaction
     let projectId: UUID
     let viewModel: ProjectDetailViewModel
-    let showDeleteButton: Bool
-    let onDelete: () -> Void
 
     private var typeColor: Color {
         switch transaction.type {
@@ -539,7 +511,7 @@ private struct TransactionRow: View {
             typeIndicator
             transactionDetails
             Spacer()
-            amountAndDelete
+            amountSummary
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
@@ -599,7 +571,7 @@ private extension TransactionRow {
         .accessibilityHidden(true)
     }
 
-    var amountAndDelete: some View {
+    var amountSummary: some View {
         HStack(spacing: 12) {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatCurrency(allocationAmount ?? transaction.amount))
@@ -620,19 +592,6 @@ private extension TransactionRow {
                 }
             }
             .accessibilityHidden(true)
-
-            if showDeleteButton {
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.error.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("削除")
-                .accessibilityHint("タップして取引を削除")
-            }
         }
     }
 }

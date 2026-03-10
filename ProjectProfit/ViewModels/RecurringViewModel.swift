@@ -7,6 +7,10 @@ import SwiftUI
 final class RecurringViewModel {
     let dataStore: DataStore
 
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(dataStore: dataStore)
+    }
+
     init(dataStore: DataStore) {
         self.dataStore = dataStore
     }
@@ -75,7 +79,7 @@ final class RecurringViewModel {
     // MARK: - Actions
 
     func toggleActive(_ recurring: PPRecurringTransaction) {
-        dataStore.updateRecurring(id: recurring.id, isActive: !recurring.isActive)
+        recurringWorkflowUseCase.setRecurringActive(id: recurring.id, isActive: !recurring.isActive)
     }
 
     func confirmSkip(_ recurring: PPRecurringTransaction) {
@@ -87,8 +91,7 @@ final class RecurringViewModel {
             lastGeneratedDate: recurring.lastGeneratedDate
         ) else { return }
 
-        let updatedSkipDates = recurring.skipDates + [info.date]
-        dataStore.updateRecurring(id: recurring.id, skipDates: updatedSkipDates)
+        recurringWorkflowUseCase.setRecurringSkipped(id: recurring.id, date: info.date, isSkipped: true)
     }
 
     func cancelSkip(_ recurring: PPRecurringTransaction) {
@@ -100,10 +103,7 @@ final class RecurringViewModel {
             lastGeneratedDate: recurring.lastGeneratedDate
         ) else { return }
 
-        let updatedSkipDates = recurring.skipDates.filter {
-            !Calendar.current.isDate($0, inSameDayAs: info.date)
-        }
-        dataStore.updateRecurring(id: recurring.id, skipDates: updatedSkipDates)
+        recurringWorkflowUseCase.setRecurringSkipped(id: recurring.id, date: info.date, isSkipped: false)
     }
 
     func isNextDateSkipped(_ recurring: PPRecurringTransaction) -> Bool {
@@ -121,11 +121,11 @@ final class RecurringViewModel {
     }
 
     func deleteRecurring(_ recurring: PPRecurringTransaction) {
-        dataStore.deleteRecurring(id: recurring.id)
+        recurringWorkflowUseCase.deleteRecurring(id: recurring.id)
     }
 
     func updateNotificationTiming(for recurring: PPRecurringTransaction, timing: NotificationTiming) {
-        dataStore.updateRecurring(id: recurring.id, notificationTiming: timing)
+        recurringWorkflowUseCase.setNotificationTiming(id: recurring.id, timing: timing)
     }
 
     func endDateLabel(_ recurring: PPRecurringTransaction) -> String? {

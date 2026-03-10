@@ -25,7 +25,6 @@ struct TransactionsView: View {
     @State private var showFilterSheet = false
     @State private var showReceiptScanner = false
     @State private var selectedTransaction: PPTransaction?
-    @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
     @State private var shareURL: URL?
     @State private var exportErrorMessage: String?
@@ -134,25 +133,6 @@ struct TransactionsView: View {
             ),
             prompt: "メモを検索"
         )
-        .alert(
-            "取引を削除",
-            isPresented: .init(
-                get: { deletingTransaction != nil },
-                set: { if !$0 { deletingTransaction = nil } }
-            )
-        ) {
-            Button("キャンセル", role: .cancel) {
-                deletingTransaction = nil
-            }
-            Button("削除", role: .destructive) {
-                if let transaction = deletingTransaction {
-                    viewModel.deleteTransaction(id: transaction.id)
-                    deletingTransaction = nil
-                }
-            }
-        } message: {
-            Text("この取引を削除してもよろしいですか？")
-        }
         .alert("出力エラー", isPresented: Binding(
             get: { exportErrorMessage != nil },
             set: { if !$0 { exportErrorMessage = nil } }
@@ -502,9 +482,7 @@ struct TransactionsView: View {
                     ForEach(group.transactions) { transaction in
                         TransactionCardView(
                             transaction: transaction,
-                            onTap: { selectedTransaction = transaction },
-                            onDelete: { deletingTransaction = transaction },
-                            showDeleteButton: viewModel.canMutateLegacyTransactions
+                            onTap: { selectedTransaction = transaction }
                         )
                     }
                 }
@@ -632,8 +610,6 @@ struct TransactionsView: View {
 private struct TransactionCardView: View {
     let transaction: PPTransaction
     let onTap: () -> Void
-    let onDelete: () -> Void
-    let showDeleteButton: Bool
 
     @Environment(DataStore.self) private var dataStore
 
@@ -797,16 +773,6 @@ private struct TransactionCardView: View {
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(typeColor)
                 .accessibilityHidden(true)
-
-            if showDeleteButton {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.error.opacity(0.7))
-                }
-                .accessibilityLabel("削除")
-                .accessibilityHint("タップして削除確認画面を表示")
-            }
         }
     }
 }

@@ -49,12 +49,6 @@ final class ProjectDetailViewModel {
         dataStore.isLegacyTransactionEditingEnabled
     }
 
-    // MARK: - Actions
-
-    func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id, mutationSource: .userInitiated)
-    }
-
     func getCategoryName(for categoryId: String) -> String {
         dataStore.getCategory(id: categoryId)?.name ?? "未分類"
     }

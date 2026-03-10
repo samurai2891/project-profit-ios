@@ -140,6 +140,10 @@ struct RecurringFormView: View {
         frequency == .yearly ? .year : .month
     }
 
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(dataStore: dataStore)
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -879,104 +883,46 @@ struct RecurringFormView: View {
         let resolvedCounterpartyName = selectedCounterparty?.displayName
             ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
+        let resolvedReceiptImagePath: String?
+        if selectedImage != nil {
+            resolvedReceiptImagePath = imagePath
+        } else if imageRemoved {
+            resolvedReceiptImagePath = nil
+        } else {
+            resolvedReceiptImagePath = recurring?.receiptImagePath
+        }
+
+        let input = RecurringUpsertInput(
+            name: trimmedName,
+            type: type,
+            amount: amount,
+            categoryId: categoryId,
+            memo: memo,
+            allocationMode: allocationMode,
+            allocations: allocations.map { RecurringAllocationInput(projectId: $0.projectId, ratio: $0.ratio) },
+            frequency: frequency,
+            dayOfMonth: dayOfMonth,
+            monthOfYear: resolvedMonthOfYear,
+            isActive: isActive,
+            endDate: resolvedEndDate,
+            yearlyAmortizationMode: resolvedAmortizationMode,
+            receiptImagePath: resolvedReceiptImagePath,
+            paymentAccountId: resolvedPaymentAccountId,
+            transferToAccountId: resolvedTransferToAccountId,
+            taxDeductibleRate: resolvedTaxDeductibleRate,
+            counterpartyId: selectedCounterpartyId,
+            counterparty: resolvedCounterparty
+        )
 
         if let existing = recurring {
-            if selectedImage != nil {
+            if selectedImage != nil || imageRemoved {
                 if let oldPath = existing.receiptImagePath {
                     ReceiptImageStore.deleteImage(fileName: oldPath)
                 }
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: imagePath,
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterpartyId: .some(selectedCounterpartyId),
-                    counterparty: resolvedCounterparty
-                )
-            } else if imageRemoved {
-                if let oldPath = existing.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: .some(nil),
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterpartyId: .some(selectedCounterpartyId),
-                    counterparty: resolvedCounterparty
-                )
-            } else {
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterpartyId: .some(selectedCounterpartyId),
-                    counterparty: resolvedCounterparty
-                )
             }
+            recurringWorkflowUseCase.updateRecurring(id: existing.id, input: input)
         } else {
-            dataStore.addRecurring(
-                name: trimmedName,
-                type: type,
-                amount: amount,
-                categoryId: categoryId,
-                memo: memo,
-                allocationMode: allocationMode,
-                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                frequency: frequency,
-                dayOfMonth: dayOfMonth,
-                monthOfYear: resolvedMonthOfYear,
-                endDate: resolvedEndDate,
-                yearlyAmortizationMode: resolvedAmortizationMode,
-                receiptImagePath: imagePath,
-                paymentAccountId: resolvedPaymentAccountId,
-                transferToAccountId: resolvedTransferToAccountId,
-                taxDeductibleRate: resolvedTaxDeductibleRate,
-                counterpartyId: selectedCounterpartyId,
-                counterparty: resolvedCounterparty
-            )
+            recurringWorkflowUseCase.createRecurring(input: input)
         }
 
         dismiss()
