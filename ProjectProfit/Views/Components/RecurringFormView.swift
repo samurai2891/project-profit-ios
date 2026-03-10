@@ -47,6 +47,8 @@ struct RecurringFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
+    @State private var pendingDistributionPreview: DistributionTemplatePreview?
+    @State private var showDistributionTemplatePreview = false
 
     private var isEditMode: Bool { recurring != nil }
 
@@ -205,6 +207,20 @@ struct RecurringFormView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(validationMessage)
+            }
+            .alert(
+                "配賦テンプレートの適用確認",
+                isPresented: $showDistributionTemplatePreview,
+                presenting: pendingDistributionPreview
+            ) { preview in
+                Button("キャンセル", role: .cancel) {
+                    pendingDistributionPreview = nil
+                }
+                Button("適用する") {
+                    applyDistributionTemplatePreview(preview)
+                }
+            } message: { preview in
+                Text(distributionTemplatePreviewMessage(for: preview))
             }
             .sheet(isPresented: $showCamera) {
                 CameraView(image: $selectedImage)
@@ -513,7 +529,7 @@ struct RecurringFormView: View {
                     .pickerStyle(.menu)
 
                     Button("テンプレートを適用") {
-                        applySelectedDistributionTemplate()
+                        previewSelectedDistributionTemplate()
                     }
                     .disabled(selectedDistributionTemplateId == nil)
                 } else if !isLoadingDistributionTemplates {
@@ -707,7 +723,7 @@ struct RecurringFormView: View {
         }
     }
 
-    private func applySelectedDistributionTemplate() {
+    private func previewSelectedDistributionTemplate() {
         guard let selectedDistributionTemplateId,
               let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
         else {
@@ -716,24 +732,72 @@ struct RecurringFormView: View {
 
         let applier = DistributionTemplateApplicationUseCase()
         if applier.shouldUseDynamicEqualAll(for: rule) {
-            allocationMode = .equalAll
-            allocations = []
+            pendingDistributionPreview = DistributionTemplatePreview(
+                ruleName: rule.name,
+                allocationMode: .equalAll,
+                allocations: [],
+                warnings: []
+            )
+            showDistributionTemplatePreview = true
             distributionTemplateErrorMessage = nil
             return
         }
 
-        do {
-            let ratios = try applier.buildRatioAllocations(
-                rule: rule,
-                projects: dataStore.projects,
-                referenceDate: templateReferenceDate,
-                allocationPeriod: distributionTemplateAllocationPeriod
-            )
+        let preview = applier.previewAllocations(
+            rule: rule,
+            projects: dataStore.projects,
+            referenceDate: templateReferenceDate,
+            totalAmount: parsedAmount ?? 0,
+            allocationPeriod: distributionTemplateAllocationPeriod
+        )
+
+        guard !preview.allocations.isEmpty else {
+            pendingDistributionPreview = nil
+            distributionTemplateErrorMessage = preview.warnings.first ?? "配賦プレビューを生成できませんでした。"
+            return
+        }
+
+        pendingDistributionPreview = DistributionTemplatePreview(
+            ruleName: rule.name,
+            allocationMode: .manual,
+            allocations: preview.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+            warnings: preview.warnings
+        )
+        showDistributionTemplatePreview = true
+        distributionTemplateErrorMessage = nil
+    }
+
+    private func applyDistributionTemplatePreview(_ preview: DistributionTemplatePreview) {
+        switch preview.allocationMode {
+        case .equalAll:
+            allocationMode = .equalAll
+            allocations = []
+        case .manual:
             allocationMode = .manual
-            allocations = ratios.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
-            distributionTemplateErrorMessage = nil
-        } catch {
-            distributionTemplateErrorMessage = error.localizedDescription
+            allocations = preview.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+        }
+        pendingDistributionPreview = nil
+        distributionTemplateErrorMessage = nil
+    }
+
+    private func distributionTemplatePreviewMessage(for preview: DistributionTemplatePreview) -> String {
+        let header = "テンプレート: \(preview.ruleName)"
+        switch preview.allocationMode {
+        case .equalAll:
+            return [
+                header,
+                "配分方式を「全体（均等割）」に変更します。",
+                "この変更を適用しますか？"
+            ].joined(separator: "\n")
+        case .manual:
+            let projectNameById = Dictionary(uniqueKeysWithValues: dataStore.projects.map { ($0.id, $0.name) })
+            let allocationLines = preview.allocations.map { allocation in
+                let name = projectNameById[allocation.projectId] ?? "不明なプロジェクト"
+                return "・\(name): \(allocation.ratio)%"
+            }
+            let warningLines = preview.warnings.map { "注意: \($0)" }
+            return ([header, "以下の配分を設定します。"] + allocationLines + warningLines + ["この変更を適用しますか？"])
+                .joined(separator: "\n")
         }
     }
 
@@ -917,6 +981,13 @@ struct RecurringFormView: View {
 
         dismiss()
     }
+}
+
+private struct DistributionTemplatePreview {
+    let ruleName: String
+    let allocationMode: AllocationMode
+    let allocations: [(projectId: UUID, ratio: Int)]
+    let warnings: [String]
 }
 
 #Preview {

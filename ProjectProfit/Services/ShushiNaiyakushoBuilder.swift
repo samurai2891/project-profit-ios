@@ -4,6 +4,12 @@ import Foundation
 /// 白色申告の場合、青色と異なりフィールド構成がシンプル
 @MainActor
 enum ShushiNaiyakushoBuilder {
+    /// 白色申告向けに canonical projection から抽出した最小入力
+    struct WhiteReturnProjection: Sendable {
+        let postedRentTotal: Int
+
+        static let empty = WhiteReturnProjection(postedRentTotal: 0)
+    }
 
     /// 白色申告 収支内訳書用のEtaxFormを生成（canonical profile ベース）
     static func build(
@@ -14,16 +20,14 @@ enum ShushiNaiyakushoBuilder {
         taxYearProfile: TaxYearProfile? = nil,
         sensitivePayload: ProfileSensitivePayload? = nil,
         fixedAssets: [PPFixedAsset] = [],
-        journalLines: [PPJournalLine] = [],
-        journalEntries: [PPJournalEntry] = []
+        projection: WhiteReturnProjection = .empty
     ) -> EtaxForm {
         let fields = buildFields(
             fiscalYear: fiscalYear,
             profitLoss: profitLoss,
             accounts: accounts,
             fixedAssets: fixedAssets,
-            journalLines: journalLines,
-            journalEntries: journalEntries
+            projection: projection
         )
 
         var allFields = fields
@@ -50,8 +54,7 @@ enum ShushiNaiyakushoBuilder {
         profitLoss: ProfitLossReport,
         accounts: [PPAccount],
         fixedAssets: [PPFixedAsset],
-        journalLines: [PPJournalLine],
-        journalEntries: [PPJournalEntry]
+        projection: WhiteReturnProjection
     ) -> [EtaxField] {
         var fields: [EtaxField] = []
 
@@ -123,22 +126,12 @@ enum ShushiNaiyakushoBuilder {
         }
 
         // 付表: 地代家賃内訳
-        let rentAccountId = AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"
-        let postedEntryIds = Set(
-            journalEntries
-                .filter { $0.isPosted }
-                .map(\.id)
-        )
-        let rentLines = journalLines.filter { line in
-            line.accountId == rentAccountId && postedEntryIds.contains(line.entryId)
-        }
-        let rentTotal = rentLines.reduce(0) { $0 + $1.debit } - rentLines.reduce(0) { $0 + $1.credit }
-        if rentTotal > 0 {
+        if projection.postedRentTotal > 0 {
             fields.append(EtaxField(
                 id: "shushi_rent_breakdown",
                 fieldLabel: "地代家賃合計",
                 taxLine: .rentExpense,
-                value: rentTotal,
+                value: projection.postedRentTotal,
                 section: .deductions
             ))
         }

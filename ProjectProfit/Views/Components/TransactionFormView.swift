@@ -29,6 +29,8 @@ struct TransactionFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
+    @State private var pendingDistributionPreview: DistributionTemplatePreview?
+    @State private var showDistributionPreviewConfirmation = false
     // Phase 4C: 会計フィールド
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
@@ -106,6 +108,13 @@ struct TransactionFormView: View {
         return "\(businessId)-\(day)"
     }
 
+    private struct DistributionTemplatePreview {
+        let templateName: String
+        let allocations: [(projectId: UUID, ratio: Int)]
+        let warnings: [String]
+        let totalAllocatedAmount: Int
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -166,6 +175,21 @@ struct TransactionFormView: View {
                 Button("OK", role: .cancel) { saveError = nil }
             } message: {
                 Text(saveError ?? "保存に失敗しました")
+            }
+            .confirmationDialog(
+                "配賦テンプレートを適用",
+                isPresented: $showDistributionPreviewConfirmation,
+                titleVisibility: .visible,
+                presenting: pendingDistributionPreview
+            ) { _ in
+                Button("適用する") {
+                    confirmDistributionTemplatePreview()
+                }
+                Button("キャンセル", role: .cancel) {
+                    pendingDistributionPreview = nil
+                }
+            } message: { preview in
+                Text(distributionPreviewMessage(for: preview))
             }
             .navigationTitle(
                 isEditMode
@@ -844,18 +868,50 @@ struct TransactionFormView: View {
             return
         }
 
-        do {
-            let ratios = try DistributionTemplateApplicationUseCase().buildRatioAllocations(
-                rule: rule,
-                projects: dataStore.projects,
-                referenceDate: date,
-                allocationPeriod: .month
-            )
-            allocations = ratios.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
-            distributionTemplateErrorMessage = nil
-        } catch {
-            distributionTemplateErrorMessage = error.localizedDescription
+        let preview = DistributionTemplateApplicationUseCase().previewAllocations(
+            rule: rule,
+            projects: dataStore.projects,
+            referenceDate: date,
+            totalAmount: Int(amountText) ?? 0,
+            allocationPeriod: .month
+        )
+
+        guard !preview.allocations.isEmpty else {
+            pendingDistributionPreview = nil
+            distributionTemplateErrorMessage = preview.warnings.first ?? "配賦プレビューを生成できませんでした。"
+            return
         }
+
+        pendingDistributionPreview = DistributionTemplatePreview(
+            templateName: rule.name,
+            allocations: preview.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+            warnings: preview.warnings,
+            totalAllocatedAmount: preview.totalAllocatedAmount
+        )
+        showDistributionPreviewConfirmation = true
+        distributionTemplateErrorMessage = nil
+    }
+
+    private func confirmDistributionTemplatePreview() {
+        guard let preview = pendingDistributionPreview else { return }
+        allocations = preview.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+        pendingDistributionPreview = nil
+    }
+
+    private func distributionPreviewMessage(for preview: DistributionTemplatePreview) -> String {
+        if preview.allocations.isEmpty {
+            return "\(preview.templateName) の適用対象がありません。"
+        }
+
+        let rows = preview.allocations
+            .map { allocation in
+                let name = dataStore.getProject(id: allocation.projectId)?.name ?? "不明なプロジェクト"
+                return "・\(name): \(allocation.ratio)%"
+            }
+            .joined(separator: "\n")
+        let warnings = preview.warnings.map { "注意: \($0)" }.joined(separator: "\n")
+        let warningBlock = warnings.isEmpty ? "" : "\n\n\(warnings)"
+        return "\(preview.templateName) を適用します。\n\n\(rows)\n\n配賦合計: \(formatCurrency(preview.totalAllocatedAmount))\(warningBlock)"
     }
 
     private func applySelectedCounterpartyDefaults() {

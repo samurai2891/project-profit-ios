@@ -234,4 +234,97 @@ final class DistributionTemplateApplicationUseCaseTests: XCTestCase {
 
         XCTAssertFalse(useCase.isSupported(rule, allocationPeriod: .year))
     }
+
+    func testPreviewAllocationsReturnsRatiosAndAmountsWithTotalAmount() {
+        let useCase = DistributionTemplateApplicationUseCase()
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 4, day: 15))!
+        let projectA = PPProject(name: "Alpha")
+        let projectB = PPProject(name: "Beta")
+        let rule = DistributionRule(
+            businessId: UUID(),
+            name: "固定重みプレビュー",
+            scope: .selectedProjects,
+            basis: .fixedWeight,
+            weights: [
+                DistributionWeight(projectId: projectA.id, weight: 70),
+                DistributionWeight(projectId: projectB.id, weight: 30)
+            ],
+            roundingPolicy: .largestWeightAdjust,
+            effectiveFrom: referenceDate
+        )
+
+        let preview = useCase.previewAllocations(
+            rule: rule,
+            projects: [projectA, projectB],
+            referenceDate: referenceDate,
+            totalAmount: 10_000
+        )
+
+        XCTAssertTrue(preview.warnings.isEmpty)
+        XCTAssertEqual(preview.allocations.count, 2)
+        XCTAssertEqual(preview.totalAllocatedAmount, 10_000)
+
+        let ratioByProjectId = Dictionary(uniqueKeysWithValues: preview.allocations.map {
+            ($0.projectId, $0.ratio)
+        })
+        let amountByProjectId = Dictionary(uniqueKeysWithValues: preview.allocations.map {
+            ($0.projectId, $0.amount)
+        })
+        XCTAssertEqual(ratioByProjectId[projectA.id], 70)
+        XCTAssertEqual(ratioByProjectId[projectB.id], 30)
+        XCTAssertEqual(amountByProjectId[projectA.id], 7_000)
+        XCTAssertEqual(amountByProjectId[projectB.id], 3_000)
+        XCTAssertEqual(preview.allocations.map(\.amount).reduce(0, +), 10_000)
+    }
+
+    func testPreviewAllocationsReturnsWarningWhenRuleIsUnsupported() {
+        let useCase = DistributionTemplateApplicationUseCase()
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 4, day: 15))!
+        let rule = DistributionRule(
+            businessId: UUID(),
+            name: "未対応基準",
+            scope: .allProjects,
+            basis: .revenueRatio,
+            roundingPolicy: .lastProjectAdjust,
+            effectiveFrom: referenceDate
+        )
+
+        let preview = useCase.previewAllocations(
+            rule: rule,
+            projects: [PPProject(name: "Alpha")],
+            referenceDate: referenceDate,
+            totalAmount: 10_000
+        )
+
+        XCTAssertTrue(preview.allocations.isEmpty)
+        XCTAssertEqual(preview.totalAllocatedAmount, 0)
+        XCTAssertFalse(preview.warnings.isEmpty)
+        XCTAssertTrue(preview.warnings[0].contains("配賦基準"))
+    }
+
+    func testPreviewAllocationsReturnsWarningWhenTotalAmountIsInvalid() {
+        let useCase = DistributionTemplateApplicationUseCase()
+        let referenceDate = calendar.date(from: DateComponents(year: 2026, month: 4, day: 15))!
+        let project = PPProject(name: "Alpha")
+        let rule = DistributionRule(
+            businessId: UUID(),
+            name: "均等配賦",
+            scope: .selectedProjects,
+            basis: .equal,
+            weights: [DistributionWeight(projectId: project.id, weight: 1)],
+            roundingPolicy: .lastProjectAdjust,
+            effectiveFrom: referenceDate
+        )
+
+        let preview = useCase.previewAllocations(
+            rule: rule,
+            projects: [project],
+            referenceDate: referenceDate,
+            totalAmount: 0
+        )
+
+        XCTAssertTrue(preview.allocations.isEmpty)
+        XCTAssertEqual(preview.totalAllocatedAmount, 0)
+        XCTAssertEqual(preview.warnings, ["プレビュー対象金額は1以上を指定してください。"])
+    }
 }

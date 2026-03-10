@@ -23,6 +23,7 @@ struct AccountingHomeView: View {
     private func accountingContent(viewModel: AccountingHomeViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                legacyShellNotice
                 statusCard(viewModel: viewModel)
                 navigationLinks
             }
@@ -30,6 +31,28 @@ struct AccountingHomeView: View {
             .padding(.vertical, 12)
         }
         .onAppear { viewModel.refresh() }
+    }
+
+    // MARK: - Legacy Notice
+
+    private var legacyShellNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(AppColors.warning)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("補助導線（旧会計シェル）")
+                    .font(.subheadline.weight(.semibold))
+                Text("この画面は補助的な旧導線です。通常はメインの申告ワークフロー画面から操作してください。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Status Card

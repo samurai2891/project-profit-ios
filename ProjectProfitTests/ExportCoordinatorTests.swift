@@ -94,6 +94,30 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportFormat.xtx.label, "XTX")
     }
 
+    func testSupportedFormatMatrixMatchesCurrentUIFlow() {
+        XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.etax.supportedFormats, [.csv, .xtx])
+    }
+
+    func testRequiresPreflightBoundaries() {
+        XCTAssertTrue(ExportCoordinator.ExportTarget.profitLoss.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.balanceSheet.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.trialBalance.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.journal.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.ledger.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssets.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.etax.requiresPreflight)
+        XCTAssertFalse(ExportCoordinator.ExportTarget.transactions.requiresPreflight)
+        XCTAssertFalse(ExportCoordinator.ExportTarget.subLedger.requiresPreflight)
+    }
+
     func testExportBlocksWhenPreflightFails() throws {
         seedTaxYearProfile(year: 2025, state: .softClose)
 
@@ -112,6 +136,38 @@ final class ExportCoordinatorTests: XCTestCase {
             }
             XCTAssertEqual(messages, ["帳票出力は税務締め以降でのみ実行できます"])
         }
+    }
+
+    func testUnsupportedFormatReturnsUnsupportedEvenWhenPreflightWouldFail() throws {
+        // preflight が失敗する年度でも、未対応フォーマットは先に unsupported として扱う
+        seedTaxYearProfile(year: 2025, state: .softClose)
+        assertUnsupportedFormat(target: .trialBalance, format: .xtx, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .ledger, format: .xtx, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .etax, format: .pdf, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .transactions, format: .pdf, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .subLedger, format: .pdf, fiscalYear: 2025)
+    }
+
+    func testSubLedgerExportDoesNotRequirePreflight() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        let url = try ExportCoordinator.export(
+            target: .subLedger,
+            format: .csv,
+            fiscalYear: 2025,
+            dataStore: dataStore,
+            subLedgerOptions: .init(
+                type: .cashBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("date,accountCode,accountName"))
     }
 
     func testExportSucceedsAfterTaxClose() throws {
@@ -205,5 +261,27 @@ final class ExportCoordinatorTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    private func assertUnsupportedFormat(
+        target: ExportCoordinator.ExportTarget,
+        format: ExportCoordinator.ExportFormat,
+        fiscalYear: Int
+    ) {
+        XCTAssertThrowsError(
+            try ExportCoordinator.export(
+                target: target,
+                format: format,
+                fiscalYear: fiscalYear,
+                dataStore: dataStore
+            )
+        ) { error in
+            guard let exportError = error as? ExportCoordinator.ExportError,
+                  case .unsupportedFormat(let actualTarget, let actualFormat) = exportError else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertEqual(actualTarget, target)
+            XCTAssertEqual(actualFormat, format)
+        }
     }
 }

@@ -12,6 +12,19 @@ project_path="${RELEASE_QUALITY_PROJECT:-ProjectProfit.xcodeproj}"
 scheme_name="${RELEASE_QUALITY_SCHEME:-ProjectProfit}"
 derived_data_path="${RELEASE_QUALITY_DERIVED_DATA_PATH:-}"
 update_golden="${RELEASE_QUALITY_UPDATE_GOLDEN:-0}"
+evidence_dir="${RELEASE_QUALITY_EVIDENCE_DIR:-}"
+
+to_repo_relative_path() {
+  local target_path="$1"
+  case "$target_path" in
+    "$REPO_ROOT"/*)
+      printf '%s\n' "${target_path#"$REPO_ROOT"/}"
+      ;;
+    *)
+      printf '%s\n' "$target_path"
+      ;;
+  esac
+}
 
 if [[ -z "$lane" ]]; then
   echo "status=error"
@@ -99,6 +112,38 @@ grep -Eo 'performance\.[A-Za-z0-9_]+\.seconds=[0-9]+(\.[0-9]+)?' "$log_path" > "
   fi
 } > "$summary_path"
 
+evidence_latest_path=""
+evidence_lane_path=""
+if [[ -n "$evidence_dir" ]]; then
+  mkdir -p "$evidence_dir"
+
+  generated_at="$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S %z')"
+  summary_rel="$(to_repo_relative_path "$summary_path")"
+  log_rel="$(to_repo_relative_path "$log_path")"
+  xcresult_rel="$(to_repo_relative_path "$result_bundle_path")"
+  metrics_rel="$(to_repo_relative_path "$metrics_path")"
+
+  evidence_latest_path="$evidence_dir/latest.md"
+  evidence_lane_path="$evidence_dir/${lane}.md"
+
+  {
+    echo "# Release Quality Evidence"
+    echo ""
+    echo "- generated_at: $generated_at"
+    echo "- lane: $lane"
+    echo "- status: $status"
+    echo "- reason: $reason"
+    echo "- simulator_device: $simulator_device"
+    echo "- test_summary: $test_summary"
+    echo "- summary_path: $summary_rel"
+    echo "- log_path: $log_rel"
+    echo "- xcresult_path: $xcresult_rel"
+    echo "- metrics_path: $metrics_rel"
+  } > "$evidence_latest_path"
+
+  cp "$evidence_latest_path" "$evidence_lane_path"
+fi
+
 echo "status=$status"
 echo "reason=$reason"
 echo "test_summary=$test_summary"
@@ -106,6 +151,10 @@ echo "log_path=$log_path"
 echo "xcresult_path=$result_bundle_path"
 echo "summary_path=$summary_path"
 echo "metrics_path=$metrics_path"
+if [[ -n "$evidence_latest_path" ]]; then
+  echo "evidence_latest_path=$evidence_latest_path"
+  echo "evidence_lane_path=$evidence_lane_path"
+fi
 
 if [[ "$exit_code" -ne 0 ]]; then
   exit "$exit_code"

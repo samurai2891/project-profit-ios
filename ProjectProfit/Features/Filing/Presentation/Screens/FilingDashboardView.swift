@@ -131,12 +131,32 @@ struct FilingDashboardView: View {
                 .font(.subheadline.weight(.semibold))
 
             NavigationLink {
-                AccountingHomeView()
+                JournalBrowserView()
             } label: {
                 workflowRow(
-                    icon: "doc.text.magnifyingglass",
-                    title: "帳簿・決算書",
-                    subtitle: "仕訳帳・元帳・試算表・決算書の確認"
+                    icon: "book.closed",
+                    title: "仕訳ブラウザ",
+                    subtitle: "Canonical仕訳の検索・確認"
+                )
+            }
+
+            NavigationLink {
+                ReportView()
+            } label: {
+                workflowRow(
+                    icon: "chart.bar.doc.horizontal",
+                    title: "年次レポート",
+                    subtitle: "損益・月別推移・カテゴリ分析"
+                )
+            }
+
+            NavigationLink {
+                ClosingEntryView()
+            } label: {
+                workflowRow(
+                    icon: "doc.badge.gearshape",
+                    title: "決算仕訳",
+                    subtitle: "締め処理前の最終確認と仕訳生成"
                 )
             }
 

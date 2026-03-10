@@ -84,6 +84,10 @@ enum FormEngine {
                 journalLines: projected.lines,
                 startMonth: startMonth
             )
+            let projection = makeWhiteReturnProjection(
+                journalEntries: projected.entries,
+                journalLines: projected.lines
+            )
             return ShushiNaiyakushoBuilder.build(
                 fiscalYear: fiscalYear,
                 profitLoss: pl,
@@ -92,8 +96,7 @@ enum FormEngine {
                 taxYearProfile: canonical?.taxYear,
                 sensitivePayload: canonical?.sensitive,
                 fixedAssets: dataStore.fixedAssets,
-                journalLines: projected.lines,
-                journalEntries: projected.entries
+                projection: projection
             )
         }
     }
@@ -105,5 +108,20 @@ enum FormEngine {
         case .blueCashBasis: .blueCashBasis
         case .white: .whiteReturn
         }
+    }
+
+    private static func makeWhiteReturnProjection(
+        journalEntries: [PPJournalEntry],
+        journalLines: [PPJournalLine]
+    ) -> ShushiNaiyakushoBuilder.WhiteReturnProjection {
+        let rentAccountId = AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"
+        let postedEntryIds = Set(journalEntries.lazy.filter(\.isPosted).map(\.id))
+        let postedRentTotal = journalLines.reduce(into: 0) { partialResult, line in
+            guard line.accountId == rentAccountId, postedEntryIds.contains(line.entryId) else {
+                return
+            }
+            partialResult += line.debit - line.credit
+        }
+        return .init(postedRentTotal: postedRentTotal)
     }
 }

@@ -93,10 +93,10 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                ReportView()
+                FilingDashboardView()
             }
             .tabItem {
-                Label("レポート", systemImage: "chart.bar.doc.horizontal.fill")
+                Label("確定申告", systemImage: "doc.text.fill")
             }
 
             NavigationStack {

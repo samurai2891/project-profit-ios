@@ -1,5 +1,33 @@
 import Foundation
 
+public struct DistributionApplicationPreview: Sendable, Equatable {
+    public struct Allocation: Sendable, Equatable {
+        public let projectId: UUID
+        public let ratio: Int
+        public let amount: Int
+
+        public init(projectId: UUID, ratio: Int, amount: Int) {
+            self.projectId = projectId
+            self.ratio = ratio
+            self.amount = amount
+        }
+    }
+
+    public let allocations: [Allocation]
+    public let totalAllocatedAmount: Int
+    public let warnings: [String]
+
+    public init(
+        allocations: [Allocation],
+        totalAllocatedAmount: Int,
+        warnings: [String]
+    ) {
+        self.allocations = allocations
+        self.totalAllocatedAmount = totalAllocatedAmount
+        self.warnings = warnings
+    }
+}
+
 struct DistributionTemplateApplicationUseCase {
     enum AllocationPeriod: Sendable {
         case month
@@ -81,6 +109,63 @@ struct DistributionTemplateApplicationUseCase {
         case .revenueRatio, .expenseRatio, .customFormula:
             throw ApplicationError.unsupportedBasis(rule.basis)
         }
+    }
+
+    func previewAllocations(
+        rule: DistributionRule,
+        projects: [PPProject],
+        referenceDate: Date,
+        totalAmount: Int = 100,
+        allocationPeriod: AllocationPeriod = .month
+    ) -> DistributionApplicationPreview {
+        var warnings: [String] = []
+        guard totalAmount > 0 else {
+            warnings.append("プレビュー対象金額は1以上を指定してください。")
+            return DistributionApplicationPreview(
+                allocations: [],
+                totalAllocatedAmount: 0,
+                warnings: warnings
+            )
+        }
+
+        let ratios: [(projectId: UUID, ratio: Int)]
+        do {
+            ratios = try buildRatioAllocations(
+                rule: rule,
+                projects: projects,
+                referenceDate: referenceDate,
+                allocationPeriod: allocationPeriod
+            )
+        } catch {
+            warnings.append(error.localizedDescription)
+            return DistributionApplicationPreview(
+                allocations: [],
+                totalAllocatedAmount: 0,
+                warnings: warnings
+            )
+        }
+
+        let ratioSum = ratios.map(\.ratio).reduce(0, +)
+        if ratioSum != 100 {
+            warnings.append("配賦比率の合計が100%ではありません（現在: \(ratioSum)%）。")
+        }
+
+        let previewAllocations = buildAmountPreviewAllocations(
+            ratios: ratios,
+            totalAmount: totalAmount,
+            roundingPolicy: rule.roundingPolicy
+        )
+        let totalAllocatedAmount = previewAllocations.map(\.amount).reduce(0, +)
+
+        if totalAllocatedAmount != totalAmount {
+            warnings.append("配賦金額の合計が入力金額と一致しません。")
+        }
+
+        return DistributionApplicationPreview(
+            allocations: previewAllocations,
+            totalAllocatedAmount: totalAllocatedAmount,
+            warnings: warnings
+        )
     }
 
     private func unsupportedReason(
@@ -168,6 +253,34 @@ struct DistributionTemplateApplicationUseCase {
                 startDate: project.startDate,
                 completedAt: project.effectiveEndDate,
                 year: year
+            )
+        }
+    }
+
+    private func buildAmountPreviewAllocations(
+        ratios: [(projectId: UUID, ratio: Int)],
+        totalAmount: Int,
+        roundingPolicy: RoundingPolicy
+    ) -> [DistributionApplicationPreview.Allocation] {
+        guard !ratios.isEmpty else { return [] }
+
+        let weights = ratios.map { ratio in
+            DistributionWeight(projectId: ratio.projectId, weight: Decimal(ratio.ratio))
+        }
+        let weightedAllocations = AllocationCalculator.weightedSplit(
+            totalAmount: Decimal(totalAmount),
+            weights: weights,
+            roundingPolicy: roundingPolicy
+        )
+        let amountByProjectId = Dictionary(uniqueKeysWithValues: weightedAllocations.map {
+            ($0.projectId, NSDecimalNumber(decimal: $0.amount).intValue)
+        })
+
+        return ratios.map { ratio in
+            DistributionApplicationPreview.Allocation(
+                projectId: ratio.projectId,
+                ratio: ratio.ratio,
+                amount: amountByProjectId[ratio.projectId] ?? 0
             )
         }
     }

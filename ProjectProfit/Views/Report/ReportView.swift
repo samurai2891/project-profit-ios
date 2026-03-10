@@ -1,37 +1,15 @@
 import SwiftUI
 
-enum ReportSegment: String, CaseIterable {
-    case annual = "年次レポート"
-    case taxFiling = "確定申告"
-}
-
 struct ReportView: View {
     @Environment(DataStore.self) private var dataStore
     @State private var viewModel: ReportViewModel?
-    @State private var selectedSegment: ReportSegment = .annual
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("レポート種別", selection: $selectedSegment) {
-                ForEach(ReportSegment.allCases, id: \.self) { segment in
-                    Text(segment.rawValue).tag(segment)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-
-            Group {
-                switch selectedSegment {
-                case .annual:
-                    if let viewModel {
-                        reportContent(viewModel: viewModel)
-                    } else {
-                        ProgressView()
-                    }
-                case .taxFiling:
-                    FilingDashboardView()
-                }
+        Group {
+            if let viewModel {
+                reportContent(viewModel: viewModel)
+            } else {
+                ProgressView()
             }
         }
         .task {

@@ -61,6 +61,21 @@ enum ExportCoordinator {
             }
         }
 
+        /// 現在のアプリ導線で許可する target/format 組み合わせ。
+        /// ExportMenuButton と EtaxExportViewModel の実使用範囲を正本として管理する。
+        var supportedFormats: Set<ExportFormat> {
+            switch self {
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets:
+                return [.csv, .pdf]
+            case .transactions, .subLedger:
+                return [.csv]
+            case .etax:
+                return [.csv, .xtx]
+            }
+        }
+
+        /// 申告前チェックが必要な出力だけ true。
+        /// 汎用CSV（取引履歴/補助簿）は日常運用で使うため preflight を要求しない。
         var requiresPreflight: Bool {
             switch self {
             case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax:
@@ -141,6 +156,10 @@ enum ExportCoordinator {
         subLedgerOptions: SubLedgerExportOptions? = nil,
         etaxOptions: EtaxExportOptions? = nil
     ) throws -> URL {
+        guard target.supportedFormats.contains(format) else {
+            throw ExportError.unsupportedFormat(target, format)
+        }
+
         if target.requiresPreflight {
             try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
         }
@@ -303,13 +322,6 @@ enum ExportCoordinator {
                 fiscalYear: fiscalYear
             ))
 
-        case (.profitLoss, .xtx),
-             (.balanceSheet, .xtx),
-             (.trialBalance, .xtx),
-             (.journal, .xtx),
-             (.ledger, .xtx):
-            throw ExportError.unsupportedFormat(target, format)
-
         // MARK: Transactions
         case (.transactions, .csv):
             guard let opts = transactionOptions else {
@@ -320,9 +332,6 @@ enum ExportCoordinator {
                 getCategory: { dataStore.getCategory(id: $0) },
                 getProject: { dataStore.getProject(id: $0) }
             ))
-
-        case (.transactions, _):
-            throw ExportError.unsupportedFormat(target, format)
 
         // MARK: Sub Ledger
         case (.subLedger, .csv):
@@ -336,9 +345,6 @@ enum ExportCoordinator {
                 accountFilter: opts.accountFilter,
                 counterpartyFilter: opts.counterpartyFilter
             ))
-
-        case (.subLedger, _):
-            throw ExportError.unsupportedFormat(target, format)
 
         // MARK: e-Tax
         case (.etax, .xtx):
@@ -362,9 +368,6 @@ enum ExportCoordinator {
             case .failure(let error):
                 throw ExportError.etaxGenerationFailed(error.description)
             }
-
-        case (.etax, _):
-            throw ExportError.unsupportedFormat(target, format)
 
         // MARK: Fixed Assets
         case (.fixedAssets, .csv):
@@ -398,7 +401,7 @@ enum ExportCoordinator {
                 }
             ))
 
-        case (.fixedAssets, .xtx):
+        default:
             throw ExportError.unsupportedFormat(target, format)
         }
     }

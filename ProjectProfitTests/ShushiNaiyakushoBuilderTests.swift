@@ -186,4 +186,26 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
         XCTAssertEqual(insuranceField?.taxLine, .insuranceExpense)
         XCTAssertEqual(insuranceField?.value.numberValue, 90_000)
     }
+
+    func testBuildIncludesRentBreakdownFromCanonicalProjection() {
+        let pl = ProfitLossReport(
+            fiscalYear: 2025,
+            generatedAt: Date(),
+            revenueItems: [],
+            expenseItems: []
+        )
+        let projection = ShushiNaiyakushoBuilder.WhiteReturnProjection(postedRentTotal: 240_000)
+
+        let form = ShushiNaiyakushoBuilder.build(
+            fiscalYear: 2025,
+            profitLoss: pl,
+            accounts: dataStore.accounts,
+            projection: projection
+        )
+
+        let rentField = form.fields.first { $0.id == "shushi_rent_breakdown" }
+        XCTAssertNotNil(rentField)
+        XCTAssertEqual(rentField?.taxLine, .rentExpense)
+        XCTAssertEqual(rentField?.value.numberValue, 240_000)
+    }
 }
