@@ -94,6 +94,10 @@ class DataStore {
         PostingIntakeUseCase(dataStore: self)
     }
 
+    private var projectWorkflowUseCase: ProjectWorkflowUseCase {
+        ProjectWorkflowUseCase(dataStore: self)
+    }
+
     private var bundledTaxYearPackProvider: BundledTaxYearPackProvider {
         BundledTaxYearPackProvider(bundle: .main)
     }
@@ -1001,6 +1005,76 @@ class DataStore {
         }
     }
 
+    func saveApprovedPostingSync(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocationAmounts: [Allocation],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) -> Result<CanonicalJournalEntry, AppError> {
+        let allocationRatios = allocationAmounts.map { allocation in
+            (projectId: allocation.projectId, ratio: allocation.ratio)
+        }
+        let result = buildCanonicalPostingSync(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocationRatios,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            source: candidateSource
+        )
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        switch result {
+        case .success(let builtPosting):
+            posting = builtPosting
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let normalizedAllocationAmounts = allocationAmounts.filter { $0.amount > 0 }
+
+        do {
+            let actor = candidateSource == .importFile ? "user" : "system"
+            let journal = try saveApprovedPostingSynchronously(
+                posting,
+                allocationAmounts: normalizedAllocationAmounts,
+                actor: actor
+            )
+            lastError = nil
+            return .success(journal)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
     private func saveApprovedPosting(
         type: TransactionType,
         amount: Int,
@@ -1112,6 +1186,63 @@ class DataStore {
                     debitAccountId: line.debitAccountId,
                     creditAccountId: line.creditAccountId,
                     amount: Decimal(allocation.amount),
+                    taxCodeId: line.taxCodeId,
+                    legalReportLineId: line.legalReportLineId,
+                    projectAllocationId: allocation.projectId,
+                    memo: line.memo,
+                    evidenceLineReferenceId: line.evidenceLineReferenceId,
+                    withholdingTaxCodeId: line.withholdingTaxCodeId,
+                    withholdingTaxAmount: line.withholdingTaxAmount
+                )
+            }
+        }
+
+        guard !expandedLines.isEmpty else {
+            return candidate
+        }
+        return candidate.updated(proposedLines: expandedLines)
+    }
+
+    func candidateWithProjectAllocations(
+        _ candidate: PostingCandidate,
+        allocationAmounts: [Allocation]
+    ) -> PostingCandidate {
+        let normalizedAllocations = allocationAmounts.filter { $0.amount > 0 }
+        guard !normalizedAllocations.isEmpty else {
+            return candidate
+        }
+
+        let expandedLines = candidate.proposedLines.flatMap { line -> [PostingCandidateLine] in
+            if normalizedAllocations.count == 1, let allocation = normalizedAllocations.first {
+                return [line.updated(projectAllocationId: .some(allocation.projectId))]
+            }
+
+            let lineAmount = NSDecimalNumber(decimal: line.amount).intValue
+            let totalAllocationAmount = normalizedAllocations.reduce(0) { partialResult, allocation in
+                partialResult + allocation.amount
+            }
+            guard lineAmount > 0, totalAllocationAmount > 0 else {
+                return []
+            }
+
+            var distributedSoFar = 0
+            return normalizedAllocations.enumerated().compactMap { index, allocation in
+                let splitAmount: Int
+                if index == normalizedAllocations.count - 1 {
+                    splitAmount = lineAmount - distributedSoFar
+                } else {
+                    splitAmount = lineAmount * allocation.amount / totalAllocationAmount
+                    distributedSoFar += splitAmount
+                }
+
+                guard splitAmount > 0 else {
+                    return nil
+                }
+
+                return PostingCandidateLine(
+                    debitAccountId: line.debitAccountId,
+                    creditAccountId: line.creditAccountId,
+                    amount: Decimal(splitAmount),
                     taxCodeId: line.taxCodeId,
                     legalReportLineId: line.legalReportLineId,
                     projectAllocationId: allocation.projectId,
@@ -1387,7 +1518,7 @@ class DataStore {
         }
     }
 
-    private func refreshProjects() {
+    func refreshProjects() {
         do {
             let descriptor = FetchDescriptor<PPProject>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
             projects = try modelContext.fetch(descriptor)
@@ -1397,7 +1528,7 @@ class DataStore {
         }
     }
 
-    private func refreshTransactions() {
+    func refreshTransactions() {
         do {
             let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
             allTransactions = try modelContext.fetch(descriptor)
@@ -1417,7 +1548,7 @@ class DataStore {
         }
     }
 
-    private func refreshRecurring() {
+    func refreshRecurring() {
         do {
             let descriptor = FetchDescriptor<PPRecurringTransaction>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
             recurringTransactions = try modelContext.fetch(descriptor)
@@ -1490,101 +1621,62 @@ class DataStore {
 
     @discardableResult
     func addProject(name: String, description: String, startDate: Date? = nil, plannedEndDate: Date? = nil) -> PPProject {
-        let safePlannedEndDate: Date? = {
-            guard let start = startDate, let planned = plannedEndDate else { return plannedEndDate }
-            let calendar = Calendar.current
-            return calendar.startOfDay(for: start) > calendar.startOfDay(for: planned) ? nil : plannedEndDate
-        }()
-        let project = PPProject(name: name, projectDescription: description, startDate: startDate, plannedEndDate: safePlannedEndDate)
-        modelContext.insert(project)
-        save()
-        refreshProjects()
-        reprocessEqualAllCurrentPeriodTransactions()
-        refreshTransactions()
-        return project
+        projectWorkflowUseCase.createProject(
+            input: ProjectUpsertInput(
+                name: name,
+                description: description,
+                status: .active,
+                startDate: startDate,
+                completedAt: nil,
+                plannedEndDate: plannedEndDate
+            )
+        )
     }
 
     func updateProject(id: UUID, name: String? = nil, description: String? = nil, status: ProjectStatus? = nil, startDate: Date?? = nil, completedAt: Date?? = nil, plannedEndDate: Date?? = nil) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
-        if let name { project.name = name }
-        if let description { project.projectDescription = description }
 
-        let previousStatus = project.status
-        let previousCompletedAt = project.completedAt
-        let previousStartDate = project.startDate
-        let previousPlannedEndDate = project.plannedEndDate
-
-        if let status { project.status = status }
-
-        // startDateの処理: 明示的に指定された場合はそれを使用
-        if let startDate {
-            project.startDate = startDate
-        }
-
-        // completedAtの処理: 明示的に指定された場合はそれを使用、そうでなければ自動管理
-        if let completedAt {
-            // 明示的に指定された（nilも含む）
-            project.completedAt = completedAt
-        } else {
-            // 指定されていない場合、ステータスに基づいて自動管理
-            if project.status == .completed && project.completedAt == nil {
-                project.completedAt = Date()
+        let resolvedStatus = status ?? project.status
+        let resolvedStartDate: Date? = {
+            if let startDate {
+                return startDate
             }
-            if project.status != .completed {
-                project.completedAt = nil
-            }
-        }
+            return project.startDate
+        }()
 
-        // plannedEndDateの処理
-        if let plannedEndDate {
-            project.plannedEndDate = plannedEndDate
-        }
-
-        // 防御的ガード: startDate > completedAt の場合は completedAt をクリア
-        if let currentStart = project.startDate, let currentCompleted = project.completedAt {
-            let calendar = Calendar.current
-            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentCompleted) {
-                project.completedAt = nil
+        let resolvedCompletedAt: Date? = {
+            if let completedAt {
+                return completedAt
             }
-        }
-        // 防御的ガード: startDate > plannedEndDate の場合は plannedEndDate をクリア
-        if let currentStart = project.startDate, let currentPlanned = project.plannedEndDate {
-            let calendar = Calendar.current
-            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentPlanned) {
-                project.plannedEndDate = nil
+            if resolvedStatus == .completed {
+                return project.completedAt ?? Date()
             }
-        }
+            return nil
+        }()
 
-        project.updatedAt = Date()
-        save()
-        refreshProjects()
-
-        // completedAt、startDate、またはplannedEndDateが変更された場合の処理
-        let completedAtChanged = project.completedAt != previousCompletedAt
-        let startDateChanged = project.startDate != previousStartDate
-        let plannedEndDateChanged = project.plannedEndDate != previousPlannedEndDate
-        let statusChangedAwayFromCompleted = previousStatus == .completed && project.status != .completed
-        if completedAtChanged || startDateChanged || plannedEndDateChanged {
-            if project.startDate != nil || project.effectiveEndDate != nil {
-                recalculateAllocationsForProject(projectId: id)
-            } else if statusChangedAwayFromCompleted {
-                // 両方の日付がクリアされ、かつ完了→非完了へ遷移した場合
-                reverseCompletionAllocations(projectId: id)
-                // 他のプロジェクトの日割りを再適用
-                recalculateAllPartialPeriodProjects()
-            } else if previousStartDate != nil || previousCompletedAt != nil || previousPlannedEndDate != nil {
-                // 日割り対象だったが全日付がクリアされた場合、比率ベースに復元
-                reverseCompletionAllocations(projectId: id)
-                // 他のプロジェクトの日割りを再適用
-                recalculateAllPartialPeriodProjects()
+        let resolvedPlannedEndDate: Date? = {
+            if let plannedEndDate {
+                return plannedEndDate
             }
-            refreshTransactions()
-        }
+            return project.plannedEndDate
+        }()
+
+        projectWorkflowUseCase.updateProject(
+            id: id,
+            input: ProjectUpsertInput(
+                name: name ?? project.name,
+                description: description ?? project.projectDescription,
+                status: resolvedStatus,
+                startDate: resolvedStartDate,
+                completedAt: resolvedCompletedAt,
+                plannedEndDate: resolvedPlannedEndDate
+            )
+        )
     }
 
     // MARK: - Archive / Unarchive
 
-    private func projectHasHistoricalReferences(_ id: UUID) -> Bool {
+    func projectHasHistoricalReferences(_ id: UUID) -> Bool {
         if transactions.contains(where: { transaction in
             transaction.allocations.contains { $0.projectId == id }
         }) {
@@ -1654,149 +1746,11 @@ class DataStore {
 
     /// H9: トランザクション参照ありならアーカイブ、なしならハードデリート
     func deleteProject(id: UUID) {
-        guard let project = projects.first(where: { $0.id == id }) else { return }
-
-        // トランザクション参照があるか確認
-        let hasTransactionReferences = projectHasHistoricalReferences(id)
-
-        // 参照がある場合はアーカイブに委譲
-        if hasTransactionReferences {
-            archiveProject(id: id)
-            return
-        }
-
-        // 参照なし: 従来通りハードデリート
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        // Remove allocations from recurring
-        for recurring in recurringTransactions {
-            let filtered = recurring.allocations.filter { $0.projectId != id }
-            if filtered.count != recurring.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = recurring.receiptImagePath {
-                        imagesToDelete.append(imagePath)
-                    }
-                    modelContext.delete(recurring)
-                } else {
-                    recurring.allocations = redistributeAllocations(
-                        totalAmount: recurring.amount,
-                        remainingAllocations: filtered
-                    )
-                }
-            }
-        }
-
-        modelContext.delete(project)
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshProjects()
-        refreshTransactions()
-        refreshRecurring()
-        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
-        reprocessEqualAllCurrentPeriodTransactions()
-        refreshTransactions()
+        projectWorkflowUseCase.deleteProject(id: id)
     }
 
     func deleteProjects(ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-
-        // H9: トランザクション参照があるプロジェクトはアーカイブ、ないものはハードデリート
-        var idsToArchive = Set<UUID>()
-        var idsToHardDelete = Set<UUID>()
-        for id in ids {
-            let hasReferences = projectHasHistoricalReferences(id)
-            if hasReferences {
-                idsToArchive.insert(id)
-            } else {
-                idsToHardDelete.insert(id)
-            }
-        }
-
-        // バッチアーカイブ（save/refreshを1回にまとめる）
-        if !idsToArchive.isEmpty {
-            let now = Date()
-            for id in idsToArchive {
-                guard let project = projects.first(where: { $0.id == id }) else { continue }
-                project.isArchived = true
-                project.updatedAt = now
-            }
-            // H10+H9: アーカイブ対象を参照する equalAll トランザクションの手動編集フラグをクリア
-            for transaction in transactions {
-                guard transaction.isManuallyEdited == true,
-                      transaction.allocations.contains(where: { idsToArchive.contains($0.projectId) }),
-                      let recurringId = transaction.recurringId,
-                      let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-                      recurring.allocationMode == .equalAll
-                else { continue }
-                transaction.isManuallyEdited = nil
-            }
-            for recurring in recurringTransactions {
-                let filtered = recurring.allocations.filter { !idsToArchive.contains($0.projectId) }
-                if filtered.count != recurring.allocations.count {
-                    if filtered.isEmpty && recurring.allocationMode == .manual {
-                        for transaction in transactions where transaction.recurringId == recurring.id {
-                            transaction.recurringId = nil
-                            transaction.updatedAt = now
-                        }
-                        modelContext.delete(recurring)
-                    } else if !filtered.isEmpty {
-                        recurring.allocations = redistributeAllocations(
-                            totalAmount: recurring.amount,
-                            remainingAllocations: filtered
-                        )
-                    }
-                }
-            }
-            save()
-            refreshProjects()
-            refreshRecurring()
-            reprocessEqualAllCurrentPeriodTransactions()
-            refreshTransactions()
-        }
-
-        guard !idsToHardDelete.isEmpty else { return }
-
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        for recurring in recurringTransactions {
-            let filtered = recurring.allocations.filter { !idsToHardDelete.contains($0.projectId) }
-            if filtered.count != recurring.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = recurring.receiptImagePath {
-                        imagesToDelete.append(imagePath)
-                    }
-                    modelContext.delete(recurring)
-                } else {
-                    recurring.allocations = redistributeAllocations(
-                        totalAmount: recurring.amount,
-                        remainingAllocations: filtered
-                    )
-                }
-            }
-        }
-
-        for id in idsToHardDelete {
-            if let project = projects.first(where: { $0.id == id }) {
-                modelContext.delete(project)
-            }
-        }
-
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshProjects()
-        refreshTransactions()
-        refreshRecurring()
-        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
-        reprocessEqualAllCurrentPeriodTransactions()
-        refreshTransactions()
+        projectWorkflowUseCase.deleteProjects(ids: ids)
     }
 
     func getProject(id: UUID) -> PPProject? {
@@ -2450,7 +2404,7 @@ class DataStore {
     // MARK: - Pro-Rata Reallocation
 
     /// equalAll定期取引の今期分トランザクションを、現在のアクティブプロジェクト一覧で再分配する
-    private func reprocessEqualAllCurrentPeriodTransactions() {
+    func reprocessEqualAllCurrentPeriodTransactions() {
         let calendar = Calendar.current
         let today = todayDate()
         let todayComps = calendar.dateComponents([.year, .month], from: today)
@@ -2744,6 +2698,93 @@ class DataStore {
             }.map { $0.frequency == .yearly } ?? false
             recalculateAllocationsForTransaction(transaction, isYearly: isYearly)
         }
+
+        guard let businessId = businessProfile?.id else {
+            save()
+            return
+        }
+
+        let recurringJournals = canonicalJournalEntries().filter { $0.entryType == .recurring }
+        let candidateIds = Set(recurringJournals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        for recurringJournal in recurringJournals {
+            guard let candidateId = recurringJournal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot,
+                  let recurringId = snapshot.recurringId,
+                  let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
+                  candidate.proposedLines.contains(where: { $0.projectAllocationId == projectId }) else {
+                continue
+            }
+
+            let isMonthlySpread = recurringJournal.description.hasPrefix("[定期/月次]")
+            let candidateAmount = candidate.proposedLines.reduce(0) { partialResult, line in
+                switch snapshot.type {
+                case .income:
+                    guard line.creditAccountId != nil else { return partialResult }
+                case .expense:
+                    guard line.debitAccountId != nil else { return partialResult }
+                case .transfer:
+                    return partialResult
+                }
+                return partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            guard let newAllocations = recurringAllocations(
+                for: recurring,
+                amount: candidateAmount,
+                txDate: recurringJournal.journalDate,
+                treatAsYearly: recurring.frequency == .yearly && !isMonthlySpread
+            ) else {
+                continue
+            }
+
+            let updatedSnapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
+                id: candidate.id,
+                type: snapshot.type,
+                amount: candidateAmount,
+                date: recurringJournal.journalDate,
+                categoryId: snapshot.categoryId,
+                memo: recurringJournal.description,
+                recurringId: snapshot.recurringId,
+                paymentAccountId: snapshot.paymentAccountId,
+                transferToAccountId: snapshot.transferToAccountId,
+                taxDeductibleRate: snapshot.taxDeductibleRate,
+                taxAmount: snapshot.taxAmount,
+                taxCodeId: snapshot.taxCodeId,
+                taxRate: snapshot.taxRate,
+                isTaxIncluded: snapshot.isTaxIncluded,
+                taxCategory: snapshot.taxCategory,
+                receiptImagePath: snapshot.receiptImagePath,
+                lineItems: snapshot.lineItems,
+                counterpartyName: snapshot.counterpartyName,
+                createdAt: candidate.createdAt,
+                updatedAt: Date(),
+                journalEntryId: recurringJournal.id
+            )
+            let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+            guard let posting = bridge.buildApprovedPosting(
+                for: updatedSnapshot,
+                businessId: businessId,
+                counterpartyId: candidate.counterpartyId,
+                source: .recurring,
+                categories: categories,
+                legacyAccounts: accounts
+            ) else {
+                continue
+            }
+
+            do {
+                _ = try saveApprovedPostingSynchronously(
+                    posting,
+                    allocationAmounts: newAllocations,
+                    actor: "system"
+                )
+            } catch {
+                AppLogger.dataStore.warning("Failed to recalculate canonical recurring allocations for project \(projectId.uuidString): \(error.localizedDescription)")
+            }
+        }
+
         save()
     }
 
@@ -3211,14 +3252,13 @@ class DataStore {
                 isSkipped: false,
                 isYearLocked: false
             )
-            let ratios = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
             let result = saveApprovedPostingSync(
                 type: recurring.type,
                 amount: item.amount,
                 date: item.scheduledDate,
                 categoryId: recurring.categoryId,
                 memo: occurrence.postingMemo,
-                allocations: ratios,
+                allocationAmounts: allocations,
                 recurringId: recurring.id,
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,
@@ -3283,14 +3323,13 @@ class DataStore {
                 continue
             }
 
-            let ratios = allocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
             let result = saveApprovedPostingSync(
                 type: recurring.type,
                 amount: occurrence.amount,
                 date: occurrence.scheduledDate,
                 categoryId: recurring.categoryId,
                 memo: occurrence.postingMemo,
-                allocations: ratios,
+                allocationAmounts: allocations,
                 recurringId: recurring.id,
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,

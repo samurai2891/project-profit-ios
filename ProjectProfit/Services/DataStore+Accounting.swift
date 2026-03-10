@@ -442,6 +442,64 @@ extension DataStore {
         return journal
     }
 
+    @discardableResult
+    func saveApprovedPostingSynchronously(
+        _ posting: CanonicalTransactionPostingBridge.Posting,
+        allocationAmounts: [Allocation],
+        actor: String
+    ) throws -> CanonicalJournalEntry {
+        let candidate = candidateWithProjectAllocations(posting.candidate, allocationAmounts: allocationAmounts)
+        let approvedCandidate = candidate.updated(status: .approved)
+        let journal = try upsertCanonicalJournal(
+            from: approvedCandidate,
+            journalId: posting.journalId,
+            entryType: posting.entryType,
+            description: posting.description,
+            approvedAt: posting.approvedAt
+        )
+
+        let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
+            predicate: #Predicate { $0.candidateId == approvedCandidate.id }
+        )
+        if let existingCandidate = try modelContext.fetch(candidateDescriptor).first {
+            PostingCandidateEntityMapper.update(existingCandidate, from: approvedCandidate)
+        } else {
+            modelContext.insert(PostingCandidateEntityMapper.toEntity(approvedCandidate))
+        }
+
+        appendAuditEvent(
+            AuditEvent(
+                businessId: approvedCandidate.businessId,
+                eventType: .candidateApproved,
+                aggregateType: "PostingCandidate",
+                aggregateId: approvedCandidate.id,
+                actor: actor,
+                reason: posting.description.isEmpty ? approvedCandidate.memo : posting.description,
+                relatedEvidenceId: approvedCandidate.evidenceId,
+                relatedJournalId: journal.id
+            )
+        )
+        appendAuditEvent(
+            AuditEvent(
+                businessId: journal.businessId,
+                eventType: .journalApproved,
+                aggregateType: "CanonicalJournalEntry",
+                aggregateId: journal.id,
+                actor: actor,
+                reason: posting.description,
+                relatedEvidenceId: journal.sourceEvidenceId,
+                relatedJournalId: journal.id
+            )
+        )
+
+        try modelContext.save()
+        try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+            businessId: journal.businessId,
+            taxYear: journal.taxYear
+        )
+        return journal
+    }
+
     private func upsertCanonicalJournal(
         from candidate: PostingCandidate,
         journalId: UUID,

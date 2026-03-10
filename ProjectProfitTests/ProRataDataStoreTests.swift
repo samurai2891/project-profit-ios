@@ -40,6 +40,82 @@ final class ProRataDataStoreTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    private struct GeneratedRecurringPosting {
+        let id: UUID
+        let candidateId: UUID
+        let date: Date
+        let type: TransactionType
+        let amount: Int
+        let categoryId: String
+        let memo: String
+        let recurringId: UUID?
+        let allocations: [Allocation]
+    }
+
+    /// Fetches recurring-generated canonical postings and projects them into
+    /// the transaction shape these tests assert against.
+    private func fetchGeneratedRecurringTransactions() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(0) { partialResult, line in
+                partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocationAmounts = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = allocationAmounts.map { projectId, allocationAmount in
+                Allocation(
+                    projectId: projectId,
+                    ratio: amount == 0 ? 0 : Int((Double(allocationAmount) / Double(amount) * 100.0).rounded()),
+                    amount: allocationAmount
+                )
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                id: journal.id,
+                candidateId: candidate.id,
+                date: journal.journalDate,
+                type: snapshot.type,
+                amount: amount,
+                categoryId: snapshot.categoryId,
+                memo: journal.description,
+                recurringId: snapshot.recurringId,
+                allocations: allocations
+            )
+        }
+    }
+
     /// Creates a date from year, month, day components.
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
         calendar.date(from: DateComponents(year: year, month: month, day: day))!
@@ -203,9 +279,9 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        // addRecurring internally calls processRecurringTransactions
-        // Since today >= day 1, it should generate for this month
-        let transactions = fetchAllTransactions()
+        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one recurring posting")
+
+        let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
 
         XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
@@ -255,18 +331,21 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        let transactions = fetchAllTransactions()
+        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one recurring posting")
+
+        let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
 
         XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
 
         if let tx = recurringTx.first {
-            let allocA = tx.allocations.first { $0.projectId == projectA.id }!
-            let allocB = tx.allocations.first { $0.projectId == projectB.id }!
+            let allocA = tx.allocations.first { $0.projectId == projectA.id }
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }
 
-            // Project A completed last month, so for this month it gets 0 active days
-            XCTAssertEqual(allocA.amount, 0, "Project A should get 0 (completed before this month)")
-            XCTAssertEqual(allocB.amount, 10000, "Project B should get full amount")
+            // Project A completed last month, so for this month it should not be allocated.
+            XCTAssertNil(allocA, "Project A should be excluded once its active days reach 0")
+            XCTAssertNotNil(allocB, "Project B should remain allocated")
+            XCTAssertEqual(allocB?.amount, 10000, "Project B should get full amount")
         }
     }
 
@@ -747,8 +826,10 @@ final class ProRataDataStoreTests: XCTestCase {
             monthOfYear: pMonth
         )
 
+        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one yearly recurring posting")
+
         // Verify transaction was generated
-        let transactions = fetchAllTransactions()
+        let transactions = fetchGeneratedRecurringTransactions()
         let yearlyTx = transactions.filter { $0.recurringId == recurring.id }
         XCTAssertFalse(yearlyTx.isEmpty, "Should have generated yearly transaction")
 
@@ -759,7 +840,7 @@ final class ProRataDataStoreTests: XCTestCase {
         dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Verify the yearly transaction was recalculated with yearly days (365/366)
-        let updatedTransactions = fetchAllTransactions()
+        let updatedTransactions = fetchGeneratedRecurringTransactions()
         let updatedTx = updatedTransactions.first { $0.recurringId == recurring.id }!
         let allocA = updatedTx.allocations.first { $0.projectId == projectA.id }!
         let allocB = updatedTx.allocations.first { $0.projectId == projectB.id }!
@@ -791,8 +872,10 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
+        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one equalAll recurring posting")
+
         // Verify: only project A gets the full amount
-        var transactions = fetchAllTransactions()
+        var transactions = fetchGeneratedRecurringTransactions()
         var recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("EqualAll Fee") }
         XCTAssertFalse(recurringTx.isEmpty, "Should have generated equalAll transaction")
         if let tx = recurringTx.first {
@@ -805,7 +888,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectB = dataStore.addProject(name: "Project B", description: "new")
 
         // Verify: the existing transaction now includes project B
-        transactions = fetchAllTransactions()
+        transactions = fetchGeneratedRecurringTransactions()
         recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("EqualAll Fee") }
         if let tx = recurringTx.first {
             XCTAssertEqual(tx.allocations.count, 2, "Should now allocate to 2 projects")
@@ -846,7 +929,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         let updated = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(updated?.isActive, false, "Recurring with past endDate should be deactivated")
-        XCTAssertTrue(fetchAllTransactions().isEmpty, "No transaction should be generated for deactivated recurring")
+        XCTAssertTrue(fetchGeneratedRecurringTransactions().isEmpty, "No transaction should be generated for deactivated recurring")
     }
 
     // MARK: - Test 23: reverseCompletionAllocations rounding remainder

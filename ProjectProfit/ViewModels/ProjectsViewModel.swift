@@ -8,6 +8,10 @@ final class ProjectsViewModel {
     let dataStore: DataStore
     var filterStatus: FilterStatus = .all
 
+    private var projectWorkflowUseCase: ProjectWorkflowUseCase {
+        ProjectWorkflowUseCase(dataStore: dataStore)
+    }
+
     init(dataStore: DataStore) {
         self.dataStore = dataStore
     }
@@ -50,11 +54,11 @@ final class ProjectsViewModel {
     // MARK: - Actions
 
     func deleteProject(id: UUID) {
-        dataStore.deleteProject(id: id)
+        projectWorkflowUseCase.deleteProject(id: id)
     }
 
     func deleteProjects(ids: Set<UUID>) {
-        dataStore.deleteProjects(ids: ids)
+        projectWorkflowUseCase.deleteProjects(ids: ids)
     }
 
     func getProjectSummary(projectId: UUID) -> ProjectSummary? {

@@ -42,6 +42,65 @@ final class PlannedEndDateTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    private struct GeneratedRecurringPosting {
+        let id: UUID
+        let date: Date
+        let memo: String
+        let recurringId: UUID?
+        let allocations: [Allocation]
+    }
+
+    private func fetchGeneratedRecurringTransactions() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = amount.map { projectId, allocationAmount in
+                Allocation(projectId: projectId, ratio: 0, amount: allocationAmount)
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                id: journal.id,
+                date: journal.journalDate,
+                memo: journal.description,
+                recurringId: snapshot.recurringId,
+                allocations: allocations
+            )
+        }
+    }
+
     // MARK: - Test 1: effectiveEndDate returns completedAt when both set
 
     func testEffectiveEndDate_completedAtTakesPrecedence() {
@@ -272,14 +331,17 @@ final class PlannedEndDateTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        let transactions = fetchAllTransactions()
+        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one recurring posting")
+
+        let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
         XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
 
         if let tx = recurringTx.first {
-            let allocA = tx.allocations.first { $0.projectId == projectA.id }!
-            // Project A has plannedEndDate last month, so for this month it gets 0 active days
-            XCTAssertEqual(allocA.amount, 0, "Project A should get 0 (plannedEndDate before this month)")
+            let allocA = tx.allocations.first { $0.projectId == projectA.id }
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }
+            XCTAssertNil(allocA, "Project A should be excluded once plannedEndDate leaves it with 0 active days")
+            XCTAssertEqual(allocB?.amount, 10000, "Project B should receive the full amount")
         }
     }
 }
