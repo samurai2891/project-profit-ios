@@ -27,6 +27,7 @@ struct ContentView: View {
             hasInitialized = true
 
             let store = DataStore(modelContext: modelContext)
+            let profileSettingsWorkflowUseCase = ProfileSettingsWorkflowUseCase(dataStore: store)
             let notifService = notificationService
             store.onRecurringScheduleChanged = { recurrings in
                 Task { @MainActor in
@@ -35,7 +36,7 @@ struct ContentView: View {
                 }
             }
             store.loadData()
-            _ = await store.reloadProfileSettings()
+            _ = await profileSettingsWorkflowUseCase.loadProfile()
             store.recalculateAllPartialPeriodProjects()
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.dataStore = store

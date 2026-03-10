@@ -32,6 +32,10 @@ struct ProfileSettingsView: View {
     @State private var isLoadingProfile = false
     @State private var isSavingProfile = false
 
+    private var profileSettingsWorkflowUseCase: ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -341,7 +345,7 @@ struct ProfileSettingsView: View {
         isLoadingProfile = true
         defer { isLoadingProfile = false }
 
-        _ = await dataStore.reloadProfileSettings()
+        _ = await profileSettingsWorkflowUseCase.loadProfile()
 
         let secure = dataStore.profileSensitivePayload
 
@@ -426,7 +430,7 @@ struct ProfileSettingsView: View {
             taxYear: currentTaxYear
         )
 
-        switch await dataStore.saveProfileSettings(command: command, sensitivePayload: payload) {
+        switch await profileSettingsWorkflowUseCase.saveProfile(command: command, sensitivePayload: payload) {
         case .success:
             saveErrorMessage = nil
             dismiss()

@@ -25,6 +25,10 @@ struct SettingsMainView: View {
         PostingIntakeUseCase(dataStore: dataStore)
     }
 
+    private var settingsMaintenanceUseCase: SettingsMaintenanceUseCase {
+        SettingsMaintenanceUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -44,7 +48,7 @@ struct SettingsMainView: View {
         .alert("データを削除", isPresented: $showDeleteAlert) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {
-                dataStore.deleteAllData()
+                settingsMaintenanceUseCase.deleteAllData()
             }
         } message: {
             Text("すべてのデータを削除しますか？この操作は取り消せません。")

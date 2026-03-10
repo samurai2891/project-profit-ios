@@ -82,10 +82,6 @@ class DataStore {
         self.modelContext = modelContext
     }
 
-    private var profileSettingsUseCase: ProfileSettingsUseCase {
-        ProfileSettingsUseCase(modelContext: modelContext)
-    }
-
     private var counterpartyMasterUseCase: CounterpartyMasterUseCase {
         CounterpartyMasterUseCase(modelContext: modelContext)
     }
@@ -525,22 +521,7 @@ class DataStore {
 
     @discardableResult
     func reloadProfileSettings() async -> Bool {
-        runLegacyProfileMigrationIfNeeded()
-        refreshCanonicalProfileCache()
-        let payload = loadSensitivePayload()
-        do {
-            let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
-            let state = try await profileSettingsUseCase.load(
-                defaultTaxYear: defaultTaxYear,
-                sensitivePayload: payload
-            )
-            applyProfileSettingsState(state)
-            return true
-        } catch {
-            AppLogger.dataStore.error("Failed to reload profile settings: \(error.localizedDescription)")
-            lastError = .dataLoadFailed(underlying: error)
-            return false
-        }
+        await ProfileSettingsWorkflowUseCase(dataStore: self).loadProfile()
     }
 
     @discardableResult
@@ -548,32 +529,10 @@ class DataStore {
         command: SaveProfileSettingsCommand,
         sensitivePayload: ProfileSensitivePayload
     ) async -> Result<Void, Error> {
-        runLegacyProfileMigrationIfNeeded()
-        refreshCanonicalProfileCache()
-        do {
-            let state = try await profileSettingsUseCase.load(
-                defaultTaxYear: command.taxYear,
-                sensitivePayload: sensitivePayload
-            )
-            guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
-                return .failure(AppError.saveFailed(underlying: NSError(domain: "ProfileSecureStore", code: 1)))
-            }
-            let savedState = try await profileSettingsUseCase.save(
-                command: command,
-                currentState: state
-            )
-
-            applyProfileSettingsState(savedState)
-
-            if save() {
-                return .success(())
-            }
-            return .failure(lastError ?? AppError.saveFailed(underlying: NSError(domain: "ProfileSettings", code: 2)))
-        } catch {
-            AppLogger.dataStore.error("Failed to save profile settings: \(error.localizedDescription)")
-            lastError = .saveFailed(underlying: error)
-            return .failure(error)
-        }
+        await ProfileSettingsWorkflowUseCase(dataStore: self).saveProfile(
+            command: command,
+            sensitivePayload: sensitivePayload
+        )
     }
 
     /// マイグレーション: SwiftDataスキーマ変更後の整合性チェック
@@ -655,7 +614,7 @@ class DataStore {
         }
     }
 
-    private func applyProfileSettingsState(_ state: ProfileSettingsState) {
+    func applyProfileSettingsState(_ state: ProfileSettingsState) {
         businessProfile = state.businessProfile
         currentTaxYearProfile = state.taxYearProfile
     }
@@ -668,7 +627,7 @@ class DataStore {
         return nil
     }
 
-    private func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
+    func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
         let canonicalId = businessProfileId.uuidString
         return ProfileSecureStore.save(payload, profileId: canonicalId)
     }
@@ -1370,7 +1329,7 @@ class DataStore {
         }
     }
 
-    private func seedDefaultCategories() {
+    func seedDefaultCategories() {
         for cat in DEFAULT_CATEGORIES {
             let category = PPCategory(
                 id: cat.id,
@@ -3802,60 +3761,7 @@ class DataStore {
     // MARK: - Bulk Delete
 
     func deleteAllData() {
-        // C4: save成功後に削除するため画像パスを収集（トランザクション＋定期取引の両方）
-        let imagesToDelete = transactions.compactMap(\.receiptImagePath)
-            + recurringTransactions.compactMap(\.receiptImagePath)
-        let documentRecords = listDocumentRecords()
-        let documentFilesToDelete = documentRecords.map(\.storedFileName)
-        let complianceLogs = listComplianceLogs(limit: Int.max)
-        let secureStoreIds = Set([canonicalProfileSecureStoreId].compactMap { $0 })
-
-        for p in projects { modelContext.delete(p) }
-        for t in transactions { modelContext.delete(t) }
-        for c in categories { modelContext.delete(c) }
-        for r in recurringTransactions { modelContext.delete(r) }
-        // Phase 4B: 会計データも削除
-        for a in accounts { modelContext.delete(a) }
-        for je in journalEntries { modelContext.delete(je) }
-        for jl in journalLines { modelContext.delete(jl) }
-        if let legacyProfiles = try? modelContext.fetch(FetchDescriptor<PPAccountingProfile>()) {
-            for profile in legacyProfiles { modelContext.delete(profile) }
-        }
-        if let businessProfiles = try? modelContext.fetch(FetchDescriptor<BusinessProfileEntity>()) {
-            for profile in businessProfiles {
-                modelContext.delete(profile)
-            }
-        }
-        if let taxYearProfiles = try? modelContext.fetch(FetchDescriptor<TaxYearProfileEntity>()) {
-            for profile in taxYearProfiles {
-                modelContext.delete(profile)
-            }
-        }
-        for fa in fixedAssets { modelContext.delete(fa) }
-        for document in documentRecords { modelContext.delete(document) }
-        for log in complianceLogs { modelContext.delete(log) }
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-            for fileName in documentFilesToDelete {
-                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
-            }
-        }
-        for profileId in secureStoreIds {
-            _ = ProfileSecureStore.delete(profileId: profileId)
-        }
-        projects = []
-        allTransactions = []
-        categories = []
-        recurringTransactions = []
-        accounts = []
-        journalEntries = []
-        journalLines = []
-        businessProfile = nil
-        currentTaxYearProfile = nil
-        fixedAssets = []
-        seedDefaultCategories()
+        SettingsMaintenanceUseCase(dataStore: self).deleteAllData()
     }
 
     // MARK: - Accounting CRUD
