@@ -155,6 +155,9 @@ jobs:
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/CanonicalFlowE2ETests
+            ProjectProfitTests/DataStoreAccountingTests
+            ProjectProfitTests/RecurringPreviewTests
+            ProjectProfitTests/DistributionTemplateApplicationUseCaseTests
         run: |
           chmod +x scripts/run_release_quality_lane.sh
           set +e

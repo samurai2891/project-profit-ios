@@ -166,12 +166,14 @@ final class TransactionsViewModel {
         dataStore.deleteTransaction(id: id, mutationSource: .userInitiated)
     }
 
-    func generateCSVText(exportAll: Bool = false) -> String {
+    func exportURL(exportAll: Bool = false) throws -> URL {
         let target = exportAll ? dataStore.transactions : filteredTransactions
-        return generateCSV(
-            transactions: target,
-            getCategory: { self.dataStore.getCategory(id: $0) },
-            getProject: { self.dataStore.getProject(id: $0) }
+        return try ExportCoordinator.export(
+            target: .transactions,
+            format: .csv,
+            fiscalYear: exportFiscalYear(for: target),
+            dataStore: dataStore,
+            transactionOptions: .init(transactions: target)
         )
     }
 
@@ -222,6 +224,11 @@ final class TransactionsViewModel {
         transactions
             .filter { $0.type == type }
             .reduce(0) { $0 + effectiveAmount(for: $1) }
+    }
+
+    private func exportFiscalYear(for transactions: [PPTransaction]) -> Int {
+        let referenceDate = transactions.max(by: { $0.date < $1.date })?.date ?? Date()
+        return fiscalYear(for: referenceDate, startMonth: FiscalYearSettings.startMonth)
     }
 
     /// プロジェクトフィルタ適用時は配分額、未適用時は取引全額を返す

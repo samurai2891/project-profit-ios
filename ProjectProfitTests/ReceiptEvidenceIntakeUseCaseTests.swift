@@ -96,6 +96,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         XCTAssertFalse(result.duplicateDetected)
         XCTAssertEqual(result.evidence.structuredFields?.counterpartyName, "文具センター")
         XCTAssertEqual(result.candidate.proposedLines.count, 2)
+        XCTAssertEqual(result.candidate.legacySnapshot?.categoryId, "cat-tools")
+        XCTAssertEqual(result.candidate.legacySnapshot?.paymentAccountId, "acct-cash")
+        XCTAssertEqual(result.candidate.legacySnapshot?.lineItems.first?.name, "ノート")
+        XCTAssertEqual(result.candidate.legacySnapshot?.counterpartyName, "文具センター")
         XCTAssertEqual(
             Set(auditEvents.map(\.eventTypeRaw)),
             Set([AuditEventType.evidenceCreated.rawValue, AuditEventType.candidateCreated.rawValue])

@@ -62,10 +62,12 @@ final class LegacyProfileMigrationRunner {
     @discardableResult
     func executeIfNeeded() -> LegacyProfileMigrationReport {
         let report = dryRun()
-        guard report.needsMigration else {
+        switch report.outcome {
+        case .dryRunReady, .alreadyMigrated:
+            return execute()
+        default:
             return report
         }
-        return execute()
     }
 
     private enum Mode {
@@ -95,12 +97,19 @@ final class LegacyProfileMigrationRunner {
 
             let businessDraft = makeBusinessProfileEntity(legacy: legacy, businessId: businessId)
             let taxYearDraft = makeTaxYearProfileEntity(legacy: legacy, businessId: businessId)
+            var warnings: [String] = []
 
             let shouldCreateBusiness = existingBusiness == nil
             let shouldCreateTax = existingTaxYear == nil
             let needsMigration = shouldCreateBusiness || shouldCreateTax
 
             if !needsMigration {
+                if mode == .execute {
+                    warnings.append(contentsOf: migrateSecurePayloadIfNeeded(
+                        legacyProfileId: legacy.id,
+                        canonicalBusinessId: businessId
+                    ))
+                }
                 return LegacyProfileMigrationReport(
                     outcome: .alreadyMigrated,
                     legacyProfileId: legacy.id,
@@ -110,7 +119,7 @@ final class LegacyProfileMigrationRunner {
                     updatedBusinessProfile: false,
                     createdTaxYearProfile: false,
                     updatedTaxYearProfile: false,
-                    warnings: [],
+                    warnings: warnings,
                     errorDescription: nil
                 )
             }
@@ -125,6 +134,10 @@ final class LegacyProfileMigrationRunner {
                 }
 
                 try modelContext.save()
+                warnings.append(contentsOf: migrateSecurePayloadIfNeeded(
+                    legacyProfileId: legacy.id,
+                    canonicalBusinessId: businessId
+                ))
             }
 
             return LegacyProfileMigrationReport(
@@ -136,7 +149,7 @@ final class LegacyProfileMigrationRunner {
                 updatedBusinessProfile: false,
                 createdTaxYearProfile: shouldCreateTax,
                 updatedTaxYearProfile: false,
-                warnings: [],
+                warnings: warnings,
                 errorDescription: nil
             )
         } catch {
@@ -223,6 +236,24 @@ final class LegacyProfileMigrationRunner {
         case .doubleEntry, .auto, .locked:
             return .sixtyFive
         }
+    }
+
+    private func migrateSecurePayloadIfNeeded(
+        legacyProfileId: String,
+        canonicalBusinessId: UUID
+    ) -> [String] {
+        let canonicalProfileId = canonicalBusinessId.uuidString
+        guard canonicalProfileId != legacyProfileId else {
+            return []
+        }
+        guard let payload = ProfileSecureStore.load(profileId: legacyProfileId) else {
+            return []
+        }
+        guard ProfileSecureStore.save(payload, profileId: canonicalProfileId) else {
+            return ["secure payload migration failed"]
+        }
+        _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        return []
     }
 
 }

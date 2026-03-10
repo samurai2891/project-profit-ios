@@ -223,7 +223,23 @@ final class CanonicalRepositoriesTests: XCTestCase {
             confidenceScore: 0.88,
             status: .needsReview,
             source: .ocr,
-            memo: "OCR候補"
+            memo: "OCR候補",
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: "acct-cash",
+                transferToAccountId: nil,
+                taxDeductibleRate: 100,
+                taxAmount: 500,
+                taxCodeId: TaxCode.standard10.rawValue,
+                taxRate: 10,
+                isTaxIncluded: false,
+                taxCategory: .standardRate,
+                receiptImagePath: nil,
+                lineItems: [ReceiptLineItem(name: "旅費", unitPrice: 5000)],
+                counterpartyName: "OCR商事"
+            )
         )
 
         try await repository.save(candidate)
@@ -232,6 +248,9 @@ final class CanonicalRepositoriesTests: XCTestCase {
         XCTAssertEqual(fetched.count, 1)
         XCTAssertEqual(fetched.first?.proposedLines.first?.amount, Decimal(string: "5000"))
         XCTAssertEqual(fetched.first?.taxAnalysis?.taxAmount, Decimal(string: "500"))
+        XCTAssertEqual(fetched.first?.legacySnapshot?.categoryId, "cat-tools")
+        XCTAssertEqual(fetched.first?.legacySnapshot?.paymentAccountId, "acct-cash")
+        XCTAssertEqual(fetched.first?.legacySnapshot?.lineItems.first?.name, "旅費")
     }
 
     func testCanonicalJournalEntryRepositoryUpdatesLinesAndSkipsInvalidVoucherNumbers() async throws {

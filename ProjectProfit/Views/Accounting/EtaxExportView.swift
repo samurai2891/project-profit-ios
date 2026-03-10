@@ -22,7 +22,7 @@ struct EtaxExportView: View {
         }
         .sheet(isPresented: $showShareSheet) {
             if let url = shareURL {
-                ShareSheet(activityItems: [url])
+                ShareSheetView(activityItems: [url])
             }
         }
     }
@@ -176,7 +176,7 @@ struct EtaxExportView: View {
             } label: {
                 HStack {
                     Image(systemName: "doc.richtext")
-                    Text(".xtx (XML) エクスポート")
+                    Text(".xtx エクスポート")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -207,16 +207,4 @@ struct EtaxExportView: View {
             set: { viewModel.exportResult = $0 }
         )
     }
-}
-
-// MARK: - Share Sheet
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

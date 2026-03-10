@@ -262,7 +262,30 @@ struct ReceiptEvidenceIntakeUseCase {
             confidenceScore: request.receiptData.confidence,
             status: .needsReview,
             source: .ocr,
-            memo: normalizedOptionalString(request.memo)
+            memo: normalizedOptionalString(request.memo),
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: request.transactionType,
+                categoryId: request.categoryId,
+                recurringId: nil,
+                paymentAccountId: request.paymentAccountId,
+                transferToAccountId: request.transferToAccountId,
+                taxDeductibleRate: request.transactionType == .expense ? request.taxDeductibleRate : nil,
+                taxAmount: resolvedTaxAmount(for: request),
+                taxCodeId: resolvedTaxCode(for: request)?.rawValue,
+                taxRate: resolvedTaxCode(for: request)?.taxRatePercent,
+                isTaxIncluded: request.isTaxIncluded,
+                taxCategory: resolvedTaxCode(for: request)?.legacyCategory,
+                receiptImagePath: nil,
+                lineItems: request.lineItems.map {
+                    ReceiptLineItem(
+                        name: $0.name,
+                        quantity: $0.quantity,
+                        unitPrice: $0.unitPrice,
+                        subtotal: $0.subtotal
+                    )
+                },
+                counterpartyName: normalizedOptionalString(request.counterpartyName)
+            )
         )
     }
 

@@ -409,7 +409,6 @@ struct RestoreService {
         try upsertLegacyAccounts(payload.legacy.accounts)
         try upsertLegacyJournalEntries(payload.legacy.journalEntries)
         try upsertLegacyJournalLines(payload.legacy.journalLines)
-        try upsertLegacyAccountingProfiles(payload.legacy.accountingProfiles)
         try upsertLegacyUserRules(payload.legacy.userRules)
         try upsertLegacyFixedAssets(payload.legacy.fixedAssets)
         try upsertLegacyInventory(payload.legacy.inventoryRecords)
@@ -428,6 +427,12 @@ struct RestoreService {
         try upsertCanonicalAccounts(payload.canonical.accounts)
         try upsertDistributionRules(payload.canonical.distributionRules)
         try upsertAuditEvents(payload.canonical.auditEvents)
+
+        if (payload.canonical.businessProfiles.isEmpty || payload.canonical.taxYearProfiles.isEmpty),
+           !payload.legacy.accountingProfiles.isEmpty {
+            try upsertLegacyAccountingProfiles(payload.legacy.accountingProfiles)
+            _ = LegacyProfileMigrationRunner(modelContext: modelContext).executeIfNeeded()
+        }
     }
 
     private func restoreFiles(from directory: URL, records: [SnapshotFileRecord]) throws {

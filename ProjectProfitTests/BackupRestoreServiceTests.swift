@@ -57,7 +57,10 @@ final class BackupRestoreServiceTests: XCTestCase {
         XCTAssertEqual(extracted.payload.fiscalStartMonth, 4)
         XCTAssertEqual(extracted.payload.legacy.transactions.map(\.id), [seeded.transaction.id])
         XCTAssertEqual(extracted.payload.legacy.documentRecords.map(\.id), [seeded.document.id])
-        XCTAssertEqual(extracted.secureProfiles.map(\.profileId), [seeded.profile.id])
+        XCTAssertTrue(extracted.payload.legacy.accountingProfiles.isEmpty)
+        XCTAssertEqual(extracted.payload.canonical.businessProfiles.map(\.id), [seeded.business.id])
+        XCTAssertEqual(extracted.payload.canonical.taxYearProfiles.map(\.taxYear), [seeded.taxYear.taxYear])
+        XCTAssertEqual(extracted.secureProfiles.map(\.profileId), [seeded.business.id.uuidString])
         XCTAssertEqual(extracted.manifest.payloadChecksum, ReceiptImageStore.sha256Hex(data: extracted.payloadData))
         XCTAssertEqual(extracted.manifest.securePayloadChecksum, ReceiptImageStore.sha256Hex(data: extracted.secureData))
         XCTAssertEqual(
@@ -131,7 +134,7 @@ final class BackupRestoreServiceTests: XCTestCase {
 
         ReceiptImageStore.deleteImage(fileName: original.transaction.receiptImagePath!)
         ReceiptImageStore.deleteDocumentFile(fileName: original.document.storedFileName)
-        _ = ProfileSecureStore.delete(profileId: original.profile.id)
+        _ = ProfileSecureStore.delete(profileId: original.business.id.uuidString)
 
         UserDefaults.standard.set(1, forKey: FiscalYearSettings.userDefaultsKey)
 
@@ -147,22 +150,26 @@ final class BackupRestoreServiceTests: XCTestCase {
 
         let result = try RestoreService(modelContext: context).apply(snapshotURL: archive)
 
-        let profiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+        let businessProfiles = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
+        let taxYearProfiles = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         let transactions = try context.fetch(FetchDescriptor<PPTransaction>())
         let documents = try context.fetch(FetchDescriptor<PPDocumentRecord>())
 
         XCTAssertTrue(result.report.canApply)
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.rollbackArchiveURL.path))
         XCTAssertEqual(FiscalYearSettings.startMonth, 4)
-        XCTAssertEqual(profiles.map(\.id), [original.profile.id])
+        XCTAssertEqual(businessProfiles.map(\.businessId), [original.business.id])
+        XCTAssertEqual(taxYearProfiles.map(\.taxYear), [original.taxYear.taxYear])
+        XCTAssertTrue(legacyProfiles.isEmpty)
         XCTAssertEqual(transactions.map(\.id), [original.transaction.id])
         XCTAssertEqual(documents.map(\.id), [original.document.id])
         XCTAssertTrue(ReceiptImageStore.imageExists(fileName: original.transaction.receiptImagePath!))
         XCTAssertTrue(ReceiptImageStore.documentFileExists(fileName: original.document.storedFileName))
         XCTAssertFalse(ReceiptImageStore.imageExists(fileName: replacement.transaction.receiptImagePath!))
         XCTAssertFalse(ReceiptImageStore.documentFileExists(fileName: replacement.document.storedFileName))
-        XCTAssertEqual(ProfileSecureStore.load(profileId: original.profile.id)?.postalCode, "5300001")
-        XCTAssertNil(ProfileSecureStore.load(profileId: replacement.profile.id))
+        XCTAssertEqual(ProfileSecureStore.load(profileId: original.business.id.uuidString)?.postalCode, "5300001")
+        XCTAssertNil(ProfileSecureStore.load(profileId: replacement.business.id.uuidString))
     }
 
     private func seedSnapshotState(
@@ -173,19 +180,27 @@ final class BackupRestoreServiceTests: XCTestCase {
         documentId: UUID,
         documentFileName: String,
         securePostalCode: String
-    ) throws -> (profile: PPAccountingProfile, transaction: PPTransaction, document: PPDocumentRecord) {
+    ) throws -> (business: BusinessProfile, taxYear: TaxYearProfile, transaction: PPTransaction, document: PPDocumentRecord) {
         if try context.fetch(FetchDescriptor<PPCategory>()).isEmpty {
             context.insert(PPCategory(id: "cat-expense", name: "経費", type: .expense, icon: "tag"))
         }
 
-        let profile = PPAccountingProfile(
-            id: profileId,
-            fiscalYear: fiscalYear(for: transactionDate, startMonth: FiscalYearSettings.startMonth),
-            businessName: "事業 \(profileId)",
-            ownerName: "Owner \(profileId)"
+        let businessId = UUID()
+        let business = BusinessProfile(
+            id: businessId,
+            ownerName: "Owner \(profileId)",
+            businessName: "事業 \(profileId)"
         )
-        context.insert(profile)
-        trackedProfileIds.insert(profile.id)
+        let taxYear = TaxYearProfile(
+            businessId: businessId,
+            taxYear: fiscalYear(for: transactionDate, startMonth: FiscalYearSettings.startMonth),
+            filingStyle: .blueGeneral,
+            yearLockState: .taxClose,
+            taxPackVersion: "\(fiscalYear(for: transactionDate, startMonth: FiscalYearSettings.startMonth))-v1"
+        )
+        context.insert(BusinessProfileEntityMapper.toEntity(business))
+        context.insert(TaxYearProfileEntityMapper.toEntity(taxYear))
+        trackedProfileIds.insert(business.id.uuidString)
         XCTAssertTrue(
             ProfileSecureStore.save(
                 ProfileSensitivePayload(
@@ -198,12 +213,9 @@ final class BackupRestoreServiceTests: XCTestCase {
                     myNumberFlag: true,
                     includeSensitiveInExport: true
                 ),
-                profileId: profile.id
+                profileId: business.id.uuidString
             )
         )
-
-        try ReceiptImageStore.storeImageData(Data("receipt-\(profileId)".utf8), fileName: receiptFileName)
-        try ReceiptImageStore.storeDocumentData(Data("document-\(profileId)".utf8), fileName: documentFileName)
 
         let transaction = PPTransaction(
             id: transactionId,
@@ -229,8 +241,11 @@ final class BackupRestoreServiceTests: XCTestCase {
         )
         context.insert(document)
 
+        try ReceiptImageStore.storeImageData(Data("receipt-\(profileId)".utf8), fileName: receiptFileName)
+        try ReceiptImageStore.storeDocumentData(Data("document-\(profileId)".utf8), fileName: documentFileName)
+
         try context.save()
-        return (profile, transaction, document)
+        return (business, taxYear, transaction, document)
     }
 
     private func stableDate(year: Int, month: Int, day: Int) -> Date {

@@ -7,7 +7,8 @@ struct SubLedgerView: View {
 
     @State private var selectedYear = Calendar.current.component(.year, from: Date())
     @State private var showShareSheet = false
-    @State private var csvText = ""
+    @State private var shareURL: URL?
+    @State private var exportErrorMessage: String?
     // 経費帳: 科目フィルタ
     @State private var selectedExpenseAccountId: String?
     // 売掛帳/買掛帳: 取引先フィルタ
@@ -82,10 +83,7 @@ struct SubLedgerView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    csvText = dataStore.exportSubLedgerCSV(
-                        type: type, startDate: periodStart, endDate: periodEnd
-                    )
-                    showShareSheet = true
+                    exportSubLedger()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
@@ -94,7 +92,19 @@ struct SubLedgerView: View {
             }
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheetView(activityItems: [csvText])
+            if let shareURL {
+                ShareSheetView(activityItems: [shareURL])
+            }
+        }
+        .alert("出力エラー", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportErrorMessage = nil
+            }
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -129,6 +139,29 @@ struct SubLedgerView: View {
             arBookContent
         case .accountsPayableBook:
             apBookContent
+        }
+    }
+
+    private func exportSubLedger() {
+        do {
+            shareURL = try ExportCoordinator.export(
+                target: .subLedger,
+                format: .csv,
+                fiscalYear: selectedYear,
+                dataStore: dataStore,
+                subLedgerOptions: .init(
+                    type: type,
+                    startDate: periodStart,
+                    endDate: periodEnd,
+                    accountFilter: selectedExpenseAccountId,
+                    counterpartyFilter: selectedCounterparty
+                )
+            )
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            exportErrorMessage = error.localizedDescription
         }
     }
 }

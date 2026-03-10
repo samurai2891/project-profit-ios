@@ -170,6 +170,13 @@ struct BackupService {
                 }
             }
 
+        let legacyAccountingProfiles: [LegacyAccountingProfileSnapshot]
+        if businessProfiles.isEmpty || taxYearProfiles.isEmpty {
+            legacyAccountingProfiles = allProfiles.map(LegacyAccountingProfileSnapshot.init)
+        } else {
+            legacyAccountingProfiles = []
+        }
+
         return AppSnapshotPayload(
             fiscalStartMonth: fiscalStartMonth,
             legacy: LegacySnapshotSection(
@@ -180,7 +187,7 @@ struct BackupService {
                 accounts: allAccounts.map(LegacyAccountSnapshot.init),
                 journalEntries: journalEntries.map(LegacyJournalEntrySnapshot.init),
                 journalLines: journalLines.map(LegacyJournalLineSnapshot.init),
-                accountingProfiles: allProfiles.map(LegacyAccountingProfileSnapshot.init),
+                accountingProfiles: legacyAccountingProfiles,
                 userRules: allUserRules.map(LegacyUserRuleSnapshot.init),
                 fixedAssets: allFixedAssets.map(LegacyFixedAssetSnapshot.init),
                 inventoryRecords: inventoryRecords.map(LegacyInventoryRecordSnapshot.init),
@@ -205,13 +212,26 @@ struct BackupService {
     }
 
     private func loadSecureProfiles(payload: AppSnapshotPayload) -> [SnapshotSecureProfile] {
-        let profileIds = Set(payload.legacy.accountingProfiles.map(\.id))
-            .union(payload.canonical.businessProfiles.map { $0.id.uuidString })
-        return profileIds.compactMap { profileId in
-            guard let payload = ProfileSecureStore.load(profileId: profileId) else {
+        if payload.canonical.businessProfiles.isEmpty {
+            return Set(payload.legacy.accountingProfiles.map(\.id)).compactMap { profileId in
+                guard let payload = ProfileSecureStore.load(profileId: profileId) else {
+                    return nil
+                }
+                return SnapshotSecureProfile(profileId: profileId, payload: payload)
+            }
+        }
+
+        let legacyIds = payload.legacy.accountingProfiles.map(\.id)
+        return payload.canonical.businessProfiles.compactMap { profile in
+            let canonicalProfileId = profile.id.uuidString
+            if let payload = ProfileSecureStore.load(profileId: canonicalProfileId) {
+                return SnapshotSecureProfile(profileId: canonicalProfileId, payload: payload)
+            }
+
+            guard let legacyPayload = legacyIds.lazy.compactMap({ ProfileSecureStore.load(profileId: $0) }).first else {
                 return nil
             }
-            return SnapshotSecureProfile(profileId: profileId, payload: payload)
+            return SnapshotSecureProfile(profileId: canonicalProfileId, payload: legacyPayload)
         }
     }
 

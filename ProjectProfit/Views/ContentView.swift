@@ -100,7 +100,7 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                SettingsView()
+                SettingsMainView()
             }
             .tabItem {
                 Label("設定", systemImage: "gearshape.fill")

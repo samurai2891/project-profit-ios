@@ -1,18 +1,6 @@
 import SwiftData
 import SwiftUI
 
-// MARK: - ActivityViewController Wrapper
-
-private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
 // MARK: - Display Mode
 
 enum TransactionDisplayMode: String, CaseIterable {
@@ -39,7 +27,8 @@ struct TransactionsView: View {
     @State private var selectedTransaction: PPTransaction?
     @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
-    @State private var csvText = ""
+    @State private var shareURL: URL?
+    @State private var exportErrorMessage: String?
     @AppStorage("transactionDisplayMode") private var displayMode: String = TransactionDisplayMode.card.rawValue
 
     // MARK: - Body
@@ -102,14 +91,12 @@ struct TransactionsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
-                        csvText = viewModel.generateCSVText(exportAll: false)
-                        showShareSheet = true
+                        exportTransactions(viewModel: viewModel, exportAll: false)
                     } label: {
                         Label("フィルタ中のデータ", systemImage: "line.3.horizontal.decrease.circle")
                     }
                     Button {
-                        csvText = viewModel.generateCSVText(exportAll: true)
-                        showShareSheet = true
+                        exportTransactions(viewModel: viewModel, exportAll: true)
                     } label: {
                         Label("全データ", systemImage: "tray.full")
                     }
@@ -136,7 +123,9 @@ struct TransactionsView: View {
             ))
         }
         .sheet(isPresented: $showShareSheet) {
-            ActivityViewControllerWrapper(items: [csvText])
+            if let shareURL {
+                ShareSheetView(activityItems: [shareURL])
+            }
         }
         .searchable(
             text: Binding(
@@ -163,6 +152,16 @@ struct TransactionsView: View {
             }
         } message: {
             Text("この取引を削除してもよろしいですか？")
+        }
+        .alert("出力エラー", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportErrorMessage = nil
+            }
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -614,6 +613,17 @@ struct TransactionsView: View {
         .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
+    }
+
+    private func exportTransactions(viewModel: TransactionsViewModel, exportAll: Bool) {
+        do {
+            shareURL = try viewModel.exportURL(exportAll: exportAll)
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            exportErrorMessage = error.localizedDescription
+        }
     }
 }
 

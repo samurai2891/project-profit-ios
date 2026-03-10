@@ -275,9 +275,17 @@ extension DataStore {
     func exportSubLedgerCSV(
         type: SubLedgerType,
         startDate: Date? = nil,
-        endDate: Date? = nil
+        endDate: Date? = nil,
+        accountFilter: String? = nil,
+        counterpartyFilter: String? = nil
     ) -> String {
-        let rows = getSubLedgerEntries(type: type, startDate: startDate, endDate: endDate)
+        let rows = getSubLedgerEntries(
+            type: type,
+            startDate: startDate,
+            endDate: endDate,
+            accountFilter: accountFilter,
+            counterpartyFilter: counterpartyFilter
+        )
         var lines: [String] = [
             "date,accountCode,accountName,memo,counterparty,debit,credit,runningBalance,counterAccountId,taxCategory"
         ]

@@ -389,6 +389,9 @@ struct CanonicalTransactionPostingBridge {
         let taxRate: Int?
         let isTaxIncluded: Bool?
         let taxCategory: TaxCategory?
+        let receiptImagePath: String?
+        let lineItems: [ReceiptLineItem]
+        let counterpartyName: String?
         let createdAt: Date
         let updatedAt: Date
         let journalEntryId: UUID?
@@ -409,6 +412,9 @@ struct CanonicalTransactionPostingBridge {
             taxRate = transaction.taxRate
             isTaxIncluded = transaction.isTaxIncluded
             taxCategory = transaction.taxCategory
+            receiptImagePath = transaction.receiptImagePath
+            lineItems = transaction.lineItems
+            counterpartyName = transaction.counterparty
             createdAt = transaction.createdAt
             updatedAt = transaction.updatedAt
             journalEntryId = transaction.journalEntryId
@@ -430,6 +436,9 @@ struct CanonicalTransactionPostingBridge {
             taxRate: Int?,
             isTaxIncluded: Bool?,
             taxCategory: TaxCategory?,
+            receiptImagePath: String? = nil,
+            lineItems: [ReceiptLineItem] = [],
+            counterpartyName: String? = nil,
             createdAt: Date,
             updatedAt: Date,
             journalEntryId: UUID?
@@ -449,6 +458,9 @@ struct CanonicalTransactionPostingBridge {
             self.taxRate = taxRate
             self.isTaxIncluded = isTaxIncluded
             self.taxCategory = taxCategory
+            self.receiptImagePath = receiptImagePath
+            self.lineItems = lineItems
+            self.counterpartyName = counterpartyName
             self.createdAt = createdAt
             self.updatedAt = updatedAt
             self.journalEntryId = journalEntryId
@@ -580,6 +592,22 @@ struct CanonicalTransactionPostingBridge {
             status: .approved,
             source: inferredSource,
             memo: description,
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: snapshot.type,
+                categoryId: snapshot.categoryId,
+                recurringId: snapshot.recurringId,
+                paymentAccountId: snapshot.paymentAccountId,
+                transferToAccountId: snapshot.transferToAccountId,
+                taxDeductibleRate: snapshot.taxDeductibleRate,
+                taxAmount: snapshot.taxAmount,
+                taxCodeId: snapshot.taxCodeId,
+                taxRate: snapshot.taxRate,
+                isTaxIncluded: snapshot.isTaxIncluded,
+                taxCategory: snapshot.taxCategory,
+                receiptImagePath: snapshot.receiptImagePath,
+                lineItems: snapshot.lineItems,
+                counterpartyName: snapshot.counterpartyName
+            ),
             createdAt: snapshot.createdAt,
             updatedAt: now
         )

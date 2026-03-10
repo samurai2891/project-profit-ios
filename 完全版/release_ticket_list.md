@@ -1,7 +1,7 @@
-# ProjectProfit リリース向け修正チケット一覧（2026-03-09 実装反映版）
+# ProjectProfit リリース向け修正チケット一覧（2026-03-10 実装反映版）
 
-作成日: 2026-03-09  
-前提: `/Users/yutaro/project-profit-ios` を二度走査し、2026-03-09 時点の未コミット差分も含めて `release_ticket_list.md` の各項目を現コードに合わせて更新した。  
+作成日: 2026-03-10  
+前提: `/Users/yutaro/project-profit-ios` を再走査し、2026-03-10 時点の未コミット差分と focused test 実行結果を含めて `release_ticket_list.md` の各項目を現コードに合わせて更新した。  
 確認方法:
 - 一次確認: `rg` による全体走査で実装有無と参照経路を抽出
 - 二次確認: 該当ファイルを開いて active path と補助経路を再確認
@@ -24,10 +24,12 @@
   - `ProjectProfit/Ledger/Services/LedgerDataStore.swift` は `FeatureFlags.useLegacyLedger == false` のとき書き込みを拒否する。
   - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規入力は `DataStore.saveManualPostingCandidate(...)` を呼び、`PPTransaction` を作らず draft candidate として保存する。
   - `ProjectProfit/Views/Transactions/TransactionsView.swift` の canonical 時の空状態ボタンと FAB は `新規取引` ではなく `最初の候補を作成` / `候補を手入力` 表示になっている。
+  - `ProjectProfit/Services/DataStore.swift` の `approvePostingCandidate(...)` は `PostingWorkflowUseCase.approveCandidate(...)` を呼んだ後に canonical journal だけを反映し、legacy mirror transaction を作らない。
   - `ProjectProfit/Services/DataStore.swift` の `approveRecurringItems(...)` と `importTransactions(from:)` は `saveApprovedPosting(...)` を使い、canonical journal を直接作る。
-  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存、recurring 承認、CSV import の各経路で legacy transaction 件数が増えないことを確認するテストがある。
-  - 一方で `ProjectProfit/Services/DataStore.swift` には `addTransactionResult(...)`、`updateTransaction(...)`、`deleteTransaction(...)` が残る。
-  - `ProjectProfit/Services/DataStore.swift` の transaction 同期は `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼ぶため、transaction 起点の posting はまだ即時承認前提である。
+  - `ProjectProfit/Services/DataStore.swift` の `guardLegacyTransactionMutationAllowed(...)` は canonical 有効時の user initiated legacy mutation を `legacyTransactionMutationDisabled` で止める。
+  - `ProjectProfit/Services/DataStore.swift` の `addTransactionResult(...)` は migration / fixture / tests 向け互換ヘルパーとして残り、自動で canonical へ同期しない。
+  - `ProjectProfit/Services/DataStore.swift` の `processRecurringTransactions()` は legacy transaction を生成する旧互換経路として残るため、cutover は未完である。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 承認、recurring 承認、CSV import の各経路で legacy transaction 件数が増えないことを確認するテストがあり、2026-03-10 実行では green だった。
 
 ### REL-P0-02 Repository / UseCase 層を完成させる
 - 関連既存チケット: `PP-010`
@@ -38,8 +40,9 @@
   - `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`、`ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`、`ProjectProfit/Views/Settings/ProfileSettingsView.swift` は UseCase 側へ接続されている。
   - `ProjectProfit/Views/Components/TransactionFormView.swift` の canonical 新規保存は `DataStore.saveManualPostingCandidate(...)` を介して `PostingWorkflowUseCase.saveCandidate(...)` に到達する。
   - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift` は `approveRecurringItems(...)` を await し、`ProjectProfit/Views/Settings/SettingsView.swift` と `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift` の CSV import は async で canonical import を呼ぶ。
+  - `ProjectProfit/Views/Components/TransactionFormView.swift` の edit mode と `ProjectProfit/ViewModels/TransactionsViewModel.swift` の delete 導線はまだ残るが、canonical 有効時は `legacyTransactionMutationDisabledMessage` によって実行不可にしている。
   - 一方で `ProjectProfit/Services/DataStore.swift` は orchestration と永続化更新を両方持っており、`addTransactionResult(...)`、`updateTransaction(...)`、`processRecurringTransactions()`、import 系処理などの直接 mutation API が残る。
-  - `ProjectProfit/Views/Components/TransactionFormView.swift` の edit mode と、`ProjectProfit/Views/Components/RecurringFormView.swift`、`ProjectProfit/Views/Report/ReportView.swift` など、`DataStore` を直接参照する UI / service 経路はまだ残っている。
+  - `ProjectProfit/Views/Components/RecurringFormView.swift`、`ProjectProfit/Views/Report/ReportView.swift` など、`DataStore` を直接参照する UI / service 経路はまだ残っている。
 
 ### REL-P0-03 `PPAccountingProfile` 依存を切って `BusinessProfile` / `TaxYearProfile` に移行する
 - 関連既存チケット: `PP-005`
@@ -48,7 +51,11 @@
   - `ProjectProfit/Application/UseCases/Masters/ProfileSettingsUseCase.swift` は `BusinessProfile` / `TaxYearProfile` を正本に読み書きしている。
   - `ProjectProfit/Services/DataStore.swift` の `reloadProfileSettings()` / `saveProfileSettings()` は `legacyProfile` を渡さず canonical load/save を行っている。
   - `ProjectProfit/Views/Settings/ProfileSettingsView.swift` は canonical profile 保存経路に接続されている。
-  - 一方で `ProjectProfit/Models/PPAccountingProfile.swift` は model として残っており、`ProjectProfit/Infrastructure/FileStorage/BackupService.swift`、`ProjectProfit/Infrastructure/FileStorage/RestoreService.swift`、`ProjectProfit/Application/Migrations/LegacyProfileMigrationRunner.swift` でも参照が残る。
+  - `ProjectProfit/Infrastructure/FileStorage/BackupService.swift` は `businessProfiles` または `taxYearProfiles` が欠けるときだけ `legacy.accountingProfiles` を出力し、canonical profile を backup payload の主体にしている。
+  - `ProjectProfit/Infrastructure/FileStorage/BackupService.swift` の secure payload 収集は canonical business UUID を優先し、canonical key が無い場合だけ legacy key の payload を canonical id へ載せ替えて出力する。
+  - `ProjectProfit/Infrastructure/FileStorage/RestoreService.swift` は canonical profile を先に復元し、canonical 片系欠落時だけ legacy profile を upsert して `LegacyProfileMigrationRunner.executeIfNeeded()` を走らせる。
+  - `ProjectProfit/Application/Migrations/LegacyProfileMigrationRunner.swift` は `alreadyMigrated` ケースでも secure payload の legacy id -> canonical business UUID 移行を実行する。
+  - 一方で `ProjectProfit/Models/PPAccountingProfile.swift` は model として残っており、backup / restore / migration の互換入力として参照が残る。
 
 ### REL-P0-04 TaxYearPack を本番経路に接続し、2026年分を埋める
 - 関連既存チケット: `PP-015`
@@ -68,9 +75,10 @@
 - 根拠:
   - `ProjectProfit/Application/UseCases/Filing/TaxYearStateUseCase.swift` は filing style / VAT / year lock の遷移検証を行う。
   - `ProjectProfit/Application/UseCases/Masters/ProfileSettingsUseCase.swift` は保存時に `TaxYearStateUseCase.validateTransition` を必ず通す。
-  - `ProjectProfit/Services/DataStore+YearLock.swift` の runtime 判定は `TaxYearProfileEntity.yearLockStateRaw` を読む。
+  - `ProjectProfit/Services/DataStore+YearLock.swift` の runtime 判定は `TaxYearProfileEntity.yearLockStateRaw` / `TaxYearProfile.yearLockState` を読む。
   - `ProjectProfit/Views/Accounting/ClosingEntryView.swift`、`ProjectProfit/ViewModels/EtaxExportViewModel.swift`、`ProjectProfit/Services/ExportCoordinator.swift` は preflight / year state を使っている。
-  - 一方で `PPAccountingProfile.lockedYears` は `ProjectProfit/Models/PPAccountingProfile.swift`、`ProjectProfit/Infrastructure/FileStorage/AppSnapshotModels.swift`、`ProjectProfit/Infrastructure/FileStorage/RestoreService+Upserts.swift`、migration 関連に残っている。
+  - `ProjectProfit/Application/Migrations/LegacyProfileMigrationRunner.swift` は `lockedYears` を `TaxYearProfile.yearLockState` へ写像する。
+  - 一方で `PPAccountingProfile.lockedYears` は `ProjectProfit/Models/PPAccountingProfile.swift`、`ProjectProfit/Infrastructure/FileStorage/AppSnapshotModels.swift`、`ProjectProfit/Infrastructure/FileStorage/RestoreService+Upserts.swift`、migration 関連に互換用途で残っている。
 
 ### REL-P0-06 TaxCode master と消費税ルールを canonical 側へ統合する
 - 関連既存チケット: `PP-018`, `PP-019`, `PP-045`
@@ -107,9 +115,10 @@
   - `ProjectProfit/Services/DataStore.swift` の add / update / delete では production caller として `AccountingEngine` を使っていない。
   - `ProjectProfit/Services/AccountingBootstrapService.swift` の `CanonicalTransactionPostingBridge` は `TransactionSnapshot` を受けるようになり、橋渡し入力は `PPTransaction` 全体ではなく snapshot 化されている。
   - `ProjectProfit/Services/DataStore.swift` の `saveManualPostingCandidate(...)` は bridge の出力 candidate を `.draft` に更新して `PostingWorkflowUseCase.saveCandidate(...)` だけを呼ぶ。
-  - `ProjectProfit/Services/DataStore.swift` の `approveRecurringItems(...)` と `importTransactions(from:)` は `saveApprovedPosting(...)` 経由で canonical journal を作り、legacy transaction を増やさない。
-  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 保存、recurring 承認、CSV import の各経路を確認するテストがある。
-  - 一方で `ProjectProfit/Services/DataStore.swift` は transaction 同期で `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼び、`ProjectProfit/Services/AccountingBootstrapService.swift` の bridge candidate status も `.approved` を返す。
+  - `ProjectProfit/Services/DataStore.swift` の `approvePostingCandidate(...)`、`approveRecurringItems(...)`、`importTransactions(from:)` は canonical journal を作り、legacy transaction を増やさない。
+  - `ProjectProfit/Services/DataStore.swift` の summary 系は `canonicalSupplementalSummaryRecords(...)` で non-mirrored approved candidate を project / overall / category / monthly 集計へ補完する。
+  - `ProjectProfitTests/DataStoreAccountingTests.swift` には manual candidate 承認、recurring 承認、CSV import の各経路で legacy transaction が増えず project summary が反映されることを確認するテストがあり、2026-03-10 実行では green だった。
+  - 一方で `ProjectProfit/Services/DataStore.swift` は transaction 同期で `PostingWorkflowUseCase.syncApprovedCandidate(...)` を呼び、`processRecurringTransactions()` などの legacy bridge 経路も残る。
 
 ### REL-P0-09 承認・取消・監査ログ・締め前チェックを一つのフローにする
 - 関連既存チケット: `PP-033`, `PP-046`, `PP-051`
@@ -151,7 +160,8 @@
   - `ProjectProfitTests/CanonicalFlowE2ETests.swift` と `ProjectProfitTests/ReleasePerformanceGateTests.swift` がある。
   - `.github/workflows/release-quality.yml` は `golden-baseline`、`canonical-e2e`、`migration-rehearsal`、`performance-gate` の job を持つ。
   - 2026-03-09 に `CanonicalFlowE2ETests` と `ReleasePerformanceGateTests` は green を確認した。
-  - 一方で `GoldenBaselineTests` の実行結果は、この更新時点では確認していない。
+  - 2026-03-10 に `DataStoreAccountingTests`、`DataStoreCRUDTests`、`BackupRestoreServiceTests`、`LegacyProfileMigrationRunnerTests`、`ExportCoordinatorTests`、`EtaxExportViewModelTests` を実行し、206 tests / 0 failures を確認した。
+  - 一方で `GoldenBaselineTests` の再実行結果は、この更新時点では確認していない。
 
 ---
 
@@ -221,7 +231,10 @@
 - 根拠:
   - `ProjectProfit/Services/ExportCoordinator.swift` と `ProjectProfit/Views/Components/ExportMenuButton.swift` に共通 export 導線がある。
   - `ProjectProfit/Views/Accounting/ProfitLossView.swift`、`BalanceSheetView.swift`、`TrialBalanceView.swift`、`JournalListView.swift`、`LedgerView.swift`、`FixedAssetListView.swift` は `ExportMenuButton` を使う。
-  - 一方で `ProjectProfit/ViewModels/EtaxExportViewModel.swift` は `EtaxXtxExporter` を直接使い、`ProjectProfit/Ledger/Services/` の個別 export service も残っている。
+  - `ProjectProfit/ViewModels/TransactionsViewModel.swift` の transaction CSV export、`ProjectProfit/Views/Accounting/SubLedgerView.swift` の補助簿 export、`ProjectProfit/ViewModels/EtaxExportViewModel.swift` の XTX / CSV export は `ExportCoordinator.export(...)` に統一された。
+  - `ProjectProfit/Services/ExportCoordinator.swift` は `transactions` / `subLedger` / `etax` target と `xtx` format を持ち、e-Tax 生成も coordinator 内で処理する。
+  - `ProjectProfitTests/ExportCoordinatorTests.swift` には transactions が preflight を要求しないこと、e-Tax が form option を要求すること、`.xtx` の命名を確認するテストがあり、2026-03-10 実行では green だった。
+  - 一方で `ProjectProfit/Ledger/Services/` の個別 export service は互換用途として残っている。
 
 ---
 

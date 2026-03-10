@@ -737,11 +737,12 @@ struct ApprovalCandidateDetailView: View {
             try await workflow.saveCandidate(updated)
             self.candidate = updated
             if approveAfterSave {
-                generatedJournal = try await workflow.approveCandidate(
+                let approval = try await dataStore.approvePostingCandidate(
                     candidateId: updated.id,
                     description: normalizedOptionalString(memo)
                 )
-                self.candidate = try await workflow.candidate(updated.id)
+                generatedJournal = approval.journal
+                self.candidate = approval.candidate
                 onStatusChanged?()
             } else {
                 onStatusChanged?()

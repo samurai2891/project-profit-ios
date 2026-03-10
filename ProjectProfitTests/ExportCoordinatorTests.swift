@@ -65,6 +65,12 @@ final class ExportCoordinatorTests: XCTestCase {
             target: .fixedAssets, fiscalYear: 2026, format: .csv
         )
         XCTAssertTrue(fixedAssetsFileName.hasPrefix("fixed_assets_2026_"))
+
+        let etaxFileName = ExportCoordinator.makeFileName(
+            target: .etax, fiscalYear: 2025, format: .xtx
+        )
+        XCTAssertTrue(etaxFileName.hasPrefix("etax_2025_"))
+        XCTAssertTrue(etaxFileName.hasSuffix(".xtx"))
     }
 
     func testExportTargetLabels() {
@@ -73,14 +79,19 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.label, "残高試算表")
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.label, "仕訳帳")
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.label, "総勘定元帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.label, "取引履歴")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.label, "補助簿")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.etax.label, "e-Tax")
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.label, "固定資産台帳")
     }
 
     func testExportFormatExtensions() {
         XCTAssertEqual(ExportCoordinator.ExportFormat.csv.fileExtension, "csv")
         XCTAssertEqual(ExportCoordinator.ExportFormat.pdf.fileExtension, "pdf")
+        XCTAssertEqual(ExportCoordinator.ExportFormat.xtx.fileExtension, "xtx")
         XCTAssertEqual(ExportCoordinator.ExportFormat.csv.label, "CSV")
         XCTAssertEqual(ExportCoordinator.ExportFormat.pdf.label, "PDF")
+        XCTAssertEqual(ExportCoordinator.ExportFormat.xtx.label, "XTX")
     }
 
     func testExportBlocksWhenPreflightFails() throws {
@@ -137,6 +148,48 @@ final class ExportCoordinatorTests: XCTestCase {
         }
     }
 
+    func testTransactionsExportDoesNotRequirePreflight() throws {
+        _ = dataStore.addTransaction(
+            type: .expense,
+            amount: 1_200,
+            date: makeDate(year: 2025, month: 1, day: 10),
+            categoryId: "cat-tools",
+            memo: "export target",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .transactions,
+            format: .csv,
+            fiscalYear: 2025,
+            dataStore: dataStore,
+            transactionOptions: .init(transactions: dataStore.transactions)
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("export target"))
+    }
+
+    func testEtaxExportRequiresFormOptionAfterPreflightPasses() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        XCTAssertThrowsError(
+            try ExportCoordinator.export(
+                target: .etax,
+                format: .xtx,
+                fiscalYear: 2025,
+                dataStore: dataStore
+            )
+        ) { error in
+            guard let exportError = error as? ExportCoordinator.ExportError,
+                  case .etaxFormRequired = exportError
+            else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
     private func seedTaxYearProfile(year: Int, state: YearLockState) {
         let profile = TaxYearProfile(
             businessId: businessId,
@@ -146,5 +199,11 @@ final class ExportCoordinatorTests: XCTestCase {
         )
         context.insert(TaxYearProfileEntityMapper.toEntity(profile))
         try! context.save()
+    }
+
+    private func makeDate(year: Int, month: Int, day: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 }

@@ -759,13 +759,6 @@ class DataStore {
         return error
     }
 
-    private func enqueueCanonicalTransactionSync(for transactionId: UUID, source: CandidateSource?) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            _ = await self.syncCanonicalArtifacts(forTransactionId: transactionId, source: source)
-        }
-    }
-
     private func enqueueCanonicalRecurringCounterpartySync(for recurringId: UUID) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -773,6 +766,8 @@ class DataStore {
         }
     }
 
+    /// Legacy transaction から canonical artifact を明示同期する互換ヘルパー。
+    /// Production の write path からは呼ばず、bootstrap / migration / tests に限定する。
     func syncCanonicalArtifacts(
         forTransactionId transactionId: UUID,
         source: CandidateSource? = nil
@@ -964,6 +959,7 @@ class DataStore {
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
+            counterpartyName: counterparty,
             createdAt: Date(),
             updatedAt: Date(),
             journalEntryId: nil
@@ -1059,6 +1055,33 @@ class DataStore {
             lastError = appError
             return .failure(appError)
         }
+    }
+
+    func approvePostingCandidate(
+        candidateId: UUID,
+        description: String? = nil
+    ) async throws -> (journal: CanonicalJournalEntry, candidate: PostingCandidate) {
+        guard try await postingWorkflowUseCase.candidate(candidateId) != nil else {
+            let error = AppError.invalidInput(message: "承認対象の候補が見つかりません")
+            lastError = error
+            throw error
+        }
+
+        let journal = try await postingWorkflowUseCase.approveCandidate(
+            candidateId: candidateId,
+            description: description
+        )
+        guard let approvedCandidate = try await postingWorkflowUseCase.candidate(candidateId) else {
+            let error = AppError.invalidInput(message: "承認後の候補を再取得できませんでした")
+            lastError = error
+            throw error
+        }
+
+        refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
+        lastError = nil
+        return (journal, approvedCandidate)
     }
 
     private func resolvedExplicitTaxCodeId(
@@ -1776,8 +1799,8 @@ class DataStore {
 
     // MARK: - Transaction CRUD
 
-    /// 取引を追加し、保存結果を返す。
-    /// 年度ロックなどで追加できない場合は `.failure` を返す。
+    /// Legacy `PPTransaction` を追加する互換ヘルパー。
+    /// canonical cutover 後も migration / fixtures / tests 用に残すが、自動で canonical へ同期しない。
     func addTransactionResult(
         type: TransactionType,
         amount: Int,
@@ -1855,13 +1878,11 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
-        if enqueueCanonicalSync {
-            enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
-        }
         return .success(transaction)
     }
 
     @discardableResult
+    /// Legacy `PPTransaction` を追加する互換ヘルパー。
     func addTransaction(
         type: TransactionType,
         amount: Int,
@@ -1916,6 +1937,7 @@ class DataStore {
     }
 
     @discardableResult
+    /// Legacy `PPTransaction` を更新する互換ヘルパー。
     func updateTransaction(
         id: UUID,
         type: TransactionType? = nil,
@@ -2060,10 +2082,10 @@ class DataStore {
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
-        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
         return true
     }
 
+    /// Legacy `PPTransaction` を削除する互換ヘルパー。
     func deleteTransaction(
         id: UUID,
         mutationSource: LegacyTransactionMutationSource = .systemGenerated
@@ -3350,6 +3372,17 @@ class DataStore {
             }
         }
 
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) where record.projectId == projectId {
+            switch record.type {
+            case .income:
+                totalIncome += record.amount
+            case .expense:
+                totalExpense += record.amount
+            case .transfer:
+                break
+            }
+        }
+
         let profit = totalIncome - totalExpense
         let profitMargin = totalIncome > 0 ? Double(profit) / Double(totalIncome) * 100 : 0
 
@@ -3382,6 +3415,17 @@ class DataStore {
             }
         }
 
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) {
+            switch record.type {
+            case .income:
+                totalIncome += record.amount
+            case .expense:
+                totalExpense += record.amount
+            case .transfer:
+                break
+            }
+        }
+
         let netProfit = totalIncome - totalExpense
         let profitMargin = totalIncome > 0 ? Double(netProfit) / Double(totalIncome) * 100 : 0
 
@@ -3401,6 +3445,12 @@ class DataStore {
             if let end = endDate, t.date > end { continue }
             totals[t.categoryId, default: 0] += t.amount
             grandTotal += t.amount
+        }
+
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) {
+            guard record.type == type, let categoryId = record.categoryId else { continue }
+            totals[categoryId, default: 0] += record.amount
+            grandTotal += record.amount
         }
 
         return totals.map { categoryId, total in
@@ -3432,8 +3482,109 @@ class DataStore {
             monthlyData[month] = data
         }
 
+        for record in canonicalSupplementalSummaryRecords() {
+            let month = formatter.string(from: record.date)
+            guard month.hasPrefix(String(year)), monthlyData[month] != nil else { continue }
+            guard var data = monthlyData[month] else { continue }
+            switch record.type {
+            case .income:
+                data.income += record.amount
+            case .expense:
+                data.expense += record.amount
+            case .transfer:
+                break
+            }
+            monthlyData[month] = data
+        }
+
         return monthlyData.sorted { $0.key < $1.key }.map { key, data in
             MonthlySummary(month: key, income: data.income, expense: data.expense, profit: data.income - data.expense)
+        }
+    }
+
+    private struct CanonicalSupplementalSummaryRecord {
+        let date: Date
+        let type: TransactionType
+        let amount: Int
+        let projectId: UUID?
+        let categoryId: String?
+    }
+
+    private func canonicalSupplementalSummaryRecords(
+        startDate: Date? = nil,
+        endDate: Date? = nil
+    ) -> [CanonicalSupplementalSummaryRecord] {
+        let legacyTransactionIds = Set(transactions.map(\.id))
+        let journals = canonicalJournalEntries().filter { journal in
+            guard let sourceCandidateId = journal.sourceCandidateId else {
+                return false
+            }
+            guard !legacyTransactionIds.contains(sourceCandidateId) else {
+                return false
+            }
+            if let startDate, journal.journalDate < startDate {
+                return false
+            }
+            if let endDate, journal.journalDate > endDate {
+                return false
+            }
+            return true
+        }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        return journals.flatMap { journal -> [CanonicalSupplementalSummaryRecord] in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let transactionType = candidate.legacySnapshot?.type else {
+                return []
+            }
+
+            let relevantLines: [PostingCandidateLine]
+            switch transactionType {
+            case .income:
+                relevantLines = candidate.proposedLines.filter { $0.creditAccountId != nil }
+            case .expense:
+                relevantLines = candidate.proposedLines.filter { $0.debitAccountId != nil }
+            case .transfer:
+                relevantLines = []
+            }
+
+            let categoryId = candidate.legacySnapshot?.categoryId
+            return relevantLines.compactMap { line -> CanonicalSupplementalSummaryRecord? in
+                let amount = NSDecimalNumber(decimal: line.amount).intValue
+                guard amount != 0 else {
+                    return nil
+                }
+
+                return CanonicalSupplementalSummaryRecord(
+                    date: journal.journalDate,
+                    type: transactionType,
+                    amount: amount,
+                    projectId: line.projectAllocationId,
+                    categoryId: categoryId
+                )
+            }
+        }
+    }
+
+    private func fetchPostingCandidates(ids: Set<UUID>) -> [UUID: PostingCandidate] {
+        guard !ids.isEmpty else {
+            return [:]
+        }
+
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let entities = (try? modelContext.fetch(descriptor)) ?? []
+        return entities.reduce(into: [UUID: PostingCandidate]()) { result, entity in
+            guard ids.contains(entity.candidateId) else {
+                return
+            }
+            let candidate = PostingCandidateEntityMapper.toDomain(entity)
+            result[candidate.id] = candidate
         }
     }
 
@@ -3701,7 +3852,10 @@ class DataStore {
                 candidateSource: .importFile
             )
 
-            if case .failure(let error) = result {
+            switch result {
+            case .success:
+                break
+            case .failure(let error):
                 errorCount += 1
                 errors.append(error.localizedDescription)
                 continue

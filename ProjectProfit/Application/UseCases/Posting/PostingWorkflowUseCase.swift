@@ -495,6 +495,7 @@ struct PostingWorkflowUseCase {
             status: .needsReview,
             source: sourceCandidate.source,
             memo: normalizedReason(reason, fallback: sourceCandidate.memo),
+            legacySnapshot: sourceCandidate.legacySnapshot,
             createdAt: reopenedAt,
             updatedAt: reopenedAt
         )

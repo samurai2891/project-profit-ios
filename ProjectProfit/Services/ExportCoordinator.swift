@@ -9,11 +9,13 @@ enum ExportCoordinator {
     enum ExportFormat: String, CaseIterable, Sendable {
         case csv
         case pdf
+        case xtx
 
         var label: String {
             switch self {
             case .csv: "CSV"
             case .pdf: "PDF"
+            case .xtx: "XTX"
             }
         }
 
@@ -26,6 +28,9 @@ enum ExportCoordinator {
         case trialBalance
         case journal
         case ledger
+        case transactions
+        case subLedger
+        case etax
         case fixedAssets
 
         var label: String {
@@ -35,6 +40,9 @@ enum ExportCoordinator {
             case .trialBalance: "残高試算表"
             case .journal: "仕訳帳"
             case .ledger: "総勘定元帳"
+            case .transactions: "取引履歴"
+            case .subLedger: "補助簿"
+            case .etax: "e-Tax"
             case .fixedAssets: "固定資産台帳"
             }
         }
@@ -46,7 +54,19 @@ enum ExportCoordinator {
             case .trialBalance: "trial_balance"
             case .journal: "journal"
             case .ledger: "ledger"
+            case .transactions: "transactions"
+            case .subLedger: "sub_ledger"
+            case .etax: "etax"
             case .fixedAssets: "fixed_assets"
+            }
+        }
+
+        var requiresPreflight: Bool {
+            switch self {
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax:
+                return true
+            case .transactions, .subLedger:
+                return false
             }
         }
     }
@@ -54,8 +74,12 @@ enum ExportCoordinator {
     enum ExportError: LocalizedError {
         case dataUnavailable
         case ledgerAccountRequired
+        case transactionsRequired
+        case subLedgerConfigurationRequired
+        case etaxFormRequired
         case preflightBlocked([String])
         case unsupportedFormat(ExportTarget, ExportFormat)
+        case etaxGenerationFailed(String)
         case fileWriteFailed
 
         var errorDescription: String? {
@@ -64,20 +88,44 @@ enum ExportCoordinator {
                 return "出力データが取得できません"
             case .ledgerAccountRequired:
                 return "元帳出力には勘定科目の指定が必要です"
+            case .transactionsRequired:
+                return "取引履歴出力に必要な対象データがありません"
+            case .subLedgerConfigurationRequired:
+                return "補助簿出力に必要な設定が不足しています"
+            case .etaxFormRequired:
+                return "e-Tax出力用のフォームが未生成です"
             case .preflightBlocked(let messages):
                 return messages.joined(separator: "\n")
             case .unsupportedFormat(let target, let format):
                 return "\(target.label)の\(format.label)出力は未対応です"
+            case .etaxGenerationFailed(let message):
+                return message
             case .fileWriteFailed:
                 return "ファイルの書き込みに失敗しました"
             }
         }
     }
 
-    struct LedgerExportOptions: Sendable {
+    struct LedgerExportOptions {
         let accountId: String
         let accountName: String
         let accountCode: String
+    }
+
+    struct TransactionExportOptions {
+        let transactions: [PPTransaction]
+    }
+
+    struct SubLedgerExportOptions {
+        let type: SubLedgerType
+        let startDate: Date?
+        let endDate: Date?
+        let accountFilter: String?
+        let counterpartyFilter: String?
+    }
+
+    struct EtaxExportOptions {
+        let form: EtaxForm
     }
 
     // MARK: - Export
@@ -88,16 +136,24 @@ enum ExportCoordinator {
         format: ExportFormat,
         fiscalYear: Int,
         dataStore: DataStore,
-        ledgerOptions: LedgerExportOptions? = nil
+        ledgerOptions: LedgerExportOptions? = nil,
+        transactionOptions: TransactionExportOptions? = nil,
+        subLedgerOptions: SubLedgerExportOptions? = nil,
+        etaxOptions: EtaxExportOptions? = nil
     ) throws -> URL {
-        try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
+        if target.requiresPreflight {
+            try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
+        }
 
         let content: ExportContent = try generateContent(
             target: target,
             format: format,
             fiscalYear: fiscalYear,
             dataStore: dataStore,
-            ledgerOptions: ledgerOptions
+            ledgerOptions: ledgerOptions,
+            transactionOptions: transactionOptions,
+            subLedgerOptions: subLedgerOptions,
+            etaxOptions: etaxOptions
         )
 
         let fileName = makeFileName(target: target, fiscalYear: fiscalYear, format: format)
@@ -136,7 +192,10 @@ enum ExportCoordinator {
         format: ExportFormat,
         fiscalYear: Int,
         dataStore: DataStore,
-        ledgerOptions: LedgerExportOptions?
+        ledgerOptions: LedgerExportOptions?,
+        transactionOptions: TransactionExportOptions?,
+        subLedgerOptions: SubLedgerExportOptions?,
+        etaxOptions: EtaxExportOptions?
     ) throws -> ExportContent {
         let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
         let accounts = dataStore.accounts
@@ -244,6 +303,69 @@ enum ExportCoordinator {
                 fiscalYear: fiscalYear
             ))
 
+        case (.profitLoss, .xtx),
+             (.balanceSheet, .xtx),
+             (.trialBalance, .xtx),
+             (.journal, .xtx),
+             (.ledger, .xtx):
+            throw ExportError.unsupportedFormat(target, format)
+
+        // MARK: Transactions
+        case (.transactions, .csv):
+            guard let opts = transactionOptions else {
+                throw ExportError.transactionsRequired
+            }
+            return .text(generateCSV(
+                transactions: opts.transactions,
+                getCategory: { dataStore.getCategory(id: $0) },
+                getProject: { dataStore.getProject(id: $0) }
+            ))
+
+        case (.transactions, _):
+            throw ExportError.unsupportedFormat(target, format)
+
+        // MARK: Sub Ledger
+        case (.subLedger, .csv):
+            guard let opts = subLedgerOptions else {
+                throw ExportError.subLedgerConfigurationRequired
+            }
+            return .text(dataStore.exportSubLedgerCSV(
+                type: opts.type,
+                startDate: opts.startDate,
+                endDate: opts.endDate,
+                accountFilter: opts.accountFilter,
+                counterpartyFilter: opts.counterpartyFilter
+            ))
+
+        case (.subLedger, _):
+            throw ExportError.unsupportedFormat(target, format)
+
+        // MARK: e-Tax
+        case (.etax, .xtx):
+            guard let opts = etaxOptions else {
+                throw ExportError.etaxFormRequired
+            }
+            switch EtaxXtxExporter.generateXtx(form: opts.form) {
+            case .success(let data):
+                return .data(data)
+            case .failure(let error):
+                throw ExportError.etaxGenerationFailed(error.description)
+            }
+
+        case (.etax, .csv):
+            guard let opts = etaxOptions else {
+                throw ExportError.etaxFormRequired
+            }
+            switch EtaxXtxExporter.generateCsv(form: opts.form) {
+            case .success(let data):
+                return .data(data)
+            case .failure(let error):
+                throw ExportError.etaxGenerationFailed(error.description)
+            }
+
+        case (.etax, _):
+            throw ExportError.unsupportedFormat(target, format)
+
         // MARK: Fixed Assets
         case (.fixedAssets, .csv):
             let assets = dataStore.fixedAssets
@@ -275,6 +397,9 @@ enum ExportCoordinator {
                     return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
                 }
             ))
+
+        case (.fixedAssets, .xtx):
+            throw ExportError.unsupportedFormat(target, format)
         }
     }
 

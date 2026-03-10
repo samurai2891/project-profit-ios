@@ -492,6 +492,57 @@ final class DataStoreAccountingTests: XCTestCase {
         )
     }
 
+    func testLegacySystemTransactionMutationsDoNotAutoSyncCanonicalArtifactsWhenCanonicalPostingEnabled() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "P1", description: "")
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        let transaction = dataStore.addTransaction(
+            type: .expense,
+            amount: 2400,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "system generated legacy helper",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+
+        let candidateBeforeSync = try await workflow.candidate(transaction.id)
+        let journalsAfterAdd = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        XCTAssertNil(candidateBeforeSync)
+        XCTAssertNil(transaction.journalEntryId)
+        XCTAssertEqual(journalsAfterAdd.count, beforeJournals.count)
+
+        let didUpdate = dataStore.updateTransaction(
+            id: transaction.id,
+            memo: "updated legacy helper",
+            candidateSource: .manual
+        )
+        XCTAssertTrue(didUpdate)
+        XCTAssertEqual(transaction.memo, "updated legacy helper")
+
+        let journalsAfterUpdate = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let candidateAfterUpdate = try await workflow.candidate(transaction.id)
+        XCTAssertNil(candidateAfterUpdate)
+        XCTAssertNil(transaction.journalEntryId)
+        XCTAssertEqual(journalsAfterUpdate.count, beforeJournals.count)
+
+        let syncResult = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        guard case let .synced(candidateId, journalId) = syncResult.postingStatus else {
+            return XCTFail("explicit sync should still create canonical artifacts")
+        }
+
+        let candidateAfterSync = try await workflow.candidate(candidateId)
+        let journalsAfterSync = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        XCTAssertEqual(candidateAfterSync?.id, transaction.id)
+        XCTAssertEqual(transaction.journalEntryId, journalId)
+        XCTAssertEqual(journalsAfterSync.count, beforeJournals.count + 1)
+    }
+
     func testUserInitiatedManualJournalMutationsAreRejectedWhenCanonicalPostingEnabled() {
         FeatureFlags.useCanonicalPosting = true
         let beforeCount = dataStore.journalEntries.count
@@ -573,6 +624,9 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(candidate.source, .manual)
         XCTAssertEqual(candidate.counterpartyId, nil)
         XCTAssertTrue(candidate.proposedLines.allSatisfy { $0.projectAllocationId == project.id })
+        XCTAssertEqual(candidate.legacySnapshot?.categoryId, "cat-tools")
+        XCTAssertEqual(candidate.legacySnapshot?.paymentAccountId, "acct-cash")
+        XCTAssertEqual(candidate.legacySnapshot?.taxAmount, 1_200)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactionCount)
 
         let pendingCandidates = try await workflow.pendingCandidates(businessId: businessId)
@@ -620,7 +674,55 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertFalse(candidate.proposedLines.contains(where: { $0.projectAllocationId == nil }))
     }
 
-    func testApproveRecurringItemsCreatesCanonicalJournalWithoutLegacyTransaction() async throws {
+    func testApprovePostingCandidateCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = dataStore.addProject(name: "Approval Queue Project", description: "")
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let beforeTransactions = dataStore.transactions.count
+
+        let candidateResult = await dataStore.saveManualPostingCandidate(
+            type: .expense,
+            amount: 12_000,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "approval queue candidate",
+            allocations: [(projectId: project.id, ratio: 100)],
+            paymentAccountId: "acct-cash",
+            taxDeductibleRate: 100,
+            taxAmount: 1_200,
+            taxCodeId: TaxCode.standard10.rawValue,
+            taxRate: 10,
+            isTaxIncluded: false,
+            taxCategory: .standardRate,
+            candidateSource: .manual
+        )
+
+        let candidate: PostingCandidate
+        switch candidateResult {
+        case .success(let savedCandidate):
+            candidate = savedCandidate
+        case .failure(let error):
+            XCTFail("manual candidate save should succeed: \(error.localizedDescription)")
+            return
+        }
+
+        let approval = try await dataStore.approvePostingCandidate(
+            candidateId: candidate.id,
+            description: "approval queue approved"
+        )
+        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        XCTAssertEqual(journals.count, beforeJournals.count + 1)
+        XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
+        XCTAssertEqual(approval.candidate.status, .approved)
+        XCTAssertFalse(dataStore.transactions.contains { $0.journalEntryId == approval.journal.id })
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 12_000)
+    }
+
+    func testApproveRecurringItemsCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let project = dataStore.addProject(name: "Recurring Candidate Project", description: "")
@@ -652,9 +754,10 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
         XCTAssertEqual(journals.count, beforeJournals.count + 1)
         XCTAssertTrue(journals.contains(where: { $0.entryType == .recurring }))
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 6_000)
     }
 
-    func testImportTransactionsCreatesCanonicalJournalWithoutLegacyTransaction() async throws {
+    func testImportTransactionsCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let beforeTransactions = dataStore.transactions.count
@@ -667,12 +770,14 @@ final class DataStoreAccountingTests: XCTestCase {
 
         let result = await dataStore.importTransactions(from: csv)
         let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let project = try XCTUnwrap(dataStore.projects.first { $0.name == "ImportProject" })
 
         XCTAssertEqual(result.successCount, 1)
         XCTAssertEqual(result.errorCount, 0)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
         XCTAssertEqual(journals.count, beforeJournals.count + 1)
         XCTAssertEqual(Set(journals.last?.lines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 5_500)
     }
 
     func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {

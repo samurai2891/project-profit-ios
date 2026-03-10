@@ -1,5 +1,4 @@
 import Foundation
-import os
 import SwiftUI
 
 @Observable
@@ -86,39 +85,14 @@ final class EtaxExportViewModel {
     // MARK: - Export
 
     func exportXtx() {
-        guard let form = exportedForm else { return }
-        guard form.fiscalYear == fiscalYear else {
-            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
-            return
-        }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
-            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
-            return
-        }
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
-            return
-        }
-        isExporting = true
-
-        let result = EtaxXtxExporter.generateXtx(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "xtx") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
-        }
-
-        isExporting = false
+        export(format: .xtx)
     }
 
     func exportCsv() {
+        export(format: .csv)
+    }
+
+    private func export(format: ExportCoordinator.ExportFormat) {
         guard let form = exportedForm else { return }
         guard form.fiscalYear == fiscalYear else {
             exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
@@ -136,16 +110,17 @@ final class EtaxExportViewModel {
         }
         isExporting = true
 
-        let result = EtaxXtxExporter.generateCsv(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "csv") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
+        do {
+            let url = try ExportCoordinator.export(
+                target: .etax,
+                format: format,
+                fiscalYear: form.fiscalYear,
+                dataStore: dataStore,
+                etaxOptions: .init(form: Self.exportableForm(from: form))
+            )
+            exportResult = .success(url: url)
+        } catch {
+            exportResult = .failure(message: error.localizedDescription)
         }
 
         isExporting = false
@@ -153,28 +128,12 @@ final class EtaxExportViewModel {
 
     // MARK: - File Handling
 
-    private static let logger = Logger(subsystem: "com.projectprofit", category: "EtaxExport")
-
     private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
         let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
         if years.contains(preferredYear) {
             return preferredYear
         }
         return years.last ?? preferredYear
-    }
-
-    private func saveToTempFile(data: Data, extension ext: String) -> URL? {
-        let fileName = "etax_\(fiscalYear)_\(formType.rawValue).\(ext)"
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
-
-        do {
-            try data.write(to: fileURL)
-            return fileURL
-        } catch {
-            Self.logger.error("ファイル保存失敗: \(fileURL.path), error: \(error.localizedDescription)")
-            return nil
-        }
     }
 
     private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
