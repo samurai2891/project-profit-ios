@@ -3,6 +3,10 @@ import SwiftUI
 struct CategoryAccountMappingView: View {
     @Environment(DataStore.self) private var dataStore
 
+    private var categoryWorkflowUseCase: CategoryWorkflowUseCase {
+        CategoryWorkflowUseCase(dataStore: dataStore)
+    }
+
     private var expenseCategories: [PPCategory] {
         dataStore.categories.filter { $0.type == .expense }
     }
@@ -60,12 +64,12 @@ struct CategoryAccountMappingView: View {
 
             Menu {
                 Button("未設定") {
-                    dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: nil)
+                    _ = categoryWorkflowUseCase.updateLinkedAccount(categoryId: category.id, accountId: nil)
                 }
 
                 ForEach(availableAccounts, id: \.id) { account in
                     Button("\(account.code) \(account.name)") {
-                        dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: account.id)
+                        _ = categoryWorkflowUseCase.updateLinkedAccount(categoryId: category.id, accountId: account.id)
                     }
                 }
             } label: {

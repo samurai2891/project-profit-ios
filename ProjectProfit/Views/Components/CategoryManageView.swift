@@ -17,6 +17,10 @@ struct CategoryManageView: View {
     @State private var categoryToDelete: PPCategory? = nil
     @State private var errorMessage: String? = nil
 
+    private var categoryWorkflowUseCase: CategoryWorkflowUseCase {
+        CategoryWorkflowUseCase(dataStore: dataStore)
+    }
+
     private var expenseCategories: [PPCategory] {
         dataStore.categories.filter { $0.type == .expense && $0.archivedAt == nil }
     }
@@ -259,7 +263,7 @@ struct CategoryManageView: View {
                     Spacer()
 
                     Button {
-                        dataStore.unarchiveCategory(id: category.id)
+                        _ = categoryWorkflowUseCase.unarchiveCategory(id: category.id)
                     } label: {
                         Text("復元")
                             .font(.caption.weight(.medium))
@@ -300,8 +304,14 @@ struct CategoryManageView: View {
             return
         }
 
-        dataStore.updateCategory(id: category.id, name: trimmedName)
-        cancelEditing()
+        if categoryWorkflowUseCase.updateCategory(
+            id: category.id,
+            input: CategoryUpdateInput(name: trimmedName, type: nil, icon: nil)
+        ) {
+            cancelEditing()
+        } else {
+            errorMessage = "カテゴリを更新できませんでした。"
+        }
     }
 
     private func saveNewCategory(name: String, type: CategoryType) {
@@ -318,7 +328,9 @@ struct CategoryManageView: View {
             return
         }
 
-        dataStore.addCategory(name: trimmedName, type: type, icon: "tag")
+        _ = categoryWorkflowUseCase.createCategory(
+            input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
+        )
 
         switch type {
         case .expense:
@@ -347,8 +359,11 @@ struct CategoryManageView: View {
             return
         }
 
-        dataStore.archiveCategory(id: category.id)
-        categoryToDelete = nil
+        if categoryWorkflowUseCase.archiveCategory(id: category.id) {
+            categoryToDelete = nil
+        } else {
+            errorMessage = "カテゴリをアーカイブできませんでした。"
+        }
     }
 
     // MARK: - Helpers

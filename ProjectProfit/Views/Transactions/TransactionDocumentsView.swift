@@ -21,6 +21,10 @@ struct TransactionDocumentsView: View {
     @State private var pendingWarningDeleteId: UUID?
     @State private var pendingWarningMessage: String?
 
+    private var documentWorkflowUseCase: DocumentWorkflowUseCase {
+        DocumentWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         List {
             addSection
@@ -50,7 +54,7 @@ struct TransactionDocumentsView: View {
             }
             Button("削除する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let result = dataStore.confirmDocumentDeletion(id: id, reason: "保存期間内削除を手動承認")
+                let result = documentWorkflowUseCase.confirmDeletion(id: id, reason: "保存期間内削除を手動承認")
                 handleDeleteAttempt(result)
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
@@ -142,7 +146,7 @@ struct TransactionDocumentsView: View {
                             .font(.caption.weight(.medium))
 
                             Button("削除", role: .destructive) {
-                                let attempt = dataStore.requestDocumentDeletion(id: record.id)
+                                let attempt = documentWorkflowUseCase.requestDeletion(id: record.id)
                                 if case .warningRequired(let message) = attempt {
                                     pendingWarningDeleteId = record.id
                                     pendingWarningMessage = message
@@ -194,14 +198,16 @@ struct TransactionDocumentsView: View {
     }
 
     private func saveDocument(data: Data, fileName: String, mimeType: String?) {
-        let result = dataStore.addDocumentRecord(
-            transactionId: transaction.id,
-            documentType: selectedDocumentType,
-            originalFileName: fileName,
-            fileData: data,
-            mimeType: mimeType,
-            issueDate: issueDate,
-            note: note
+        let result = documentWorkflowUseCase.addDocument(
+            input: DocumentAddInput(
+                transactionId: transaction.id,
+                documentType: selectedDocumentType,
+                originalFileName: fileName,
+                fileData: data,
+                mimeType: mimeType,
+                issueDate: issueDate,
+                note: note
+            )
         )
         switch result {
         case .success:
@@ -226,6 +232,6 @@ struct TransactionDocumentsView: View {
     }
 
     private func refresh() {
-        records = dataStore.listDocumentRecords(transactionId: transaction.id)
+        records = documentWorkflowUseCase.listDocuments(transactionId: transaction.id)
     }
 }

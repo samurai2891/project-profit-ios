@@ -19,6 +19,10 @@ struct LegalDocumentLedgerView: View {
     @State private var isLoading = false
     @State private var isReindexing = false
 
+    private var documentWorkflowUseCase: DocumentWorkflowUseCase {
+        DocumentWorkflowUseCase(dataStore: dataStore)
+    }
+
     private var filteredRecords: [PPDocumentRecord] {
         records.filter { record in
             if let selectedCategory, record.retentionCategory != selectedCategory {
@@ -94,7 +98,7 @@ struct LegalDocumentLedgerView: View {
                                 .font(.caption.weight(.medium))
 
                                 Button("削除", role: .destructive) {
-                                    let attempt = dataStore.requestDocumentDeletion(id: record.id)
+                                    let attempt = documentWorkflowUseCase.requestDeletion(id: record.id)
                                     if case .warningRequired(let message) = attempt {
                                         pendingWarningDeleteId = record.id
                                         pendingWarningMessage = message
@@ -182,7 +186,7 @@ struct LegalDocumentLedgerView: View {
             }
             Button("削除する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let attempt = dataStore.confirmDocumentDeletion(id: id, reason: "書類台帳から手動削除")
+                let attempt = documentWorkflowUseCase.confirmDeletion(id: id, reason: "書類台帳から手動削除")
                 handleDeleteAttempt(attempt)
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
@@ -213,8 +217,8 @@ struct LegalDocumentLedgerView: View {
     }
 
     private func refresh() async {
-        records = dataStore.listDocumentRecords()
-        logs = dataStore.listComplianceLogs(limit: 10)
+        records = documentWorkflowUseCase.listDocuments()
+        logs = documentWorkflowUseCase.listComplianceLogs(limit: 10)
 
         guard let businessId = dataStore.businessProfile?.id, searchForm.hasActiveFilters else {
             matchingStoredFileNames = nil

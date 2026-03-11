@@ -90,6 +90,10 @@
   - 確認: `ProjectProfit/Views/Accounting/ClosingEntryView.swift`, `ProjectProfit/Application/UseCases/Closing/ClosingWorkflowUseCase.swift`
 - fixed asset の作成 / 更新 / 除却 / 削除 / 償却計上を fixed asset workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Accounting/FixedAssetFormView.swift`, `ProjectProfit/Views/Accounting/FixedAssetDetailView.swift`, `ProjectProfit/Views/Accounting/FixedAssetListView.swift`, `ProjectProfit/Application/UseCases/FixedAssets/FixedAssetWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/FixedAssets/FixedAssetRepository.swift`
+- category の作成 / 更新 / アーカイブ / 復元 / linked account 更新を category workflow use case へ接続する
+  - 確認: `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`, `ProjectProfit/Views/Accounting/CategoryAccountMappingView.swift`, `ProjectProfit/Application/UseCases/Masters/CategoryWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Categories/CategoryRepository.swift`
+- documents の追加 / 削除確認 / 台帳一覧読込を document workflow use case へ接続する
+  - 確認: `ProjectProfit/Views/Transactions/TransactionDocumentsView.swift`, `ProjectProfit/Views/Accounting/LegalDocumentLedgerView.swift`, `ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Documents/DocumentRepository.swift`
 
 #### 部分実装
 - `DataStore` が orchestration と永続化更新の両方を引き続き持っている
@@ -97,7 +101,7 @@
 - `DataStore` に直接 mutation API が残っている
   - 確認: `addTransactionResult(...)`, `updateTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`
 - 旧 UI / service 経路が `DataStore` を直接参照している
-  - 確認: `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`
+  - 確認: `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Views/Accounting/ManualJournalFormView.swift`
 
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する

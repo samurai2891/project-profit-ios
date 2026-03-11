@@ -1538,7 +1538,7 @@ class DataStore {
         }
     }
 
-    private func refreshCategories() {
+    func refreshCategories() {
         do {
             let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
             categories = try modelContext.fetch(descriptor)
@@ -2130,65 +2130,27 @@ class DataStore {
 
     @discardableResult
     func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
-        // 同名・同タイプの重複チェック: 既存があればそれを返す
-        if let existing = categories.first(where: { $0.type == type && $0.name == name }) {
-            return existing
-        }
-        let category = PPCategory(id: UUID().uuidString, name: name, type: type, icon: icon)
-        modelContext.insert(category)
-        save()
-        refreshCategories()
-        return category
+        CategoryWorkflowUseCase(dataStore: self).createCategory(
+            input: CategoryCreateInput(name: name, type: type, icon: icon)
+        )
     }
 
     func updateCategory(id: String, name: String? = nil, type: CategoryType? = nil, icon: String? = nil) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        if let name {
-            let targetType = type ?? category.type
-            if categories.contains(where: { $0.id != id && $0.type == targetType && $0.name == name }) {
-                return
-            }
-            category.name = name
-        }
-        if let type { category.type = type }
-        if let icon { category.icon = icon }
-        save()
-        refreshCategories()
+        _ = CategoryWorkflowUseCase(dataStore: self).updateCategory(
+            id: id,
+            input: CategoryUpdateInput(name: name, type: type, icon: icon)
+        )
     }
 
     func updateCategoryLinkedAccount(categoryId: String, accountId: String?) {
-        guard let category = categories.first(where: { $0.id == categoryId }) else { return }
-        category.linkedAccountId = accountId
-        save()
-        refreshCategories()
+        _ = CategoryWorkflowUseCase(dataStore: self).updateLinkedAccount(
+            categoryId: categoryId,
+            accountId: accountId
+        )
     }
 
     func deleteCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        guard !category.isDefault else { return }
-
-        // タイプに応じたフォールバックカテゴリ
-        let fallbackId: String = switch category.type {
-        case .expense: "cat-other-expense"
-        case .income: "cat-other-income"
-        }
-
-        // 参照しているトランザクションを移行
-        let now = Date()
-        for transaction in transactions where transaction.categoryId == id {
-            transaction.categoryId = fallbackId
-            transaction.updatedAt = now
-        }
-        for recurring in recurringTransactions where recurring.categoryId == id {
-            recurring.categoryId = fallbackId
-            recurring.updatedAt = now
-        }
-
-        modelContext.delete(category)
-        save()
-        refreshCategories()
-        refreshTransactions()
-        refreshRecurring()
+        _ = CategoryWorkflowUseCase(dataStore: self).deleteCategory(id: id)
     }
 
     func getCategory(id: String) -> PPCategory? {
@@ -3778,17 +3740,11 @@ class DataStore {
     // MARK: - Category Archive
 
     func archiveCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        category.archivedAt = Date()
-        save()
-        refreshCategories()
+        _ = CategoryWorkflowUseCase(dataStore: self).archiveCategory(id: id)
     }
 
     func unarchiveCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        category.archivedAt = nil
-        save()
-        refreshCategories()
+        _ = CategoryWorkflowUseCase(dataStore: self).unarchiveCategory(id: id)
     }
 
     // MARK: - CSV Import
