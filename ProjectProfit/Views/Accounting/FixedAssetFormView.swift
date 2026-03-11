@@ -36,6 +36,10 @@ struct FixedAssetFormView: View {
         return .straightLine
     }
 
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         Form {
             Section("基本情報") {
@@ -116,9 +120,9 @@ struct FixedAssetFormView: View {
     }
 
     private func saveAsset() -> Bool {
-        if let asset = editingAsset {
-            return dataStore.updateFixedAsset(
-                id: asset.id,
+        fixedAssetWorkflowUseCase.saveAsset(
+            existingAssetId: editingAsset?.id,
+            input: FixedAssetUpsertInput(
                 name: name,
                 acquisitionDate: acquisitionDate,
                 acquisitionCost: acquisitionCost,
@@ -128,17 +132,6 @@ struct FixedAssetFormView: View {
                 businessUsePercent: businessUsePercent,
                 memo: memo.isEmpty ? nil : memo
             )
-        } else {
-            return dataStore.addFixedAsset(
-                name: name,
-                acquisitionDate: acquisitionDate,
-                acquisitionCost: acquisitionCost,
-                usefulLifeYears: usefulLifeYears,
-                depreciationMethod: depreciationMethod,
-                salvageValue: salvageValue,
-                businessUsePercent: businessUsePercent,
-                memo: memo.isEmpty ? nil : memo
-            ) != nil
-        }
+        )
     }
 }

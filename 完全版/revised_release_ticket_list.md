@@ -34,29 +34,30 @@
 - canonical 既定値で legacy ledger 書き込みを拒否する
   - 確認: `ProjectProfit/App/FeatureFlags.swift`, `ProjectProfit/Ledger/Services/LedgerDataStore.swift`
 - 手入力の新規保存を `PPTransaction` 直生成ではなく draft candidate 保存へ切り替える
-  - 確認: `ProjectProfit/Views/Components/TransactionFormView.swift` → `saveManualPostingCandidate(...)`
+  - 確認: `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Application/UseCases/Posting/PostingIntakeUseCase.swift`
 - canonical 有効時の取引画面文言を候補ベース UI に切り替える
   - 確認: `ProjectProfit/Views/Transactions/TransactionsView.swift`
 - 手入力候補承認・定期候補承認・CSV import で canonical journal を作成する
   - 確認: `ProjectProfit/Services/DataStore.swift` → `approvePostingCandidate(...)`, `approveRecurringItems(...)`, `importTransactions(from:)`
+- `processRecurringTransactions()` の write path を canonical posting 保存へ統一する
+  - 確認: `ProjectProfit/Services/DataStore.swift` → `processRecurringTransactions()`, `saveApprovedPostingSync(...)`
 - canonical 有効時にユーザー起点の legacy transaction 変更を止める
   - 確認: `ProjectProfit/Services/DataStore.swift` → `guardLegacyTransactionMutationAllowed(...)`
+- production UI / ViewModel から legacy transaction mutation 呼び出しを外す
+  - 確認: `ProjectProfit/Views/`, `ProjectProfit/Features/`, `ProjectProfit/ViewModels/` 内で `addTransactionResult(...)`, `updateTransaction(...)`, `deleteTransaction(...)` の参照なし
 - 上記 cutover 主要経路のテストコードが存在する
   - 確認: `ProjectProfitTests/DataStoreAccountingTests.swift`
 
 #### 部分実装
 - 互換ヘルパーとして `addTransactionResult(...)` が残っている
   - 確認: `ProjectProfit/Services/DataStore.swift`
-- 互換同期用の `syncCanonicalArtifacts(forTransactionId:)` が残っている
+- 互換同期用の `syncCanonicalArtifacts(forTransactionId:)` は `#if DEBUG` 配下に残っている
   - 確認: `ProjectProfit/Services/DataStore.swift`
 - legacy transaction 系 API は完全撤去ではなく「ユーザー起点のみ禁止」の止め方になっている
   - 確認: `ProjectProfit/Services/DataStore.swift`
 
 #### 未実装
-- `processRecurringTransactions()` の legacy transaction 生成経路を廃止し、write path を単一正本へ完全統一する
-  - 確認: `ProjectProfit/Services/DataStore.swift`
-- production path から legacy transaction 生成互換経路を全面撤去する
-  - 確認: 全体走査で旧 API が残存
+- 該当なし
 
 ### REL-P0-02 Repository / UseCase 層を完成させる
 - 関連既存チケット: `PP-010`
@@ -72,11 +73,23 @@
 - Approval Queue を posting workflow use case へ接続する
   - 確認: `ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`
 - Profile settings 保存を canonical profile use case 経由へ接続する
-  - 確認: `ProjectProfit/Views/Settings/ProfileSettingsView.swift`, `ProjectProfit/Application/UseCases/Masters/ProfileSettingsUseCase.swift`
-- 手入力候補保存を posting workflow use case へ到達させる
-  - 確認: `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Services/DataStore.swift`
+  - 確認: `ProjectProfit/Views/Settings/ProfileSettingsView.swift`, `ProjectProfit/Application/UseCases/Masters/ProfileSettingsWorkflowUseCase.swift`
+- 手入力候補保存を posting intake use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Application/UseCases/Posting/PostingIntakeUseCase.swift`
 - 定期候補承認と CSV import を async canonical path へ接続する
-  - 確認: `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`
+  - 確認: `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`, `ProjectProfit/Application/UseCases/Posting/PostingIntakeUseCase.swift`
+- 定期取引の作成 / 更新 / 削除 / 有効化 / スキップ / 通知更新を recurring workflow use case へ接続する
+  - 確認: `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/ViewModels/RecurringViewModel.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`
+- settings の全削除を maintenance use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceUseCase.swift`
+- project の作成 / 更新 / 単体削除 / 一括削除を project workflow use case へ接続する
+  - 確認: `ProjectProfit/Views/Components/ProjectFormView.swift`, `ProjectProfit/ViewModels/ProjectsViewModel.swift`, `ProjectProfit/Application/UseCases/Projects/ProjectWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Projects/ProjectRepository.swift`
+- inventory の保存更新を inventory workflow use case へ接続する
+  - 確認: `ProjectProfit/Views/Accounting/InventoryInputView.swift`, `ProjectProfit/ViewModels/InventoryViewModel.swift`, `ProjectProfit/Application/UseCases/Inventory/InventoryWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Inventory/InventoryRepository.swift`
+- closing 画面の決算仕訳生成 / 再生成 / 年度状態更新を closing workflow use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Accounting/ClosingEntryView.swift`, `ProjectProfit/Application/UseCases/Closing/ClosingWorkflowUseCase.swift`
+- fixed asset の作成 / 更新 / 除却 / 削除 / 償却計上を fixed asset workflow use case へ接続する
+  - 確認: `ProjectProfit/Views/Accounting/FixedAssetFormView.swift`, `ProjectProfit/Views/Accounting/FixedAssetDetailView.swift`, `ProjectProfit/Views/Accounting/FixedAssetListView.swift`, `ProjectProfit/Application/UseCases/FixedAssets/FixedAssetWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/FixedAssets/FixedAssetRepository.swift`
 
 #### 部分実装
 - `DataStore` が orchestration と永続化更新の両方を引き続き持っている
@@ -84,7 +97,7 @@
 - `DataStore` に直接 mutation API が残っている
   - 確認: `addTransactionResult(...)`, `updateTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`
 - 旧 UI / service 経路が `DataStore` を直接参照している
-  - 確認: `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`
+  - 確認: `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`
 
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する

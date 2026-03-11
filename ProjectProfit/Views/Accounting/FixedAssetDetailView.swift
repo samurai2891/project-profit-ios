@@ -29,6 +29,10 @@ struct FixedAssetDetailView: View {
         dataStore.isYearLocked(currentYear)
     }
 
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(dataStore: dataStore)
+    }
+
     private var schedule: [DepreciationCalculation] {
         guard let asset else { return [] }
         return dataStore.previewDepreciationSchedule(asset: asset)
@@ -98,7 +102,7 @@ struct FixedAssetDetailView: View {
         }
         .alert("固定資産を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                if dataStore.deleteFixedAsset(id: assetId) {
+                if fixedAssetWorkflowUseCase.deleteAsset(id: assetId) {
                     dismiss()
                 }
             }
@@ -108,7 +112,7 @@ struct FixedAssetDetailView: View {
         }
         .alert("減価償却を計上しますか？", isPresented: $showPostConfirmation) {
             Button("計上") {
-                dataStore.postDepreciation(assetId: assetId, fiscalYear: currentYear)
+                _ = fixedAssetWorkflowUseCase.postDepreciation(assetId: assetId, fiscalYear: currentYear)
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -116,11 +120,7 @@ struct FixedAssetDetailView: View {
         }
         .alert("この資産を除却しますか？", isPresented: $showDisposeConfirmation) {
             Button("除却", role: .destructive) {
-                dataStore.updateFixedAsset(
-                    id: assetId,
-                    assetStatus: .disposed,
-                    disposalDate: .some(Date())
-                )
+                _ = fixedAssetWorkflowUseCase.disposeAsset(id: assetId, disposalDate: Date())
             }
             Button("キャンセル", role: .cancel) {}
         } message: {

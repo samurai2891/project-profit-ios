@@ -4,6 +4,7 @@ import SwiftUI
 @Observable
 final class InventoryViewModel {
     let dataStore: DataStore
+    private let workflowUseCase: InventoryWorkflowUseCase
 
     var fiscalYear: Int
     var openingInventoryText: String = ""
@@ -12,8 +13,12 @@ final class InventoryViewModel {
     var memo: String = ""
     var existingRecord: PPInventoryRecord?
 
-    init(dataStore: DataStore) {
+    init(
+        dataStore: DataStore,
+        workflowUseCase: InventoryWorkflowUseCase? = nil
+    ) {
         self.dataStore = dataStore
+        self.workflowUseCase = workflowUseCase ?? InventoryWorkflowUseCase(dataStore: dataStore)
         let currentYear = Calendar.current.component(.year, from: Date())
         self.fiscalYear = currentYear - 1
     }
@@ -59,26 +64,14 @@ final class InventoryViewModel {
     // MARK: - Save
 
     func save() {
-        let memoValue: String? = memo.isEmpty ? nil : memo
-
-        let saved: Bool
-        if let existing = existingRecord {
-            saved = dataStore.updateInventoryRecord(
-                id: existing.id,
-                openingInventory: openingInventory,
-                purchases: purchases,
-                closingInventory: closingInventory,
-                memo: memoValue
-            )
-        } else {
-            saved = dataStore.addInventoryRecord(
-                fiscalYear: fiscalYear,
-                openingInventory: openingInventory,
-                purchases: purchases,
-                closingInventory: closingInventory,
-                memo: memoValue
-            ) != nil
-        }
+        let input = InventoryUpsertInput(
+            fiscalYear: fiscalYear,
+            openingInventory: openingInventory,
+            purchases: purchases,
+            closingInventory: closingInventory,
+            memo: memo.isEmpty ? nil : memo
+        )
+        let saved = workflowUseCase.save(existingRecordId: existingRecord?.id, input: input)
 
         // 保存成功時のみ再読込してフォーム値を同期する
         if saved {

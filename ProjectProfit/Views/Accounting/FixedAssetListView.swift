@@ -11,6 +11,10 @@ struct FixedAssetListView: View {
         Calendar.current.component(.year, from: Date())
     }
 
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         Group {
             if dataStore.fixedAssets.isEmpty {
@@ -53,7 +57,7 @@ struct FixedAssetListView: View {
         }
         .alert("一括計上", isPresented: $showBulkPostConfirmation) {
             Button("計上") {
-                let count = dataStore.postAllDepreciations(fiscalYear: currentYear)
+                let count = fixedAssetWorkflowUseCase.postAllDepreciations(fiscalYear: currentYear)
                 if count == 0 {
                     dataStore.lastError = .invalidInput(message: "計上可能な資産がありません")
                 }

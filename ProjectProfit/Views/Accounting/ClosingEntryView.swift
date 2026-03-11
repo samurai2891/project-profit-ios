@@ -22,6 +22,10 @@ struct ClosingEntryView: View {
         _selectedYear = State(initialValue: currentYear)
     }
 
+    private var closingWorkflowUseCase: ClosingWorkflowUseCase {
+        ClosingWorkflowUseCase(dataStore: dataStore)
+    }
+
     private var canonicalClosingEntry: CanonicalJournalEntry? {
         dataStore.canonicalJournalEntries(fiscalYear: selectedYear)
             .first { $0.entryType == .closing }
@@ -80,7 +84,7 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                dataStore.deleteClosingEntry(for: selectedYear)
+                closingWorkflowUseCase.deleteClosingEntry(for: selectedYear)
                 refreshPreflightReport()
             }
             Button("キャンセル", role: .cancel) {}
@@ -89,7 +93,7 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を再生成しますか？", isPresented: $showRegenerateConfirmation) {
             Button("再生成", role: .destructive) {
-                dataStore.regenerateClosingEntry(for: selectedYear)
+                _ = closingWorkflowUseCase.regenerateClosingEntry(for: selectedYear)
                 refreshPreflightReport()
             }
             Button("キャンセル", role: .cancel) {}
@@ -118,7 +122,7 @@ struct ClosingEntryView: View {
                     self.pendingStateTransition = nil
                     return
                 }
-                if !dataStore.transitionFiscalYearState(pendingStateTransition, for: selectedYear) {
+                if !closingWorkflowUseCase.transitionFiscalYearState(pendingStateTransition, for: selectedYear) {
                     stateTransitionErrorMessage = dataStore.lastError?.localizedDescription ?? "年度状態の更新に失敗しました"
                 } else {
                     refreshPreflightReport()
@@ -291,7 +295,7 @@ struct ClosingEntryView: View {
 
             if !hasClosingEntry {
                 Button {
-                    dataStore.generateClosingEntry(for: selectedYear)
+                    _ = closingWorkflowUseCase.generateClosingEntry(for: selectedYear)
                     refreshPreflightReport()
                 } label: {
                     Label("決算仕訳を生成", systemImage: "plus.circle")
