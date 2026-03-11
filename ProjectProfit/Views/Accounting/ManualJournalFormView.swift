@@ -278,26 +278,6 @@ struct ManualJournalFormView: View {
 
     private func save() {
         guard isValid else { return }
-        guard !isLegacyEditingDisabled else {
-            saveError = AppError.legacyManualJournalMutationDisabled.errorDescription
-            return
-        }
-
-        let journalLines = lines.compactMap { line -> (accountId: String, debit: Int, credit: Int, memo: String)? in
-            guard let accountId = line.accountId else { return nil }
-            let debit = Int(line.debitText) ?? 0
-            let credit = Int(line.creditText) ?? 0
-            guard debit > 0 || credit > 0 else { return nil }
-            return (accountId: accountId, debit: debit, credit: credit, memo: line.memo)
-        }
-
-        dataStore.addManualJournalEntry(
-            date: date,
-            memo: memo,
-            lines: journalLines,
-            mutationSource: .userInitiated
-        )
-
-        dismiss()
+        saveError = AppError.legacyManualJournalMutationDisabled.errorDescription
     }
 }

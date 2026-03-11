@@ -15,7 +15,7 @@ final class TransactionsViewModelTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        viewModel = TransactionsViewModel(dataStore: dataStore)
+        viewModel = TransactionsViewModel(modelContext: context)
     }
 
     override func tearDown() {

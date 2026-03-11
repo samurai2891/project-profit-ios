@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 // MARK: - TransactionGroup
@@ -32,7 +33,8 @@ struct LedgerRow: Identifiable {
 @MainActor
 @Observable
 final class TransactionsViewModel {
-    let dataStore: DataStore
+    private let transactionHistoryUseCase: TransactionHistoryUseCase
+    private var refreshVersion = 0
     var filter = TransactionFilter()
     var sort = TransactionSort()
 
@@ -51,14 +53,19 @@ final class TransactionsViewModel {
         )}
     }
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(transactionHistoryUseCase: TransactionHistoryUseCase) {
+        self.transactionHistoryUseCase = transactionHistoryUseCase
+    }
+
+    convenience init(modelContext: ModelContext) {
+        self.init(transactionHistoryUseCase: TransactionHistoryUseCase(modelContext: modelContext))
     }
 
     // MARK: - Computed Properties
 
     var filteredTransactions: [PPTransaction] {
-        dataStore.getFilteredTransactions(filter: filter, sort: sort)
+        _ = refreshVersion
+        return transactionHistoryUseCase.filteredTransactions(filter: filter, sort: sort)
     }
 
     var groupedTransactions: [TransactionGroup] {
@@ -95,7 +102,11 @@ final class TransactionsViewModel {
     }
 
     var canMutateLegacyTransactions: Bool {
-        dataStore.isLegacyTransactionEditingEnabled
+        transactionHistoryUseCase.canMutateLegacyTransactions
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        transactionHistoryUseCase.legacyMutationDisabledMessage
     }
 
     var hasActiveFilter: Bool {
@@ -145,12 +156,11 @@ final class TransactionsViewModel {
                 credit = 0
             }
             balance += credit - debit
-            let categoryName = dataStore.getCategory(id: t.categoryId)?.name ?? "未分類"
             return LedgerRow(
                 id: t.id,
                 date: t.date,
                 memo: t.memo,
-                categoryName: categoryName,
+                categoryName: categoryName(for: t),
                 type: t.type,
                 debit: debit,
                 credit: credit,
@@ -161,14 +171,21 @@ final class TransactionsViewModel {
     }
 
     func exportURL(exportAll: Bool = false) throws -> URL {
-        let target = exportAll ? dataStore.transactions : filteredTransactions
-        return try ExportCoordinator.export(
-            target: .transactions,
-            format: .csv,
-            fiscalYear: exportFiscalYear(for: target),
-            dataStore: dataStore,
-            transactionOptions: .init(transactions: target)
-        )
+        _ = refreshVersion
+        let target = exportAll ? transactionHistoryUseCase.allTransactions() : filteredTransactions
+        return try transactionHistoryUseCase.exportCSV(transactions: target)
+    }
+
+    func categoryName(for transaction: PPTransaction) -> String {
+        transactionHistoryUseCase.categoryName(for: transaction.categoryId)
+    }
+
+    func projectNames(for transaction: PPTransaction) -> [String] {
+        transactionHistoryUseCase.projectNames(for: transaction.allocations)
+    }
+
+    func refresh() {
+        refreshVersion &+= 1
     }
 
     // MARK: - Private Helpers
@@ -218,11 +235,6 @@ final class TransactionsViewModel {
         transactions
             .filter { $0.type == type }
             .reduce(0) { $0 + effectiveAmount(for: $1) }
-    }
-
-    private func exportFiscalYear(for transactions: [PPTransaction]) -> Int {
-        let referenceDate = transactions.max(by: { $0.date < $1.date })?.date ?? Date()
-        return fiscalYear(for: referenceDate, startMonth: FiscalYearSettings.startMonth)
     }
 
     /// プロジェクトフィルタ適用時は配分額、未適用時は取引全額を返す

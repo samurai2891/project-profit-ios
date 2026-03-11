@@ -94,6 +94,12 @@
   - 確認: `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`, `ProjectProfit/Views/Accounting/CategoryAccountMappingView.swift`, `ProjectProfit/Application/UseCases/Masters/CategoryWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Categories/CategoryRepository.swift`
 - documents の追加 / 削除確認 / 台帳一覧読込を document workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Transactions/TransactionDocumentsView.swift`, `ProjectProfit/Views/Accounting/LegalDocumentLedgerView.swift`, `ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Documents/DocumentRepository.swift`
+- production UI / ViewModel から direct mutation の manual journal 呼び出しを外す
+  - 確認: `ProjectProfit/Views/Accounting/ManualJournalFormView.swift`, `ProjectProfit/Views/`, `ProjectProfit/Features/`, `ProjectProfit/ViewModels/` 内で `addManualJournalEntry(...)` の参照なし
+- dashboard / report の summary read path を reporting query use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Dashboard/DashboardView.swift`, `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/DashboardViewModel.swift`, `ProjectProfit/ViewModels/ReportViewModel.swift`, `ProjectProfit/Application/UseCases/Reporting/ReportingQueryUseCase.swift`, `ProjectProfit/Core/Domain/Reporting/ReportingRepository.swift`
+- transactions feature の一覧 / detail / CSV export read path を transaction history use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Transactions/TransactionsView.swift`, `ProjectProfit/Views/Transactions/TransactionDetailView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Application/UseCases/Transactions/TransactionHistoryUseCase.swift`, `ProjectProfit/Core/Domain/Transactions/TransactionHistoryRepository.swift`
 
 #### 部分実装
 - `DataStore` が orchestration と永続化更新の両方を引き続き持っている
@@ -101,7 +107,7 @@
 - `DataStore` に直接 mutation API が残っている
   - 確認: `addTransactionResult(...)`, `updateTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`
 - 旧 UI / service 経路が `DataStore` を直接参照している
-  - 確認: `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Views/Accounting/ManualJournalFormView.swift`
+  - 確認: `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift` → `loadData()`
 
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する

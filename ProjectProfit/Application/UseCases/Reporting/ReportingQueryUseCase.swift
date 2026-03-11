@@ -1,0 +1,36 @@
+import Foundation
+import SwiftData
+
+@MainActor
+struct ReportingQueryUseCase {
+    private let repository: any ReportingRepository
+
+    init(repository: any ReportingRepository) {
+        self.repository = repository
+    }
+
+    init(modelContext: ModelContext) {
+        self.init(repository: SwiftDataReportingRepository(modelContext: modelContext))
+    }
+
+    func projectSummaries(startDate: Date? = nil, endDate: Date? = nil) -> [ProjectSummary] {
+        (try? repository.projectSummaries(startDate: startDate, endDate: endDate)) ?? []
+    }
+
+    func overallSummary(startDate: Date? = nil, endDate: Date? = nil) -> OverallSummary {
+        (try? repository.overallSummary(startDate: startDate, endDate: endDate))
+            ?? OverallSummary(totalIncome: 0, totalExpense: 0, netProfit: 0, profitMargin: 0)
+    }
+
+    func categorySummaries(
+        type: TransactionType,
+        startDate: Date? = nil,
+        endDate: Date? = nil
+    ) -> [CategorySummary] {
+        (try? repository.categorySummaries(type: type, startDate: startDate, endDate: endDate)) ?? []
+    }
+
+    func monthlySummaries(fiscalYear: Int, startMonth: Int) -> [MonthlySummary] {
+        (try? repository.monthlySummaries(fiscalYear: fiscalYear, startMonth: startMonth)) ?? []
+    }
+}

@@ -19,6 +19,7 @@ enum TransactionDisplayMode: String, CaseIterable {
 
 struct TransactionsView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: TransactionsViewModel?
 
     @State private var showAddSheet = false
@@ -40,11 +41,30 @@ struct TransactionsView: View {
                 ProgressView()
             }
         }
-        .task {
+        .task(id: dataRevisionKey) {
             if viewModel == nil {
-                viewModel = TransactionsViewModel(dataStore: dataStore)
+                viewModel = TransactionsViewModel(modelContext: modelContext)
+            } else {
+                viewModel?.refresh()
             }
         }
+    }
+
+    private var dataRevisionKey: String {
+        let transactionStamp = dataStore.transactions.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
+        let projectStamp = dataStore.projects.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
+        let categorySignature = dataStore.categories
+            .map { "\($0.id):\($0.name):\($0.archivedAt?.timeIntervalSince1970 ?? 0):\($0.linkedAccountId ?? "")" }
+            .sorted()
+            .joined(separator: "|")
+        return [
+            String(dataStore.transactions.count),
+            String(dataStore.projects.count),
+            String(dataStore.categories.count),
+            String(transactionStamp),
+            String(projectStamp),
+            categorySignature,
+        ].joined(separator: ":")
     }
 
     private func mainContent(viewModel: TransactionsViewModel) -> some View {
@@ -171,7 +191,7 @@ struct TransactionsView: View {
                 filterSortBar(viewModel: viewModel)
 
                 if viewModel.filteredTransactions.isEmpty {
-                    emptyState
+                    emptyState(viewModel: viewModel)
                 } else if currentDisplayMode == .ledger {
                     ledgerTable(viewModel: viewModel)
                 } else {
@@ -480,8 +500,12 @@ struct TransactionsView: View {
                     sectionHeader(group: group, isTransferFilter: viewModel.isTransferFilter)
 
                     ForEach(group.transactions) { transaction in
+                        let categoryName = viewModel.categoryName(for: transaction)
+                        let projectNames = viewModel.projectNames(for: transaction)
                         TransactionCardView(
                             transaction: transaction,
+                            categoryName: categoryName,
+                            projectNames: projectNames,
                             onTap: { selectedTransaction = transaction }
                         )
                     }
@@ -522,7 +546,7 @@ struct TransactionsView: View {
 
     // MARK: - Empty State
 
-    private var emptyState: some View {
+    private func emptyState(viewModel: TransactionsViewModel) -> some View {
         VStack(spacing: 16) {
             Spacer().frame(height: 40)
 
@@ -530,14 +554,14 @@ struct TransactionsView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(AppColors.muted)
 
-            Text("取引がありません")
+                Text("取引がありません")
                 .font(.headline)
                 .foregroundStyle(AppColors.muted)
 
             Button {
                 showAddSheet = true
             } label: {
-                Text(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の候補を作成")
+                Text(viewModel.canMutateLegacyTransactions ? "最初の取引を追加" : "最初の候補を作成")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
@@ -546,8 +570,8 @@ struct TransactionsView: View {
                     .background(AppColors.primary)
                     .clipShape(Capsule())
             }
-            .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "最初の取引を追加" : "最初の候補を作成")
-            .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
+            .accessibilityLabel(viewModel.canMutateLegacyTransactions ? "最初の取引を追加" : "最初の候補を作成")
+            .accessibilityHint(viewModel.canMutateLegacyTransactions ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
 
             Spacer().frame(height: 40)
         }
@@ -587,8 +611,8 @@ struct TransactionsView: View {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
         }
-        .accessibilityLabel(dataStore.isLegacyTransactionEditingEnabled ? "新規追加" : "候補を手入力")
-        .accessibilityHint(dataStore.isLegacyTransactionEditingEnabled ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
+        .accessibilityLabel(viewModel?.canMutateLegacyTransactions == true ? "新規追加" : "候補を手入力")
+        .accessibilityHint(viewModel?.canMutateLegacyTransactions == true ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }
@@ -609,25 +633,15 @@ struct TransactionsView: View {
 
 private struct TransactionCardView: View {
     let transaction: PPTransaction
+    let categoryName: String
+    let projectNames: [String]
     let onTap: () -> Void
-
-    @Environment(DataStore.self) private var dataStore
 
     private var typeColor: Color {
         switch transaction.type {
         case .income: AppColors.success
         case .expense: AppColors.error
         case .transfer: AppColors.warning
-        }
-    }
-
-    private var categoryName: String {
-        dataStore.getCategory(id: transaction.categoryId)?.name ?? "未分類"
-    }
-
-    private var projectNames: [String] {
-        transaction.allocations.compactMap { alloc in
-            dataStore.getProject(id: alloc.projectId)?.name
         }
     }
 
