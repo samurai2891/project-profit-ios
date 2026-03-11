@@ -91,7 +91,7 @@ class DataStore {
     }
 
     private var postingIntakeUseCase: PostingIntakeUseCase {
-        PostingIntakeUseCase(dataStore: self)
+        PostingIntakeUseCase(modelContext: modelContext)
     }
 
     private var projectWorkflowUseCase: ProjectWorkflowUseCase {
@@ -3750,7 +3750,12 @@ class DataStore {
     // MARK: - CSV Import
 
     func importTransactions(from csvString: String) async -> CSVImportResult {
-        await postingIntakeUseCase.importTransactions(csvString: csvString)
+        let result = await postingIntakeUseCase.importTransactions(csvString: csvString)
+        refreshProjects()
+        refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
+        return result
     }
 
     // MARK: - Bulk Delete

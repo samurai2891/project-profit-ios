@@ -22,7 +22,6 @@ private enum ApprovalQueueFilter: String, CaseIterable, Identifiable {
 }
 
 struct ApprovalQueueView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var candidates: [PostingCandidate] = []
@@ -40,6 +39,10 @@ struct ApprovalQueueView: View {
         case .needsReview:
             return candidates.filter { $0.status == .needsReview }
         }
+    }
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -95,10 +98,7 @@ struct ApprovalQueueView: View {
     }
 
     private var reloadKey: String {
-        [
-            dataStore.businessProfile?.id.uuidString ?? "none",
-            selectedFilter.rawValue,
-        ].joined(separator: ":")
+        approvalQueueQueryUseCase.reloadKey(selectedFilterRawValue: selectedFilter.rawValue)
     }
 
     @ViewBuilder
@@ -137,8 +137,9 @@ struct ApprovalQueueView: View {
     }
 
     private func loadCandidates() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = approvalQueueQueryUseCase.currentBusinessId() else {
             candidates = []
+            counterpartiesById = [:]
             return
         }
 
@@ -303,7 +304,6 @@ private struct CanonicalAccountPickerView: View {
 }
 
 struct ApprovalCandidateDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -320,6 +320,10 @@ struct ApprovalCandidateDetailView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         Group {
@@ -373,8 +377,7 @@ struct ApprovalCandidateDetailView: View {
 
     private var isCandidateYearLocked: Bool {
         guard let candidate else { return false }
-        let year = fiscalYear(for: candidate.candidateDate, startMonth: FiscalYearSettings.startMonth)
-        return !dataStore.yearLockState(for: year).allowsNormalPosting
+        return approvalQueueQueryUseCase.isYearLocked(date: candidate.candidateDate)
     }
 
     private var hasSavableLines: Bool {
@@ -385,7 +388,7 @@ struct ApprovalCandidateDetailView: View {
     }
 
     private var canonicalAccounts: [CanonicalAccount] {
-        dataStore.canonicalAccounts()
+        approvalQueueQueryUseCase.canonicalAccounts()
     }
 
     @ViewBuilder
@@ -577,7 +580,7 @@ struct ApprovalCandidateDetailView: View {
                 Button("未設定") {
                     lineDrafts[index].projectAllocationId = nil
                 }
-                ForEach(dataStore.projects, id: \.id) { project in
+                ForEach(approvalQueueQueryUseCase.availableProjects(), id: \.id) { project in
                     Button(project.name) {
                         lineDrafts[index].projectAllocationId = project.id
                     }
@@ -585,9 +588,7 @@ struct ApprovalCandidateDetailView: View {
             } label: {
                 metaRow(
                     title: "プロジェクト",
-                    value: lineDrafts[index].projectAllocationId.flatMap { id in
-                        dataStore.getProject(id: id)?.name
-                    } ?? "未設定"
+                    value: approvalQueueQueryUseCase.projectName(id: lineDrafts[index].projectAllocationId) ?? "未設定"
                 )
             }
 
@@ -684,7 +685,7 @@ struct ApprovalCandidateDetailView: View {
             } else {
                 evidence = nil
             }
-            if let businessId = dataStore.businessProfile?.id {
+            if let businessId = approvalQueueQueryUseCase.currentBusinessId() {
                 counterparties = try await CounterpartyMasterUseCase(modelContext: modelContext)
                     .loadCounterparties(businessId: businessId)
             } else {
@@ -744,8 +745,6 @@ struct ApprovalCandidateDetailView: View {
                 guard let approvedCandidate = try await workflow.candidate(updated.id) else {
                     throw AppError.invalidInput(message: "承認後の候補を再取得できませんでした")
                 }
-                dataStore.refreshJournalEntries()
-                dataStore.refreshJournalLines()
                 generatedJournal = journal
                 self.candidate = approvedCandidate
                 onStatusChanged?()

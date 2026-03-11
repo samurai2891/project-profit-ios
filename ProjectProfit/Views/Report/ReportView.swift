@@ -2,9 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct ReportView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ReportViewModel?
+
+    private var dataRevisionUseCase: DataRevisionQueryUseCase {
+        DataRevisionQueryUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         Group {
@@ -24,23 +27,7 @@ struct ReportView: View {
     }
 
     private var dataRevisionKey: String {
-        let transactionStamp = dataStore.transactions.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let projectStamp = dataStore.projects.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let journalStamp = dataStore.journalEntries.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let categorySignature = dataStore.categories
-            .map { "\($0.id):\($0.name):\($0.archivedAt?.timeIntervalSince1970 ?? 0):\($0.linkedAccountId ?? "")" }
-            .sorted()
-            .joined(separator: "|")
-        return [
-            String(dataStore.transactions.count),
-            String(dataStore.projects.count),
-            String(dataStore.categories.count),
-            String(dataStore.journalEntries.count),
-            String(transactionStamp),
-            String(projectStamp),
-            categorySignature,
-            String(journalStamp),
-        ].joined(separator: ":")
+        dataRevisionUseCase.reportRevisionKey()
     }
 
     private func reportContent(viewModel: ReportViewModel) -> some View {

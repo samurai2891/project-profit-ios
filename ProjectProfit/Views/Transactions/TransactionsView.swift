@@ -18,7 +18,6 @@ enum TransactionDisplayMode: String, CaseIterable {
 // MARK: - TransactionsView
 
 struct TransactionsView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: TransactionsViewModel?
 
@@ -30,6 +29,10 @@ struct TransactionsView: View {
     @State private var shareURL: URL?
     @State private var exportErrorMessage: String?
     @AppStorage("transactionDisplayMode") private var displayMode: String = TransactionDisplayMode.card.rawValue
+
+    private var dataRevisionUseCase: DataRevisionQueryUseCase {
+        DataRevisionQueryUseCase(modelContext: modelContext)
+    }
 
     // MARK: - Body
 
@@ -51,20 +54,7 @@ struct TransactionsView: View {
     }
 
     private var dataRevisionKey: String {
-        let transactionStamp = dataStore.transactions.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let projectStamp = dataStore.projects.map(\.updatedAt).max()?.timeIntervalSince1970 ?? 0
-        let categorySignature = dataStore.categories
-            .map { "\($0.id):\($0.name):\($0.archivedAt?.timeIntervalSince1970 ?? 0):\($0.linkedAccountId ?? "")" }
-            .sorted()
-            .joined(separator: "|")
-        return [
-            String(dataStore.transactions.count),
-            String(dataStore.projects.count),
-            String(dataStore.categories.count),
-            String(transactionStamp),
-            String(projectStamp),
-            categorySignature,
-        ].joined(separator: ":")
+        dataRevisionUseCase.transactionsRevisionKey()
     }
 
     private func mainContent(viewModel: TransactionsViewModel) -> some View {

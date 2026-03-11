@@ -101,7 +101,10 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                SettingsMainView()
+                SettingsMainView(reloadStoreState: {
+                    dataStore.loadData()
+                    dataStore.recalculateAllPartialPeriodProjects()
+                })
             }
             .tabItem {
                 Label("設定", systemImage: "gearshape.fill")

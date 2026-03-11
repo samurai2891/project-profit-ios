@@ -1,11 +1,14 @@
 import SwiftUI
+import SwiftData
 import UniformTypeIdentifiers
 
 // MARK: - SettingsMainView
 
 struct SettingsMainView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @AppStorage(FiscalYearSettings.userDefaultsKey) private var fiscalStartMonth = FiscalYearSettings.defaultStartMonth
+
+    private let reloadStoreState: @MainActor () -> Void
 
     @State private var showDeleteAlert = false
     @State private var showFileImporter = false
@@ -20,17 +23,34 @@ struct SettingsMainView: View {
     @State private var operationMessage: String?
     @State private var showOperationAlert = false
     @State private var selectedBackupYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
+    @State private var overviewSnapshot = SettingsOverviewSnapshot(
+        projectCount: 0,
+        transactionCount: 0,
+        recurringTransactionCount: 0,
+        availableBackupYears: [currentFiscalYear(startMonth: FiscalYearSettings.defaultStartMonth)]
+    )
+
+    init(reloadStoreState: @escaping @MainActor () -> Void = {}) {
+        self.reloadStoreState = reloadStoreState
+    }
 
     private var postingIntakeUseCase: PostingIntakeUseCase {
-        PostingIntakeUseCase(dataStore: dataStore)
+        PostingIntakeUseCase(modelContext: modelContext)
     }
 
     private var settingsMaintenanceUseCase: SettingsMaintenanceUseCase {
-        SettingsMaintenanceUseCase(dataStore: dataStore)
+        SettingsMaintenanceUseCase(modelContext: modelContext)
     }
 
     private var settingsMaintenanceWorkflowUseCase: SettingsMaintenanceWorkflowUseCase {
-        SettingsMaintenanceWorkflowUseCase(dataStore: dataStore)
+        SettingsMaintenanceWorkflowUseCase(
+            modelContext: modelContext,
+            reloadStoreState: reloadStoreState
+        )
+    }
+
+    private var settingsOverviewUseCase: SettingsOverviewUseCase {
+        SettingsOverviewUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -49,10 +69,15 @@ struct SettingsMainView: View {
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.large)
+        .task(id: fiscalStartMonth) {
+            refreshOverview()
+        }
         .alert("データを削除", isPresented: $showDeleteAlert) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {
                 settingsMaintenanceUseCase.deleteAllData()
+                reloadStoreState()
+                refreshOverview()
             }
         } message: {
             Text("すべてのデータを削除しますか？この操作は取り消せません。")
@@ -103,17 +128,19 @@ private extension SettingsMainView {
             sectionHeader("データ統計")
 
             HStack(spacing: 0) {
-                statItem(icon: "folder.fill", value: dataStore.projects.count, label: "プロジェクト")
+                statItem(icon: "folder.fill", value: overviewSnapshot.projectCount, label: "プロジェクト")
                 Divider().frame(height: 40)
-                statItem(icon: "list.bullet.rectangle", value: dataStore.transactions.count, label: "取引")
+                statItem(icon: "list.bullet.rectangle", value: overviewSnapshot.transactionCount, label: "取引")
                 Divider().frame(height: 40)
-                statItem(icon: "repeat", value: dataStore.recurringTransactions.count, label: "定期取引")
+                statItem(icon: "repeat", value: overviewSnapshot.recurringTransactionCount, label: "定期取引")
             }
             .padding(20)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("データ統計 プロジェクト\(dataStore.projects.count)件 取引\(dataStore.transactions.count)件 定期取引\(dataStore.recurringTransactions.count)件")
+            .accessibilityLabel(
+                "データ統計 プロジェクト\(overviewSnapshot.projectCount)件 取引\(overviewSnapshot.transactionCount)件 定期取引\(overviewSnapshot.recurringTransactionCount)件"
+            )
         }
     }
 
@@ -631,16 +658,7 @@ private extension SettingsMainView {
 
 private extension SettingsMainView {
     var availableBackupYears: [Int] {
-        let years = Set(
-            dataStore.transactions.map { fiscalYear(for: $0.date, startMonth: fiscalStartMonth) }
-                + dataStore.inventoryRecords.map(\.fiscalYear)
-                + [dataStore.currentTaxYearProfile?.taxYear].compactMap { $0 }
-        )
-        let sorted = years.sorted(by: >)
-        if sorted.isEmpty {
-            return [currentFiscalYear(startMonth: fiscalStartMonth)]
-        }
-        return sorted
+        overviewSnapshot.availableBackupYears
     }
 
     func handleCSVImport(_ result: Result<[URL], Error>) {
@@ -661,6 +679,8 @@ private extension SettingsMainView {
                 let csvString = try String(contentsOf: url, encoding: .utf8)
                 Task {
                     importResult = await postingIntakeUseCase.importTransactions(csvString: csvString)
+                    reloadStoreState()
+                    refreshOverview()
                     showImportResultAlert = true
                 }
             } catch {
@@ -732,6 +752,7 @@ private extension SettingsMainView {
             let result = try settingsMaintenanceWorkflowUseCase
                 .applyRestore(snapshotURL: cachedRestoreSnapshotURL)
             restoreDryRunReport = result.report
+            refreshOverview()
             operationMessage = "復元を実行しました。rollback: \(result.rollbackArchiveURL.lastPathComponent)"
             showOperationAlert = true
         } catch {
@@ -763,6 +784,7 @@ private extension SettingsMainView {
             }
 
             migrationDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunMigration()
+            refreshOverview()
             showOperationAlert = true
         } catch {
             operationMessage = "移行に失敗しました: \(error.localizedDescription)"
@@ -778,5 +800,13 @@ private extension SettingsMainView {
         }
         try FileManager.default.copyItem(at: url, to: targetURL)
         return targetURL
+    }
+
+    func refreshOverview() {
+        overviewSnapshot = settingsOverviewUseCase.snapshot(startMonth: fiscalStartMonth)
+        if let firstYear = overviewSnapshot.availableBackupYears.first,
+           !overviewSnapshot.availableBackupYears.contains(selectedBackupYear) {
+            selectedBackupYear = firstYear
+        }
     }
 }

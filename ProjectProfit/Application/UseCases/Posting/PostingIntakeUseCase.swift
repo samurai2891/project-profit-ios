@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct ManualPostingCandidateInput: Sendable {
     let type: TransactionType
@@ -22,15 +23,58 @@ struct ManualPostingCandidateInput: Sendable {
 
 @MainActor
 struct PostingIntakeUseCase {
-    private let dataStore: DataStore
+    private let repository: any PostingIntakeRepository
     private let postingWorkflowUseCase: PostingWorkflowUseCase
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
-        self.postingWorkflowUseCase = PostingWorkflowUseCase(modelContext: dataStore.modelContext)
+    fileprivate init(
+        repository: any PostingIntakeRepository,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) {
+        self.repository = repository
+        self.postingWorkflowUseCase = postingWorkflowUseCase
+    }
+
+    init(modelContext: ModelContext) {
+        self.init(
+            repository: SwiftDataPostingIntakeRepository(modelContext: modelContext),
+            postingWorkflowUseCase: PostingWorkflowUseCase(modelContext: modelContext)
+        )
     }
 
     func saveManualCandidate(input: ManualPostingCandidateInput) async throws -> PostingCandidate {
+        try await repository.saveManualCandidate(
+            input: input,
+            postingWorkflowUseCase: postingWorkflowUseCase
+        )
+    }
+
+    func importTransactions(csvString: String) async -> CSVImportResult {
+        await repository.importTransactions(csvString: csvString)
+    }
+}
+
+@MainActor
+private protocol PostingIntakeRepository {
+    func saveManualCandidate(
+        input: ManualPostingCandidateInput,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async throws -> PostingCandidate
+    func importTransactions(csvString: String) async -> CSVImportResult
+}
+
+@MainActor
+private struct SwiftDataPostingIntakeRepository: PostingIntakeRepository {
+    private let modelContext: ModelContext
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+
+    func saveManualCandidate(
+        input: ManualPostingCandidateInput,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async throws -> PostingCandidate {
+        let dataStore = loadedDataStore()
         let result = dataStore.buildCanonicalPostingSync(
             type: input.type,
             amount: input.amount,
@@ -71,16 +115,14 @@ struct PostingIntakeUseCase {
 
         do {
             try await postingWorkflowUseCase.saveCandidate(candidate)
-            dataStore.lastError = nil
             return candidate
         } catch {
-            let appError = AppError.saveFailed(underlying: error)
-            dataStore.lastError = appError
-            throw appError
+            throw AppError.saveFailed(underlying: error)
         }
     }
 
     func importTransactions(csvString: String) async -> CSVImportResult {
+        let dataStore = loadedDataStore()
         var successCount = 0
         var errorCount = 0
         var errors: [String] = []
@@ -115,7 +157,9 @@ struct PostingIntakeUseCase {
                 categoryId = ""
             case .income, .expense:
                 let categoryType: CategoryType = entry.type == .income ? .income : .expense
-                if let existing = dataStore.categories.first(where: { $0.name == entry.categoryName && $0.type == categoryType }) {
+                if let existing = dataStore.categories.first(where: {
+                    $0.name == entry.categoryName && $0.type == categoryType
+                }) {
                     categoryId = existing.id
                 } else if let fallback = dataStore.categories.first(where: { $0.name == entry.categoryName }) {
                     categoryId = fallback.id
@@ -155,5 +199,11 @@ struct PostingIntakeUseCase {
         }
 
         return CSVImportResult(successCount: successCount, errorCount: errorCount, errors: errors)
+    }
+
+    private func loadedDataStore() -> DataStore {
+        let dataStore = DataStore(modelContext: modelContext)
+        dataStore.loadData()
+        return dataStore
     }
 }

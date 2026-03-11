@@ -1,47 +1,65 @@
 import Foundation
+import SwiftData
 
 typealias LegacyDataMigrationResult = LegacyDataMigrationExecutor.MigrationResult
 
 @MainActor
 struct SettingsMaintenanceWorkflowUseCase {
-    private let dataStore: DataStore
+    private let modelContext: ModelContext
+    private let reloadStoreState: @MainActor () -> Void
 
     init(dataStore: DataStore) {
-        self.dataStore = dataStore
+        self.init(
+            modelContext: dataStore.modelContext,
+            reloadStoreState: {
+                dataStore.loadData()
+                dataStore.recalculateAllPartialPeriodProjects()
+            }
+        )
+    }
+
+    init(
+        modelContext: ModelContext,
+        reloadStoreState: @escaping @MainActor () -> Void = {}
+    ) {
+        self.modelContext = modelContext
+        self.reloadStoreState = reloadStoreState
     }
 
     func exportBackup(scope: BackupScope) throws -> BackupExportResult {
-        try BackupService(modelContext: dataStore.modelContext).export(scope: scope)
+        try BackupService(modelContext: modelContext).export(scope: scope)
     }
 
     func dryRunRestore(snapshotURL: URL) throws -> RestoreDryRunReport {
-        try RestoreService(modelContext: dataStore.modelContext).dryRun(snapshotURL: snapshotURL)
+        try RestoreService(modelContext: modelContext).dryRun(snapshotURL: snapshotURL)
     }
 
     func applyRestore(snapshotURL: URL) throws -> RestoreApplyResult {
-        let result = try RestoreService(modelContext: dataStore.modelContext).apply(snapshotURL: snapshotURL)
+        let result = try RestoreService(modelContext: modelContext).apply(snapshotURL: snapshotURL)
         reloadStoreState()
         return result
     }
 
     func dryRunMigration() throws -> MigrationDryRunReport {
-        try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
+        try MigrationReportRunner(modelContext: modelContext).dryRun()
     }
 
     func executeMigration() throws -> LegacyDataMigrationResult {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = try currentBusinessId() else {
             throw SettingsMaintenanceWorkflowError.businessProfileMissing
         }
 
-        let result = try LegacyDataMigrationExecutor(modelContext: dataStore.modelContext)
+        let result = try LegacyDataMigrationExecutor(modelContext: modelContext)
             .execute(businessId: businessId)
         reloadStoreState()
         return result
     }
 
-    private func reloadStoreState() {
-        dataStore.loadData()
-        dataStore.recalculateAllPartialPeriodProjects()
+    private func currentBusinessId() throws -> UUID? {
+        let descriptor = FetchDescriptor<BusinessProfileEntity>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.businessId
     }
 }
 

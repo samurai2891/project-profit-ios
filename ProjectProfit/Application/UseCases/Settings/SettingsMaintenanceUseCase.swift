@@ -8,6 +8,12 @@ struct SettingsMaintenanceUseCase {
         self.dataStore = dataStore
     }
 
+    init(modelContext: ModelContext) {
+        let dataStore = DataStore(modelContext: modelContext)
+        dataStore.loadData()
+        self.init(dataStore: dataStore)
+    }
+
     func deleteAllData() {
         let imagesToDelete = dataStore.transactions.compactMap(\.receiptImagePath)
             + dataStore.recurringTransactions.compactMap(\.receiptImagePath)

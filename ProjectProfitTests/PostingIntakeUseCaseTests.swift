@@ -16,7 +16,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = PostingIntakeUseCase(dataStore: dataStore)
+        useCase = PostingIntakeUseCase(modelContext: context)
     }
 
     override func tearDown() {
@@ -121,6 +121,10 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         """
 
         let result = await useCase.importTransactions(csvString: csv)
+        dataStore.refreshProjects()
+        dataStore.refreshTransactions()
+        dataStore.refreshJournalEntries()
+        dataStore.refreshJournalLines()
         let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
         let project = try XCTUnwrap(dataStore.projects.first { $0.name == "ImportProject" })
 

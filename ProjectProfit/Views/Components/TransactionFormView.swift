@@ -3,7 +3,6 @@ import SwiftData
 import SwiftUI
 
 struct TransactionFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -31,6 +30,8 @@ struct TransactionFormView: View {
     @State private var unavailableDistributionTemplateCount = 0
     @State private var pendingDistributionPreview: DistributionTemplatePreview?
     @State private var showDistributionPreviewConfirmation = false
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
+    @State private var didPrepareForm = false
     // Phase 4C: 会計フィールド
     @State private var paymentAccountId: String?
     @State private var transferToAccountId: String?
@@ -45,19 +46,19 @@ struct TransactionFormView: View {
 
     private var isEditMode: Bool { transaction != nil }
     private var isCanonicalDraftMode: Bool {
-        !dataStore.isLegacyTransactionEditingEnabled && !isEditMode
+        !formSnapshot.isLegacyTransactionEditingEnabled && !isEditMode
     }
 
     private var isLegacyEditingDisabled: Bool {
-        !dataStore.isLegacyTransactionEditingEnabled && isEditMode
+        !formSnapshot.isLegacyTransactionEditingEnabled && isEditMode
     }
 
     private var paymentAccounts: [PPAccount] {
-        dataStore.accounts.filter { $0.isPaymentAccount && $0.isActive }
+        transactionFormQueryUseCase.paymentAccounts(snapshot: formSnapshot)
     }
 
     private var counterparties: [Counterparty] {
-        dataStore.canonicalCounterparties()
+        formSnapshot.counterparties
     }
 
     private var selectedCounterparty: Counterparty? {
@@ -81,11 +82,7 @@ struct TransactionFormView: View {
     }
 
     private var categories: [PPCategory] {
-        let categoryType: CategoryType = switch type {
-        case .income: .income
-        case .expense, .transfer: .expense
-        }
-        return dataStore.activeCategories.filter { $0.type == categoryType }
+        transactionFormQueryUseCase.categories(for: type, snapshot: formSnapshot)
     }
 
     private var totalRatio: Int {
@@ -103,13 +100,21 @@ struct TransactionFormView: View {
     }
 
     private var distributionTemplateLoadKey: String {
-        let businessId = dataStore.businessProfile?.id.uuidString ?? "none"
+        let businessId = formSnapshot.businessId?.uuidString ?? "none"
         let day = Int(Calendar.current.startOfDay(for: date).timeIntervalSince1970)
         return "\(businessId)-\(day)"
     }
 
+    private var activeProjects: [PPProject] {
+        transactionFormQueryUseCase.activeProjects(snapshot: formSnapshot)
+    }
+
+    private var transactionFormQueryUseCase: TransactionFormQueryUseCase {
+        TransactionFormQueryUseCase(modelContext: modelContext)
+    }
+
     private var postingIntakeUseCase: PostingIntakeUseCase {
-        PostingIntakeUseCase(dataStore: dataStore)
+        PostingIntakeUseCase(modelContext: modelContext)
     }
 
     private struct DistributionTemplatePreview {
@@ -213,14 +218,14 @@ struct TransactionFormView: View {
                         .accessibilityLabel("保存")
                         .accessibilityHint(
                             isLegacyEditingDisabled
-                                ? dataStore.legacyTransactionMutationDisabledMessage
+                                ? formSnapshot.legacyTransactionMutationDisabledMessage
                                 : (isCanonicalDraftMode
                                     ? (isValid ? "タップして承認待ち候補を保存" : "すべての必須項目を入力してください")
                                     : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください"))
                         )
                 }
             }
-            .onAppear { setupInitialValues() }
+            .onAppear { prepareFormIfNeeded() }
             .onChange(of: type) { _, _ in autoSelectCategory() }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
@@ -240,7 +245,7 @@ struct TransactionFormView: View {
                 Text(
                     isCanonicalDraftMode
                         ? "この画面からの新規手入力は Approval Queue の下書き候補として保存されます。既存取引の編集・削除は停止したままです。"
-                        : dataStore.legacyTransactionMutationDisabledMessage
+                        : formSnapshot.legacyTransactionMutationDisabledMessage
                 )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -506,7 +511,7 @@ struct TransactionFormView: View {
         VStack(spacing: 12) {
             AccountPickerView(
                 label: type == .income ? "入金先口座" : "支払元口座",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: $paymentAccountId,
                 filterPredicate: { $0.isPaymentAccount && $0.isActive }
             )
@@ -514,7 +519,7 @@ struct TransactionFormView: View {
             if type == .transfer {
                 AccountPickerView(
                     label: "振替先口座",
-                    accounts: dataStore.accounts,
+                    accounts: formSnapshot.accounts,
                     selectedAccountId: $transferToAccountId,
                     filterPredicate: { $0.isPaymentAccount && $0.isActive }
                 )
@@ -587,11 +592,14 @@ struct TransactionFormView: View {
             distributionTemplateSection
 
             ForEach(Array(allocations.enumerated()), id: \.element.id) { index, alloc in
-                let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
+                let projectName = transactionFormQueryUseCase.projectName(
+                    id: alloc.projectId,
+                    snapshot: formSnapshot
+                ) ?? "選択"
                 HStack {
                     Menu {
                         let usedIds = Set(allocations.map(\.projectId))
-                        ForEach(dataStore.projects.filter { p in
+                        ForEach(activeProjects.filter { p in
                             p.isArchived != true && (!usedIds.contains(p.id) || p.id == alloc.projectId)
                         }, id: \.id) { project in
                             Button(project.name) {
@@ -649,10 +657,10 @@ struct TransactionFormView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            if dataStore.projects.filter({ $0.isArchived != true }).count > allocations.count {
+            if activeProjects.count > allocations.count {
                 Button {
                     let usedIds = Set(allocations.map(\.projectId))
-                    if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) && $0.isArchived != true }) {
+                    if let available = activeProjects.first(where: { !usedIds.contains($0.id) }) {
                         allocations.append((id: UUID(), projectId: available.id, ratio: 0))
                     }
                 } label: {
@@ -794,15 +802,15 @@ struct TransactionFormView: View {
             if let ta = t.taxAmount { taxAmountText = String(ta) }
             selectedCounterpartyId = t.counterpartyId
             counterparty = t.counterparty
-                ?? t.counterpartyId.flatMap { dataStore.canonicalCounterparty(id: $0)?.displayName }
+                ?? t.counterpartyId.flatMap { transactionFormQueryUseCase.counterparty(id: $0, snapshot: formSnapshot)?.displayName }
                 ?? ""
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
-            } else if let first = dataStore.projects.first(where: { $0.isArchived != true }) {
+            } else if let first = activeProjects.first {
                 allocations = [(id: UUID(), projectId: first.id, ratio: 100)]
             }
-            paymentAccountId = dataStore.defaultPaymentAccountPreference ?? paymentAccounts.first?.id
+            paymentAccountId = formSnapshot.defaultPaymentAccountId ?? paymentAccounts.first?.id
             autoSelectCategory()
         }
     }
@@ -830,7 +838,7 @@ struct TransactionFormView: View {
     }
 
     private func loadDistributionTemplates() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = formSnapshot.businessId else {
             distributionTemplates = []
             selectedDistributionTemplateId = nil
             distributionTemplateErrorMessage = nil
@@ -842,15 +850,12 @@ struct TransactionFormView: View {
         defer { isLoadingDistributionTemplates = false }
 
         do {
-            let useCase = DistributionTemplateUseCase(modelContext: modelContext)
-            let applier = DistributionTemplateApplicationUseCase()
-            let activeRules = try await useCase.activeRules(businessId: businessId, at: date)
-            distributionTemplates = activeRules
-                .filter { applier.isSupported($0, allocationPeriod: .month) }
-                .sorted { lhs, rhs in
-                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-                }
-            unavailableDistributionTemplateCount = activeRules.count - distributionTemplates.count
+            let result = try await transactionFormQueryUseCase.activeDistributionTemplates(
+                businessId: businessId,
+                at: date
+            )
+            distributionTemplates = result.supportedRules
+            unavailableDistributionTemplateCount = result.unsupportedCount
             if let selectedDistributionTemplateId,
                distributionTemplates.contains(where: { $0.id == selectedDistributionTemplateId }) == false
             {
@@ -872,12 +877,11 @@ struct TransactionFormView: View {
             return
         }
 
-        let preview = DistributionTemplateApplicationUseCase().previewAllocations(
+        let preview = transactionFormQueryUseCase.previewDistribution(
             rule: rule,
-            projects: dataStore.projects,
+            snapshot: formSnapshot,
             referenceDate: date,
-            totalAmount: Int(amountText) ?? 0,
-            allocationPeriod: .month
+            totalAmount: Int(amountText) ?? 0
         )
 
         guard !preview.allocations.isEmpty else {
@@ -909,7 +913,10 @@ struct TransactionFormView: View {
 
         let rows = preview.allocations
             .map { allocation in
-                let name = dataStore.getProject(id: allocation.projectId)?.name ?? "不明なプロジェクト"
+                let name = transactionFormQueryUseCase.projectName(
+                    id: allocation.projectId,
+                    snapshot: formSnapshot
+                ) ?? "不明なプロジェクト"
                 return "・\(name): \(allocation.ratio)%"
             }
             .joined(separator: "\n")
@@ -921,18 +928,22 @@ struct TransactionFormView: View {
     private func applySelectedCounterpartyDefaults() {
         guard let selectedCounterparty else { return }
 
-        counterparty = selectedCounterparty.displayName
-        if let defaultTaxCodeId = selectedCounterparty.defaultTaxCodeId,
-           let taxCode = TaxCode.resolve(id: defaultTaxCodeId) {
+        guard let defaults = transactionFormQueryUseCase.counterpartyDefaults(
+            for: selectedCounterparty.id,
+            type: type,
+            snapshot: formSnapshot
+        ) else {
+            return
+        }
+
+        counterparty = defaults.displayName
+        if let taxCode = defaults.taxCode {
             selectedTaxCode = taxCode
         }
-        if let defaultAccountId = selectedCounterparty.defaultAccountId,
-           let legacyAccountId = dataStore.legacyAccountId(for: defaultAccountId) {
-            paymentAccountId = legacyAccountId
+        if let paymentAccountId = defaults.paymentAccountId {
+            self.paymentAccountId = paymentAccountId
         }
-        if type != .transfer,
-           let defaultProjectId = selectedCounterparty.defaultProjectId,
-           dataStore.projects.contains(where: { $0.id == defaultProjectId && $0.isArchived != true }) {
+        if let defaultProjectId = defaults.projectId {
             allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
         }
     }
@@ -940,7 +951,7 @@ struct TransactionFormView: View {
     private func save() {
         guard isValid, let amount = Int(amountText) else { return }
         guard !isLegacyEditingDisabled else {
-            saveError = dataStore.legacyTransactionMutationDisabledMessage
+            saveError = formSnapshot.legacyTransactionMutationDisabledMessage
             return
         }
         isSubmitting = true
@@ -982,7 +993,7 @@ struct TransactionFormView: View {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
             }
             isSubmitting = false
-            saveError = dataStore.legacyTransactionMutationDisabledMessage
+            saveError = formSnapshot.legacyTransactionMutationDisabledMessage
             return
         }
 
@@ -1022,6 +1033,18 @@ struct TransactionFormView: View {
                 }
                 saveError = error.localizedDescription
             }
+        }
+    }
+
+    private func prepareFormIfNeeded() {
+        guard !didPrepareForm else { return }
+        do {
+            formSnapshot = try transactionFormQueryUseCase.snapshot()
+            setupInitialValues()
+            didPrepareForm = true
+        } catch {
+            formSnapshot = .empty
+            saveError = error.localizedDescription
         }
     }
 }

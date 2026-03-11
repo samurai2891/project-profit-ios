@@ -98,20 +98,30 @@
   - 確認: `ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift`, `ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataDocumentRepository.swift`
 - production UI / ViewModel から direct mutation の manual journal 呼び出しを外す
   - 確認: `ProjectProfit/Views/Accounting/ManualJournalFormView.swift`, `ProjectProfit/Views/`, `ProjectProfit/Features/`, `ProjectProfit/ViewModels/` 内で `addManualJournalEntry(...)` の参照なし
+- Evidence Inbox の read path を evidence inbox query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/EvidenceInbox/EvidenceInboxView.swift`, `ProjectProfit/Application/UseCases/Evidence/EvidenceInboxQueryUseCase.swift`, `ProjectProfit/Core/Domain/Evidence/EvidenceInboxRepository.swift`
+- Approval Queue の read path を approval queue query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`, `ProjectProfit/Application/UseCases/Posting/ApprovalQueueQueryUseCase.swift`, `ProjectProfit/Core/Domain/Posting/ApprovalQueueRepository.swift`
+- transaction form の read path を transaction form query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Application/UseCases/Transactions/TransactionFormQueryUseCase.swift`, `ProjectProfit/Core/Domain/Transactions/TransactionFormRepository.swift`
 - dashboard / report の summary read path を reporting query use case 経由へ接続する
   - 確認: `ProjectProfit/Views/Dashboard/DashboardView.swift`, `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/ViewModels/DashboardViewModel.swift`, `ProjectProfit/ViewModels/ReportViewModel.swift`, `ProjectProfit/Application/UseCases/Reporting/ReportingQueryUseCase.swift`, `ProjectProfit/Core/Domain/Reporting/ReportingRepository.swift`
 - transactions feature の一覧 / detail / CSV export read path を transaction history use case 経由へ接続する
   - 確認: `ProjectProfit/Views/Transactions/TransactionsView.swift`, `ProjectProfit/Views/Transactions/TransactionDetailView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Application/UseCases/Transactions/TransactionHistoryUseCase.swift`, `ProjectProfit/Core/Domain/Transactions/TransactionHistoryRepository.swift`
 - app bootstrap と settings の backup / restore / migration orchestration を workflow use case 経由へ接続する
   - 確認: `ProjectProfit/Views/ContentView.swift`, `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Application/UseCases/App/AppBootstrapWorkflowUseCase.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceWorkflowUseCase.swift`
+- settings の read-only 統計表示と backup 年度一覧を overview query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsOverviewUseCase.swift`, `ProjectProfit/Core/Domain/Settings/SettingsOverviewRepository.swift`
+- dashboard / report / transactions の view-level reload を data revision query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Dashboard/DashboardView.swift`, `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/Views/Transactions/TransactionsView.swift`, `ProjectProfit/Application/UseCases/App/DataRevisionQueryUseCase.swift`, `ProjectProfit/Core/Domain/App/DataRevisionRepository.swift`
 
 #### 部分実装
 - `DataStore` が orchestration と永続化更新の両方を引き続き持っている
   - 確認: `ProjectProfit/Services/DataStore.swift`
 - `DataStore` に直接 mutation API が残っている
   - 確認: `addTransactionResult(...)`, `updateTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`
-- 旧 UI / service 経路の read-only `DataStore` 依存が残っている
-  - 確認: `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`
+- 画面側の read-only `DataStore` 依存が残っている
+  - 確認: `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`, `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/ContentView.swift`
 
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する
