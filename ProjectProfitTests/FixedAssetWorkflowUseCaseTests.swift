@@ -13,7 +13,15 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
         container = try! TestModelContainer.create()
         dataStore = ProjectProfit.DataStore(modelContext: container.mainContext)
         dataStore.loadData()
-        useCase = FixedAssetWorkflowUseCase(dataStore: dataStore)
+        useCase = FixedAssetWorkflowUseCase(
+            modelContext: container.mainContext,
+            reloadFixedAssets: { self.dataStore.refreshFixedAssets() },
+            reloadJournalState: {
+                self.dataStore.refreshJournalEntries()
+                self.dataStore.refreshJournalLines()
+            },
+            setError: { self.dataStore.lastError = $0 }
+        )
     }
 
     override func tearDown() {

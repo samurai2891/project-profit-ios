@@ -33,7 +33,18 @@ struct ProfileSettingsView: View {
     @State private var isSavingProfile = false
 
     private var profileSettingsWorkflowUseCase: ProfileSettingsWorkflowUseCase {
-        ProfileSettingsWorkflowUseCase(dataStore: dataStore)
+        ProfileSettingsWorkflowUseCase(
+            modelContext: dataStore.modelContext,
+            ports: .init(
+                readSensitivePayload: { dataStore.profileSensitivePayload },
+                readCurrentTaxYear: { dataStore.currentTaxYearProfile?.taxYear },
+                applyState: { dataStore.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    dataStore.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { dataStore.lastError = $0 }
+            )
+        )
     }
 
     var body: some View {

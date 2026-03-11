@@ -14,7 +14,7 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
-        useCase = ProfileSettingsWorkflowUseCase(dataStore: dataStore)
+        useCase = makeUseCase()
     }
 
     override func tearDown() {
@@ -107,7 +107,8 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
     func testLoadProfileUsesCalendarYearWhenDefaultTaxYearAndCurrentTaxYearProfileAreMissing() async throws {
         UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
         useCase = ProfileSettingsWorkflowUseCase(
-            dataStore: dataStore,
+            modelContext: context,
+            ports: ports(),
             currentDateProvider: { Self.makeDate(year: 2026, month: 3, day: 11) }
         )
 
@@ -148,5 +149,25 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
             day: day
         )
         return components.date!
+    }
+
+    private func makeUseCase(currentDateProvider: @escaping () -> Date = Date.init) -> ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(
+            modelContext: context,
+            ports: ports(),
+            currentDateProvider: currentDateProvider
+        )
+    }
+
+    private func ports() -> ProfileSettingsWorkflowUseCase.Ports {
+        .init(
+            readSensitivePayload: { self.dataStore.profileSensitivePayload },
+            readCurrentTaxYear: { self.dataStore.currentTaxYearProfile?.taxYear },
+            applyState: { self.dataStore.applyProfileSettingsState($0) },
+            persistSensitivePayload: { payload, businessProfileId in
+                self.dataStore.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+            },
+            setLastError: { self.dataStore.lastError = $0 }
+        )
     }
 }

@@ -15,7 +15,19 @@ final class ClosingWorkflowUseCaseTests: XCTestCase {
         context = container.mainContext
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = ClosingWorkflowUseCase(dataStore: dataStore)
+        useCase = ClosingWorkflowUseCase(
+            modelContext: context,
+            reloadJournalState: {
+                self.dataStore.refreshJournalEntries()
+                self.dataStore.refreshJournalLines()
+            },
+            applyTaxYearProfile: { profile in
+                if self.dataStore.currentTaxYearProfile?.taxYear == profile.taxYear {
+                    self.dataStore.currentTaxYearProfile = profile
+                }
+            },
+            setError: { self.dataStore.lastError = $0 }
+        )
         XCTAssertNotNil(dataStore.businessProfile?.id)
     }
 

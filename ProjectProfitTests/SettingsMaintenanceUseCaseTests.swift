@@ -15,7 +15,7 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = SettingsMaintenanceUseCase(dataStore: dataStore)
+        useCase = SettingsMaintenanceUseCase(modelContext: context)
     }
 
     override func tearDown() {
@@ -67,12 +67,12 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
 
         useCase.deleteAllData()
 
-        XCTAssertEqual(dataStore.projects.count, 0)
-        XCTAssertEqual(dataStore.transactions.count, 0)
-        XCTAssertEqual(dataStore.recurringTransactions.count, 0)
-        XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count)
-        XCTAssertNil(dataStore.businessProfile)
-        XCTAssertNil(dataStore.currentTaxYearProfile)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPProject>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPTransaction>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPRecurringTransaction>()).isEmpty)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PPCategory>()).count, DEFAULT_CATEGORIES.count)
+        XCTAssertNil(try WorkflowPersistenceSupport.defaultBusinessProfile(modelContext: context))
+        XCTAssertTrue(try context.fetch(FetchDescriptor<TaxYearProfileEntity>()).isEmpty)
         XCTAssertNil(ProfileSecureStore.load(profileId: businessId.uuidString))
     }
 
@@ -80,9 +80,9 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
         useCase.deleteAllData()
         useCase.deleteAllData()
 
-        XCTAssertEqual(dataStore.projects.count, 0)
-        XCTAssertEqual(dataStore.transactions.count, 0)
-        XCTAssertEqual(dataStore.recurringTransactions.count, 0)
-        XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count)
+        XCTAssertEqual(try? context.fetch(FetchDescriptor<PPProject>()).count, 0)
+        XCTAssertEqual(try? context.fetch(FetchDescriptor<PPTransaction>()).count, 0)
+        XCTAssertEqual(try? context.fetch(FetchDescriptor<PPRecurringTransaction>()).count, 0)
+        XCTAssertEqual(try? context.fetch(FetchDescriptor<PPCategory>()).count, DEFAULT_CATEGORIES.count)
     }
 }

@@ -525,7 +525,18 @@ class DataStore {
 
     @discardableResult
     func reloadProfileSettings() async -> Bool {
-        await ProfileSettingsWorkflowUseCase(dataStore: self).loadProfile()
+        await ProfileSettingsWorkflowUseCase(
+            modelContext: modelContext,
+            ports: .init(
+                readSensitivePayload: { self.profileSensitivePayload },
+                readCurrentTaxYear: { self.currentTaxYearProfile?.taxYear },
+                applyState: { self.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    self.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { self.lastError = $0 }
+            )
+        ).loadProfile()
     }
 
     @discardableResult
@@ -533,10 +544,18 @@ class DataStore {
         command: SaveProfileSettingsCommand,
         sensitivePayload: ProfileSensitivePayload
     ) async -> Result<Void, Error> {
-        await ProfileSettingsWorkflowUseCase(dataStore: self).saveProfile(
-            command: command,
-            sensitivePayload: sensitivePayload
-        )
+        await ProfileSettingsWorkflowUseCase(
+            modelContext: modelContext,
+            ports: .init(
+                readSensitivePayload: { self.profileSensitivePayload },
+                readCurrentTaxYear: { self.currentTaxYearProfile?.taxYear },
+                applyState: { self.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    self.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { self.lastError = $0 }
+            )
+        ).saveProfile(command: command, sensitivePayload: sensitivePayload)
     }
 
     /// マイグレーション: SwiftDataスキーマ変更後の整合性チェック
@@ -3780,7 +3799,10 @@ class DataStore {
     // MARK: - Bulk Delete
 
     func deleteAllData() {
-        SettingsMaintenanceUseCase(dataStore: self).deleteAllData()
+        SettingsMaintenanceUseCase(
+            modelContext: modelContext,
+            resetStoreState: { self.loadData() }
+        ).deleteAllData()
     }
 
     // MARK: - Accounting CRUD

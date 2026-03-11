@@ -12,7 +12,15 @@ struct FixedAssetListView: View {
     }
 
     private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
-        FixedAssetWorkflowUseCase(dataStore: dataStore)
+        FixedAssetWorkflowUseCase(
+            modelContext: dataStore.modelContext,
+            reloadFixedAssets: { dataStore.refreshFixedAssets() },
+            reloadJournalState: {
+                dataStore.refreshJournalEntries()
+                dataStore.refreshJournalLines()
+            },
+            setError: { dataStore.lastError = $0 }
+        )
     }
 
     var body: some View {

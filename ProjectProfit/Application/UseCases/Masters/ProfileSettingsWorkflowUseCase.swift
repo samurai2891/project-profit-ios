@@ -1,28 +1,39 @@
 import Foundation
+import SwiftData
 
 @MainActor
 struct ProfileSettingsWorkflowUseCase {
-    private let dataStore: DataStore
+    struct Ports {
+        let readSensitivePayload: @MainActor () -> ProfileSensitivePayload?
+        let readCurrentTaxYear: @MainActor () -> Int?
+        let applyState: @MainActor (ProfileSettingsState) -> Void
+        let persistSensitivePayload: @MainActor (ProfileSensitivePayload, UUID) -> Bool
+        let setLastError: @MainActor (AppError?) -> Void
+    }
+
+    private let modelContext: ModelContext
+    private let ports: Ports
     private let profileSettingsUseCase: ProfileSettingsUseCase
     private let currentDateProvider: () -> Date
 
     init(
-        dataStore: DataStore,
+        modelContext: ModelContext,
+        ports: Ports,
         currentDateProvider: @escaping () -> Date = Date.init
     ) {
-        self.dataStore = dataStore
-        self.profileSettingsUseCase = ProfileSettingsUseCase(modelContext: dataStore.modelContext)
+        self.modelContext = modelContext
+        self.ports = ports
+        self.profileSettingsUseCase = ProfileSettingsUseCase(modelContext: modelContext)
         self.currentDateProvider = currentDateProvider
     }
 
     @discardableResult
     func loadProfile(defaultTaxYear: Int? = nil) async -> Bool {
-        dataStore.runLegacyProfileMigrationIfNeeded()
-        dataStore.refreshCanonicalProfileCache()
+        WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
 
-        let payload = dataStore.profileSensitivePayload
+        let payload = ports.readSensitivePayload()
         let resolvedTaxYear = defaultTaxYear
-            ?? dataStore.currentTaxYearProfile?.taxYear
+            ?? ports.readCurrentTaxYear()
             ?? currentCalendarYear()
 
         do {
@@ -30,12 +41,12 @@ struct ProfileSettingsWorkflowUseCase {
                 defaultTaxYear: resolvedTaxYear,
                 sensitivePayload: payload
             )
-            dataStore.applyProfileSettingsState(state)
-            dataStore.lastError = nil
+            ports.applyState(state)
+            ports.setLastError(nil)
             return true
         } catch {
             AppLogger.dataStore.error("Failed to reload profile settings: \(error.localizedDescription)")
-            dataStore.lastError = .dataLoadFailed(underlying: error)
+            ports.setLastError(.dataLoadFailed(underlying: error))
             return false
         }
     }
@@ -45,15 +56,14 @@ struct ProfileSettingsWorkflowUseCase {
         command: SaveProfileSettingsCommand,
         sensitivePayload: ProfileSensitivePayload
     ) async -> Result<Void, Error> {
-        dataStore.runLegacyProfileMigrationIfNeeded()
-        dataStore.refreshCanonicalProfileCache()
+        WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
 
         do {
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: command.taxYear,
                 sensitivePayload: sensitivePayload
             )
-            guard dataStore.persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
+            guard ports.persistSensitivePayload(sensitivePayload, state.businessProfile.id) else {
                 return .failure(AppError.saveFailed(underlying: NSError(domain: "ProfileSecureStore", code: 1)))
             }
 
@@ -61,16 +71,12 @@ struct ProfileSettingsWorkflowUseCase {
                 command: command,
                 currentState: state
             )
-            dataStore.applyProfileSettingsState(savedState)
-
-            if dataStore.save() {
-                dataStore.lastError = nil
-                return .success(())
-            }
-            return .failure(dataStore.lastError ?? AppError.saveFailed(underlying: NSError(domain: "ProfileSettings", code: 2)))
+            ports.applyState(savedState)
+            ports.setLastError(nil)
+            return .success(())
         } catch {
             AppLogger.dataStore.error("Failed to save profile settings: \(error.localizedDescription)")
-            dataStore.lastError = .saveFailed(underlying: error)
+            ports.setLastError(.saveFailed(underlying: error))
             return .failure(error)
         }
     }

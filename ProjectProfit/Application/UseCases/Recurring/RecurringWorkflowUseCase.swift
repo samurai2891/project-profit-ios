@@ -30,124 +30,50 @@ struct RecurringUpsertInput: Equatable, Sendable {
 
 @MainActor
 struct RecurringWorkflowUseCase {
-    private let modelContext: ModelContext
-    private let onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)?
-    private let calendar: Calendar
+    private let store: RecurringWorkflowStore
 
     init(
         modelContext: ModelContext,
         onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)? = nil,
         calendar: Calendar = .current
     ) {
-        self.modelContext = modelContext
-        self.onRecurringScheduleChanged = onRecurringScheduleChanged
-        self.calendar = calendar
+        self.store = RecurringWorkflowStore(
+            modelContext: modelContext,
+            onRecurringScheduleChanged: onRecurringScheduleChanged,
+            calendar: calendar
+        )
     }
 
     @discardableResult
     func createRecurring(input: RecurringUpsertInput) -> PPRecurringTransaction {
-        withDataStore { dataStore in
-            dataStore.addRecurring(
-            name: input.name,
-            type: input.type,
-            amount: input.amount,
-            categoryId: input.categoryId,
-            memo: input.memo,
-            allocationMode: input.allocationMode,
-            allocations: input.allocations.map { ($0.projectId, $0.ratio) },
-            frequency: input.frequency,
-            dayOfMonth: input.dayOfMonth,
-            monthOfYear: input.monthOfYear,
-            endDate: input.endDate,
-            yearlyAmortizationMode: input.yearlyAmortizationMode,
-            receiptImagePath: input.receiptImagePath,
-            paymentAccountId: input.paymentAccountId,
-            transferToAccountId: input.transferToAccountId,
-            taxDeductibleRate: input.taxDeductibleRate,
-            counterpartyId: input.counterpartyId,
-            counterparty: input.counterparty
-        )
-        }
+        store.createRecurring(input: input)
     }
 
     func updateRecurring(id: UUID, input: RecurringUpsertInput) {
-        withDataStore { dataStore in
-            dataStore.updateRecurring(
-            id: id,
-            name: input.name,
-            type: input.type,
-            amount: input.amount,
-            categoryId: input.categoryId,
-            memo: input.memo,
-            allocationMode: input.allocationMode,
-            allocations: input.allocations.map { ($0.projectId, $0.ratio) },
-            frequency: input.frequency,
-            dayOfMonth: input.dayOfMonth,
-            monthOfYear: input.monthOfYear,
-            isActive: input.isActive,
-            endDate: .some(input.endDate),
-            yearlyAmortizationMode: input.yearlyAmortizationMode,
-            receiptImagePath: .some(input.receiptImagePath),
-            paymentAccountId: .some(input.paymentAccountId),
-            transferToAccountId: .some(input.transferToAccountId),
-            taxDeductibleRate: .some(input.taxDeductibleRate),
-            counterpartyId: .some(input.counterpartyId),
-            counterparty: .some(input.counterparty)
-        )
-        }
+        store.updateRecurring(id: id, input: input)
     }
 
     func deleteRecurring(id: UUID) {
-        withDataStore { dataStore in
-            dataStore.deleteRecurring(id: id)
-        }
+        store.deleteRecurring(id: id)
     }
 
     func setRecurringActive(id: UUID, isActive: Bool) {
-        withDataStore { dataStore in
-            dataStore.updateRecurring(id: id, isActive: isActive)
-        }
+        store.setRecurringActive(id: id, isActive: isActive)
     }
 
     func setRecurringSkipped(id: UUID, date: Date, isSkipped: Bool) {
-        withDataStore { dataStore in
-            guard let recurring = dataStore.getRecurring(id: id) else {
-                return
-            }
-
-            var updatedSkipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: date) }
-            if isSkipped {
-                updatedSkipDates.append(date)
-            }
-            dataStore.updateRecurring(id: id, skipDates: updatedSkipDates)
-        }
+        store.setRecurringSkipped(id: id, date: date, isSkipped: isSkipped)
     }
 
     func setNotificationTiming(id: UUID, timing: NotificationTiming) {
-        withDataStore { dataStore in
-            dataStore.updateRecurring(id: id, notificationTiming: timing)
-        }
+        store.setNotificationTiming(id: id, timing: timing)
     }
 
     func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        withDataStore { dataStore in
-            dataStore.previewRecurringTransactions()
-        }
+        store.previewRecurringTransactions()
     }
 
     func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        let dataStore = configuredDataStore()
-        return await dataStore.approveRecurringItems(approvedIds, from: items)
-    }
-
-    private func withDataStore<T>(_ body: (DataStore) -> T) -> T {
-        body(configuredDataStore())
-    }
-
-    private func configuredDataStore() -> DataStore {
-        let dataStore = DataStore(modelContext: modelContext)
-        dataStore.onRecurringScheduleChanged = onRecurringScheduleChanged
-        dataStore.loadData()
-        return dataStore
+        await store.approveRecurringItems(approvedIds, from: items)
     }
 }

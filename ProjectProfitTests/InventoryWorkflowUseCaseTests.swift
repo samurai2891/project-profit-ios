@@ -15,7 +15,11 @@ final class InventoryWorkflowUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = InventoryWorkflowUseCase(dataStore: dataStore)
+        useCase = InventoryWorkflowUseCase(
+            modelContext: context,
+            reloadInventoryRecords: { self.dataStore.refreshInventoryRecords() },
+            setError: { self.dataStore.lastError = $0 }
+        )
     }
 
     override func tearDown() {

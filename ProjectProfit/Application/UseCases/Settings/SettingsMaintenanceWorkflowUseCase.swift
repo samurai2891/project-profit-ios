@@ -8,16 +8,6 @@ struct SettingsMaintenanceWorkflowUseCase {
     private let modelContext: ModelContext
     private let reloadStoreState: @MainActor () -> Void
 
-    init(dataStore: DataStore) {
-        self.init(
-            modelContext: dataStore.modelContext,
-            reloadStoreState: {
-                dataStore.loadData()
-                dataStore.recalculateAllPartialPeriodProjects()
-            }
-        )
-    }
-
     init(
         modelContext: ModelContext,
         reloadStoreState: @escaping @MainActor () -> Void = {}

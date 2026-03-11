@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct InventoryUpsertInput: Equatable, Sendable {
     let fiscalYear: Int
@@ -10,15 +11,21 @@ struct InventoryUpsertInput: Equatable, Sendable {
 
 @MainActor
 struct InventoryWorkflowUseCase {
-    private let dataStore: DataStore
+    private let modelContext: ModelContext
     private let inventoryRepository: any InventoryRepository
+    private let reloadInventoryRecords: @MainActor () -> Void
+    private let setError: @MainActor (AppError?) -> Void
 
     init(
-        dataStore: DataStore,
-        inventoryRepository: (any InventoryRepository)? = nil
+        modelContext: ModelContext,
+        inventoryRepository: (any InventoryRepository)? = nil,
+        reloadInventoryRecords: @escaping @MainActor () -> Void = {},
+        setError: @escaping @MainActor (AppError?) -> Void = { _ in }
     ) {
-        self.dataStore = dataStore
-        self.inventoryRepository = inventoryRepository ?? SwiftDataInventoryRepository(modelContext: dataStore.modelContext)
+        self.modelContext = modelContext
+        self.inventoryRepository = inventoryRepository ?? SwiftDataInventoryRepository(modelContext: modelContext)
+        self.reloadInventoryRecords = reloadInventoryRecords
+        self.setError = setError
     }
 
     @discardableResult
@@ -31,7 +38,7 @@ struct InventoryWorkflowUseCase {
 
     @discardableResult
     func createInventoryRecord(input: InventoryUpsertInput) -> PPInventoryRecord? {
-        guard !dataStore.isYearLocked(input.fiscalYear) else {
+        guard !isYearLocked(input.fiscalYear) else {
             return nil
         }
 
@@ -44,11 +51,12 @@ struct InventoryWorkflowUseCase {
         )
         inventoryRepository.insert(record)
 
-        guard dataStore.save() else {
+        guard saveChanges() else {
             return nil
         }
 
-        dataStore.refreshInventoryRecords()
+        setError(nil)
+        reloadInventoryRecords()
         return record
     }
 
@@ -61,10 +69,11 @@ struct InventoryWorkflowUseCase {
             }
             record = fetched
         } catch {
+            setError(.saveFailed(underlying: error))
             return false
         }
 
-        guard !dataStore.isYearLocked(record.fiscalYear) else {
+        guard !isYearLocked(record.fiscalYear) else {
             return false
         }
 
@@ -74,11 +83,30 @@ struct InventoryWorkflowUseCase {
         record.memo = input.memo
         record.updatedAt = Date()
 
-        guard dataStore.save() else {
+        guard saveChanges() else {
             return false
         }
 
-        dataStore.refreshInventoryRecords()
+        setError(nil)
+        reloadInventoryRecords()
         return true
+    }
+
+    private func saveChanges() -> Bool {
+        do {
+            try WorkflowPersistenceSupport.save(modelContext: modelContext)
+            return true
+        } catch {
+            setError(.saveFailed(underlying: error))
+            return false
+        }
+    }
+
+    private func isYearLocked(_ year: Int) -> Bool {
+        guard !WorkflowPersistenceSupport.isYearLocked(modelContext: modelContext, year: year) else {
+            setError(.yearLocked(year: year))
+            return true
+        }
+        return false
     }
 }

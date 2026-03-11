@@ -1,7 +1,9 @@
+import SwiftData
 import SwiftUI
 
 struct ClosingEntryView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     private struct DisplayLine: Identifiable {
         let id: UUID
@@ -23,7 +25,19 @@ struct ClosingEntryView: View {
     }
 
     private var closingWorkflowUseCase: ClosingWorkflowUseCase {
-        ClosingWorkflowUseCase(dataStore: dataStore)
+        ClosingWorkflowUseCase(
+            modelContext: modelContext,
+            reloadJournalState: {
+                dataStore.refreshJournalEntries()
+                dataStore.refreshJournalLines()
+            },
+            applyTaxYearProfile: { profile in
+                if dataStore.currentTaxYearProfile?.taxYear == profile.taxYear {
+                    dataStore.currentTaxYearProfile = profile
+                }
+            },
+            setError: { dataStore.lastError = $0 }
+        )
     }
 
     private var canonicalClosingEntry: CanonicalJournalEntry? {

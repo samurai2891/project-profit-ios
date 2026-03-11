@@ -18,7 +18,13 @@ final class SettingsMaintenanceWorkflowUseCaseTests: XCTestCase {
         context = container.mainContext
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        workflowUseCase = SettingsMaintenanceWorkflowUseCase(dataStore: dataStore)
+        workflowUseCase = SettingsMaintenanceWorkflowUseCase(
+            modelContext: context,
+            reloadStoreState: {
+                self.dataStore.loadData()
+                self.dataStore.recalculateAllPartialPeriodProjects()
+            }
+        )
         tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
             "SettingsMaintenanceWorkflowUseCaseTests-\(UUID().uuidString)",
             isDirectory: true
@@ -59,10 +65,13 @@ final class SettingsMaintenanceWorkflowUseCaseTests: XCTestCase {
         dataStore.loadData()
 
         let archiveURL = try workflowUseCase.exportBackup(scope: .full).archiveURL
-        SettingsMaintenanceUseCase(dataStore: dataStore).deleteAllData()
+        SettingsMaintenanceUseCase(
+            modelContext: context,
+            resetStoreState: { self.dataStore.loadData() }
+        ).deleteAllData()
 
         XCTAssertEqual(dataStore.transactions.count, 0)
-        XCTAssertNil(dataStore.businessProfile)
+        XCTAssertNotNil(dataStore.businessProfile)
 
         let result = try workflowUseCase.applyRestore(snapshotURL: archiveURL)
 
@@ -99,7 +108,9 @@ final class SettingsMaintenanceWorkflowUseCaseTests: XCTestCase {
     }
 
     func testExecuteMigrationFailsWithoutBusinessProfile() {
-        SettingsMaintenanceUseCase(dataStore: dataStore).deleteAllData()
+        SettingsMaintenanceUseCase(
+            modelContext: context
+        ).deleteAllData()
 
         XCTAssertThrowsError(try workflowUseCase.executeMigration()) { error in
             XCTAssertEqual(error.localizedDescription, "事業者情報が未設定です")

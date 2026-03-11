@@ -11,10 +11,10 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
         let containerB = try TestModelContainer.create()
         let storeB = ProjectProfit.DataStore(modelContext: ModelContext(containerB))
 
-        try await AppBootstrapWorkflowUseCase().initialize(dataStore: storeA)
+        await makeBootstrapUseCase(store: storeA).initialize()
 
         storeB.loadData()
-        _ = await ProfileSettingsWorkflowUseCase(dataStore: storeB).loadProfile()
+        _ = await makeProfileWorkflowUseCase(store: storeB).loadProfile()
         storeB.recalculateAllPartialPeriodProjects()
 
         XCTAssertEqual(storeA.projects.count, storeB.projects.count)
@@ -48,7 +48,7 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
         try context.save()
 
         let store = ProjectProfit.DataStore(modelContext: context)
-        try await AppBootstrapWorkflowUseCase().initialize(dataStore: store)
+        await makeBootstrapUseCase(store: store).initialize()
 
         XCTAssertEqual(store.businessProfile?.id, businessId)
         XCTAssertEqual(store.businessProfile?.businessName, "田中商店")
@@ -83,7 +83,7 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
         try context.save()
 
         let bootStore = ProjectProfit.DataStore(modelContext: context)
-        try await AppBootstrapWorkflowUseCase().initialize(dataStore: bootStore)
+        await makeBootstrapUseCase(store: bootStore).initialize()
 
         let transaction = try XCTUnwrap(bootStore.transactions.first)
         let allocationA = try XCTUnwrap(transaction.allocations.first { $0.projectId == projectA.id })
@@ -102,5 +102,34 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
             day: day
         )
         return components.date!
+    }
+
+    private func makeBootstrapUseCase(store: ProjectProfit.DataStore) -> AppBootstrapWorkflowUseCase {
+        AppBootstrapWorkflowUseCase(
+            ports: .init(
+                reloadStoreState: {
+                    store.loadData()
+                    store.recalculateAllPartialPeriodProjects()
+                },
+                loadProfile: { defaultTaxYear in
+                    await self.makeProfileWorkflowUseCase(store: store).loadProfile(defaultTaxYear: defaultTaxYear)
+                }
+            )
+        )
+    }
+
+    private func makeProfileWorkflowUseCase(store: ProjectProfit.DataStore) -> ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(
+            modelContext: store.modelContext,
+            ports: .init(
+                readSensitivePayload: { store.profileSensitivePayload },
+                readCurrentTaxYear: { store.currentTaxYearProfile?.taxYear },
+                applyState: { store.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    store.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { store.lastError = $0 }
+            )
+        )
     }
 }

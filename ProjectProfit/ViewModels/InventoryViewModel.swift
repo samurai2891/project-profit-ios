@@ -18,7 +18,11 @@ final class InventoryViewModel {
         workflowUseCase: InventoryWorkflowUseCase? = nil
     ) {
         self.dataStore = dataStore
-        self.workflowUseCase = workflowUseCase ?? InventoryWorkflowUseCase(dataStore: dataStore)
+        self.workflowUseCase = workflowUseCase ?? InventoryWorkflowUseCase(
+            modelContext: dataStore.modelContext,
+            reloadInventoryRecords: { dataStore.refreshInventoryRecords() },
+            setError: { dataStore.lastError = $0 }
+        )
         let currentYear = Calendar.current.component(.year, from: Date())
         self.fiscalYear = currentYear - 1
     }

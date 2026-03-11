@@ -1,22 +1,33 @@
 import Foundation
-import SwiftData
 
 @MainActor
 struct AppShellWorkflowUseCase {
-    func reloadStoreState(dataStore: DataStore) {
-        dataStore.loadData()
-        dataStore.recalculateAllPartialPeriodProjects()
+    struct Ports {
+        let reloadStoreState: @MainActor () -> Void
+        let refreshRecurringPreview: @MainActor () -> [RecurringPreviewItem]
+        let readCurrentError: @MainActor () -> AppError?
+        let writeCurrentError: @MainActor (AppError?) -> Void
     }
 
-    func refreshRecurringPreview(dataStore: DataStore) -> [RecurringPreviewItem] {
-        RecurringWorkflowUseCase(modelContext: dataStore.modelContext).previewRecurringTransactions()
+    private let ports: Ports
+
+    init(ports: Ports) {
+        self.ports = ports
     }
 
-    func currentError(dataStore: DataStore) -> AppError? {
-        dataStore.lastError
+    func reloadStoreState() {
+        ports.reloadStoreState()
     }
 
-    func dismissCurrentError(dataStore: DataStore) {
-        dataStore.lastError = nil
+    func refreshRecurringPreview() -> [RecurringPreviewItem] {
+        ports.refreshRecurringPreview()
+    }
+
+    func currentError() -> AppError? {
+        ports.readCurrentError()
+    }
+
+    func dismissCurrentError() {
+        ports.writeCurrentError(nil)
     }
 }

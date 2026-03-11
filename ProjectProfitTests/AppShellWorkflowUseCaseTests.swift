@@ -31,9 +31,9 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
 
         let workflowStore = ProjectProfit.DataStore(modelContext: context)
         let directStore = ProjectProfit.DataStore(modelContext: context)
-        let useCase = AppShellWorkflowUseCase()
+        let useCase = makeUseCase(store: workflowStore)
 
-        useCase.reloadStoreState(dataStore: workflowStore)
+        useCase.reloadStoreState()
         directStore.loadData()
         directStore.recalculateAllPartialPeriodProjects()
 
@@ -68,8 +68,8 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         try context.save()
         store.loadData()
 
-        let useCase = AppShellWorkflowUseCase()
-        let workflowItems = useCase.refreshRecurringPreview(dataStore: store)
+        let useCase = makeUseCase(store: store)
+        let workflowItems = useCase.refreshRecurringPreview()
         let directItems = RecurringWorkflowUseCase(modelContext: context).previewRecurringTransactions()
 
         XCTAssertEqual(workflowItems.map(\.recurringId), directItems.map(\.recurringId))
@@ -80,15 +80,15 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
     func testCurrentErrorAndDismissMirrorAlertState() throws {
         let container = try TestModelContainer.create()
         let store = ProjectProfit.DataStore(modelContext: ModelContext(container))
-        let useCase = AppShellWorkflowUseCase()
+        let useCase = makeUseCase(store: store)
 
-        XCTAssertNil(useCase.currentError(dataStore: store))
+        XCTAssertNil(useCase.currentError())
 
         store.lastError = .invalidInput(message: "app shell error")
-        XCTAssertEqual(useCase.currentError(dataStore: store)?.errorDescription, "app shell error")
+        XCTAssertEqual(useCase.currentError()?.errorDescription, "app shell error")
 
-        useCase.dismissCurrentError(dataStore: store)
-        XCTAssertNil(useCase.currentError(dataStore: store))
+        useCase.dismissCurrentError()
+        XCTAssertNil(useCase.currentError())
     }
 
     private static func makeDate(year: Int, month: Int, day: Int) -> Date {
@@ -99,5 +99,21 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
             day: day
         )
         return components.date!
+    }
+
+    private func makeUseCase(store: ProjectProfit.DataStore) -> AppShellWorkflowUseCase {
+        AppShellWorkflowUseCase(
+            ports: .init(
+                reloadStoreState: {
+                    store.loadData()
+                    store.recalculateAllPartialPeriodProjects()
+                },
+                refreshRecurringPreview: {
+                    RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
+                },
+                readCurrentError: { store.lastError },
+                writeCurrentError: { store.lastError = $0 }
+            )
+        )
     }
 }

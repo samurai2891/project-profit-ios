@@ -2,95 +2,120 @@ import SwiftData
 
 @MainActor
 struct SettingsMaintenanceUseCase {
-    private let dataStore: DataStore
+    private let modelContext: ModelContext
+    private let resetStoreState: @MainActor () -> Void
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
-    }
-
-    init(modelContext: ModelContext) {
-        let dataStore = DataStore(modelContext: modelContext)
-        dataStore.loadData()
-        self.init(dataStore: dataStore)
+    init(
+        modelContext: ModelContext,
+        resetStoreState: @escaping @MainActor () -> Void = {}
+    ) {
+        self.modelContext = modelContext
+        self.resetStoreState = resetStoreState
     }
 
     func deleteAllData() {
-        let imagesToDelete = dataStore.transactions.compactMap(\.receiptImagePath)
-            + dataStore.recurringTransactions.compactMap(\.receiptImagePath)
-        let documentRecords = dataStore.listDocumentRecords()
-        let documentFilesToDelete = documentRecords.map(\.storedFileName)
-        let complianceLogs = dataStore.listComplianceLogs(limit: Int.max)
-        let secureStoreIds = Set([dataStore.businessProfile?.id.uuidString].compactMap { $0 })
+        let imagesToDelete = transactions().compactMap(\.receiptImagePath)
+            + recurringTransactions().compactMap(\.receiptImagePath)
+        let documents = documentRecords()
+        let documentFilesToDelete = documents.map(\.storedFileName)
+        let secureStoreIds = Set(businessProfiles().map(\.id.uuidString))
 
-        for project in dataStore.projects {
-            dataStore.modelContext.delete(project)
-        }
-        for transaction in dataStore.transactions {
-            dataStore.modelContext.delete(transaction)
-        }
-        for category in dataStore.categories {
-            dataStore.modelContext.delete(category)
-        }
-        for recurring in dataStore.recurringTransactions {
-            dataStore.modelContext.delete(recurring)
-        }
-        for account in dataStore.accounts {
-            dataStore.modelContext.delete(account)
-        }
-        for journalEntry in dataStore.journalEntries {
-            dataStore.modelContext.delete(journalEntry)
-        }
-        for journalLine in dataStore.journalLines {
-            dataStore.modelContext.delete(journalLine)
-        }
-        if let legacyProfiles = try? dataStore.modelContext.fetch(FetchDescriptor<PPAccountingProfile>()) {
-            for profile in legacyProfiles {
-                dataStore.modelContext.delete(profile)
-            }
-        }
-        if let businessProfiles = try? dataStore.modelContext.fetch(FetchDescriptor<BusinessProfileEntity>()) {
-            for profile in businessProfiles {
-                dataStore.modelContext.delete(profile)
-            }
-        }
-        if let taxYearProfiles = try? dataStore.modelContext.fetch(FetchDescriptor<TaxYearProfileEntity>()) {
-            for profile in taxYearProfiles {
-                dataStore.modelContext.delete(profile)
-            }
-        }
-        for asset in dataStore.fixedAssets {
-            dataStore.modelContext.delete(asset)
-        }
-        for document in documentRecords {
-            dataStore.modelContext.delete(document)
-        }
-        for log in complianceLogs {
-            dataStore.modelContext.delete(log)
-        }
+        deleteAll(projects())
+        deleteAll(transactions())
+        deleteAll(categories())
+        deleteAll(recurringTransactions())
+        deleteAll(accounts())
+        deleteAll(journalEntries())
+        deleteAll(journalLines())
+        deleteAll(legacyProfiles())
+        deleteAll(businessProfileEntities())
+        deleteAll(taxYearProfiles())
+        deleteAll(fixedAssets())
+        deleteAll(documents)
+        deleteAll(complianceLogs())
 
-        if dataStore.save() {
+        do {
+            try WorkflowPersistenceSupport.save(modelContext: modelContext)
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
             }
             for fileName in documentFilesToDelete {
                 ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             }
+            for profileId in secureStoreIds {
+                _ = ProfileSecureStore.delete(profileId: profileId)
+            }
+            try WorkflowPersistenceSupport.seedDefaultCategories(modelContext: modelContext)
+        } catch {
+            modelContext.rollback()
         }
 
-        for profileId in secureStoreIds {
-            _ = ProfileSecureStore.delete(profileId: profileId)
-        }
+        resetStoreState()
+    }
 
-        dataStore.projects = []
-        dataStore.allTransactions = []
-        dataStore.categories = []
-        dataStore.recurringTransactions = []
-        dataStore.accounts = []
-        dataStore.journalEntries = []
-        dataStore.journalLines = []
-        dataStore.businessProfile = nil
-        dataStore.currentTaxYearProfile = nil
-        dataStore.fixedAssets = []
-        dataStore.seedDefaultCategories()
+    private func deleteAll<T>(_ models: [T]) where T: PersistentModel {
+        for model in models {
+            modelContext.delete(model)
+        }
+    }
+
+    private func projects() -> [PPProject] {
+        fetch(FetchDescriptor<PPProject>())
+    }
+
+    private func transactions() -> [PPTransaction] {
+        fetch(FetchDescriptor<PPTransaction>())
+    }
+
+    private func categories() -> [PPCategory] {
+        fetch(FetchDescriptor<PPCategory>())
+    }
+
+    private func recurringTransactions() -> [PPRecurringTransaction] {
+        fetch(FetchDescriptor<PPRecurringTransaction>())
+    }
+
+    private func accounts() -> [PPAccount] {
+        fetch(FetchDescriptor<PPAccount>())
+    }
+
+    private func journalEntries() -> [PPJournalEntry] {
+        fetch(FetchDescriptor<PPJournalEntry>())
+    }
+
+    private func journalLines() -> [PPJournalLine] {
+        fetch(FetchDescriptor<PPJournalLine>())
+    }
+
+    private func legacyProfiles() -> [PPAccountingProfile] {
+        fetch(FetchDescriptor<PPAccountingProfile>())
+    }
+
+    private func businessProfiles() -> [BusinessProfile] {
+        businessProfileEntities().map(BusinessProfileEntityMapper.toDomain)
+    }
+
+    private func businessProfileEntities() -> [BusinessProfileEntity] {
+        fetch(FetchDescriptor<BusinessProfileEntity>())
+    }
+
+    private func taxYearProfiles() -> [TaxYearProfileEntity] {
+        fetch(FetchDescriptor<TaxYearProfileEntity>())
+    }
+
+    private func fixedAssets() -> [PPFixedAsset] {
+        fetch(FetchDescriptor<PPFixedAsset>())
+    }
+
+    private func documentRecords() -> [PPDocumentRecord] {
+        fetch(FetchDescriptor<PPDocumentRecord>())
+    }
+
+    private func complianceLogs() -> [PPComplianceLog] {
+        fetch(FetchDescriptor<PPComplianceLog>())
+    }
+
+    private func fetch<T>(_ descriptor: FetchDescriptor<T>) -> [T] where T: PersistentModel {
+        (try? modelContext.fetch(descriptor)) ?? []
     }
 }
