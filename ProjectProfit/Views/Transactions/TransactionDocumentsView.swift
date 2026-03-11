@@ -1,9 +1,10 @@
 import PhotosUI
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct TransactionDocumentsView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     let transaction: PPTransaction
 
@@ -22,7 +23,7 @@ struct TransactionDocumentsView: View {
     @State private var pendingWarningMessage: String?
 
     private var documentWorkflowUseCase: DocumentWorkflowUseCase {
-        DocumentWorkflowUseCase(dataStore: dataStore)
+        DocumentWorkflowUseCase(modelContext: modelContext)
     }
 
     var body: some View {

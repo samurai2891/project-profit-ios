@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct DocumentAddInput: Sendable, Equatable {
     let transactionId: UUID?
@@ -12,15 +13,19 @@ struct DocumentAddInput: Sendable, Equatable {
 
 @MainActor
 struct DocumentWorkflowUseCase {
-    private let dataStore: DataStore
     private let documentRepository: any DocumentRepository
+    private let evidenceCatalogUseCase: EvidenceCatalogUseCase
+    private let searchIndexRebuilder: SearchIndexRebuilder
 
     init(
-        dataStore: DataStore,
-        documentRepository: (any DocumentRepository)? = nil
+        modelContext: ModelContext,
+        documentRepository: (any DocumentRepository)? = nil,
+        evidenceCatalogUseCase: EvidenceCatalogUseCase? = nil,
+        searchIndexRebuilder: SearchIndexRebuilder? = nil
     ) {
-        self.dataStore = dataStore
-        self.documentRepository = documentRepository ?? SwiftDataDocumentRepository(modelContext: dataStore.modelContext)
+        self.documentRepository = documentRepository ?? SwiftDataDocumentRepository(modelContext: modelContext)
+        self.evidenceCatalogUseCase = evidenceCatalogUseCase ?? EvidenceCatalogUseCase(modelContext: modelContext)
+        self.searchIndexRebuilder = searchIndexRebuilder ?? SearchIndexRebuilder(modelContext: modelContext)
     }
 
     func listDocuments(transactionId: UUID? = nil) -> [PPDocumentRecord] {
@@ -50,21 +55,57 @@ struct DocumentWorkflowUseCase {
         }
     }
 
-    @discardableResult
-    func addDocument(input: DocumentAddInput) -> Result<PPDocumentRecord, AppError> {
-        if let transactionId = input.transactionId, dataStore.getTransaction(id: transactionId) == nil {
-            return .failure(.transactionNotFound(id: transactionId))
+    func availableProjects() -> [PPProject] {
+        do {
+            return try documentRepository.listProjects()
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch projects for document ledger: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    func matchingStoredFileNames(form: EvidenceSearchFormState) async throws -> Set<String>? {
+        guard form.hasActiveFilters else {
+            return nil
+        }
+        guard let businessId = try documentRepository.currentBusinessId() else {
+            return nil
         }
 
+        let evidences = try await evidenceCatalogUseCase.search(form.makeCriteria(businessId: businessId))
+        return Set(evidences.map(\.originalFilePath))
+    }
+
+    func rebuildEvidenceIndex() async throws {
+        let businessId = try documentRepository.currentBusinessId()
+        try searchIndexRebuilder.rebuildEvidenceIndex(businessId: businessId)
+    }
+
+    @discardableResult
+    func addDocument(input: DocumentAddInput) -> Result<PPDocumentRecord, AppError> {
         do {
-            let storedFileName = try ReceiptImageStore.saveDocumentData(
+            if let transactionId = input.transactionId, try documentRepository.transactionExists(id: transactionId) == false {
+                return .failure(.transactionNotFound(id: transactionId))
+            }
+        } catch let error as AppError {
+            AppLogger.dataStore.error("Failed to validate transaction for document: \(error.localizedDescription)")
+            return .failure(error)
+        } catch {
+            AppLogger.dataStore.error("Failed to validate transaction for document: \(error.localizedDescription)")
+            return .failure(.dataLoadFailed(underlying: error))
+        }
+
+        var storedFileName: String?
+
+        do {
+            storedFileName = try ReceiptImageStore.saveDocumentData(
                 input.fileData,
                 originalFileName: input.originalFileName
             )
             let record = PPDocumentRecord(
                 transactionId: input.transactionId,
                 documentType: input.documentType,
-                storedFileName: storedFileName,
+                storedFileName: storedFileName ?? "",
                 originalFileName: input.originalFileName,
                 mimeType: input.mimeType,
                 fileSize: input.fileData.count,
@@ -73,20 +114,20 @@ struct DocumentWorkflowUseCase {
                 note: input.note
             )
             documentRepository.insertDocument(record)
-            if dataStore.save() {
-                appendComplianceLog(
-                    eventType: .documentAdded,
-                    message: "書類登録: \(record.documentType.label) (\(record.originalFileName))",
-                    documentId: record.id,
-                    transactionId: record.transactionId
-                )
-                return .success(record)
-            }
-            ReceiptImageStore.deleteDocumentFile(fileName: storedFileName)
-            return .failure(dataStore.lastError ?? .invalidInput(message: "書類の保存に失敗しました"))
+            try documentRepository.saveChanges()
+            appendComplianceLog(
+                eventType: .documentAdded,
+                message: "書類登録: \(record.documentType.label) (\(record.originalFileName))",
+                documentId: record.id,
+                transactionId: record.transactionId
+            )
+            return .success(record)
+        } catch let error as AppError {
+            AppLogger.dataStore.error("Failed to save document: \(error.localizedDescription)")
+            return cleanupFailedSave(storedFileName: storedFileName, error: error)
         } catch {
-            AppLogger.dataStore.error("Failed to save document file: \(error.localizedDescription)")
-            return .failure(.invalidInput(message: "書類ファイルの保存に失敗しました"))
+            AppLogger.dataStore.error("Failed to save document: \(error.localizedDescription)")
+            return cleanupFailedSave(storedFileName: storedFileName, error: .saveFailed(underlying: error))
         }
     }
 
@@ -124,9 +165,11 @@ struct DocumentWorkflowUseCase {
         let documentId = record.id
 
         documentRepository.deleteDocument(record)
-        guard dataStore.save() else {
+        do {
+            try documentRepository.saveChanges()
+        } catch {
             return .failed(
-                message: (dataStore.lastError ?? .invalidInput(message: "書類削除に失敗しました")).localizedDescription
+                message: ((error as? AppError) ?? .invalidInput(message: "書類削除に失敗しました")).localizedDescription
             )
         }
 
@@ -179,6 +222,17 @@ struct DocumentWorkflowUseCase {
             transactionId: transactionId
         )
         documentRepository.insertComplianceLog(log)
-        _ = dataStore.save()
+        do {
+            try documentRepository.saveChanges()
+        } catch {
+            AppLogger.dataStore.error("Failed to save compliance log: \(error.localizedDescription)")
+        }
+    }
+
+    private func cleanupFailedSave(storedFileName: String?, error: AppError) -> Result<PPDocumentRecord, AppError> {
+        if let storedFileName {
+            ReceiptImageStore.deleteDocumentFile(fileName: storedFileName)
+        }
+        return .failure(error)
     }
 }

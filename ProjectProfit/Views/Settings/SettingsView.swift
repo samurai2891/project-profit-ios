@@ -26,6 +26,10 @@ struct SettingsView: View {
         SettingsMaintenanceUseCase(dataStore: dataStore)
     }
 
+    private var settingsMaintenanceWorkflowUseCase: SettingsMaintenanceWorkflowUseCase {
+        SettingsMaintenanceWorkflowUseCase(dataStore: dataStore)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -602,7 +606,7 @@ struct SettingsView: View {
 
     private func exportBackup(scope: BackupScope) {
         do {
-            let result = try BackupService(modelContext: dataStore.modelContext).export(scope: scope)
+            let result = try settingsMaintenanceWorkflowUseCase.exportBackup(scope: scope)
             backupShareURL = result.archiveURL
             showBackupShareSheet = true
             let warningText = result.manifest.warnings.isEmpty ? "warning なし" : "warning \(result.manifest.warnings.count)件"
@@ -627,7 +631,7 @@ struct SettingsView: View {
             do {
                 let cachedURL = try cacheRestoreSnapshot(from: url)
                 cachedRestoreSnapshotURL = cachedURL
-                restoreDryRunReport = try RestoreService(modelContext: dataStore.modelContext).dryRun(snapshotURL: cachedURL)
+                restoreDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunRestore(snapshotURL: cachedURL)
                 operationMessage = restoreDryRunReport?.canApply == true ? "復元 dry-run が完了しました。" : "復元 dry-run に issue があります。"
                 showOperationAlert = true
             } catch {
@@ -643,8 +647,7 @@ struct SettingsView: View {
     private func applyRestore() {
         guard let cachedRestoreSnapshotURL else { return }
         do {
-            let result = try RestoreService(modelContext: dataStore.modelContext).apply(snapshotURL: cachedRestoreSnapshotURL)
-            dataStore.loadData()
+            let result = try settingsMaintenanceWorkflowUseCase.applyRestore(snapshotURL: cachedRestoreSnapshotURL)
             restoreDryRunReport = result.report
             operationMessage = "復元を実行しました。rollback: \(result.rollbackArchiveURL.lastPathComponent)"
             showOperationAlert = true
@@ -656,7 +659,7 @@ struct SettingsView: View {
 
     private func runMigrationDryRun() {
         do {
-            migrationDryRunReport = try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
+            migrationDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunMigration()
             operationMessage = "移行 dry-run を更新しました。"
             showOperationAlert = true
         } catch {
@@ -666,15 +669,8 @@ struct SettingsView: View {
     }
 
     private func executeMigration() {
-        guard let businessId = dataStore.businessProfile?.id else {
-            operationMessage = "事業者情報が未設定です"
-            showOperationAlert = true
-            return
-        }
-
         do {
-            let executor = LegacyDataMigrationExecutor(modelContext: dataStore.modelContext)
-            let result = try executor.execute(businessId: businessId)
+            let result = try settingsMaintenanceWorkflowUseCase.executeMigration()
 
             let summary = "移行完了: 取引 \(result.transactionsMigrated)件, 仕訳 \(result.journalsMigrated)件, 書類 \(result.documentsMigrated)件"
             if result.hasErrors {
@@ -683,8 +679,7 @@ struct SettingsView: View {
                 operationMessage = summary
             }
 
-            migrationDryRunReport = try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
-            dataStore.loadData()
+            migrationDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunMigration()
             showOperationAlert = true
         } catch {
             operationMessage = "移行に失敗しました: \(error.localizedDescription)"

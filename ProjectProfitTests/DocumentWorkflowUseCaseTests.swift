@@ -16,7 +16,7 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = DocumentWorkflowUseCase(dataStore: dataStore)
+        useCase = DocumentWorkflowUseCase(modelContext: context)
         storedFileNames = []
     }
 
@@ -135,6 +135,65 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         }
     }
 
+    func testAvailableProjectsReturnsProjectsForFilterSheet() {
+        let first = dataStore.addProject(name: "First", description: "one")
+        let second = dataStore.addProject(name: "Second", description: "two")
+
+        let projects = useCase.availableProjects()
+
+        XCTAssertEqual(projects.map(\.id), [second.id, first.id])
+    }
+
+    func testMatchingStoredFileNamesReturnsNilWithoutActiveFilters() async throws {
+        var form = EvidenceSearchFormState()
+
+        let results = try await useCase.matchingStoredFileNames(form: form)
+
+        XCTAssertNil(results)
+    }
+
+    func testMatchingStoredFileNamesReturnsResultsWhenBusinessProfileExistsAndFiltersActive() async throws {
+        let project = dataStore.addProject(name: "Evidence Project", description: "doc")
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "DOC-HASH-001",
+            projectId: project.id,
+            counterpartyName: "Acme Corp",
+            registrationNumber: "T1234567890123",
+            totalAmount: 2_400
+        )
+        try await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+
+        var form = EvidenceSearchFormState()
+        form.textQuery = "Acme"
+
+        let results = try await useCase.matchingStoredFileNames(form: form)
+
+        XCTAssertEqual(results, Set([evidence.originalFilePath]))
+    }
+
+    func testRebuildEvidenceIndexKeepsSearchResultsAvailable() async throws {
+        let project = dataStore.addProject(name: "Rebuild Project", description: "doc")
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "DOC-HASH-REBUILD",
+            projectId: project.id,
+            counterpartyName: "Ledger Co",
+            registrationNumber: "T9999999999999",
+            totalAmount: 1_100
+        )
+        try await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+
+        try await useCase.rebuildEvidenceIndex()
+
+        var form = EvidenceSearchFormState()
+        form.counterpartyText = "Ledger"
+        let results = try await useCase.matchingStoredFileNames(form: form)
+        XCTAssertEqual(results, Set([evidence.originalFilePath]))
+    }
+
     private func makeDocumentRecord(
         issueDate: Date = Date(),
         documentType: LegalDocumentType = .invoice
@@ -166,5 +225,40 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         }
         storedFileNames.append(record.storedFileName)
         return record
+    }
+
+    private func makeEvidence(
+        businessId: UUID,
+        fileHash: String,
+        projectId: UUID,
+        counterpartyName: String,
+        registrationNumber: String,
+        totalAmount: Decimal
+    ) -> EvidenceDocument {
+        EvidenceDocument(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .invoice,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_741_392_000),
+            issueDate: Date(timeIntervalSince1970: 1_741_392_000),
+            originalFilename: "\(counterpartyName).pdf",
+            mimeType: "application/pdf",
+            fileHash: fileHash,
+            originalFilePath: "\(fileHash).pdf",
+            ocrText: "\(counterpartyName) \(totalAmount)",
+            extractionVersion: "ocr-v1",
+            searchTokens: [counterpartyName, fileHash],
+            structuredFields: EvidenceStructuredFields(
+                counterpartyName: counterpartyName,
+                registrationNumber: registrationNumber,
+                transactionDate: Date(timeIntervalSince1970: 1_741_392_000),
+                totalAmount: totalAmount,
+                confidence: 0.93
+            ),
+            linkedProjectIds: [projectId],
+            complianceStatus: .pendingReview
+        )
     }
 }

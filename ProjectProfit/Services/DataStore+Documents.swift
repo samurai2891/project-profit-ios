@@ -3,7 +3,7 @@ import Foundation
 
 extension DataStore {
     private var documentWorkflowUseCase: DocumentWorkflowUseCase {
-        DocumentWorkflowUseCase(dataStore: self)
+        DocumentWorkflowUseCase(modelContext: modelContext)
     }
 
     // MARK: - Document CRUD

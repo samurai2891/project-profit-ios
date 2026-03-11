@@ -2,13 +2,13 @@ import SwiftData
 import SwiftUI
 
 struct LegalDocumentLedgerView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var selectedCategory: RetentionCategory?
     @State private var searchForm = EvidenceSearchFormState()
     @State private var records: [PPDocumentRecord] = []
     @State private var logs: [PPComplianceLog] = []
+    @State private var availableProjects: [PPProject] = []
     @State private var matchingStoredFileNames: Set<String>?
     @State private var alertMessage: String?
     @State private var pendingWarningDeleteId: UUID?
@@ -20,7 +20,7 @@ struct LegalDocumentLedgerView: View {
     @State private var isReindexing = false
 
     private var documentWorkflowUseCase: DocumentWorkflowUseCase {
-        DocumentWorkflowUseCase(dataStore: dataStore)
+        DocumentWorkflowUseCase(modelContext: modelContext)
     }
 
     private var filteredRecords: [PPDocumentRecord] {
@@ -162,7 +162,7 @@ struct LegalDocumentLedgerView: View {
         .sheet(isPresented: $showSearchFilters) {
             EvidenceSearchFilterSheet(
                 form: $searchForm,
-                projects: dataStore.projects
+                projects: availableProjects
             )
         }
         .sheet(isPresented: $showShareSheet) {
@@ -198,7 +198,6 @@ struct LegalDocumentLedgerView: View {
 
     private var reloadKey: String {
         [
-            dataStore.businessProfile?.id.uuidString ?? "none",
             selectedCategory?.rawValue ?? "all",
             searchForm.reloadToken
         ].joined(separator: ":")
@@ -219,19 +218,13 @@ struct LegalDocumentLedgerView: View {
     private func refresh() async {
         records = documentWorkflowUseCase.listDocuments()
         logs = documentWorkflowUseCase.listComplianceLogs(limit: 10)
-
-        guard let businessId = dataStore.businessProfile?.id, searchForm.hasActiveFilters else {
-            matchingStoredFileNames = nil
-            return
-        }
+        availableProjects = documentWorkflowUseCase.availableProjects()
 
         isLoading = true
         defer { isLoading = false }
 
         do {
-            let evidences = try await EvidenceCatalogUseCase(modelContext: modelContext)
-                .search(searchForm.makeCriteria(businessId: businessId))
-            matchingStoredFileNames = Set(evidences.map(\.originalFilePath))
+            matchingStoredFileNames = try await documentWorkflowUseCase.matchingStoredFileNames(form: searchForm)
         } catch {
             matchingStoredFileNames = nil
             alertMessage = error.localizedDescription
@@ -239,13 +232,11 @@ struct LegalDocumentLedgerView: View {
     }
 
     private func rebuildEvidenceIndex() async {
-        guard let businessId = dataStore.businessProfile?.id else { return }
         isReindexing = true
         defer { isReindexing = false }
 
         do {
-            try SearchIndexRebuilder(modelContext: modelContext)
-                .rebuildEvidenceIndex(businessId: businessId)
+            try await documentWorkflowUseCase.rebuildEvidenceIndex()
             await refresh()
         } catch {
             alertMessage = error.localizedDescription

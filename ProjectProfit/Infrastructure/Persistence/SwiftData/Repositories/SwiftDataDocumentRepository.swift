@@ -33,6 +33,26 @@ final class SwiftDataDocumentRepository: DocumentRepository {
         return Array(try modelContext.fetch(descriptor).prefix(max(1, limit)))
     }
 
+    func transactionExists(id: UUID) throws -> Bool {
+        let predicate = #Predicate<PPTransaction> { $0.id == id }
+        let descriptor = FetchDescriptor<PPTransaction>(predicate: predicate)
+        return try modelContext.fetch(descriptor).first != nil
+    }
+
+    func listProjects() throws -> [PPProject] {
+        let descriptor = FetchDescriptor<PPProject>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
+    func currentBusinessId() throws -> UUID? {
+        let descriptor = FetchDescriptor<BusinessProfileEntity>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.businessId
+    }
+
     func insertDocument(_ record: PPDocumentRecord) {
         modelContext.insert(record)
     }
@@ -43,5 +63,14 @@ final class SwiftDataDocumentRepository: DocumentRepository {
 
     func insertComplianceLog(_ log: PPComplianceLog) {
         modelContext.insert(log)
+    }
+
+    func saveChanges() throws {
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw AppError.saveFailed(underlying: error)
+        }
     }
 }
