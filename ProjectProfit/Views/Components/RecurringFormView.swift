@@ -3,8 +3,8 @@ import SwiftData
 import SwiftUI
 
 struct RecurringFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
+    @Environment(NotificationService.self) private var notificationService
     @Environment(\.dismiss) private var dismiss
 
     let recurring: PPRecurringTransaction?
@@ -49,6 +49,7 @@ struct RecurringFormView: View {
     @State private var unavailableDistributionTemplateCount = 0
     @State private var pendingDistributionPreview: DistributionTemplatePreview?
     @State private var showDistributionTemplatePreview = false
+    @State private var formSnapshot: RecurringFormSnapshot = .empty
 
     private var isEditMode: Bool { recurring != nil }
 
@@ -83,12 +84,7 @@ struct RecurringFormView: View {
     // MARK: - Computed Properties
 
     private var filteredCategories: [PPCategory] {
-        switch type {
-        case .expense, .transfer:
-            return dataStore.activeCategories.filter { $0.type == .expense }
-        case .income:
-            return dataStore.activeCategories.filter { $0.type == .income }
-        }
+        recurringQueryUseCase.categories(for: type, snapshot: formSnapshot)
     }
 
     private var parsedAmount: Int? {
@@ -96,7 +92,7 @@ struct RecurringFormView: View {
     }
 
     private var counterparties: [Counterparty] {
-        dataStore.canonicalCounterparties()
+        formSnapshot.counterparties
     }
 
     private var selectedCounterparty: Counterparty? {
@@ -131,7 +127,7 @@ struct RecurringFormView: View {
     }
 
     private var distributionTemplateLoadKey: String {
-        let businessId = dataStore.businessProfile?.id.uuidString ?? "none"
+        let businessId = formSnapshot.businessId?.uuidString ?? "none"
         let referenceDay = Int(Calendar.current.startOfDay(for: templateReferenceDate).timeIntervalSince1970)
         return "\(businessId)-\(referenceDay)"
     }
@@ -140,8 +136,23 @@ struct RecurringFormView: View {
         frequency == .yearly ? .year : .month
     }
 
+    private var recurringQueryUseCase: RecurringQueryUseCase {
+        RecurringQueryUseCase(modelContext: modelContext)
+    }
+
     private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
-        RecurringWorkflowUseCase(dataStore: dataStore)
+        RecurringWorkflowUseCase(
+            modelContext: modelContext,
+            onRecurringScheduleChanged: { recurrings in
+                Task { @MainActor in
+                    await notificationService.rescheduleAll(recurringTransactions: recurrings)
+                }
+            }
+        )
+    }
+
+    private var activeProjects: [PPProject] {
+        recurringQueryUseCase.activeProjects(snapshot: formSnapshot)
     }
 
     // MARK: - Body
@@ -168,7 +179,7 @@ struct RecurringFormView: View {
                         allocationModeSection
                         if allocationMode == .manual {
                             RecurringProjectAllocationSection(
-                                dataStore: dataStore,
+                                projects: activeProjects,
                                 allocations: $allocations
                             )
                         } else {
@@ -241,10 +252,8 @@ struct RecurringFormView: View {
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
             }
-            .onAppear {
-                if counterparty.isEmpty, let selectedCounterparty {
-                    counterparty = selectedCounterparty.displayName
-                }
+            .task {
+                loadFormSnapshot()
             }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
@@ -457,7 +466,7 @@ struct RecurringFormView: View {
         VStack(spacing: 12) {
             AccountPickerView(
                 label: type == .income ? "入金先口座" : "支払元口座",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: $paymentAccountId,
                 filterPredicate: { $0.isPaymentAccount && $0.isActive }
             )
@@ -465,7 +474,7 @@ struct RecurringFormView: View {
             if type == .transfer {
                 AccountPickerView(
                     label: "振替先口座",
-                    accounts: dataStore.accounts,
+                    accounts: formSnapshot.accounts,
                     selectedAccountId: $transferToAccountId,
                     filterPredicate: { $0.isPaymentAccount && $0.isActive }
                 )
@@ -688,8 +697,15 @@ struct RecurringFormView: View {
         }
     }
 
+    private func loadFormSnapshot() {
+        formSnapshot = recurringQueryUseCase.formSnapshot()
+        if counterparty.isEmpty, let selectedCounterparty {
+            counterparty = selectedCounterparty.displayName
+        }
+    }
+
     private func loadDistributionTemplates() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = formSnapshot.businessId else {
             distributionTemplates = []
             selectedDistributionTemplateId = nil
             distributionTemplateErrorMessage = nil
@@ -701,18 +717,13 @@ struct RecurringFormView: View {
         defer { isLoadingDistributionTemplates = false }
 
         do {
-            let useCase = DistributionTemplateUseCase(modelContext: modelContext)
-            let applier = DistributionTemplateApplicationUseCase()
-            let activeRules = try await useCase.activeRules(businessId: businessId, at: templateReferenceDate)
-            distributionTemplates = activeRules
-                .filter {
-                    applier.isSupported($0, allocationPeriod: distributionTemplateAllocationPeriod)
-                        || applier.shouldUseDynamicEqualAll(for: $0)
-                }
-                .sorted { lhs, rhs in
-                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-                }
-            unavailableDistributionTemplateCount = activeRules.count - distributionTemplates.count
+            let templates = try await recurringQueryUseCase.activeDistributionTemplates(
+                businessId: businessId,
+                at: templateReferenceDate,
+                allocationPeriod: distributionTemplateAllocationPeriod
+            )
+            distributionTemplates = templates.supportedRules
+            unavailableDistributionTemplateCount = templates.unsupportedCount
             if let selectedDistributionTemplateId,
                distributionTemplates.contains(where: { $0.id == selectedDistributionTemplateId }) == false
             {
@@ -747,9 +758,9 @@ struct RecurringFormView: View {
             return
         }
 
-        let preview = applier.previewAllocations(
+        let preview = recurringQueryUseCase.previewDistribution(
             rule: rule,
-            projects: dataStore.projects,
+            snapshot: formSnapshot,
             referenceDate: templateReferenceDate,
             totalAmount: parsedAmount ?? 0,
             allocationPeriod: distributionTemplateAllocationPeriod
@@ -794,7 +805,7 @@ struct RecurringFormView: View {
                 "この変更を適用しますか？"
             ].joined(separator: "\n")
         case .manual:
-            let projectNameById = Dictionary(uniqueKeysWithValues: dataStore.projects.map { ($0.id, $0.name) })
+            let projectNameById = Dictionary(uniqueKeysWithValues: formSnapshot.projects.map { ($0.id, $0.name) })
             let allocationLines = preview.allocations.map { allocation in
                 let name = projectNameById[allocation.projectId] ?? "不明なプロジェクト"
                 return "・\(name): \(allocation.ratio)%"
@@ -806,16 +817,19 @@ struct RecurringFormView: View {
     }
 
     private func applySelectedCounterpartyDefaults() {
-        guard let selectedCounterparty else { return }
-
-        counterparty = selectedCounterparty.displayName
-        if let defaultAccountId = selectedCounterparty.defaultAccountId,
-           let legacyAccountId = dataStore.legacyAccountId(for: defaultAccountId) {
-            paymentAccountId = legacyAccountId
+        guard let selectedCounterpartyId,
+              let defaults = recurringQueryUseCase.counterpartyDefaults(
+                for: selectedCounterpartyId,
+                type: type,
+                snapshot: formSnapshot
+              )
+        else {
+            return
         }
-        if type != .transfer,
-           let defaultProjectId = selectedCounterparty.defaultProjectId,
-           dataStore.projects.contains(where: { $0.id == defaultProjectId && $0.isArchived != true }) {
+
+        counterparty = defaults.displayName
+        paymentAccountId = defaults.paymentAccountId
+        if type != .transfer, let defaultProjectId = defaults.projectId {
             allocationMode = .manual
             allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
         }
@@ -945,11 +959,5 @@ private struct DistributionTemplatePreview {
             PPRecurringTransaction.self,
             DistributionRuleEntity.self
         ))
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(
-            for: PPProject.self,
-            PPTransaction.self,
-            PPCategory.self,
-            PPRecurringTransaction.self,
-            DistributionRuleEntity.self
-        ))))
+        .environment(NotificationService())
 }

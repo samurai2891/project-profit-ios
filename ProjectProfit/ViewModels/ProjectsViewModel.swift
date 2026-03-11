@@ -1,31 +1,32 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - ProjectsViewModel
 
 @MainActor
 @Observable
 final class ProjectsViewModel {
-    let dataStore: DataStore
     var filterStatus: FilterStatus = .all
+    private let projectQueryUseCase: ProjectQueryUseCase
+    private let projectWorkflowUseCase: ProjectWorkflowUseCase
+    private(set) var listSnapshot: ProjectListSnapshot = .empty
 
-    private var projectWorkflowUseCase: ProjectWorkflowUseCase {
-        ProjectWorkflowUseCase(dataStore: dataStore)
-    }
-
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(modelContext: ModelContext) {
+        self.projectQueryUseCase = ProjectQueryUseCase(modelContext: modelContext)
+        self.projectWorkflowUseCase = ProjectWorkflowUseCase(modelContext: modelContext)
+        self.listSnapshot = projectQueryUseCase.listSnapshot()
     }
 
     // MARK: - Computed Properties
 
     /// アーカイブ済み以外のプロジェクト
     private var activeProjects: [PPProject] {
-        dataStore.projects.filter { $0.isArchived != true }
+        listSnapshot.activeProjects
     }
 
     /// アーカイブ済みプロジェクト
     private var archivedProjects: [PPProject] {
-        dataStore.projects.filter { $0.isArchived == true }
+        listSnapshot.archivedProjects
     }
 
     var filteredProjects: [PPProject] {
@@ -55,13 +56,19 @@ final class ProjectsViewModel {
 
     func deleteProject(id: UUID) {
         projectWorkflowUseCase.deleteProject(id: id)
+        reload()
     }
 
     func deleteProjects(ids: Set<UUID>) {
         projectWorkflowUseCase.deleteProjects(ids: ids)
+        reload()
     }
 
     func getProjectSummary(projectId: UUID) -> ProjectSummary? {
-        dataStore.getProjectSummary(projectId: projectId)
+        listSnapshot.summariesById[projectId]
+    }
+
+    func reload() {
+        listSnapshot = projectQueryUseCase.listSnapshot()
     }
 }

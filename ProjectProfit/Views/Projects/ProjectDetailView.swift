@@ -6,7 +6,7 @@ import SwiftUI
 struct ProjectDetailView: View {
     let projectId: UUID
 
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ProjectDetailViewModel?
     @State private var showEditSheet = false
     @State private var showAddTransactionSheet = false
@@ -14,7 +14,7 @@ struct ProjectDetailView: View {
     @State private var selectedTransaction: PPTransaction?
 
     private var resolvedViewModel: ProjectDetailViewModel {
-        viewModel ?? ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
+        viewModel ?? ProjectDetailViewModel(modelContext: modelContext, projectId: projectId)
     }
 
     var body: some View {
@@ -44,23 +44,33 @@ struct ProjectDetailView: View {
                 addTransactionButton
             }
         }
-        .sheet(isPresented: $showEditSheet) {
+        .sheet(isPresented: $showEditSheet, onDismiss: {
+            viewModel?.reload()
+        }) {
             if let project = resolvedViewModel.currentProject {
                 ProjectFormView(project: project)
             }
         }
-        .sheet(isPresented: $showAddTransactionSheet) {
+        .sheet(isPresented: $showAddTransactionSheet, onDismiss: {
+            viewModel?.reload()
+        }) {
             TransactionFormView(defaultProjectId: projectId)
         }
-        .sheet(isPresented: $showReceiptScanner) {
+        .sheet(isPresented: $showReceiptScanner, onDismiss: {
+            viewModel?.reload()
+        }) {
             ReceiptScannerView(defaultProjectId: projectId)
         }
-        .sheet(item: $selectedTransaction) { transaction in
+        .sheet(item: $selectedTransaction, onDismiss: {
+            viewModel?.reload()
+        }) { transaction in
             TransactionDetailView(transaction: transaction)
         }
         .task {
             if viewModel == nil {
-                viewModel = ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
+                viewModel = ProjectDetailViewModel(modelContext: modelContext, projectId: projectId)
+            } else {
+                viewModel?.reload()
             }
         }
     }
@@ -435,7 +445,7 @@ private extension ProjectDetailView {
             VStack(alignment: .leading, spacing: 4) {
                 Text("手動取引入力は停止中")
                     .font(.subheadline.weight(.semibold))
-                Text(dataStore.legacyTransactionMutationDisabledMessage)
+                Text(resolvedViewModel.legacyTransactionMutationDisabledMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct ProjectUpsertInput: Equatable, Sendable {
     let name: String
@@ -11,22 +12,23 @@ struct ProjectUpsertInput: Equatable, Sendable {
 
 @MainActor
 struct ProjectWorkflowUseCase {
-    private let dataStore: DataStore
+    private let modelContext: ModelContext
     private let projectRepository: any ProjectRepository
     private let calendar: Calendar
 
     init(
-        dataStore: DataStore,
+        modelContext: ModelContext,
         projectRepository: (any ProjectRepository)? = nil,
         calendar: Calendar = .current
     ) {
-        self.dataStore = dataStore
-        self.projectRepository = projectRepository ?? SwiftDataProjectRepository(modelContext: dataStore.modelContext)
+        self.modelContext = modelContext
+        self.projectRepository = projectRepository ?? SwiftDataProjectRepository(modelContext: modelContext)
         self.calendar = calendar
     }
 
     @discardableResult
     func createProject(input: ProjectUpsertInput) -> PPProject {
+        let dataStore = configuredDataStore()
         let project = PPProject(
             name: input.name,
             projectDescription: input.description,
@@ -54,6 +56,7 @@ struct ProjectWorkflowUseCase {
     }
 
     func updateProject(id: UUID, input: ProjectUpsertInput) {
+        let dataStore = configuredDataStore()
         let project: PPProject
         do {
             guard let fetched = try projectRepository.project(id: id) else {
@@ -110,6 +113,7 @@ struct ProjectWorkflowUseCase {
     }
 
     func deleteProject(id: UUID) {
+        let dataStore = configuredDataStore()
         do {
             guard try projectRepository.project(id: id) != nil else {
                 return
@@ -119,13 +123,14 @@ struct ProjectWorkflowUseCase {
         }
 
         if dataStore.projectHasHistoricalReferences(id) {
-            archiveProjects(ids: [id])
+            archiveProjects(ids: [id], dataStore: dataStore)
         } else {
-            hardDeleteProjects(ids: [id])
+            hardDeleteProjects(ids: [id], dataStore: dataStore)
         }
     }
 
     func deleteProjects(ids: Set<UUID>) {
+        let dataStore = configuredDataStore()
         guard !ids.isEmpty else {
             return
         }
@@ -142,14 +147,14 @@ struct ProjectWorkflowUseCase {
         }
 
         if !idsToArchive.isEmpty {
-            archiveProjects(ids: idsToArchive)
+            archiveProjects(ids: idsToArchive, dataStore: dataStore)
         }
         if !idsToHardDelete.isEmpty {
-            hardDeleteProjects(ids: idsToHardDelete)
+            hardDeleteProjects(ids: idsToHardDelete, dataStore: dataStore)
         }
     }
 
-    private func archiveProjects(ids: Set<UUID>) {
+    private func archiveProjects(ids: Set<UUID>, dataStore: DataStore) {
         guard !ids.isEmpty else {
             return
         }
@@ -202,7 +207,7 @@ struct ProjectWorkflowUseCase {
         dataStore.refreshTransactions()
     }
 
-    private func hardDeleteProjects(ids: Set<UUID>) {
+    private func hardDeleteProjects(ids: Set<UUID>, dataStore: DataStore) {
         guard !ids.isEmpty else {
             return
         }
@@ -280,5 +285,11 @@ struct ProjectWorkflowUseCase {
         return calendar.startOfDay(for: startDate) > calendar.startOfDay(for: plannedEndDate)
             ? nil
             : plannedEndDate
+    }
+
+    private func configuredDataStore() -> DataStore {
+        let dataStore = DataStore(modelContext: modelContext)
+        dataStore.loadData()
+        return dataStore
     }
 }

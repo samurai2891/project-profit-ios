@@ -1,26 +1,29 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - ProjectDetailViewModel
 
 @MainActor
 @Observable
 final class ProjectDetailViewModel {
-    let dataStore: DataStore
     let projectId: UUID
+    private let projectQueryUseCase: ProjectQueryUseCase
+    private(set) var detailSnapshot: ProjectDetailSnapshot = .empty
 
-    init(dataStore: DataStore, projectId: UUID) {
-        self.dataStore = dataStore
+    init(modelContext: ModelContext, projectId: UUID) {
         self.projectId = projectId
+        self.projectQueryUseCase = ProjectQueryUseCase(modelContext: modelContext)
+        self.detailSnapshot = projectQueryUseCase.detailSnapshot(projectId: projectId)
     }
 
     // MARK: - Computed Properties
 
     var currentProject: PPProject? {
-        dataStore.projects.first(where: { $0.id == projectId })
+        detailSnapshot.project
     }
 
     var summary: ProjectSummary? {
-        dataStore.getProjectSummary(projectId: projectId)
+        detailSnapshot.summary
     }
 
     var projectIncome: Int {
@@ -36,20 +39,26 @@ final class ProjectDetailViewModel {
     }
 
     var recentTransactions: [PPTransaction] {
-        dataStore.transactions
-            .filter { t in t.allocations.contains(where: { $0.projectId == projectId }) }
-            .sorted { $0.date > $1.date }
+        detailSnapshot.recentTransactions
     }
 
     var yearlyProfitLoss: [FiscalYearProjectSummary] {
-        dataStore.getYearlyProjectSummaries(projectId: projectId, startMonth: FiscalYearSettings.startMonth)
+        detailSnapshot.yearlyProfitLoss
     }
 
     var canMutateLegacyTransactions: Bool {
-        dataStore.isLegacyTransactionEditingEnabled
+        detailSnapshot.canMutateLegacyTransactions
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        detailSnapshot.legacyTransactionMutationDisabledMessage
     }
 
     func getCategoryName(for categoryId: String) -> String {
-        dataStore.getCategory(id: categoryId)?.name ?? "未分類"
+        detailSnapshot.categoryNamesById[categoryId] ?? "未分類"
+    }
+
+    func reload() {
+        detailSnapshot = projectQueryUseCase.detailSnapshot(projectId: projectId)
     }
 }

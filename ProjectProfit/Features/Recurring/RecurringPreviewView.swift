@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 定期取引の生成プレビュー+一括承認UI
 struct RecurringPreviewView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var previewItems: [RecurringPreviewItem] = []
@@ -11,7 +11,7 @@ struct RecurringPreviewView: View {
     @State private var processedCount: Int?
 
     private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
-        RecurringWorkflowUseCase(dataStore: dataStore)
+        RecurringWorkflowUseCase(modelContext: modelContext)
     }
 
     var body: some View {

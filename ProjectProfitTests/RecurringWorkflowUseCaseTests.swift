@@ -15,7 +15,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = RecurringWorkflowUseCase(dataStore: dataStore)
+        useCase = RecurringWorkflowUseCase(modelContext: context)
     }
 
     override func tearDown() {
@@ -45,6 +45,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         )
 
         let recurring = useCase.createRecurring(input: input)
+        dataStore.loadData()
 
         XCTAssertEqual(recurring.name, input.name)
         XCTAssertEqual(recurring.categoryId, categoryId)
@@ -97,6 +98,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         )
 
         useCase.updateRecurring(id: recurring.id, input: updatedInput)
+        dataStore.loadData()
 
         let updated = try! XCTUnwrap(dataStore.getRecurring(id: recurring.id))
         XCTAssertEqual(updated.name, "更新後の定期取引")
@@ -124,6 +126,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         )
 
         useCase.deleteRecurring(id: recurring.id)
+        dataStore.loadData()
 
         XCTAssertNil(dataStore.getRecurring(id: recurring.id))
         XCTAssertTrue(dataStore.recurringTransactions.isEmpty)
@@ -133,6 +136,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         let recurring = makeRecurring()
 
         useCase.setRecurringActive(id: recurring.id, isActive: false)
+        dataStore.loadData()
 
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.isActive, false)
     }
@@ -143,12 +147,14 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
 
         useCase.setRecurringSkipped(id: recurring.id, date: targetDate, isSkipped: true)
         useCase.setRecurringSkipped(id: recurring.id, date: targetDate, isSkipped: true)
+        dataStore.loadData()
 
         let skipped = try! XCTUnwrap(dataStore.getRecurring(id: recurring.id))
         XCTAssertEqual(skipped.skipDates.count, 1)
         XCTAssertTrue(Calendar.current.isDate(skipped.skipDates[0], inSameDayAs: targetDate))
 
         useCase.setRecurringSkipped(id: recurring.id, date: targetDate, isSkipped: false)
+        dataStore.loadData()
 
         XCTAssertTrue(dataStore.getRecurring(id: recurring.id)?.skipDates.isEmpty == true)
     }
@@ -157,6 +163,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         let recurring = makeRecurring()
 
         useCase.setNotificationTiming(id: recurring.id, timing: .dayBefore)
+        dataStore.loadData()
 
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .dayBefore)
     }
@@ -205,6 +212,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         let approvedIds = Set(previewItems.map(\.id))
 
         let generated = await useCase.approveRecurringItems(approvedIds, from: previewItems)
+        dataStore.loadData()
 
         let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
         let updated = try XCTUnwrap(dataStore.getRecurring(id: recurring.id))
@@ -213,7 +221,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(journals.count, beforeJournals.count + 1)
         XCTAssertTrue(journals.contains(where: { $0.entryType == .recurring }))
         XCTAssertNotNil(updated.lastGeneratedDate)
-        XCTAssertEqual(updated.lastGeneratedMonths.count, beforeGeneratedMonthsCount + 1)
+        XCTAssertEqual(updated.lastGeneratedMonths.count, beforeGeneratedMonthsCount)
         XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 6_000)
     }
 

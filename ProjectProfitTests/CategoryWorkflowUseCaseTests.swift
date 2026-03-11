@@ -13,7 +13,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         container = try! TestModelContainer.create()
         dataStore = ProjectProfit.DataStore(modelContext: container.mainContext)
         dataStore.loadData()
-        useCase = CategoryWorkflowUseCase(dataStore: dataStore)
+        useCase = CategoryWorkflowUseCase(modelContext: container.mainContext)
     }
 
     override func tearDown() {
@@ -27,6 +27,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         let category = useCase.createCategory(
             input: CategoryCreateInput(name: "外注費", type: .expense, icon: "wrench")
         )
+        dataStore.refreshCategories()
 
         XCTAssertEqual(category.name, "外注費")
         XCTAssertEqual(dataStore.getCategory(id: category.id)?.icon, "wrench")
@@ -40,6 +41,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         let duplicate = useCase.createCategory(
             input: CategoryCreateInput(name: "旅費", type: .expense, icon: "tram")
         )
+        dataStore.refreshCategories()
 
         XCTAssertEqual(original.id, duplicate.id)
         XCTAssertEqual(dataStore.categories.filter { $0.name == "旅費" && $0.type == .expense }.count, 1)
@@ -58,6 +60,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
             id: editable.id,
             input: CategoryUpdateInput(name: "会議費", type: nil, icon: nil)
         )
+        dataStore.refreshCategories()
 
         XCTAssertFalse(updated)
         XCTAssertEqual(dataStore.getCategory(id: editable.id)?.name, "雑費")
@@ -69,9 +72,11 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(useCase.archiveCategory(id: category.id))
+        dataStore.refreshCategories()
         XCTAssertNotNil(dataStore.getCategory(id: category.id)?.archivedAt)
 
         XCTAssertTrue(useCase.unarchiveCategory(id: category.id))
+        dataStore.refreshCategories()
         XCTAssertNil(dataStore.getCategory(id: category.id)?.archivedAt)
     }
 
@@ -96,6 +101,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(useCase.updateLinkedAccount(categoryId: category.id, accountId: accountId))
+        dataStore.refreshCategories()
         XCTAssertEqual(dataStore.getCategory(id: category.id)?.linkedAccountId, accountId)
     }
 
@@ -124,6 +130,9 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(useCase.deleteCategory(id: category.id))
+        dataStore.refreshCategories()
+        dataStore.refreshTransactions()
+        dataStore.refreshRecurring()
 
         XCTAssertNil(dataStore.getCategory(id: category.id))
         XCTAssertEqual(dataStore.getTransaction(id: transaction.id)?.categoryId, "cat-other-expense")

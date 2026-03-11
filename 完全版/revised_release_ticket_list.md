@@ -70,6 +70,8 @@
   - 確認: `ProjectProfit/Application/UseCases/`
 - Receipt review を evidence intake use case へ接続する
   - 確認: `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`
+- Receipt review の read path を transaction form query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`, `ProjectProfit/Application/UseCases/Transactions/TransactionFormQueryUseCase.swift`, `ProjectProfit/Core/Domain/Transactions/TransactionFormRepository.swift`
 - Approval Queue を posting workflow use case へ接続する
   - 確認: `ProjectProfit/Features/ApprovalQueue/ApprovalQueueView.swift`
 - Profile settings 保存を canonical profile use case 経由へ接続する
@@ -80,10 +82,18 @@
   - 確認: `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`, `ProjectProfit/Application/UseCases/Posting/PostingIntakeUseCase.swift`
 - 定期取引の作成 / 更新 / 削除 / 有効化 / スキップ / 通知更新を recurring workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/ViewModels/RecurringViewModel.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`
+- recurring feature の form / list / history / preview read path を recurring query/repository 経由へ接続する
+  - 確認: `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/Views/Components/RecurringFormSections.swift`, `ProjectProfit/Views/Recurring/RecurringView.swift`, `ProjectProfit/Views/Recurring/RecurringHistoryView.swift`, `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`, `ProjectProfit/ViewModels/RecurringViewModel.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringQueryUseCase.swift`, `ProjectProfit/Core/Domain/Recurring/RecurringRepository.swift`
+- recurring workflow の `DataStore` 直依存を modelContext / repository 初期化へ縮退する
+  - 確認: `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`, `ProjectProfit/ProjectProfitTests/RecurringWorkflowUseCaseTests.swift` で `RecurringWorkflowUseCase(dataStore:)` の参照なし
 - settings の全削除を maintenance use case 経由へ接続する
   - 確認: `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceUseCase.swift`
 - project の作成 / 更新 / 単体削除 / 一括削除を project workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Components/ProjectFormView.swift`, `ProjectProfit/ViewModels/ProjectsViewModel.swift`, `ProjectProfit/Application/UseCases/Projects/ProjectWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Projects/ProjectRepository.swift`
+- project feature の一覧 / 詳細 read path を project query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Views/Projects/ProjectsView.swift`, `ProjectProfit/Views/Projects/ProjectDetailView.swift`, `ProjectProfit/ViewModels/ProjectsViewModel.swift`, `ProjectProfit/ViewModels/ProjectDetailViewModel.swift`, `ProjectProfit/Application/UseCases/Projects/ProjectQueryUseCase.swift`, `ProjectProfit/Core/Domain/Projects/ProjectQueryRepository.swift`
+- project workflow の `DataStore` 直依存を modelContext / repository 初期化へ縮退する
+  - 確認: `ProjectProfit/Views/Components/ProjectFormView.swift`, `ProjectProfit/Application/UseCases/Projects/ProjectWorkflowUseCase.swift`, `ProjectProfit/Services/DataStore.swift`
 - inventory の保存更新を inventory workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Accounting/InventoryInputView.swift`, `ProjectProfit/ViewModels/InventoryViewModel.swift`, `ProjectProfit/Application/UseCases/Inventory/InventoryWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Inventory/InventoryRepository.swift`
 - closing 画面の決算仕訳生成 / 再生成 / 年度状態更新を closing workflow use case 経由へ接続する
@@ -92,6 +102,8 @@
   - 確認: `ProjectProfit/Views/Accounting/FixedAssetFormView.swift`, `ProjectProfit/Views/Accounting/FixedAssetDetailView.swift`, `ProjectProfit/Views/Accounting/FixedAssetListView.swift`, `ProjectProfit/Application/UseCases/FixedAssets/FixedAssetWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/FixedAssets/FixedAssetRepository.swift`
 - category の作成 / 更新 / アーカイブ / 復元 / linked account 更新を category workflow use case へ接続する
   - 確認: `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`, `ProjectProfit/Views/Accounting/CategoryAccountMappingView.swift`, `ProjectProfit/Application/UseCases/Masters/CategoryWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Categories/CategoryRepository.swift`
+- category の read path を category query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/Components/CategoryManageView.swift`, `ProjectProfit/Views/Accounting/CategoryAccountMappingView.swift`, `ProjectProfit/Application/UseCases/Masters/CategoryQueryUseCase.swift`, `ProjectProfit/Core/Domain/Categories/CategoryQueryRepository.swift`
 - documents の追加 / 削除確認 / 台帳一覧読込を document workflow use case へ接続する
   - 確認: `ProjectProfit/Views/Transactions/TransactionDocumentsView.swift`, `ProjectProfit/Views/Accounting/LegalDocumentLedgerView.swift`, `ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift`, `ProjectProfit/Core/Domain/Documents/DocumentRepository.swift`
 - documents workflow の `DataStore` 直依存を repository / evidence use case 経由へ縮退する
@@ -110,10 +122,16 @@
   - 確認: `ProjectProfit/Views/Transactions/TransactionsView.swift`, `ProjectProfit/Views/Transactions/TransactionDetailView.swift`, `ProjectProfit/ViewModels/TransactionsViewModel.swift`, `ProjectProfit/Application/UseCases/Transactions/TransactionHistoryUseCase.swift`, `ProjectProfit/Core/Domain/Transactions/TransactionHistoryRepository.swift`
 - app bootstrap と settings の backup / restore / migration orchestration を workflow use case 経由へ接続する
   - 確認: `ProjectProfit/Views/ContentView.swift`, `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Application/UseCases/App/AppBootstrapWorkflowUseCase.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceWorkflowUseCase.swift`
+- ContentView の app-shell reload / recurring preview / error alert を app shell workflow 経由へ接続する
+  - 確認: `ProjectProfit/Views/ContentView.swift`, `ProjectProfit/Application/UseCases/App/AppShellWorkflowUseCase.swift`
 - settings の read-only 統計表示と backup 年度一覧を overview query/use case 経由へ接続する
   - 確認: `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift`, `ProjectProfit/Views/Settings/SettingsView.swift`, `ProjectProfit/Application/UseCases/Settings/SettingsOverviewUseCase.swift`, `ProjectProfit/Core/Domain/Settings/SettingsOverviewRepository.swift`
 - dashboard / report / transactions の view-level reload を data revision query/use case 経由へ接続する
   - 確認: `ProjectProfit/Views/Dashboard/DashboardView.swift`, `ProjectProfit/Views/Report/ReportView.swift`, `ProjectProfit/Views/Transactions/TransactionsView.swift`, `ProjectProfit/Application/UseCases/App/DataRevisionQueryUseCase.swift`, `ProjectProfit/Core/Domain/App/DataRevisionRepository.swift`
+- 配賦テンプレート管理の read path を distribution template management query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/Masters/DistributionTemplates/Presentation/Screens/DistributionTemplateListView.swift`, `ProjectProfit/Views/Settings/DistributionTemplateSettingsView.swift`, `ProjectProfit/Application/UseCases/Distribution/DistributionTemplateManagementQueryUseCase.swift`
+- filing dashboard の read path を filing dashboard query/use case 経由へ接続する
+  - 確認: `ProjectProfit/Features/Filing/Presentation/Screens/FilingDashboardView.swift`, `ProjectProfit/Application/UseCases/Filing/FilingDashboardQueryUseCase.swift`
 
 #### 部分実装
 - `DataStore` が orchestration と永続化更新の両方を引き続き持っている
@@ -121,7 +139,7 @@
 - `DataStore` に直接 mutation API が残っている
   - 確認: `addTransactionResult(...)`, `updateTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`
 - 画面側の read-only `DataStore` 依存が残っている
-  - 確認: `ProjectProfit/Views/Receipt/ReceiptReviewView.swift`, `ProjectProfit/Views/Components/RecurringFormView.swift`, `ProjectProfit/Features/Masters/Categories/Presentation/Screens/CategoryListView.swift`, `ProjectProfit/Views/ContentView.swift`
+  - 確認: `ProjectProfit/Views/Accounting/EtaxExportView.swift`, `ProjectProfit/Views/Accounting/ChartOfAccountsView.swift`, `ProjectProfit/Features/Masters/Accounts/Presentation/Screens/AccountFormView.swift`
 
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する

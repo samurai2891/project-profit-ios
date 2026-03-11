@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - CategoryListView
 
 struct CategoryListView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
@@ -16,24 +16,41 @@ struct CategoryListView: View {
     @State private var showArchiveConfirmation = false
     @State private var categoryToArchive: PPCategory?
     @State private var errorMessage: String?
+    @State private var categorySnapshot: CategorySnapshot = .empty
 
     private var categoryWorkflowUseCase: CategoryWorkflowUseCase {
-        CategoryWorkflowUseCase(dataStore: dataStore)
+        CategoryWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var categoryQueryUseCase: CategoryQueryUseCase {
+        CategoryQueryUseCase(modelContext: modelContext)
     }
 
     // MARK: - Filtered Data
 
     private var expenseCategories: [PPCategory] {
-        filterCategories(type: .expense, archived: false)
+        categoryQueryUseCase.categories(
+            type: .expense,
+            archived: false,
+            searchText: searchText,
+            snapshot: categorySnapshot
+        )
     }
 
     private var incomeCategories: [PPCategory] {
-        filterCategories(type: .income, archived: false)
+        categoryQueryUseCase.categories(
+            type: .income,
+            archived: false,
+            searchText: searchText,
+            snapshot: categorySnapshot
+        )
     }
 
     private var archivedCategories: [PPCategory] {
-        let archived = dataStore.categories.filter { $0.archivedAt != nil }
-        return applySearchFilter(to: archived)
+        categoryQueryUseCase.archivedCategories(
+            searchText: searchText,
+            snapshot: categorySnapshot
+        )
     }
 
     var body: some View {
@@ -55,6 +72,9 @@ struct CategoryListView: View {
         .navigationTitle("カテゴリ管理")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "カテゴリ名で検索")
+        .task {
+            refreshSnapshot()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -152,6 +172,7 @@ struct CategoryListView: View {
 
                     Button {
                         _ = categoryWorkflowUseCase.unarchiveCategory(id: category.id)
+                        refreshSnapshot()
                     } label: {
                         Text("復元")
                             .font(.caption.weight(.medium))
@@ -249,17 +270,8 @@ struct CategoryListView: View {
 
     // MARK: - Actions
 
-    private func filterCategories(type: CategoryType, archived: Bool) -> [PPCategory] {
-        let base = dataStore.categories.filter {
-            $0.type == type && (archived ? $0.archivedAt != nil : $0.archivedAt == nil)
-        }
-        return applySearchFilter(to: base)
-    }
-
-    private func applySearchFilter(to categories: [PPCategory]) -> [PPCategory] {
-        guard !searchText.isEmpty else { return categories }
-        let query = searchText.lowercased()
-        return categories.filter { $0.name.lowercased().contains(query) }
+    private func refreshSnapshot() {
+        categorySnapshot = categoryQueryUseCase.snapshot()
     }
 
     private func startEditing(_ category: PPCategory) {
@@ -280,8 +292,12 @@ struct CategoryListView: View {
             return
         }
 
-        let sameTypeCategories = dataStore.categories.filter { $0.type == category.type }
-        if sameTypeCategories.contains(where: { $0.id != category.id && $0.name == trimmedName }) {
+        if categoryQueryUseCase.hasDuplicateName(
+            trimmedName,
+            type: category.type,
+            excluding: category.id,
+            snapshot: categorySnapshot
+        ) {
             errorMessage = "同じ名前のカテゴリが既に存在します"
             return
         }
@@ -291,6 +307,7 @@ struct CategoryListView: View {
             input: CategoryUpdateInput(name: trimmedName, type: nil, icon: nil)
         ) {
             cancelEditing()
+            refreshSnapshot()
         } else {
             errorMessage = "カテゴリを更新できませんでした。"
         }
@@ -304,8 +321,11 @@ struct CategoryListView: View {
             return
         }
 
-        let sameTypeCategories = dataStore.categories.filter { $0.type == type }
-        if sameTypeCategories.contains(where: { $0.name == trimmedName }) {
+        if categoryQueryUseCase.hasDuplicateName(
+            trimmedName,
+            type: type,
+            snapshot: categorySnapshot
+        ) {
             errorMessage = "同じ名前のカテゴリが既に存在します"
             return
         }
@@ -313,6 +333,7 @@ struct CategoryListView: View {
         _ = categoryWorkflowUseCase.createCategory(
             input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
         )
+        refreshSnapshot()
     }
 
     private func performArchive() {
@@ -326,6 +347,7 @@ struct CategoryListView: View {
 
         if categoryWorkflowUseCase.archiveCategory(id: category.id) {
             categoryToArchive = nil
+            refreshSnapshot()
         } else {
             errorMessage = "カテゴリをアーカイブできませんでした。"
         }

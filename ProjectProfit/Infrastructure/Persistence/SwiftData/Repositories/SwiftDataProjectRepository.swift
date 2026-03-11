@@ -23,11 +23,19 @@ final class SwiftDataProjectRepository: ProjectRepository {
         return try modelContext.fetch(descriptor).filter { ids.contains($0.id) }
     }
 
+    func allProjects() throws -> [PPProject] {
+        try modelContext.fetch(FetchDescriptor<PPProject>(sortBy: [SortDescriptor(\.createdAt)]))
+    }
+
     func insert(_ project: PPProject) {
         modelContext.insert(project)
     }
 
     func delete(_ project: PPProject) {
         modelContext.delete(project)
+    }
+
+    func saveChanges() throws {
+        try modelContext.save()
     }
 }

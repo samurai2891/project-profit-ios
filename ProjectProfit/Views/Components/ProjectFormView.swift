@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProjectFormView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let project: PPProject?
@@ -20,7 +20,7 @@ struct ProjectFormView: View {
 
     private var isEditMode: Bool { project != nil }
     private var projectWorkflowUseCase: ProjectWorkflowUseCase {
-        ProjectWorkflowUseCase(dataStore: dataStore)
+        ProjectWorkflowUseCase(modelContext: modelContext)
     }
 
     init(project: PPProject? = nil) {

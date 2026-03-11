@@ -3,7 +3,6 @@ import SwiftData
 
 /// 確定申告ダッシュボード
 struct FilingDashboardView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var selectedFiscalYear: Int
@@ -203,25 +202,16 @@ struct FilingDashboardView: View {
     // MARK: - Data
 
     private func refreshState() async {
-        yearLockState = dataStore.yearLockState(for: selectedFiscalYear)
-
         isCheckingPreflight = true
         defer { isCheckingPreflight = false }
 
-        guard let businessId = dataStore.businessProfile?.id else {
-            preflightIssues = []
-            return
-        }
-
         do {
-            let useCase = FilingPreflightUseCase(modelContext: modelContext)
-            let report = try useCase.preflightReport(
-                businessId: businessId,
-                taxYear: selectedFiscalYear,
-                context: .export
-            )
-            preflightIssues = report.blockingIssues.map(\.message)
+            let snapshot = try await FilingDashboardQueryUseCase(modelContext: modelContext)
+                .snapshot(fiscalYear: selectedFiscalYear)
+            yearLockState = snapshot.yearLockState
+            preflightIssues = snapshot.preflightIssues
         } catch {
+            yearLockState = .open
             preflightIssues = [error.localizedDescription]
         }
     }

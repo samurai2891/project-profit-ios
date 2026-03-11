@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 struct CategoryCreateInput: Equatable, Sendable {
     let name: String
@@ -14,23 +15,25 @@ struct CategoryUpdateInput: Equatable, Sendable {
 
 @MainActor
 struct CategoryWorkflowUseCase {
-    private let dataStore: DataStore
     private let categoryRepository: any CategoryRepository
 
     init(
-        dataStore: DataStore,
+        modelContext: ModelContext,
         categoryRepository: (any CategoryRepository)? = nil
     ) {
-        self.dataStore = dataStore
-        self.categoryRepository = categoryRepository ?? SwiftDataCategoryRepository(modelContext: dataStore.modelContext)
+        self.categoryRepository = categoryRepository ?? SwiftDataCategoryRepository(modelContext: modelContext)
     }
 
     @discardableResult
     func createCategory(input: CategoryCreateInput) -> PPCategory {
-        if let existing = dataStore.categories.first(where: {
-            $0.type == input.type && $0.name == input.name
-        }) {
-            return existing
+        do {
+            if let existing = try categoryRepository.categories().first(where: {
+                $0.type == input.type && $0.name == input.name
+            }) {
+                return existing
+            }
+        } catch {
+            // Fall through and attempt insert; existing behavior did not surface lookup failures.
         }
 
         let category = PPCategory(
@@ -40,8 +43,7 @@ struct CategoryWorkflowUseCase {
             icon: input.icon
         )
         categoryRepository.insert(category)
-        dataStore.save()
-        dataStore.refreshCategories()
+        try? categoryRepository.saveChanges()
         return category
     }
 
@@ -59,7 +61,8 @@ struct CategoryWorkflowUseCase {
 
         if let name = input.name {
             let targetType = input.type ?? category.type
-            if dataStore.categories.contains(where: {
+            let categories = (try? categoryRepository.categories()) ?? []
+            if categories.contains(where: {
                 $0.id != id && $0.type == targetType && $0.name == name
             }) {
                 return false
@@ -73,10 +76,11 @@ struct CategoryWorkflowUseCase {
             category.icon = icon
         }
 
-        guard dataStore.save() else {
+        do {
+            try categoryRepository.saveChanges()
+        } catch {
             return false
         }
-        dataStore.refreshCategories()
         return true
     }
 
@@ -93,10 +97,11 @@ struct CategoryWorkflowUseCase {
         }
 
         category.linkedAccountId = accountId
-        guard dataStore.save() else {
+        do {
+            try categoryRepository.saveChanges()
+        } catch {
             return false
         }
-        dataStore.refreshCategories()
         return true
     }
 
@@ -134,23 +139,23 @@ struct CategoryWorkflowUseCase {
         }
 
         let now = Date()
-        for transaction in dataStore.transactions where transaction.categoryId == id {
+        let transactions = (try? categoryRepository.transactions(categoryId: id)) ?? []
+        for transaction in transactions {
             transaction.categoryId = fallbackId
             transaction.updatedAt = now
         }
-        for recurring in dataStore.recurringTransactions where recurring.categoryId == id {
+        let recurrings = (try? categoryRepository.recurringTransactions(categoryId: id)) ?? []
+        for recurring in recurrings {
             recurring.categoryId = fallbackId
             recurring.updatedAt = now
         }
 
         categoryRepository.delete(category)
-        guard dataStore.save() else {
+        do {
+            try categoryRepository.saveChanges()
+        } catch {
             return false
         }
-
-        dataStore.refreshCategories()
-        dataStore.refreshTransactions()
-        dataStore.refreshRecurring()
         return true
     }
 
@@ -167,10 +172,11 @@ struct CategoryWorkflowUseCase {
         }
 
         category.archivedAt = archivedAt
-        guard dataStore.save() else {
+        do {
+            try categoryRepository.saveChanges()
+        } catch {
             return false
         }
-        dataStore.refreshCategories()
         return true
     }
 }

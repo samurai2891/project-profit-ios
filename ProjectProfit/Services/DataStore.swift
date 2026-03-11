@@ -95,7 +95,7 @@ class DataStore {
     }
 
     private var projectWorkflowUseCase: ProjectWorkflowUseCase {
-        ProjectWorkflowUseCase(dataStore: self)
+        ProjectWorkflowUseCase(modelContext: modelContext)
     }
 
     private var bundledTaxYearPackProvider: BundledTaxYearPackProvider {
@@ -1621,7 +1621,7 @@ class DataStore {
 
     @discardableResult
     func addProject(name: String, description: String, startDate: Date? = nil, plannedEndDate: Date? = nil) -> PPProject {
-        projectWorkflowUseCase.createProject(
+        let project = projectWorkflowUseCase.createProject(
             input: ProjectUpsertInput(
                 name: name,
                 description: description,
@@ -1631,6 +1631,8 @@ class DataStore {
                 plannedEndDate: plannedEndDate
             )
         )
+        loadData()
+        return project
     }
 
     func updateProject(id: UUID, name: String? = nil, description: String? = nil, status: ProjectStatus? = nil, startDate: Date?? = nil, completedAt: Date?? = nil, plannedEndDate: Date?? = nil) {
@@ -1672,6 +1674,7 @@ class DataStore {
                 plannedEndDate: resolvedPlannedEndDate
             )
         )
+        loadData()
     }
 
     // MARK: - Archive / Unarchive
@@ -1747,10 +1750,12 @@ class DataStore {
     /// H9: トランザクション参照ありならアーカイブ、なしならハードデリート
     func deleteProject(id: UUID) {
         projectWorkflowUseCase.deleteProject(id: id)
+        loadData()
     }
 
     func deleteProjects(ids: Set<UUID>) {
         projectWorkflowUseCase.deleteProjects(ids: ids)
+        loadData()
     }
 
     func getProject(id: UUID) -> PPProject? {
@@ -2130,27 +2135,37 @@ class DataStore {
 
     @discardableResult
     func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
-        CategoryWorkflowUseCase(dataStore: self).createCategory(
+        let category = CategoryWorkflowUseCase(modelContext: modelContext).createCategory(
             input: CategoryCreateInput(name: name, type: type, icon: icon)
         )
+        refreshCategories()
+        return category
     }
 
     func updateCategory(id: String, name: String? = nil, type: CategoryType? = nil, icon: String? = nil) {
-        _ = CategoryWorkflowUseCase(dataStore: self).updateCategory(
+        if CategoryWorkflowUseCase(modelContext: modelContext).updateCategory(
             id: id,
             input: CategoryUpdateInput(name: name, type: type, icon: icon)
-        )
+        ) {
+            refreshCategories()
+        }
     }
 
     func updateCategoryLinkedAccount(categoryId: String, accountId: String?) {
-        _ = CategoryWorkflowUseCase(dataStore: self).updateLinkedAccount(
+        if CategoryWorkflowUseCase(modelContext: modelContext).updateLinkedAccount(
             categoryId: categoryId,
             accountId: accountId
-        )
+        ) {
+            refreshCategories()
+        }
     }
 
     func deleteCategory(id: String) {
-        _ = CategoryWorkflowUseCase(dataStore: self).deleteCategory(id: id)
+        if CategoryWorkflowUseCase(modelContext: modelContext).deleteCategory(id: id) {
+            refreshCategories()
+            refreshTransactions()
+            refreshRecurring()
+        }
     }
 
     func getCategory(id: String) -> PPCategory? {
@@ -3740,11 +3755,15 @@ class DataStore {
     // MARK: - Category Archive
 
     func archiveCategory(id: String) {
-        _ = CategoryWorkflowUseCase(dataStore: self).archiveCategory(id: id)
+        if CategoryWorkflowUseCase(modelContext: modelContext).archiveCategory(id: id) {
+            refreshCategories()
+        }
     }
 
     func unarchiveCategory(id: String) {
-        _ = CategoryWorkflowUseCase(dataStore: self).unarchiveCategory(id: id)
+        if CategoryWorkflowUseCase(modelContext: modelContext).unarchiveCategory(id: id) {
+            refreshCategories()
+        }
     }
 
     // MARK: - CSV Import

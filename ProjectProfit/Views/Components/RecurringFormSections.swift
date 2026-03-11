@@ -130,8 +130,12 @@ struct RecurringReceiptImageSection: View {
 
 /// 定期取引フォーム用のプロジェクト配分セクション（RecurringFormViewから抽出）
 struct RecurringProjectAllocationSection: View {
-    let dataStore: DataStore
+    let projects: [PPProject]
     @Binding var allocations: [(id: UUID, projectId: UUID, ratio: Int)]
+
+    private var projectNamesById: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0.name) })
+    }
 
     private var totalRatio: Int {
         allocations.reduce(0) { $0 + $1.ratio }
@@ -149,7 +153,7 @@ struct RecurringProjectAllocationSection: View {
                     .foregroundStyle(totalRatio == 100 ? AppColors.success : AppColors.error)
             }
 
-            if dataStore.projects.filter({ $0.isArchived != true }).isEmpty {
+            if projects.isEmpty {
                 Text("プロジェクトがありません")
                     .font(.subheadline)
                     .foregroundStyle(AppColors.muted)
@@ -167,13 +171,11 @@ struct RecurringProjectAllocationSection: View {
     }
 
     private func allocationRow(index: Int, alloc: (id: UUID, projectId: UUID, ratio: Int)) -> some View {
-        let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
+        let projectName = projectNamesById[alloc.projectId] ?? "選択"
         return HStack {
             Menu {
                 let usedIds = Set(allocations.map(\.projectId))
-                ForEach(dataStore.projects.filter { p in
-                    p.isArchived != true && (!usedIds.contains(p.id) || p.id == alloc.projectId)
-                }, id: \.id) { project in
+                ForEach(projects.filter { !usedIds.contains($0.id) || $0.id == alloc.projectId }, id: \.id) { project in
                     Button(project.name) {
                         var updated = allocations
                         updated[index] = (id: alloc.id, projectId: project.id, ratio: alloc.ratio)
@@ -231,10 +233,10 @@ struct RecurringProjectAllocationSection: View {
 
     @ViewBuilder
     private var addProjectButton: some View {
-        if dataStore.projects.filter({ $0.isArchived != true }).count > allocations.count {
+        if projects.count > allocations.count {
             Button {
                 let usedIds = Set(allocations.map(\.projectId))
-                if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) && $0.isArchived != true }) {
+                if let available = projects.first(where: { !usedIds.contains($0.id) }) {
                     allocations = allocations + [(id: UUID(), projectId: available.id, ratio: 0)]
                 }
             } label: {

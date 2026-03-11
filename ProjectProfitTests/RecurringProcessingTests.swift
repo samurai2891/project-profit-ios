@@ -900,7 +900,7 @@ final class RecurringProcessingTests: XCTestCase {
 
         XCTAssertEqual(recurring.skipDates.count, 1)
 
-        let vm = RecurringViewModel(dataStore: dataStore)
+        let vm = RecurringViewModel(modelContext: context)
         vm.cancelSkip(recurring)
 
         let updated = fetchRecurring(id: recurring.id)
@@ -940,7 +940,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let vm = RecurringViewModel(dataStore: dataStore)
+        let vm = RecurringViewModel(modelContext: context)
         XCTAssertTrue(vm.isNextDateSkipped(recurring))
     }
 
@@ -969,7 +969,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let vm = RecurringViewModel(dataStore: dataStore)
+        let vm = RecurringViewModel(modelContext: context)
         XCTAssertFalse(vm.isNextDateSkipped(recurring))
     }
 

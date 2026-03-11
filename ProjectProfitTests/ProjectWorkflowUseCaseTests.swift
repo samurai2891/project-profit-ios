@@ -15,7 +15,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = ProjectWorkflowUseCase(dataStore: dataStore)
+        useCase = ProjectWorkflowUseCase(modelContext: context)
     }
 
     override func tearDown() {
@@ -38,6 +38,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
                 plannedEndDate: invalidPlannedEndDate
             )
         )
+        dataStore.loadData()
 
         XCTAssertEqual(project.name, "新規案件")
         XCTAssertEqual(project.projectDescription, "説明")
@@ -62,6 +63,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
                 plannedEndDate: nil
             )
         )
+        dataStore.loadData()
 
         let updated = try! XCTUnwrap(dataStore.getProject(id: project.id))
         XCTAssertEqual(updated.name, "更新後")
@@ -75,6 +77,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
         let project = dataStore.addProject(name: "削除対象", description: "")
 
         useCase.deleteProject(id: project.id)
+        dataStore.loadData()
 
         XCTAssertNil(dataStore.getProject(id: project.id))
         XCTAssertTrue(dataStore.projects.isEmpty)
@@ -93,6 +96,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
         )
 
         useCase.deleteProject(id: project.id)
+        dataStore.loadData()
 
         let archived = try! XCTUnwrap(dataStore.getProject(id: project.id))
         XCTAssertEqual(archived.isArchived, true)
@@ -113,6 +117,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
         )
 
         useCase.deleteProjects(ids: [referenced.id, unreferenced.id])
+        dataStore.loadData()
 
         XCTAssertEqual(dataStore.getProject(id: referenced.id)?.isArchived, true)
         XCTAssertNil(dataStore.getProject(id: unreferenced.id))

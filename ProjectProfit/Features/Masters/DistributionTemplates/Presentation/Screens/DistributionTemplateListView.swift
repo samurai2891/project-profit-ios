@@ -5,7 +5,6 @@ import SwiftUI
 
 struct DistributionTemplateListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(DataStore.self) private var dataStore
 
     @State private var rules: [DistributionRule] = []
     @State private var isLoading = false
@@ -13,12 +12,10 @@ struct DistributionTemplateListView: View {
     @State private var editorDraft: DistributionTemplateRuleDraft?
     @State private var saveErrorMessage: String?
     @State private var deleteTargetId: UUID?
-
-    private var sortedProjects: [PPProject] {
-        dataStore.projects.sorted { lhs, rhs in
-            lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-        }
-    }
+    @State private var managementSnapshot = DistributionTemplateManagementSnapshot(
+        businessId: nil,
+        sortedProjects: []
+    )
 
     var body: some View {
         List {
@@ -53,7 +50,7 @@ struct DistributionTemplateListView: View {
                                 Button("編集") {
                                     editorDraft = DistributionTemplateRuleDraft(
                                         rule: rule,
-                                        availableProjects: sortedProjects
+                                        availableProjects: managementSnapshot.sortedProjects
                                     )
                                 }
                                 .tint(AppColors.primary)
@@ -81,11 +78,11 @@ struct DistributionTemplateListView: View {
         .navigationTitle("配賦テンプレート")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if dataStore.businessProfile != nil {
+            if managementSnapshot.businessId != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         editorDraft = DistributionTemplateRuleDraft(
-                            availableProjects: sortedProjects
+                            availableProjects: managementSnapshot.sortedProjects
                         )
                     } label: {
                         Image(systemName: "plus")
@@ -94,10 +91,14 @@ struct DistributionTemplateListView: View {
                 }
             }
         }
-        .task(id: dataStore.businessProfile?.id) {
+        .task(id: managementSnapshot.businessId) {
             await loadRules()
         }
+        .task {
+            await reloadManagementSnapshot()
+        }
         .refreshable {
+            await reloadManagementSnapshot()
             await loadRules()
         }
         .sheet(item: $editorDraft) { draft in
@@ -174,7 +175,7 @@ struct DistributionTemplateListView: View {
     // MARK: - Data Operations
 
     private func loadRules() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = managementSnapshot.businessId else {
             rules = []
             loadErrorMessage = nil
             return
@@ -199,7 +200,7 @@ struct DistributionTemplateListView: View {
     }
 
     private func saveRule(_ draft: DistributionTemplateRuleDraft) async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = managementSnapshot.businessId else {
             saveErrorMessage = "事業者プロフィールが見つかりません。"
             return
         }
@@ -207,6 +208,7 @@ struct DistributionTemplateListView: View {
         do {
             let rule = try draft.makeRule(businessId: businessId)
             try await DistributionTemplateUseCase(modelContext: modelContext).save(rule)
+            await reloadManagementSnapshot()
             await loadRules()
             saveErrorMessage = nil
             editorDraft = nil
@@ -218,9 +220,25 @@ struct DistributionTemplateListView: View {
     private func deleteRule(_ id: UUID) async {
         do {
             try await DistributionTemplateUseCase(modelContext: modelContext).delete(id)
+            await reloadManagementSnapshot()
             await loadRules()
         } catch {
             saveErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func reloadManagementSnapshot() async {
+        do {
+            managementSnapshot = try DistributionTemplateManagementQueryUseCase(modelContext: modelContext)
+                .snapshot()
+        } catch {
+            managementSnapshot = DistributionTemplateManagementSnapshot(
+                businessId: nil,
+                sortedProjects: []
+            )
+            if loadErrorMessage == nil {
+                loadErrorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -252,7 +270,8 @@ struct DistributionTemplateListView: View {
 
     private func weightSummary(for rule: DistributionRule) -> String {
         rule.weights.compactMap { weight in
-            let projectName = dataStore.getProject(id: weight.projectId)?.name
+            let projectName = DistributionTemplateManagementQueryUseCase(modelContext: modelContext)
+                .projectName(id: weight.projectId, snapshot: managementSnapshot)
                 ?? weight.projectId.uuidString
             return "\(projectName): \(NSDecimalNumber(decimal: weight.weight).stringValue)"
         }
