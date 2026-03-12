@@ -497,23 +497,16 @@ struct TestMutationDriver {
 
     @discardableResult
     func transitionFiscalYearState(_ state: YearLockState, for year: Int) -> Bool {
-        let transitioned = ClosingWorkflowUseCase(
-            modelContext: modelContext,
-            reloadJournalState: {
-                self.store.refreshJournalEntries()
-                self.store.refreshJournalLines()
-            },
-            applyTaxYearProfile: { profile in
-                if self.store.currentTaxYearProfile?.taxYear == profile.taxYear {
-                    self.store.currentTaxYearProfile = profile
-                } else if profile.taxYear == year {
-                    self.store.currentTaxYearProfile = profile
-                }
-            },
-            setError: { self.store.lastError = $0 }
-        ).transitionFiscalYearState(state, for: year)
-        store.loadData()
-        return transitioned
+        do {
+            _ = try ClosingWorkflowUseCase(modelContext: modelContext)
+                .transitionFiscalYearState(state, for: year)
+            store.loadData()
+            return true
+        } catch {
+            store.lastError = error as? AppError ?? .saveFailed(underlying: error)
+            store.loadData()
+            return false
+        }
     }
 
     func importTransactions(from csvString: String) async -> CSVImportResult {

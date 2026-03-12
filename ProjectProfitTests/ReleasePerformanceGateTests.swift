@@ -144,7 +144,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
                     target: .etax,
                     format: format,
                     fiscalYear: form.fiscalYear,
-                    dataStore: self.dataStore,
+                    modelContext: self.context,
                     skipPreflightValidation: true,
                     etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
                 )

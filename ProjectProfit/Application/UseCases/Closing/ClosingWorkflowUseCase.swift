@@ -4,36 +4,21 @@ import SwiftData
 @MainActor
 struct ClosingWorkflowUseCase {
     private let modelContext: ModelContext
-    private let reloadJournalState: @MainActor () -> Void
-    private let applyTaxYearProfile: @MainActor (TaxYearProfile) -> Void
-    private let setError: @MainActor (AppError?) -> Void
 
-    init(
-        modelContext: ModelContext,
-        reloadJournalState: @escaping @MainActor () -> Void = {},
-        applyTaxYearProfile: @escaping @MainActor (TaxYearProfile) -> Void = { _ in },
-        setError: @escaping @MainActor (AppError?) -> Void = { _ in }
-    ) {
+    init(modelContext: ModelContext) {
         self.modelContext = modelContext
-        self.reloadJournalState = reloadJournalState
-        self.applyTaxYearProfile = applyTaxYearProfile
-        self.setError = setError
     }
 
-    @discardableResult
-    func generateClosingEntry(for year: Int) -> CanonicalJournalEntry? {
+    func generateClosingEntry(for year: Int) throws -> CanonicalJournalEntry? {
         guard FeatureFlags.useCanonicalPosting else {
             return nil
         }
-        guard canPostAdjustingEntries(for: year) else {
-            return nil
-        }
+        try validateCanPostAdjustingEntries(for: year)
 
         WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
-        guard let businessId = try? WorkflowPersistenceSupport.defaultBusinessId(modelContext: modelContext) else {
-            setError(.invalidInput(message: "申告者情報が未設定のため決算仕訳を生成できません"))
-            return nil
-        }
+        let businessId = try resolveBusinessId(
+            missingMessage: "申告者情報が未設定のため決算仕訳を生成できません"
+        )
 
         do {
             let canonicalEntry = try ClosingEntryUseCase(modelContext: modelContext).generate(
@@ -42,58 +27,44 @@ struct ClosingWorkflowUseCase {
             )
             deleteLegacyClosingEntryRecord(for: year)
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            setError(nil)
-            reloadJournalState()
             return canonicalEntry
         } catch {
             modelContext.rollback()
-            setError(.saveFailed(underlying: error))
-            reloadJournalState()
-            return nil
+            throw wrapped(error)
         }
     }
 
-    func deleteClosingEntry(for year: Int) {
+    func deleteClosingEntry(for year: Int) throws {
         guard FeatureFlags.useCanonicalPosting else {
             return
         }
-        guard canPostAdjustingEntries(for: year) else {
-            return
-        }
+        try validateCanPostAdjustingEntries(for: year)
 
         WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
-        guard let businessId = try? WorkflowPersistenceSupport.defaultBusinessId(modelContext: modelContext) else {
-            setError(.invalidInput(message: "申告者情報が未設定のため決算仕訳を削除できません"))
-            return
-        }
+        let businessId = try resolveBusinessId(
+            missingMessage: "申告者情報が未設定のため決算仕訳を削除できません"
+        )
 
         do {
             try ClosingEntryUseCase(modelContext: modelContext).delete(businessId: businessId, taxYear: year)
             deleteLegacyClosingEntryRecord(for: year)
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            setError(nil)
-            reloadJournalState()
         } catch {
             modelContext.rollback()
-            setError(.saveFailed(underlying: error))
-            reloadJournalState()
+            throw wrapped(error)
         }
     }
 
-    @discardableResult
-    func regenerateClosingEntry(for year: Int) -> CanonicalJournalEntry? {
+    func regenerateClosingEntry(for year: Int) throws -> CanonicalJournalEntry? {
         guard FeatureFlags.useCanonicalPosting else {
             return nil
         }
-        guard canPostAdjustingEntries(for: year) else {
-            return nil
-        }
+        try validateCanPostAdjustingEntries(for: year)
 
         WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
-        guard let businessId = try? WorkflowPersistenceSupport.defaultBusinessId(modelContext: modelContext) else {
-            setError(.invalidInput(message: "申告者情報が未設定のため決算仕訳を再生成できません"))
-            return nil
-        }
+        let businessId = try resolveBusinessId(
+            missingMessage: "申告者情報が未設定のため決算仕訳を再生成できません"
+        )
 
         do {
             let useCase = ClosingEntryUseCase(modelContext: modelContext)
@@ -101,24 +72,18 @@ struct ClosingWorkflowUseCase {
             deleteLegacyClosingEntryRecord(for: year)
             let canonicalEntry = try useCase.generate(businessId: businessId, taxYear: year)
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            setError(nil)
-            reloadJournalState()
             return canonicalEntry
         } catch {
             modelContext.rollback()
-            setError(.saveFailed(underlying: error))
-            reloadJournalState()
-            return nil
+            throw wrapped(error)
         }
     }
 
-    @discardableResult
-    func transitionFiscalYearState(_ state: YearLockState, for year: Int) -> Bool {
+    func transitionFiscalYearState(_ state: YearLockState, for year: Int) throws -> TaxYearProfile {
         WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: modelContext)
-        guard let businessId = try? WorkflowPersistenceSupport.defaultBusinessId(modelContext: modelContext) else {
-            setError(.invalidInput(message: "申告者情報が未設定のため年度状態を更新できません"))
-            return false
-        }
+        let businessId = try resolveBusinessId(
+            missingMessage: "申告者情報が未設定のため年度状態を更新できません"
+        )
 
         do {
             let fallbackProfile = try WorkflowPersistenceSupport.taxYearProfile(
@@ -132,22 +97,41 @@ struct ClosingWorkflowUseCase {
                 targetState: state,
                 fallbackProfile: fallbackProfile
             )
-            applyTaxYearProfile(updated)
-            setError(nil)
-            return true
+            return updated
         } catch {
             modelContext.rollback()
-            setError(.saveFailed(underlying: error))
-            return false
+            throw wrapped(error)
         }
     }
 
-    private func canPostAdjustingEntries(for year: Int) -> Bool {
+    private func validateCanPostAdjustingEntries(for year: Int) throws {
         guard WorkflowPersistenceSupport.canPostAdjustingEntry(modelContext: modelContext, year: year) else {
-            setError(.yearLocked(year: year))
-            return false
+            throw AppError.yearLocked(year: year)
         }
-        return true
+    }
+
+    private func resolveBusinessId(missingMessage: String) throws -> UUID {
+        do {
+            if let businessId = try WorkflowPersistenceSupport.defaultBusinessId(modelContext: modelContext) {
+                return businessId
+            }
+            throw AppError.invalidInput(message: missingMessage)
+        } catch {
+            if let appError = error as? AppError {
+                throw appError
+            }
+            throw AppError.invalidInput(message: missingMessage)
+        }
+    }
+
+    private func wrapped(_ error: Error) -> Error {
+        if let appError = error as? AppError {
+            return appError
+        }
+        if let taxError = error as? TaxYearStateUseCaseError {
+            return taxError
+        }
+        return AppError.saveFailed(underlying: error)
     }
 
     private func deleteLegacyClosingEntryRecord(for year: Int) {

@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct ClosingEntryView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     private struct DisplayLine: Identifiable {
@@ -17,6 +16,7 @@ struct ClosingEntryView: View {
     @State private var showRegenerateConfirmation = false
     @State private var pendingStateTransition: YearLockState?
     @State private var preflightReport: FilingPreflightReport?
+    @State private var reloadToken = 0
     @State private var stateTransitionErrorMessage: String?
 
     init() {
@@ -29,23 +29,12 @@ struct ClosingEntryView: View {
     }
 
     private var snapshot: ClosingEntrySnapshot {
-        queryUseCase.snapshot(year: selectedYear)
+        _ = reloadToken
+        return queryUseCase.snapshot(year: selectedYear)
     }
 
     private var closingWorkflowUseCase: ClosingWorkflowUseCase {
-        ClosingWorkflowUseCase(
-            modelContext: modelContext,
-            reloadJournalState: {
-                dataStore.refreshJournalEntries()
-                dataStore.refreshJournalLines()
-            },
-            applyTaxYearProfile: { profile in
-                if dataStore.currentTaxYearProfile?.taxYear == profile.taxYear {
-                    dataStore.currentTaxYearProfile = profile
-                }
-            },
-            setError: { dataStore.lastError = $0 }
-        )
+        ClosingWorkflowUseCase(modelContext: modelContext)
     }
 
     private var canonicalClosingEntry: CanonicalJournalEntry? {
@@ -102,8 +91,13 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                closingWorkflowUseCase.deleteClosingEntry(for: selectedYear)
-                refreshPreflightReport()
+                do {
+                    try closingWorkflowUseCase.deleteClosingEntry(for: selectedYear)
+                    reloadToken += 1
+                    refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -111,8 +105,13 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を再生成しますか？", isPresented: $showRegenerateConfirmation) {
             Button("再生成", role: .destructive) {
-                _ = closingWorkflowUseCase.regenerateClosingEntry(for: selectedYear)
-                refreshPreflightReport()
+                do {
+                    _ = try closingWorkflowUseCase.regenerateClosingEntry(for: selectedYear)
+                    reloadToken += 1
+                    refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -140,10 +139,12 @@ struct ClosingEntryView: View {
                     self.pendingStateTransition = nil
                     return
                 }
-                if !closingWorkflowUseCase.transitionFiscalYearState(pendingStateTransition, for: selectedYear) {
-                    stateTransitionErrorMessage = dataStore.lastError?.localizedDescription ?? "年度状態の更新に失敗しました"
-                } else {
+                do {
+                    _ = try closingWorkflowUseCase.transitionFiscalYearState(pendingStateTransition, for: selectedYear)
+                    reloadToken += 1
                     refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
                 }
                 self.pendingStateTransition = nil
             }
@@ -313,8 +314,13 @@ struct ClosingEntryView: View {
 
             if !hasClosingEntry {
                 Button {
-                    _ = closingWorkflowUseCase.generateClosingEntry(for: selectedYear)
-                    refreshPreflightReport()
+                    do {
+                        _ = try closingWorkflowUseCase.generateClosingEntry(for: selectedYear)
+                        reloadToken += 1
+                        refreshPreflightReport()
+                    } catch {
+                        stateTransitionErrorMessage = error.localizedDescription
+                    }
                 } label: {
                     Label("決算仕訳を生成", systemImage: "plus.circle")
                         .frame(maxWidth: .infinity)

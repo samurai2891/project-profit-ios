@@ -36,7 +36,7 @@ struct EtaxExportView: View {
                             target: .etax,
                             format: format,
                             fiscalYear: form.fiscalYear,
-                            dataStore: dataStore,
+                            modelContext: modelContext,
                             skipPreflightValidation: true,
                             etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
                         )

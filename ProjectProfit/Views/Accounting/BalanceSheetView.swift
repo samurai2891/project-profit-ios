@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct BalanceSheetView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: AccountingReportViewModel?
 
@@ -21,8 +20,7 @@ struct BalanceSheetView: View {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         target: .balanceSheet,
-                        fiscalYear: viewModel.fiscalYear,
-                        dataStore: dataStore
+                        fiscalYear: viewModel.fiscalYear
                     )
                 }
             }

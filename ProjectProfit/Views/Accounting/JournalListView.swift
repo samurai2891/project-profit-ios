@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct JournalListView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var showManualEntryForm = false
@@ -21,11 +20,11 @@ struct JournalListView: View {
         readQueryUseCase.listSnapshot()
     }
 
-    private var sortedEntries: [PPJournalEntry] {
+    private var sortedEntries: [JournalListItem] {
         journalSnapshot.entries
     }
 
-    private var visibleEntries: [PPJournalEntry] {
+    private var visibleEntries: [JournalListItem] {
         guard let matchingJournalIds else { return sortedEntries }
         return sortedEntries.filter { matchingJournalIds.contains($0.id) }
     }
@@ -53,8 +52,7 @@ struct JournalListView: View {
                     if !sortedEntries.isEmpty {
                         ExportMenuButton(
                             target: .journal,
-                            fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
-                            dataStore: dataStore
+                            fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
                         )
                     }
                     Menu {
@@ -143,7 +141,7 @@ struct JournalListView: View {
                 }
             }
             ForEach(visibleEntries, id: \.id) { entry in
-                NavigationLink(destination: JournalDetailView(entry: entry)) {
+                NavigationLink(destination: JournalDetailView(entryId: entry.id)) {
                     journalRow(entry)
                 }
             }
@@ -165,13 +163,7 @@ struct JournalListView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private func journalRow(_ entry: PPJournalEntry) -> some View {
-        let lines = journalSnapshot.lines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
-        let debitTotal = lines.reduce(0) { $0 + $1.debit }
-        let creditTotal = lines.reduce(0) { $0 + $1.credit }
-
+    private func journalRow(_ entry: JournalListItem) -> some View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(formatDate(entry.date))
@@ -190,7 +182,7 @@ struct JournalListView: View {
                     Text("借方")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text(formatCurrency(debitTotal))
+                    Text(formatCurrency(entry.debitTotal))
                         .font(.caption.weight(.medium).monospacedDigit())
                 }
                 Spacer()
@@ -198,7 +190,7 @@ struct JournalListView: View {
                     Text("貸方")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text(formatCurrency(creditTotal))
+                    Text(formatCurrency(entry.creditTotal))
                         .font(.caption.weight(.medium).monospacedDigit())
                 }
             }

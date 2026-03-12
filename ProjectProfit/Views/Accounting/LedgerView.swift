@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct LedgerView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @State private var selectedAccountId: String?
 
@@ -39,7 +38,6 @@ struct LedgerView: View {
                     ExportMenuButton(
                         target: .ledger,
                         fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
-                        dataStore: dataStore,
                         ledgerOptions: ExportCoordinator.LedgerExportOptions(
                             accountId: account.id,
                             accountName: account.name,

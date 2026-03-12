@@ -16,41 +16,29 @@ struct FixedAssetUpsertInput: Equatable, Sendable {
 struct FixedAssetWorkflowUseCase {
     private let modelContext: ModelContext
     private let fixedAssetRepository: any FixedAssetRepository
-    private let reloadFixedAssets: @MainActor () -> Void
-    private let reloadJournalState: @MainActor () -> Void
-    private let setError: @MainActor (AppError?) -> Void
     private let calendar: Calendar
 
     init(
         modelContext: ModelContext,
         fixedAssetRepository: (any FixedAssetRepository)? = nil,
-        reloadFixedAssets: @escaping @MainActor () -> Void = {},
-        reloadJournalState: @escaping @MainActor () -> Void = {},
-        setError: @escaping @MainActor (AppError?) -> Void = { _ in },
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) {
         self.modelContext = modelContext
         self.fixedAssetRepository = fixedAssetRepository ?? SwiftDataFixedAssetRepository(modelContext: modelContext)
-        self.reloadFixedAssets = reloadFixedAssets
-        self.reloadJournalState = reloadJournalState
-        self.setError = setError
         self.calendar = calendar
     }
 
-    @discardableResult
-    func saveAsset(existingAssetId: UUID?, input: FixedAssetUpsertInput) -> Bool {
+    func saveAsset(existingAssetId: UUID?, input: FixedAssetUpsertInput) throws {
         if let existingAssetId {
-            return updateAsset(id: existingAssetId, input: input)
+            try updateAsset(id: existingAssetId, input: input)
+            return
         }
-        return createAsset(input: input) != nil
+        _ = try createAsset(input: input)
     }
 
-    @discardableResult
-    func createAsset(input: FixedAssetUpsertInput) -> PPFixedAsset? {
+    func createAsset(input: FixedAssetUpsertInput) throws -> PPFixedAsset {
         let acquisitionFiscalYear = fiscalYear(for: input.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        guard !isYearLocked(acquisitionFiscalYear) else {
-            return nil
-        }
+        try validateYearIsOpen(acquisitionFiscalYear)
 
         let asset = PPFixedAsset(
             name: input.name,
@@ -63,39 +51,26 @@ struct FixedAssetWorkflowUseCase {
             businessUsePercent: input.businessUsePercent
         )
         fixedAssetRepository.insert(asset)
-
-        guard saveChanges() else {
-            return nil
-        }
-
-        setError(nil)
-        reloadFixedAssets()
+        try saveChanges()
         return asset
     }
 
-    @discardableResult
-    func updateAsset(id: UUID, input: FixedAssetUpsertInput) -> Bool {
+    func updateAsset(id: UUID, input: FixedAssetUpsertInput) throws {
         let asset: PPFixedAsset
         do {
             guard let fetched = try fixedAssetRepository.fixedAsset(id: id) else {
-                setError(.fixedAssetNotFound(id: id))
-                return false
+                throw AppError.fixedAssetNotFound(id: id)
             }
             asset = fetched
         } catch {
-            setError(.saveFailed(underlying: error))
-            return false
+            throw wrapped(error)
         }
 
         let currentFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        guard !isYearLocked(currentFiscalYear) else {
-            return false
-        }
+        try validateYearIsOpen(currentFiscalYear)
 
         let updatedFiscalYear = fiscalYear(for: input.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        guard !isYearLocked(updatedFiscalYear) else {
-            return false
-        }
+        try validateYearIsOpen(updatedFiscalYear)
 
         asset.name = input.name
         asset.acquisitionDate = input.acquisitionDate
@@ -107,65 +82,44 @@ struct FixedAssetWorkflowUseCase {
         asset.memo = input.memo
         asset.updatedAt = Date()
 
-        guard saveChanges() else {
-            return false
-        }
-
-        setError(nil)
-        reloadFixedAssets()
-        return true
+        try saveChanges()
     }
 
-    @discardableResult
-    func disposeAsset(id: UUID, disposalDate: Date, disposalAmount: Int? = nil) -> Bool {
+    func disposeAsset(id: UUID, disposalDate: Date, disposalAmount: Int? = nil) throws {
         let asset: PPFixedAsset
         do {
             guard let fetched = try fixedAssetRepository.fixedAsset(id: id) else {
-                setError(.fixedAssetNotFound(id: id))
-                return false
+                throw AppError.fixedAssetNotFound(id: id)
             }
             asset = fetched
         } catch {
-            setError(.saveFailed(underlying: error))
-            return false
+            throw wrapped(error)
         }
 
         let acquisitionFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        guard !isYearLocked(acquisitionFiscalYear) else {
-            return false
-        }
+        try validateYearIsOpen(acquisitionFiscalYear)
 
         asset.assetStatus = .disposed
         asset.disposalDate = disposalDate
         asset.disposalAmount = disposalAmount
         asset.updatedAt = Date()
 
-        guard saveChanges() else {
-            return false
-        }
-
-        setError(nil)
-        reloadFixedAssets()
-        return true
+        try saveChanges()
     }
 
-    @discardableResult
-    func deleteAsset(id: UUID) -> Bool {
+    func deleteAsset(id: UUID) throws {
         let asset: PPFixedAsset
         do {
             guard let fetched = try fixedAssetRepository.fixedAsset(id: id) else {
-                return false
+                throw AppError.fixedAssetNotFound(id: id)
             }
             asset = fetched
         } catch {
-            setError(.saveFailed(underlying: error))
-            return false
+            throw wrapped(error)
         }
 
         let acquisitionFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        guard !isYearLocked(acquisitionFiscalYear) else {
-            return false
-        }
+        try validateYearIsOpen(acquisitionFiscalYear)
 
         let acquisitionYear = calendar.component(.year, from: asset.acquisitionDate)
         let currentYear = calendar.component(.year, from: Date())
@@ -184,33 +138,20 @@ struct FixedAssetWorkflowUseCase {
         }
 
         fixedAssetRepository.delete(asset)
-
-        guard saveChanges() else {
-            return false
-        }
-
-        setError(nil)
-        reloadFixedAssets()
-        reloadJournalState()
-        return true
+        try saveChanges()
     }
 
-    @discardableResult
-    func postDepreciation(assetId: UUID, fiscalYear: Int) -> PPJournalEntry? {
-        guard !isYearLocked(fiscalYear) else {
-            return nil
-        }
+    func postDepreciation(assetId: UUID, fiscalYear: Int) throws -> PPJournalEntry? {
+        try validateYearIsOpen(fiscalYear)
 
         let asset: PPFixedAsset
         do {
             guard let fetched = try fixedAssetRepository.fixedAsset(id: assetId) else {
-                setError(.fixedAssetNotFound(id: assetId))
-                return nil
+                throw AppError.fixedAssetNotFound(id: assetId)
             }
             asset = fetched
         } catch {
-            setError(.saveFailed(underlying: error))
-            return nil
+            throw wrapped(error)
         }
 
         let priorAccumulated = calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
@@ -223,21 +164,14 @@ struct FixedAssetWorkflowUseCase {
         )
 
         if entry != nil {
-            guard saveChanges() else {
-                return nil
-            }
-            setError(nil)
-            reloadJournalState()
+            try saveChanges()
         }
 
         return entry
     }
 
-    @discardableResult
-    func postAllDepreciations(fiscalYear: Int) -> Int {
-        guard !isYearLocked(fiscalYear) else {
-            return 0
-        }
+    func postAllDepreciations(fiscalYear: Int) throws -> Int {
+        try validateYearIsOpen(fiscalYear)
 
         var count = 0
         let engine = DepreciationEngine(modelContext: modelContext)
@@ -256,32 +190,31 @@ struct FixedAssetWorkflowUseCase {
         }
 
         if count > 0 {
-            guard saveChanges() else {
-                return 0
-            }
-            setError(nil)
-            reloadJournalState()
+            try saveChanges()
         }
 
         return count
     }
 
-    private func saveChanges() -> Bool {
+    private func saveChanges() throws {
         do {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            return true
         } catch {
-            setError(.saveFailed(underlying: error))
-            return false
+            throw AppError.saveFailed(underlying: error)
         }
     }
 
-    private func isYearLocked(_ year: Int) -> Bool {
-        guard !WorkflowPersistenceSupport.isYearLocked(modelContext: modelContext, year: year) else {
-            setError(.yearLocked(year: year))
-            return true
+    private func validateYearIsOpen(_ year: Int) throws {
+        if WorkflowPersistenceSupport.isYearLocked(modelContext: modelContext, year: year) {
+            throw AppError.yearLocked(year: year)
         }
-        return false
+    }
+
+    private func wrapped(_ error: Error) -> AppError {
+        if let appError = error as? AppError {
+            return appError
+        }
+        return .saveFailed(underlying: error)
     }
 
     private func fixedAssets() -> [PPFixedAsset] {

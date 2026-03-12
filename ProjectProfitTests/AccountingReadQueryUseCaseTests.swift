@@ -127,7 +127,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
 
         let detail = useCase.detailSnapshot(entryId: manualEntry.id, fiscalYear: 2025)
         XCTAssertEqual(detail.lines.map(\.displayOrder), [0, 1])
-        XCTAssertEqual(detail.accountNamesById[AccountingConstants.cashAccountId], "現金")
+        XCTAssertEqual(detail.lines.first?.accountName, "現金")
 
         let matchIds = useCase.supplementalMatchIds(
             criteria: JournalSearchCriteria(textQuery: "manual journal match"),

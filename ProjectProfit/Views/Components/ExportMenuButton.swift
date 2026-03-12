@@ -1,9 +1,11 @@
+import SwiftData
 import SwiftUI
 
 struct ExportMenuButton: View {
+    @Environment(\.modelContext) private var modelContext
+
     let target: ExportCoordinator.ExportTarget
     let fiscalYear: Int
-    let dataStore: DataStore
     let ledgerOptions: ExportCoordinator.LedgerExportOptions?
 
     @State private var showShareSheet = false
@@ -15,12 +17,10 @@ struct ExportMenuButton: View {
     init(
         target: ExportCoordinator.ExportTarget,
         fiscalYear: Int,
-        dataStore: DataStore,
         ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
     ) {
         self.target = target
         self.fiscalYear = fiscalYear
-        self.dataStore = dataStore
         self.ledgerOptions = ledgerOptions
     }
 
@@ -74,7 +74,7 @@ struct ExportMenuButton: View {
                 target: target,
                 format: format,
                 fiscalYear: fiscalYear,
-                dataStore: dataStore,
+                modelContext: modelContext,
                 ledgerOptions: ledgerOptions
             )
             showShareSheet = true

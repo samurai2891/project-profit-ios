@@ -126,7 +126,7 @@ final class ExportCoordinatorTests: XCTestCase {
                 target: .trialBalance,
                 format: .csv,
                 fiscalYear: 2025,
-                dataStore: dataStore
+                modelContext: context
             )
         ) { error in
             guard let exportError = error as? ExportCoordinator.ExportError,
@@ -155,7 +155,7 @@ final class ExportCoordinatorTests: XCTestCase {
             target: .subLedger,
             format: .csv,
             fiscalYear: 2025,
-            dataStore: dataStore,
+            modelContext: context,
             subLedgerOptions: .init(
                 type: .cashBook,
                 startDate: nil,
@@ -177,7 +177,7 @@ final class ExportCoordinatorTests: XCTestCase {
             target: .trialBalance,
             format: .csv,
             fiscalYear: 2025,
-            dataStore: dataStore
+            modelContext: context
         )
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
@@ -193,7 +193,7 @@ final class ExportCoordinatorTests: XCTestCase {
                 target: .ledger,
                 format: .pdf,
                 fiscalYear: 2025,
-                dataStore: dataStore
+                modelContext: context
             )
         ) { error in
             guard let exportError = error as? ExportCoordinator.ExportError,
@@ -218,7 +218,7 @@ final class ExportCoordinatorTests: XCTestCase {
             target: .transactions,
             format: .csv,
             fiscalYear: 2025,
-            dataStore: dataStore,
+            modelContext: context,
             transactionOptions: .init(transactions: dataStore.transactions)
         )
 
@@ -235,7 +235,7 @@ final class ExportCoordinatorTests: XCTestCase {
                 target: .etax,
                 format: .xtx,
                 fiscalYear: 2025,
-                dataStore: dataStore
+                modelContext: context
             )
         ) { error in
             guard let exportError = error as? ExportCoordinator.ExportError,
@@ -273,7 +273,7 @@ final class ExportCoordinatorTests: XCTestCase {
                 target: target,
                 format: format,
                 fiscalYear: fiscalYear,
-                dataStore: dataStore
+                modelContext: context
             )
         ) { error in
             guard let exportError = error as? ExportCoordinator.ExportError,

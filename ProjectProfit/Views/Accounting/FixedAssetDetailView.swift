@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct FixedAssetDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -12,13 +11,16 @@ struct FixedAssetDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showPostConfirmation = false
     @State private var showDisposeConfirmation = false
+    @State private var reloadToken = 0
+    @State private var errorMessage: String?
 
     private var queryUseCase: FixedAssetQueryUseCase {
         FixedAssetQueryUseCase(modelContext: modelContext)
     }
 
     private var snapshot: FixedAssetDetailSnapshot {
-        queryUseCase.detailSnapshot(assetId: assetId, currentYear: currentYear)
+        _ = reloadToken
+        return queryUseCase.detailSnapshot(assetId: assetId, currentYear: currentYear)
     }
 
     private var asset: PPFixedAsset? {
@@ -38,15 +40,7 @@ struct FixedAssetDetailView: View {
     }
 
     private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
-        FixedAssetWorkflowUseCase(
-            modelContext: dataStore.modelContext,
-            reloadFixedAssets: { dataStore.refreshFixedAssets() },
-            reloadJournalState: {
-                dataStore.refreshJournalEntries()
-                dataStore.refreshJournalLines()
-            },
-            setError: { dataStore.lastError = $0 }
-        )
+        FixedAssetWorkflowUseCase(modelContext: modelContext)
     }
 
     private var schedule: [DepreciationCalculation] {
@@ -109,10 +103,18 @@ struct FixedAssetDetailView: View {
                 FixedAssetFormView(editingAsset: asset)
             }
         }
+        .onChange(of: showEditForm) { _, isPresented in
+            if !isPresented {
+                reloadToken += 1
+            }
+        }
         .alert("固定資産を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                if fixedAssetWorkflowUseCase.deleteAsset(id: assetId) {
+                do {
+                    try fixedAssetWorkflowUseCase.deleteAsset(id: assetId)
                     dismiss()
+                } catch {
+                    errorMessage = error.localizedDescription
                 }
             }
             Button("キャンセル", role: .cancel) {}
@@ -121,7 +123,12 @@ struct FixedAssetDetailView: View {
         }
         .alert("減価償却を計上しますか？", isPresented: $showPostConfirmation) {
             Button("計上") {
-                _ = fixedAssetWorkflowUseCase.postDepreciation(assetId: assetId, fiscalYear: currentYear)
+                do {
+                    _ = try fixedAssetWorkflowUseCase.postDepreciation(assetId: assetId, fiscalYear: currentYear)
+                    reloadToken += 1
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -129,11 +136,26 @@ struct FixedAssetDetailView: View {
         }
         .alert("この資産を除却しますか？", isPresented: $showDisposeConfirmation) {
             Button("除却", role: .destructive) {
-                _ = fixedAssetWorkflowUseCase.disposeAsset(id: assetId, disposalDate: Date())
+                do {
+                    try fixedAssetWorkflowUseCase.disposeAsset(id: assetId, disposalDate: Date())
+                    reloadToken += 1
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("資産のステータスを「除却済み」に変更します。")
+        }
+        .alert("固定資産を更新できません", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// 全 export サービスを統合するコーディネーター
 @MainActor
@@ -150,7 +151,7 @@ enum ExportCoordinator {
         target: ExportTarget,
         format: ExportFormat,
         fiscalYear: Int,
-        dataStore: DataStore,
+        modelContext: ModelContext,
         skipPreflightValidation: Bool = false,
         ledgerOptions: LedgerExportOptions? = nil,
         transactionOptions: TransactionExportOptions? = nil,
@@ -162,14 +163,14 @@ enum ExportCoordinator {
         }
 
         if target.requiresPreflight && !skipPreflightValidation {
-            try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
+            try validatePreflight(fiscalYear: fiscalYear, modelContext: modelContext)
         }
 
         let content: ExportContent = try generateContent(
             target: target,
             format: format,
             fiscalYear: fiscalYear,
-            dataStore: dataStore,
+            modelContext: modelContext,
             ledgerOptions: ledgerOptions,
             transactionOptions: transactionOptions,
             subLedgerOptions: subLedgerOptions,
@@ -182,13 +183,14 @@ enum ExportCoordinator {
 
     private static func validatePreflight(
         fiscalYear: Int,
-        dataStore: DataStore
+        modelContext: ModelContext
     ) throws {
-        guard let businessId = dataStore.businessProfile?.id else {
+        let businessId = EtaxExportContextQueryUseCase(modelContext: modelContext).context(fiscalYear: fiscalYear).businessId
+        guard let businessId else {
             return
         }
 
-        let report = try FilingPreflightUseCase(modelContext: dataStore.modelContext).preflightReport(
+        let report = try FilingPreflightUseCase(modelContext: modelContext).preflightReport(
             businessId: businessId,
             taxYear: fiscalYear,
             context: .export
@@ -207,18 +209,55 @@ enum ExportCoordinator {
         case data(Data)
     }
 
+    private static func exportSubLedgerCSV(entries: [SubLedgerEntry]) -> String {
+        var lines: [String] = [
+            "date,accountCode,accountName,memo,counterparty,debit,credit,runningBalance,counterAccountId,taxCategory"
+        ]
+        let formatter = ISO8601DateFormatter()
+        for row in entries {
+            let dateText = formatter.string(from: row.date)
+            let memo = row.memo.replacingOccurrences(of: "\"", with: "\"\"")
+            let accountName = row.accountName.replacingOccurrences(of: "\"", with: "\"\"")
+            let counterparty = (row.counterparty ?? "").replacingOccurrences(of: "\"", with: "\"\"")
+            let taxCategory = row.taxCategory?.rawValue ?? ""
+            lines.append(
+                "\(dateText),\(row.accountCode),\"\(accountName)\",\"\(memo)\",\"\(counterparty)\","
+                + "\(row.debit),\(row.credit),\(row.runningBalance),"
+                + "\(row.counterAccountId ?? ""),\(taxCategory)"
+            )
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func legacyLedgerEntries(from entries: [AccountingLedgerEntry]) -> [DataStore.LedgerEntry] {
+        entries.map { entry in
+            DataStore.LedgerEntry(
+                id: entry.id,
+                date: entry.date,
+                memo: entry.memo,
+                entryType: entry.entryType,
+                debit: entry.debit,
+                credit: entry.credit,
+                runningBalance: entry.runningBalance,
+                counterparty: entry.counterparty,
+                taxCategory: entry.taxCategory
+            )
+        }
+    }
+
     private static func generateContent(
         target: ExportTarget,
         format: ExportFormat,
         fiscalYear: Int,
-        dataStore: DataStore,
+        modelContext: ModelContext,
         ledgerOptions: LedgerExportOptions?,
         transactionOptions: TransactionExportOptions?,
         subLedgerOptions: SubLedgerExportOptions?,
         etaxOptions: EtaxExportOptions?
     ) throws -> ExportContent {
-        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let accounts = dataStore.accounts
+        let support = AccountingReadSupport(modelContext: modelContext)
+        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let accounts = support.fetchAccounts()
         let startMonth = FiscalYearSettings.startMonth
 
         switch (target, format) {
@@ -306,7 +345,9 @@ enum ExportCoordinator {
         // MARK: Ledger
         case (.ledger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
-            let entries = dataStore.getLedgerEntries(accountId: opts.accountId)
+            let entries = legacyLedgerEntries(
+                from: LedgerQueryUseCase(modelContext: modelContext).snapshot(accountId: opts.accountId).entries
+            )
             return .text(ReportCSVExportService.exportLedgerCSV(
                 accountName: opts.accountName,
                 accountCode: opts.accountCode,
@@ -315,7 +356,9 @@ enum ExportCoordinator {
 
         case (.ledger, .pdf):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
-            let entries = dataStore.getLedgerEntries(accountId: opts.accountId)
+            let entries = legacyLedgerEntries(
+                from: LedgerQueryUseCase(modelContext: modelContext).snapshot(accountId: opts.accountId).entries
+            )
             return .data(PDFExportService.exportLedgerPDF(
                 accountName: opts.accountName,
                 accountCode: opts.accountCode,
@@ -328,10 +371,12 @@ enum ExportCoordinator {
             guard let opts = transactionOptions else {
                 throw ExportError.transactionsRequired
             }
+            let categoriesById = Dictionary(uniqueKeysWithValues: support.fetchCategories().map { ($0.id, $0) })
+            let projectsById = Dictionary(uniqueKeysWithValues: support.fetchProjects().map { ($0.id, $0) })
             return .text(generateCSV(
                 transactions: opts.transactions,
-                getCategory: { dataStore.getCategory(id: $0) },
-                getProject: { dataStore.getProject(id: $0) }
+                getCategory: { categoriesById[$0] },
+                getProject: { projectsById[$0] }
             ))
 
         // MARK: Sub Ledger
@@ -339,13 +384,14 @@ enum ExportCoordinator {
             guard let opts = subLedgerOptions else {
                 throw ExportError.subLedgerConfigurationRequired
             }
-            return .text(dataStore.exportSubLedgerCSV(
+            let year = opts.startDate.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear
+            let entries = SubLedgerQueryUseCase(modelContext: modelContext).snapshot(
                 type: opts.type,
-                startDate: opts.startDate,
-                endDate: opts.endDate,
+                year: year,
                 accountFilter: opts.accountFilter,
                 counterpartyFilter: opts.counterpartyFilter
-            ))
+            ).entries
+            return .text(exportSubLedgerCSV(entries: entries))
 
         // MARK: e-Tax
         case (.etax, .xtx):
@@ -372,32 +418,32 @@ enum ExportCoordinator {
 
         // MARK: Fixed Assets
         case (.fixedAssets, .csv):
-            let assets = dataStore.fixedAssets
+            let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
             return .text(ReportCSVExportService.exportFixedAssetsCSV(
                 assets: assets,
                 calculateAccumulated: { asset in
-                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
                     guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
                     return calc.accumulatedDepreciation
                 },
                 calculateCurrentYear: { asset in
-                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
                     return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
                 }
             ))
 
         case (.fixedAssets, .pdf):
-            let assets = dataStore.fixedAssets
+            let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
             return .data(PDFExportService.exportFixedAssetsPDF(
                 assets: assets,
                 fiscalYear: fiscalYear,
                 calculateAccumulated: { asset in
-                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
                     guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
                     return calc.accumulatedDepreciation
                 },
                 calculateCurrentYear: { asset in
-                    let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                    let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
                     return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
                 }
             ))

@@ -21,17 +21,47 @@ struct ProjectedJournalSnapshot {
     let lines: [PPJournalLine]
 }
 
+struct JournalListItem: Identifiable {
+    let id: UUID
+    let sourceKey: String
+    let date: Date
+    let entryType: JournalEntryType
+    let memo: String
+    let isPosted: Bool
+    let createdAt: Date
+    let updatedAt: Date
+    let debitTotal: Int
+    let creditTotal: Int
+    let searchableText: String
+
+    var isSupplemental: Bool {
+        sourceKey.hasPrefix("manual:")
+            || sourceKey.hasPrefix("opening:")
+            || sourceKey.hasPrefix("closing:")
+    }
+}
+
+struct JournalLineItem: Identifiable {
+    let id: UUID
+    let entryId: UUID
+    let accountId: String
+    let accountName: String
+    let debit: Int
+    let credit: Int
+    let memo: String
+    let displayOrder: Int
+}
+
 struct JournalListSnapshot {
     let businessId: UUID?
     let projects: [PPProject]
-    let entries: [PPJournalEntry]
-    let lines: [PPJournalLine]
+    let entries: [JournalListItem]
     let canCreateManualJournals: Bool
 }
 
 struct JournalDetailSnapshot {
-    let lines: [PPJournalLine]
-    let accountNamesById: [String: String]
+    let entry: JournalListItem?
+    let lines: [JournalLineItem]
 }
 
 struct GeneralLedgerBalance {
@@ -841,22 +871,50 @@ struct JournalReadQueryUseCase {
 
     func listSnapshot(fiscalYear: Int? = nil) -> JournalListSnapshot {
         let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0.name) })
+        let linesByEntryId = Dictionary(grouping: projected.lines, by: \.entryId)
         return JournalListSnapshot(
             businessId: projected.businessId,
             projects: support.fetchProjects(),
-            entries: projected.entries,
-            lines: projected.lines,
+            entries: projected.entries.map { entry in
+                listItem(
+                    entry: entry,
+                    lines: linesByEntryId[entry.id] ?? [],
+                    accountNamesById: accountsById
+                )
+            },
             canCreateManualJournals: !FeatureFlags.useCanonicalPosting
         )
     }
 
     func detailSnapshot(entryId: UUID, fiscalYear: Int? = nil) -> JournalDetailSnapshot {
         let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0.name) })
         let lines = projected.lines
             .filter { $0.entryId == entryId }
             .sorted { $0.displayOrder < $1.displayOrder }
-        let accountNamesById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0.name) })
-        return JournalDetailSnapshot(lines: lines, accountNamesById: accountNamesById)
+        let entry = projected.entries.first { $0.id == entryId }.map {
+            listItem(
+                entry: $0,
+                lines: lines,
+                accountNamesById: accountsById
+            )
+        }
+        return JournalDetailSnapshot(
+            entry: entry,
+            lines: lines.map { line in
+                JournalLineItem(
+                    id: line.id,
+                    entryId: line.entryId,
+                    accountId: line.accountId,
+                    accountName: accountsById[line.accountId] ?? line.accountId,
+                    debit: line.debit,
+                    credit: line.credit,
+                    memo: line.memo,
+                    displayOrder: line.displayOrder
+                )
+            }
+        )
     }
 
     func supplementalMatchIds(
@@ -864,9 +922,7 @@ struct JournalReadQueryUseCase {
         snapshot: JournalListSnapshot
     ) -> Set<UUID> {
         let supplementalEntries = snapshot.entries.filter { entry in
-            entry.sourceKey.hasPrefix("manual:")
-                || entry.sourceKey.hasPrefix("opening:")
-                || entry.sourceKey.hasPrefix("closing:")
+            entry.isSupplemental
         }
 
         return Set(supplementalEntries.compactMap { entry in
@@ -874,8 +930,7 @@ struct JournalReadQueryUseCase {
                 return nil
             }
 
-            let lines = snapshot.lines.filter { $0.entryId == entry.id }
-            let totalAmount = Decimal(lines.reduce(0) { $0 + max($1.debit, $1.credit) })
+            let totalAmount = Decimal(max(entry.debitTotal, entry.creditTotal))
             if let amountRange = criteria.amountRange, !amountRange.contains(totalAmount) {
                 return nil
             }
@@ -888,16 +943,39 @@ struct JournalReadQueryUseCase {
             }
 
             if let textQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery) {
-                let searchText = SearchIndexNormalizer.normalizeText(
-                    ([entry.memo] + lines.map(\.memo)).joined(separator: " ")
-                )
-                if !searchText.contains(textQuery) {
+                if !entry.searchableText.contains(textQuery) {
                     return nil
                 }
             }
 
             return entry.id
         })
+    }
+
+    private func listItem(
+        entry: PPJournalEntry,
+        lines: [PPJournalLine],
+        accountNamesById: [String: String]
+    ) -> JournalListItem {
+        let orderedLines = lines.sorted { $0.displayOrder < $1.displayOrder }
+        let searchableText = SearchIndexNormalizer.normalizeText(
+            ([entry.memo] + orderedLines.flatMap { line in
+                [line.memo, accountNamesById[line.accountId] ?? line.accountId]
+            }).joined(separator: " ")
+        )
+        return JournalListItem(
+            id: entry.id,
+            sourceKey: entry.sourceKey,
+            date: entry.date,
+            entryType: entry.entryType,
+            memo: entry.memo,
+            isPosted: entry.isPosted,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
+            debitTotal: orderedLines.reduce(0) { $0 + $1.debit },
+            creditTotal: orderedLines.reduce(0) { $0 + $1.credit },
+            searchableText: searchableText
+        )
     }
 }
 

@@ -2,12 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct FixedAssetListView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var showAddForm = false
     @State private var showBulkPostConfirmation = false
-    @State private var showSchedule = false
+    @State private var reloadToken = 0
+    @State private var errorMessage: String?
 
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
@@ -18,19 +18,12 @@ struct FixedAssetListView: View {
     }
 
     private var snapshot: FixedAssetListSnapshot {
-        queryUseCase.listSnapshot(currentYear: currentYear)
+        _ = reloadToken
+        return queryUseCase.listSnapshot(currentYear: currentYear)
     }
 
     private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
-        FixedAssetWorkflowUseCase(
-            modelContext: dataStore.modelContext,
-            reloadFixedAssets: { dataStore.refreshFixedAssets() },
-            reloadJournalState: {
-                dataStore.refreshJournalEntries()
-                dataStore.refreshJournalLines()
-            },
-            setError: { dataStore.lastError = $0 }
-        )
+        FixedAssetWorkflowUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -48,8 +41,7 @@ struct FixedAssetListView: View {
                     if !snapshot.assets.isEmpty {
                         ExportMenuButton(
                             target: .fixedAssets,
-                            fiscalYear: currentYear,
-                            dataStore: dataStore
+                            fiscalYear: currentYear
                         )
                         NavigationLink(destination: FixedAssetScheduleView()) {
                             Image(systemName: "tablecells")
@@ -73,16 +65,40 @@ struct FixedAssetListView: View {
                 FixedAssetFormView()
             }
         }
+        .onAppear {
+            reloadToken += 1
+        }
+        .onChange(of: showAddForm) { _, isPresented in
+            if !isPresented {
+                reloadToken += 1
+            }
+        }
         .alert("一括計上", isPresented: $showBulkPostConfirmation) {
             Button("計上") {
-                let count = fixedAssetWorkflowUseCase.postAllDepreciations(fiscalYear: currentYear)
-                if count == 0 {
-                    dataStore.lastError = .invalidInput(message: "計上可能な資産がありません")
+                do {
+                    let count = try fixedAssetWorkflowUseCase.postAllDepreciations(fiscalYear: currentYear)
+                    if count == 0 {
+                        errorMessage = "計上可能な資産がありません"
+                    } else {
+                        reloadToken += 1
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
                 }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("\(currentYear)年の減価償却を全資産に対して一括計上しますか？")
+        }
+        .alert("固定資産台帳を更新できません", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 

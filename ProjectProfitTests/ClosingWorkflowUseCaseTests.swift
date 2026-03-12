@@ -15,19 +15,7 @@ final class ClosingWorkflowUseCaseTests: XCTestCase {
         context = container.mainContext
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        useCase = ClosingWorkflowUseCase(
-            modelContext: context,
-            reloadJournalState: {
-                self.dataStore.refreshJournalEntries()
-                self.dataStore.refreshJournalLines()
-            },
-            applyTaxYearProfile: { profile in
-                if self.dataStore.currentTaxYearProfile?.taxYear == profile.taxYear {
-                    self.dataStore.currentTaxYearProfile = profile
-                }
-            },
-            setError: { self.dataStore.lastError = $0 }
-        )
+        useCase = ClosingWorkflowUseCase(modelContext: context)
         XCTAssertNotNil(dataStore.businessProfile?.id)
     }
 
@@ -40,7 +28,7 @@ final class ClosingWorkflowUseCaseTests: XCTestCase {
     }
 
     func testGenerateClosingEntryReturnsNilWithoutSourceJournals() {
-        let entry = useCase.generateClosingEntry(for: 2025)
+        let entry = try? useCase.generateClosingEntry(for: 2025)
 
         XCTAssertNil(entry)
         XCTAssertTrue(fetchClosingEntries(taxYear: 2025).isEmpty)
@@ -56,16 +44,16 @@ final class ClosingWorkflowUseCaseTests: XCTestCase {
             year: 2025
         )
 
-        let entry = useCase.generateClosingEntry(for: 2025)
+        let entry = try? useCase.generateClosingEntry(for: 2025)
 
         XCTAssertNil(entry)
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .softClose)
     }
 
-    func testTransitionFiscalYearStateDelegatesValidatedTransition() {
-        let transitioned = useCase.transitionFiscalYearState(.softClose, for: 2025)
+    func testTransitionFiscalYearStateDelegatesValidatedTransition() throws {
+        let transitioned = try useCase.transitionFiscalYearState(.softClose, for: 2025)
 
-        XCTAssertTrue(transitioned)
+        XCTAssertEqual(transitioned.yearLockState, .softClose)
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .softClose)
     }
 

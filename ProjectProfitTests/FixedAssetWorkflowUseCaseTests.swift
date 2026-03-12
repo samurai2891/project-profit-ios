@@ -13,15 +13,7 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
         container = try! TestModelContainer.create()
         dataStore = ProjectProfit.DataStore(modelContext: container.mainContext)
         dataStore.loadData()
-        useCase = FixedAssetWorkflowUseCase(
-            modelContext: container.mainContext,
-            reloadFixedAssets: { self.dataStore.refreshFixedAssets() },
-            reloadJournalState: {
-                self.dataStore.refreshJournalEntries()
-                self.dataStore.refreshJournalLines()
-            },
-            setError: { self.dataStore.lastError = $0 }
-        )
+        useCase = FixedAssetWorkflowUseCase(modelContext: container.mainContext)
     }
 
     override func tearDown() {
@@ -31,63 +23,69 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
         super.tearDown()
     }
 
-    func testCreateAssetInsertsRecord() {
-        let asset = useCase.createAsset(input: makeInput())
+    func testCreateAssetInsertsRecord() throws {
+        let asset = try useCase.createAsset(input: makeInput())
+        dataStore.refreshFixedAssets()
 
-        XCTAssertEqual(asset?.name, "MacBook Pro")
+        XCTAssertEqual(asset.name, "MacBook Pro")
         XCTAssertEqual(dataStore.fixedAssets.count, 1)
     }
 
-    func testSaveAssetUpdatesExistingRecord() {
-        let asset = try! XCTUnwrap(useCase.createAsset(input: makeInput()))
+    func testSaveAssetUpdatesExistingRecord() throws {
+        let asset = try useCase.createAsset(input: makeInput())
 
-        let updated = useCase.saveAsset(
+        try useCase.saveAsset(
             existingAssetId: asset.id,
             input: makeInput(name: "MacBook Pro M4", acquisitionCost: 350_000)
         )
+        dataStore.refreshFixedAssets()
 
-        XCTAssertTrue(updated)
         XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.name, "MacBook Pro M4")
         XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.acquisitionCost, 350_000)
     }
 
-    func testDisposeAssetUpdatesStatusAndDisposalDate() {
-        let asset = try! XCTUnwrap(useCase.createAsset(input: makeInput()))
+    func testDisposeAssetUpdatesStatusAndDisposalDate() throws {
+        let asset = try useCase.createAsset(input: makeInput())
         let disposalDate = date(2025, 12, 31)
 
-        let disposed = useCase.disposeAsset(id: asset.id, disposalDate: disposalDate)
+        try useCase.disposeAsset(id: asset.id, disposalDate: disposalDate)
+        dataStore.refreshFixedAssets()
 
-        XCTAssertTrue(disposed)
         XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.assetStatus, .disposed)
         XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.disposalDate, disposalDate)
     }
 
-    func testDeleteAssetCascadesDepreciationEntries() {
-        let asset = try! XCTUnwrap(useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 1_000_000)))
-        _ = useCase.postDepreciation(assetId: asset.id, fiscalYear: 2025)
+    func testDeleteAssetCascadesDepreciationEntries() throws {
+        let asset = try useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 1_000_000))
+        _ = try useCase.postDepreciation(assetId: asset.id, fiscalYear: 2025)
 
-        let deleted = useCase.deleteAsset(id: asset.id)
+        try useCase.deleteAsset(id: asset.id)
+        dataStore.refreshFixedAssets()
+        dataStore.refreshJournalEntries()
 
         let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: asset.id, year: 2025)
-        XCTAssertTrue(deleted)
         XCTAssertNil(dataStore.getFixedAsset(id: asset.id))
         XCTAssertFalse(dataStore.journalEntries.contains { $0.sourceKey == sourceKey })
     }
 
-    func testPostDepreciationCreatesEntry() {
-        let asset = try! XCTUnwrap(useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 500_000, usefulLifeYears: 5)))
+    func testPostDepreciationCreatesEntry() throws {
+        let asset = try useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 500_000, usefulLifeYears: 5))
 
-        let entry = useCase.postDepreciation(assetId: asset.id, fiscalYear: 2025)
+        let entry = try useCase.postDepreciation(assetId: asset.id, fiscalYear: 2025)
+        dataStore.refreshJournalEntries()
+        dataStore.refreshJournalLines()
 
         XCTAssertNotNil(entry)
         XCTAssertEqual(dataStore.getJournalLines(for: try! XCTUnwrap(entry?.id)).count, 2)
     }
 
-    func testPostAllDepreciationsReturnsPostedCount() {
-        _ = useCase.createAsset(input: makeInput(name: "PC", acquisitionDate: date(2025, 1, 1), acquisitionCost: 500_000))
-        _ = useCase.createAsset(input: makeInput(name: "Monitor", acquisitionDate: date(2025, 3, 1), acquisitionCost: 200_000, usefulLifeYears: 5))
+    func testPostAllDepreciationsReturnsPostedCount() throws {
+        _ = try useCase.createAsset(input: makeInput(name: "PC", acquisitionDate: date(2025, 1, 1), acquisitionCost: 500_000))
+        _ = try useCase.createAsset(input: makeInput(name: "Monitor", acquisitionDate: date(2025, 3, 1), acquisitionCost: 200_000, usefulLifeYears: 5))
 
-        let count = useCase.postAllDepreciations(fiscalYear: 2025)
+        let count = try useCase.postAllDepreciations(fiscalYear: 2025)
+        dataStore.refreshJournalEntries()
+        dataStore.refreshJournalLines()
 
         XCTAssertEqual(count, 2)
     }
@@ -95,9 +93,8 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
     func testCreateAssetBlockedWhenFiscalYearLocked() {
         setupProfileAndLockYear(2025)
 
-        let asset = useCase.createAsset(input: makeInput())
-
-        XCTAssertNil(asset)
+        XCTAssertThrowsError(try useCase.createAsset(input: makeInput()))
+        dataStore.refreshFixedAssets()
         XCTAssertTrue(dataStore.fixedAssets.isEmpty)
     }
 

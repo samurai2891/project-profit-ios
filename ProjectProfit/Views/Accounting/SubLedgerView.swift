@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct SubLedgerView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     let type: SubLedgerType
@@ -143,7 +142,7 @@ struct SubLedgerView: View {
                 target: .subLedger,
                 format: .csv,
                 fiscalYear: selectedYear,
-                dataStore: dataStore,
+                modelContext: modelContext,
                 subLedgerOptions: .init(
                     type: type,
                     startDate: periodStart,
