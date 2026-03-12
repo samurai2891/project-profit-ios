@@ -4,42 +4,26 @@ import Foundation
 /// 白色申告の場合、青色と異なりフィールド構成がシンプル
 @MainActor
 enum ShushiNaiyakushoBuilder {
-    /// 白色申告向けに canonical projection から抽出した最小入力
-    struct WhiteReturnProjection: Sendable {
-        let postedRentTotal: Int
-
-        static let empty = WhiteReturnProjection(postedRentTotal: 0)
-    }
-
     /// 白色申告 収支内訳書用のEtaxFormを生成（canonical profile ベース）
     static func build(
-        fiscalYear: Int,
         profitLoss: ProfitLossReport,
-        accounts: [PPAccount],
-        businessProfile: BusinessProfile? = nil,
-        taxYearProfile: TaxYearProfile? = nil,
-        sensitivePayload: ProfileSensitivePayload? = nil,
-        fixedAssets: [PPFixedAsset] = [],
-        projection: WhiteReturnProjection = .empty
+        input: FormEngine.BuildInput
     ) -> EtaxForm {
         let fields = buildFields(
-            fiscalYear: fiscalYear,
             profitLoss: profitLoss,
-            accounts: accounts,
-            fixedAssets: fixedAssets,
-            projection: projection
+            input: input
         )
 
         var allFields = fields
-        if let businessProfile {
+        if let businessProfile = input.businessProfile {
             allFields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
                 businessProfile: businessProfile,
-                sensitivePayload: sensitivePayload
+                sensitivePayload: input.sensitivePayload
             ))
         }
 
         return EtaxForm(
-            fiscalYear: fiscalYear,
+            fiscalYear: input.fiscalYear,
             formType: .whiteReturn,
             fields: allFields,
             generatedAt: Date()
@@ -50,11 +34,8 @@ enum ShushiNaiyakushoBuilder {
 
     /// 共通のフィールド生成ロジック（申告者情報を除く）
     private static func buildFields(
-        fiscalYear: Int,
         profitLoss: ProfitLossReport,
-        accounts: [PPAccount],
-        fixedAssets: [PPFixedAsset],
-        projection: WhiteReturnProjection
+        input: FormEngine.BuildInput
     ) -> [EtaxField] {
         var fields: [EtaxField] = []
 
@@ -71,7 +52,7 @@ enum ShushiNaiyakushoBuilder {
         // 経費 — e-Tax 12区分でマッピング（同じTaxLineは合算）
         var expenseByTaxLine: [TaxLine: Int] = [:]
         for item in profitLoss.expenseItems {
-            if let account = accounts.first(where: { $0.id == item.id }),
+            if let account = input.accounts.first(where: { $0.id == item.id }),
                let subtype = account.subtype,
                let taxLine = TaxLine.allCases.first(where: { $0.accountSubtype == subtype })
             {
@@ -84,7 +65,7 @@ enum ShushiNaiyakushoBuilder {
                 fieldLabel: TaxYearDefinitionLoader.fieldLabel(
                     for: taxLine,
                     formType: .whiteReturn,
-                    fiscalYear: fiscalYear
+                    fiscalYear: input.fiscalYear
                 ),
                 taxLine: taxLine,
                 value: amount,
@@ -112,8 +93,11 @@ enum ShushiNaiyakushoBuilder {
         ))
 
         // 付表: 減価償却明細
-        if !fixedAssets.isEmpty {
-            let scheduleRows = DepreciationScheduleBuilder.build(assets: fixedAssets, fiscalYear: fiscalYear)
+        if !input.fixedAssets.isEmpty {
+            let scheduleRows = DepreciationScheduleBuilder.build(
+                assets: input.fixedAssets,
+                fiscalYear: input.fiscalYear
+            )
             for (index, row) in scheduleRows.enumerated() {
                 fields.append(EtaxField(
                     id: "shushi_depreciation_\(index)",
@@ -126,16 +110,38 @@ enum ShushiNaiyakushoBuilder {
         }
 
         // 付表: 地代家賃内訳
-        if projection.postedRentTotal > 0 {
+        let postedRentTotal = postedRentTotal(input: input)
+        if postedRentTotal > 0 {
             fields.append(EtaxField(
                 id: "shushi_rent_breakdown",
                 fieldLabel: "地代家賃合計",
                 taxLine: .rentExpense,
-                value: projection.postedRentTotal,
+                value: postedRentTotal,
                 section: .deductions
             ))
         }
 
         return fields
+    }
+
+    private static func postedRentTotal(input: FormEngine.BuildInput) -> Int {
+        let rentAccountIds = Set(
+            input.accounts
+                .filter { $0.subtype == .rentExpense }
+                .map(\.id)
+        )
+        let resolvedRentAccountIds = rentAccountIds.isEmpty
+            ? [AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"]
+            : Array(rentAccountIds)
+        let postedEntryIds = Set(input.projectedEntries.lazy.filter(\.isPosted).map(\.id))
+
+        return input.projectedLines.reduce(into: 0) { partialResult, line in
+            guard resolvedRentAccountIds.contains(line.accountId),
+                  postedEntryIds.contains(line.entryId)
+            else {
+                return
+            }
+            partialResult += line.debit - line.credit
+        }
     }
 }

@@ -115,8 +115,7 @@ final class FormEngineTests: XCTestCase {
     func testCashBasisBuilderThrowsWhenNoTransactions() {
         XCTAssertThrowsError(
             try CashBasisReturnBuilder.build(
-                fiscalYear: 2025,
-                dataStore: dataStore
+                input: makeBuildInput(fiscalYear: 2025)
             )
         ) { error in
             XCTAssertTrue(error is CashBasisReturnBuilder.BuildError)
@@ -124,42 +123,45 @@ final class FormEngineTests: XCTestCase {
         }
     }
 
-    func testCashBasisBuilderGeneratesFieldsForTransactions() {
-        let incomeCategory = dataStore.categories.first { $0.type == .income }
-            ?? PPCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
-        let expenseCategory = dataStore.categories.first { $0.type == .expense }
-            ?? PPCategory(id: "cat-expense", name: "通信費", type: .expense, icon: "phone")
+    func testCashBasisBuilderGeneratesFieldsForCanonicalJournals() {
+        let incomeCategory = ensureCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
+        let expenseCategory = ensureCategory(id: "cat-expense", name: "通信費", type: .expense, icon: "phone")
 
-        if dataStore.categories.isEmpty {
-            context.insert(incomeCategory)
-            context.insert(expenseCategory)
-            try! context.save()
-            dataStore.loadData()
-        }
-
-        // 2025年度の取引を追加
-        let incomeTx = PPTransaction(
-            type: .income,
-            amount: 500_000,
-            date: makeDate(year: 2025, month: 3, day: 15),
-            categoryId: incomeCategory.id,
-            memo: "売上"
-        )
-        let expenseTx = PPTransaction(
-            type: .expense,
-            amount: 100_000,
-            date: makeDate(year: 2025, month: 6, day: 1),
-            categoryId: expenseCategory.id,
-            memo: "通信費"
-        )
-        context.insert(incomeTx)
-        context.insert(expenseTx)
-        try! context.save()
-        dataStore.loadData()
+        let incomeCandidateId = UUID()
+        let expenseCandidateId = UUID()
 
         let form = try? CashBasisReturnBuilder.build(
-            fiscalYear: 2025,
-            dataStore: dataStore
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: incomeCandidateId,
+                        date: makeDate(year: 2025, month: 3, day: 15)
+                    ),
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: expenseCandidateId,
+                        date: makeDate(year: 2025, month: 6, day: 1)
+                    ),
+                ],
+                postingCandidatesById: [
+                    incomeCandidateId: makePostingCandidate(
+                        id: incomeCandidateId,
+                        taxYear: 2025,
+                        type: .income,
+                        categoryId: incomeCategory.id,
+                        amount: 500_000
+                    ),
+                    expenseCandidateId: makePostingCandidate(
+                        id: expenseCandidateId,
+                        taxYear: 2025,
+                        type: .expense,
+                        categoryId: expenseCategory.id,
+                        amount: 100_000
+                    ),
+                ]
+            )
         )
 
         XCTAssertNotNil(form)
@@ -183,25 +185,8 @@ final class FormEngineTests: XCTestCase {
     }
 
     func testCashBasisBuilderIncludesDeclarantInfoWhenProfilePresent() {
-        let incomeCategory = dataStore.categories.first { $0.type == .income }
-            ?? PPCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
-
-        if dataStore.categories.isEmpty {
-            context.insert(incomeCategory)
-            try! context.save()
-            dataStore.loadData()
-        }
-
-        let tx = PPTransaction(
-            type: .income,
-            amount: 100_000,
-            date: makeDate(year: 2025, month: 6, day: 1),
-            categoryId: incomeCategory.id,
-            memo: "売上"
-        )
-        context.insert(tx)
-        try! context.save()
-        dataStore.loadData()
+        let incomeCategory = ensureCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
+        let incomeCandidateId = UUID()
 
         let businessProfile = BusinessProfile(
             id: UUID(),
@@ -210,9 +195,26 @@ final class FormEngineTests: XCTestCase {
         )
 
         let form = try? CashBasisReturnBuilder.build(
-            fiscalYear: 2025,
-            dataStore: dataStore,
-            businessProfile: businessProfile
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                businessProfile: businessProfile,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: incomeCandidateId,
+                        date: makeDate(year: 2025, month: 6, day: 1)
+                    )
+                ],
+                postingCandidatesById: [
+                    incomeCandidateId: makePostingCandidate(
+                        id: incomeCandidateId,
+                        taxYear: 2025,
+                        type: .income,
+                        categoryId: incomeCategory.id,
+                        amount: 100_000
+                    )
+                ]
+            )
         )
 
         XCTAssertNotNil(form)
@@ -222,29 +224,29 @@ final class FormEngineTests: XCTestCase {
     }
 
     func testCashBasisBuilderOmitsDeclarantInfoWhenProfileNil() {
-        let incomeCategory = dataStore.categories.first { $0.type == .income }
-            ?? PPCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
-
-        if dataStore.categories.isEmpty {
-            context.insert(incomeCategory)
-            try! context.save()
-            dataStore.loadData()
-        }
-
-        let tx = PPTransaction(
-            type: .income,
-            amount: 100_000,
-            date: makeDate(year: 2025, month: 6, day: 1),
-            categoryId: incomeCategory.id,
-            memo: "売上"
-        )
-        context.insert(tx)
-        try! context.save()
-        dataStore.loadData()
+        let incomeCategory = ensureCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
+        let incomeCandidateId = UUID()
 
         let form = try? CashBasisReturnBuilder.build(
-            fiscalYear: 2025,
-            dataStore: dataStore
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: incomeCandidateId,
+                        date: makeDate(year: 2025, month: 6, day: 1)
+                    )
+                ],
+                postingCandidatesById: [
+                    incomeCandidateId: makePostingCandidate(
+                        id: incomeCandidateId,
+                        taxYear: 2025,
+                        type: .income,
+                        categoryId: incomeCategory.id,
+                        amount: 100_000
+                    )
+                ]
+            )
         )
 
         XCTAssertNotNil(form)
@@ -253,56 +255,71 @@ final class FormEngineTests: XCTestCase {
     }
 
     func testCashBasisBuilderGroupsExpensesByCategory() {
-        let expenseCategory1 = dataStore.categories.first { $0.type == .expense }
-            ?? PPCategory(id: "cat-expense1", name: "通信費", type: .expense, icon: "phone")
-        let expenseCategory2Id = "cat-expense-travel"
-        let expenseCategory2 = PPCategory(
-            id: expenseCategory2Id, name: "旅費交通費", type: .expense, icon: "car"
-        )
-        let incomeCategory = dataStore.categories.first { $0.type == .income }
-            ?? PPCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
+        let expenseCategory1 = ensureCategory(id: "cat-expense1", name: "通信費", type: .expense, icon: "phone")
+        let expenseCategory2 = ensureCategory(id: "cat-expense-travel", name: "旅費交通費", type: .expense, icon: "car")
+        let incomeCategory = ensureCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
 
-        // カテゴリをコンテキストに追加
-        if dataStore.categories.isEmpty {
-            context.insert(incomeCategory)
-            context.insert(expenseCategory1)
-        }
-        context.insert(expenseCategory2)
-        try! context.save()
-        dataStore.loadData()
-
-        // 収入取引（フィルタ用）
-        let incomeTx = PPTransaction(
-            type: .income, amount: 1_000_000,
-            date: makeDate(year: 2025, month: 1, day: 15),
-            categoryId: incomeCategory.id, memo: "売上"
-        )
-        // 2つのカテゴリの経費取引
-        let expense1 = PPTransaction(
-            type: .expense, amount: 50_000,
-            date: makeDate(year: 2025, month: 2, day: 1),
-            categoryId: expenseCategory1.id, memo: "通信費"
-        )
-        let expense2 = PPTransaction(
-            type: .expense, amount: 30_000,
-            date: makeDate(year: 2025, month: 3, day: 1),
-            categoryId: expenseCategory1.id, memo: "通信費2"
-        )
-        let expense3 = PPTransaction(
-            type: .expense, amount: 200_000,
-            date: makeDate(year: 2025, month: 4, day: 1),
-            categoryId: expenseCategory2Id, memo: "出張"
-        )
-        context.insert(incomeTx)
-        context.insert(expense1)
-        context.insert(expense2)
-        context.insert(expense3)
-        try! context.save()
-        dataStore.loadData()
+        let incomeCandidateId = UUID()
+        let expenseCandidateId1 = UUID()
+        let expenseCandidateId2 = UUID()
+        let expenseCandidateId3 = UUID()
 
         let form = try? CashBasisReturnBuilder.build(
-            fiscalYear: 2025,
-            dataStore: dataStore
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: incomeCandidateId,
+                        date: makeDate(year: 2025, month: 1, day: 15)
+                    ),
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: expenseCandidateId1,
+                        date: makeDate(year: 2025, month: 2, day: 1)
+                    ),
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: expenseCandidateId2,
+                        date: makeDate(year: 2025, month: 3, day: 1)
+                    ),
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: expenseCandidateId3,
+                        date: makeDate(year: 2025, month: 4, day: 1)
+                    ),
+                ],
+                postingCandidatesById: [
+                    incomeCandidateId: makePostingCandidate(
+                        id: incomeCandidateId,
+                        taxYear: 2025,
+                        type: .income,
+                        categoryId: incomeCategory.id,
+                        amount: 1_000_000
+                    ),
+                    expenseCandidateId1: makePostingCandidate(
+                        id: expenseCandidateId1,
+                        taxYear: 2025,
+                        type: .expense,
+                        categoryId: expenseCategory1.id,
+                        amount: 50_000
+                    ),
+                    expenseCandidateId2: makePostingCandidate(
+                        id: expenseCandidateId2,
+                        taxYear: 2025,
+                        type: .expense,
+                        categoryId: expenseCategory1.id,
+                        amount: 30_000
+                    ),
+                    expenseCandidateId3: makePostingCandidate(
+                        id: expenseCandidateId3,
+                        taxYear: 2025,
+                        type: .expense,
+                        categoryId: expenseCategory2.id,
+                        amount: 200_000
+                    ),
+                ]
+            )
         )
 
         XCTAssertNotNil(form)
@@ -323,11 +340,223 @@ final class FormEngineTests: XCTestCase {
         XCTAssertEqual(totalField?.value.numberValue, 280_000)
     }
 
+    func testCashBasisBuilderSkipsTransferJournals() {
+        let transferCandidateId = UUID()
+
+        let form = try? CashBasisReturnBuilder.build(
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: transferCandidateId,
+                        date: makeDate(year: 2025, month: 7, day: 1)
+                    )
+                ],
+                postingCandidatesById: [
+                    transferCandidateId: makePostingCandidate(
+                        id: transferCandidateId,
+                        taxYear: 2025,
+                        type: .transfer,
+                        categoryId: "",
+                        amount: 100_000
+                    )
+                ]
+            )
+        )
+
+        XCTAssertNil(form)
+    }
+
+    func testFormEngineBuildBlueCashBasisUsesCanonicalArtifacts() throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let taxYear = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            filingStyle: .blueCashBasis,
+            bookkeepingBasis: .cashBasis,
+            yearLockState: .taxClose,
+            taxPackVersion: "2025-v1"
+        )
+        let incomeCategory = ensureCategory(id: "cat-income", name: "売上", type: .income, icon: "yen")
+        let expenseCategory = ensureCategory(id: "cat-expense", name: "通信費", type: .expense, icon: "phone")
+
+        let incomeCandidateId = UUID()
+        let expenseCandidateId = UUID()
+        context.insert(TaxYearProfileEntityMapper.toEntity(taxYear))
+        context.insert(PostingCandidateEntityMapper.toEntity(
+            makePostingCandidate(
+                id: incomeCandidateId,
+                businessId: businessId,
+                taxYear: 2025,
+                type: .income,
+                categoryId: incomeCategory.id,
+                amount: 500_000
+            )
+        ))
+        context.insert(PostingCandidateEntityMapper.toEntity(
+            makePostingCandidate(
+                id: expenseCandidateId,
+                businessId: businessId,
+                taxYear: 2025,
+                type: .expense,
+                categoryId: expenseCategory.id,
+                amount: 120_000
+            )
+        ))
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(
+            makeCanonicalJournal(
+                id: UUID(),
+                businessId: businessId,
+                candidateId: incomeCandidateId,
+                date: makeDate(year: 2025, month: 5, day: 10)
+            )
+        ))
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(
+            makeCanonicalJournal(
+                id: UUID(),
+                businessId: businessId,
+                candidateId: expenseCandidateId,
+                date: makeDate(year: 2025, month: 5, day: 12)
+            )
+        ))
+        try context.save()
+        dataStore.loadData()
+
+        let form = try FormEngine.build(
+            filingStyle: .blueCashBasis,
+            dataStore: dataStore,
+            fiscalYear: 2025
+        )
+
+        XCTAssertEqual(form.formType, .blueCashBasis)
+        XCTAssertEqual(form.fields.first { $0.id == "cash_basis_revenue" }?.value.numberValue, 500_000)
+        XCTAssertEqual(form.fields.first { $0.id == "cash_basis_expense_total" }?.value.numberValue, 120_000)
+        XCTAssertEqual(form.fields.first { $0.id == "cash_basis_income" }?.value.numberValue, 380_000)
+    }
+
     // MARK: - Helpers
 
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
         let calendar = Calendar(identifier: .gregorian)
         return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    private func ensureCategory(
+        id: String,
+        name: String,
+        type: CategoryType,
+        icon: String
+    ) -> PPCategory {
+        if let existing = dataStore.categories.first(where: { $0.id == id }) {
+            return existing
+        }
+
+        let category = PPCategory(id: id, name: name, type: type, icon: icon)
+        context.insert(category)
+        try! context.save()
+        dataStore.loadData()
+        return dataStore.categories.first(where: { $0.id == id }) ?? category
+    }
+
+    private func makeBuildInput(
+        fiscalYear: Int,
+        businessProfile: BusinessProfile? = nil,
+        canonicalJournals: [CanonicalJournalEntry] = [],
+        postingCandidatesById: [UUID: PostingCandidate] = [:]
+    ) -> FormEngine.BuildInput {
+        FormEngine.BuildInput(
+            fiscalYear: fiscalYear,
+            startMonth: FiscalYearSettings.startMonth,
+            accounts: dataStore.accounts,
+            categories: dataStore.categories,
+            fixedAssets: dataStore.fixedAssets,
+            inventoryRecord: nil,
+            businessProfile: businessProfile,
+            taxYearProfile: nil,
+            sensitivePayload: nil,
+            projectedEntries: [],
+            projectedLines: [],
+            canonicalJournals: canonicalJournals,
+            postingCandidatesById: postingCandidatesById
+        )
+    }
+
+    private func makePostingCandidate(
+        id: UUID,
+        businessId: UUID? = nil,
+        taxYear: Int,
+        type: TransactionType,
+        categoryId: String,
+        amount: Int
+    ) -> PostingCandidate {
+        let line = switch type {
+        case .income:
+            PostingCandidateLine(
+                debitAccountId: UUID(),
+                creditAccountId: UUID(),
+                amount: Decimal(amount)
+            )
+        case .expense:
+            PostingCandidateLine(
+                debitAccountId: UUID(),
+                creditAccountId: UUID(),
+                amount: Decimal(amount)
+            )
+        case .transfer:
+            PostingCandidateLine(
+                debitAccountId: UUID(),
+                creditAccountId: UUID(),
+                amount: Decimal(amount)
+            )
+        }
+
+        return PostingCandidate(
+            id: id,
+            businessId: businessId ?? UUID(),
+            taxYear: taxYear,
+            candidateDate: makeDate(year: taxYear, month: 1, day: 1),
+            proposedLines: [line],
+            status: .approved,
+            memo: "test",
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: type,
+                categoryId: categoryId,
+                recurringId: nil,
+                paymentAccountId: nil,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                receiptImagePath: nil,
+                lineItems: [],
+                counterpartyName: nil
+            )
+        )
+    }
+
+    private func makeCanonicalJournal(
+        id: UUID,
+        businessId: UUID? = nil,
+        candidateId: UUID,
+        date: Date
+    ) -> CanonicalJournalEntry {
+        CanonicalJournalEntry(
+            id: id,
+            businessId: businessId ?? UUID(),
+            taxYear: 2025,
+            journalDate: date,
+            voucherNo: "1",
+            sourceCandidateId: candidateId,
+            lines: [
+                JournalLine(journalId: id, accountId: UUID(), debitAmount: 1, sortOrder: 0),
+                JournalLine(journalId: id, accountId: UUID(), creditAmount: 1, sortOrder: 1),
+            ],
+            approvedAt: date
+        )
     }
 
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {

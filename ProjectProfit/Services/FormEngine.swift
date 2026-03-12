@@ -1,8 +1,24 @@
 import Foundation
+import SwiftData
 
 /// 申告書式を FilingStyle に応じて生成するファクトリ
 @MainActor
 enum FormEngine {
+    struct BuildInput {
+        let fiscalYear: Int
+        let startMonth: Int
+        let accounts: [PPAccount]
+        let categories: [PPCategory]
+        let fixedAssets: [PPFixedAsset]
+        let inventoryRecord: PPInventoryRecord?
+        let businessProfile: BusinessProfile?
+        let taxYearProfile: TaxYearProfile?
+        let sensitivePayload: ProfileSensitivePayload?
+        let projectedEntries: [PPJournalEntry]
+        let projectedLines: [PPJournalLine]
+        let canonicalJournals: [CanonicalJournalEntry]
+        let postingCandidatesById: [UUID: PostingCandidate]
+    }
 
     enum FormEngineError: LocalizedError {
         case unsupportedFilingStyle(FilingStyle)
@@ -33,72 +49,79 @@ enum FormEngine {
             throw FormEngineError.unsupportedTaxYear(fiscalYear)
         }
 
-        let startMonth = FiscalYearSettings.startMonth
-        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let accounts = dataStore.accounts
-        let canonical = dataStore.canonicalExportProfiles(for: fiscalYear)
+        let input = try makeBuildInput(dataStore: dataStore, fiscalYear: fiscalYear)
 
         switch filingStyle {
         case .blueGeneral:
             let pl = AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
+                fiscalYear: input.fiscalYear,
+                accounts: input.accounts,
+                journalEntries: input.projectedEntries,
+                journalLines: input.projectedLines,
+                startMonth: input.startMonth
             )
             let bs = AccountingReportService.generateBalanceSheet(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
+                fiscalYear: input.fiscalYear,
+                accounts: input.accounts,
+                journalEntries: input.projectedEntries,
+                journalLines: input.projectedLines,
+                startMonth: input.startMonth
             )
-            let inventoryRecord = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
             return EtaxFieldPopulator.populate(
-                fiscalYear: fiscalYear,
+                fiscalYear: input.fiscalYear,
                 profitLoss: pl,
                 balanceSheet: bs,
                 formType: .blueReturn,
-                accounts: accounts,
-                businessProfile: canonical?.business,
-                taxYearProfile: canonical?.taxYear,
-                sensitivePayload: canonical?.sensitive,
-                inventoryRecord: inventoryRecord
+                accounts: input.accounts,
+                businessProfile: input.businessProfile,
+                taxYearProfile: input.taxYearProfile,
+                sensitivePayload: input.sensitivePayload,
+                inventoryRecord: input.inventoryRecord
             )
 
         case .blueCashBasis:
-            return try CashBasisReturnBuilder.build(
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                businessProfile: canonical?.business,
-                taxYearProfile: canonical?.taxYear,
-                sensitivePayload: canonical?.sensitive
-            )
+            return try CashBasisReturnBuilder.build(input: input)
 
         case .white:
             let pl = AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
+                fiscalYear: input.fiscalYear,
+                accounts: input.accounts,
+                journalEntries: input.projectedEntries,
+                journalLines: input.projectedLines,
+                startMonth: input.startMonth
             )
-            let projection = makeWhiteReturnProjection(
-                journalEntries: projected.entries,
-                journalLines: projected.lines
-            )
-            return ShushiNaiyakushoBuilder.build(
-                fiscalYear: fiscalYear,
-                profitLoss: pl,
-                accounts: accounts,
-                businessProfile: canonical?.business,
-                taxYearProfile: canonical?.taxYear,
-                sensitivePayload: canonical?.sensitive,
-                fixedAssets: dataStore.fixedAssets,
-                projection: projection
-            )
+            return ShushiNaiyakushoBuilder.build(profitLoss: pl, input: input)
         }
+    }
+
+    static func makeBuildInput(
+        dataStore: DataStore,
+        fiscalYear: Int
+    ) throws -> BuildInput {
+        let startMonth = FiscalYearSettings.startMonth
+        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let canonical = dataStore.canonicalExportProfiles(for: fiscalYear)
+        let canonicalJournals = dataStore.canonicalJournalEntries(fiscalYear: fiscalYear)
+        let candidateIds = Set(canonicalJournals.compactMap(\.sourceCandidateId))
+
+        return BuildInput(
+            fiscalYear: fiscalYear,
+            startMonth: startMonth,
+            accounts: dataStore.accounts,
+            categories: dataStore.categories,
+            fixedAssets: dataStore.fixedAssets,
+            inventoryRecord: dataStore.getInventoryRecord(fiscalYear: fiscalYear),
+            businessProfile: canonical?.business,
+            taxYearProfile: canonical?.taxYear,
+            sensitivePayload: canonical?.sensitive,
+            projectedEntries: projected.entries,
+            projectedLines: projected.lines,
+            canonicalJournals: canonicalJournals,
+            postingCandidatesById: try fetchPostingCandidates(
+                ids: candidateIds,
+                modelContext: dataStore.modelContext
+            )
+        )
     }
 
     /// FilingStyle -> EtaxFormType のマッピング
@@ -110,18 +133,22 @@ enum FormEngine {
         }
     }
 
-    private static func makeWhiteReturnProjection(
-        journalEntries: [PPJournalEntry],
-        journalLines: [PPJournalLine]
-    ) -> ShushiNaiyakushoBuilder.WhiteReturnProjection {
-        let rentAccountId = AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"
-        let postedEntryIds = Set(journalEntries.lazy.filter(\.isPosted).map(\.id))
-        let postedRentTotal = journalLines.reduce(into: 0) { partialResult, line in
-            guard line.accountId == rentAccountId, postedEntryIds.contains(line.entryId) else {
+    private static func fetchPostingCandidates(
+        ids: Set<UUID>,
+        modelContext: ModelContext
+    ) throws -> [UUID: PostingCandidate] {
+        guard !ids.isEmpty else {
+            return [:]
+        }
+
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let entities = try modelContext.fetch(descriptor)
+        return entities.reduce(into: [UUID: PostingCandidate]()) { result, entity in
+            guard ids.contains(entity.candidateId) else {
                 return
             }
-            partialResult += line.debit - line.credit
+            let candidate = PostingCandidateEntityMapper.toDomain(entity)
+            result[candidate.id] = candidate
         }
-        return .init(postedRentTotal: postedRentTotal)
     }
 }

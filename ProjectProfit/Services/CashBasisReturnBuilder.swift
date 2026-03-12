@@ -18,23 +18,19 @@ enum CashBasisReturnBuilder {
 
     /// 現金主義用の EtaxForm を生成（canonical profile ベース）
     static func build(
-        fiscalYear: Int,
-        dataStore: DataStore,
-        businessProfile: BusinessProfile? = nil,
-        taxYearProfile: TaxYearProfile? = nil,
-        sensitivePayload: ProfileSensitivePayload? = nil
+        input: FormEngine.BuildInput
     ) throws -> EtaxForm {
-        var fields = try buildCoreFields(fiscalYear: fiscalYear, dataStore: dataStore)
+        var fields = try buildCoreFields(input: input)
 
-        if let businessProfile {
+        if let businessProfile = input.businessProfile {
             fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
                 businessProfile: businessProfile,
-                sensitivePayload: sensitivePayload
+                sensitivePayload: input.sensitivePayload
             ))
         }
 
         return EtaxForm(
-            fiscalYear: fiscalYear,
+            fiscalYear: input.fiscalYear,
             formType: .blueCashBasis,
             fields: fields,
             generatedAt: Date()
@@ -43,38 +39,54 @@ enum CashBasisReturnBuilder {
 
     /// 収支フィールドの共通生成ロジック
     private static func buildCoreFields(
-        fiscalYear: Int,
-        dataStore: DataStore
+        input: FormEngine.BuildInput
     ) throws -> [EtaxField] {
-        let startMonth = FiscalYearSettings.startMonth
-        let startDate = startOfFiscalYear(fiscalYear, startMonth: startMonth)
-        let endDate = endOfFiscalYear(fiscalYear, startMonth: startMonth)
+        let categoryMap = Dictionary(
+            uniqueKeysWithValues: input.categories.map { ($0.id, $0.name) }
+        )
 
-        // 現金主義: 取引の date ベースで集計（発生主義ではなく入出金日）
-        let yearTransactions = dataStore.transactions.filter { tx in
-            tx.date >= startDate && tx.date <= endDate
+        var totalIncome = 0
+        var totalExpense = 0
+        var expenseByCategory: [String: Int] = [:]
+
+        for journal in input.canonicalJournals where journal.approvedAt != nil {
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = input.postingCandidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot
+            else {
+                continue
+            }
+
+            let amount = candidate.proposedLines.reduce(0) { partialResult, line in
+                switch snapshot.type {
+                case .income:
+                    guard line.creditAccountId != nil else { return partialResult }
+                case .expense:
+                    guard line.debitAccountId != nil else { return partialResult }
+                case .transfer:
+                    return partialResult
+                }
+                return partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+
+            guard amount != 0 else {
+                continue
+            }
+
+            switch snapshot.type {
+            case .income:
+                totalIncome += amount
+            case .expense:
+                totalExpense += amount
+                expenseByCategory[snapshot.categoryId, default: 0] += amount
+            case .transfer:
+                break
+            }
         }
 
-        guard !yearTransactions.isEmpty else {
+        guard totalIncome > 0 || totalExpense > 0 else {
             throw BuildError.noTransactions
         }
-
-        let totalIncome = yearTransactions
-            .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
-        let totalExpense = yearTransactions
-            .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
-
-        // 経費をカテゴリ別に集計
-        let expenseByCategory = Dictionary(
-            grouping: yearTransactions.filter { $0.type == .expense },
-            by: \.categoryId
-        ).mapValues { txs in txs.reduce(0) { $0 + $1.amount } }
-
-        let categoryMap = Dictionary(
-            uniqueKeysWithValues: dataStore.categories.map { ($0.id, $0.name) }
-        )
 
         var fields: [EtaxField] = []
 

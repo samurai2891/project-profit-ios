@@ -5,6 +5,9 @@ import SwiftData
 struct FilingDashboardView: View {
     @Environment(\.modelContext) private var modelContext
 
+    static let booksWorkspaceTitle = "帳簿ワークスペース"
+    static let booksWorkspaceSubtitle = "レポート・帳簿・申告作業をまとめて確認"
+
     @State private var selectedFiscalYear: Int
     @State private var preflightIssues: [String] = []
     @State private var isCheckingPreflight = false
@@ -27,11 +30,8 @@ struct FilingDashboardView: View {
         }
         .navigationTitle("確定申告")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await refreshState()
-        }
-        .onChange(of: selectedFiscalYear) {
-            Task { await refreshState() }
+        .task(id: selectedFiscalYear) {
+            await refreshState(for: selectedFiscalYear)
         }
     }
 
@@ -140,12 +140,12 @@ struct FilingDashboardView: View {
             }
 
             NavigationLink {
-                ReportView()
+                BooksWorkspaceView()
             } label: {
                 workflowRow(
                     icon: "chart.bar.doc.horizontal",
-                    title: "年次レポート",
-                    subtitle: "損益・月別推移・カテゴリ分析"
+                    title: Self.booksWorkspaceTitle,
+                    subtitle: Self.booksWorkspaceSubtitle
                 )
             }
 
@@ -201,16 +201,22 @@ struct FilingDashboardView: View {
 
     // MARK: - Data
 
-    private func refreshState() async {
+    private func refreshState(for fiscalYear: Int) async {
         isCheckingPreflight = true
         defer { isCheckingPreflight = false }
 
         do {
             let snapshot = try await FilingDashboardQueryUseCase(modelContext: modelContext)
-                .snapshot(fiscalYear: selectedFiscalYear)
+                .snapshot(fiscalYear: fiscalYear)
+            guard !Task.isCancelled, fiscalYear == selectedFiscalYear else {
+                return
+            }
             yearLockState = snapshot.yearLockState
             preflightIssues = snapshot.preflightIssues
         } catch {
+            guard !Task.isCancelled, fiscalYear == selectedFiscalYear else {
+                return
+            }
             yearLockState = .open
             preflightIssues = [error.localizedDescription]
         }

@@ -32,11 +32,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
             revenueItems: [],
             expenseItems: []
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
         XCTAssertEqual(form.formType, .whiteReturn)
         XCTAssertEqual(form.fiscalYear, 2025)
     }
@@ -56,11 +52,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
             ],
             expenseItems: []
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
         let revenueField = form.fields.first { $0.id == "shushi_revenue_total" }
         XCTAssertNotNil(revenueField)
@@ -82,11 +74,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
                 )
             ]
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
         let commField = form.fields.first { $0.taxLine == .communicationExpense }
         XCTAssertNotNil(commField)
@@ -115,11 +103,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
                 )
             ]
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
         let netIncomeField = form.fields.first { $0.id == "shushi_income_net" }
         XCTAssertNotNil(netIncomeField)
@@ -147,11 +131,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
                 )
             ]
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
         let totalField = form.fields.first { $0.id == "shushi_expense_total" }
         XCTAssertNotNil(totalField)
@@ -175,11 +155,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
                 )
             ]
         )
-        let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
-            profitLoss: pl,
-            accounts: dataStore.accounts
-        )
+        let form = ShushiNaiyakushoBuilder.build(profitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
         let insuranceField = form.fields.first { $0.id == "shushi_expense_insurance" }
         XCTAssertNotNil(insuranceField)
@@ -194,18 +170,139 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
             revenueItems: [],
             expenseItems: []
         )
-        let projection = ShushiNaiyakushoBuilder.WhiteReturnProjection(postedRentTotal: 240_000)
+        let rentEntryId = UUID()
+        let projectedEntries = [
+            PPJournalEntry(
+                id: rentEntryId,
+                sourceKey: "canonical:\(rentEntryId.uuidString)",
+                date: Date(),
+                entryType: .auto,
+                memo: "",
+                isPosted: true
+            )
+        ]
+        let projectedLines = [
+            PPJournalLine(
+                entryId: rentEntryId,
+                accountId: rentAccountId(),
+                debit: 240_000,
+                credit: 0
+            )
+        ]
 
         let form = ShushiNaiyakushoBuilder.build(
-            fiscalYear: 2025,
             profitLoss: pl,
-            accounts: dataStore.accounts,
-            projection: projection
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                projectedEntries: projectedEntries,
+                projectedLines: projectedLines
+            )
         )
 
         let rentField = form.fields.first { $0.id == "shushi_rent_breakdown" }
         XCTAssertNotNil(rentField)
         XCTAssertEqual(rentField?.taxLine, .rentExpense)
         XCTAssertEqual(rentField?.value.numberValue, 240_000)
+    }
+
+    func testBuildExcludesUnpostedOrNonRentLinesFromRentBreakdown() {
+        let pl = ProfitLossReport(
+            fiscalYear: 2025,
+            generatedAt: Date(),
+            revenueItems: [],
+            expenseItems: []
+        )
+        let postedRentEntryId = UUID()
+        let unpostedRentEntryId = UUID()
+        let postedNonRentEntryId = UUID()
+        let projectedEntries = [
+            PPJournalEntry(
+                id: postedRentEntryId,
+                sourceKey: "canonical:\(postedRentEntryId.uuidString)",
+                date: Date(),
+                entryType: .auto,
+                memo: "",
+                isPosted: true
+            ),
+            PPJournalEntry(
+                id: unpostedRentEntryId,
+                sourceKey: "canonical:\(unpostedRentEntryId.uuidString)",
+                date: Date(),
+                entryType: .auto,
+                memo: "",
+                isPosted: false
+            ),
+            PPJournalEntry(
+                id: postedNonRentEntryId,
+                sourceKey: "canonical:\(postedNonRentEntryId.uuidString)",
+                date: Date(),
+                entryType: .auto,
+                memo: "",
+                isPosted: true
+            ),
+        ]
+        let projectedLines = [
+            PPJournalLine(
+                entryId: postedRentEntryId,
+                accountId: rentAccountId(),
+                debit: 120_000,
+                credit: 0
+            ),
+            PPJournalLine(
+                entryId: unpostedRentEntryId,
+                accountId: rentAccountId(),
+                debit: 90_000,
+                credit: 0
+            ),
+            PPJournalLine(
+                entryId: postedNonRentEntryId,
+                accountId: nonRentAccountId(),
+                debit: 70_000,
+                credit: 0
+            ),
+        ]
+
+        let form = ShushiNaiyakushoBuilder.build(
+            profitLoss: pl,
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                projectedEntries: projectedEntries,
+                projectedLines: projectedLines
+            )
+        )
+
+        let rentField = form.fields.first { $0.id == "shushi_rent_breakdown" }
+        XCTAssertEqual(rentField?.value.numberValue, 120_000)
+    }
+
+    private func makeBuildInput(
+        fiscalYear: Int,
+        projectedEntries: [PPJournalEntry] = [],
+        projectedLines: [PPJournalLine] = []
+    ) -> FormEngine.BuildInput {
+        FormEngine.BuildInput(
+            fiscalYear: fiscalYear,
+            startMonth: FiscalYearSettings.startMonth,
+            accounts: dataStore.accounts,
+            categories: dataStore.categories,
+            fixedAssets: dataStore.fixedAssets,
+            inventoryRecord: nil,
+            businessProfile: nil,
+            taxYearProfile: nil,
+            sensitivePayload: nil,
+            projectedEntries: projectedEntries,
+            projectedLines: projectedLines,
+            canonicalJournals: [],
+            postingCandidatesById: [:]
+        )
+    }
+
+    private func rentAccountId() -> String {
+        dataStore.accounts.first { $0.subtype == .rentExpense }?.id
+            ?? (AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent")
+    }
+
+    private func nonRentAccountId() -> String {
+        dataStore.accounts.first { $0.subtype == .communicationExpense }?.id ?? "acct-communication"
     }
 }
