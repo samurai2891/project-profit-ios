@@ -19,6 +19,7 @@ struct LegacyProfileMigrationReport: Sendable {
     let updatedBusinessProfile: Bool
     let createdTaxYearProfile: Bool
     let updatedTaxYearProfile: Bool
+    let deletedLegacyProfiles: Int
     let warnings: [String]
     let errorDescription: String?
 
@@ -36,6 +37,7 @@ struct LegacyProfileMigrationReport: Sendable {
             updatedBusinessProfile: false,
             createdTaxYearProfile: false,
             updatedTaxYearProfile: false,
+            deletedLegacyProfiles: 0,
             warnings: [],
             errorDescription: nil
         )
@@ -63,7 +65,7 @@ final class LegacyProfileMigrationRunner {
     func executeIfNeeded() -> LegacyProfileMigrationReport {
         let report = dryRun()
         switch report.outcome {
-        case .dryRunReady, .alreadyMigrated:
+        case .dryRunReady:
             return execute()
         default:
             return report
@@ -77,67 +79,74 @@ final class LegacyProfileMigrationRunner {
 
     private func run(mode: Mode) -> LegacyProfileMigrationReport {
         do {
-            let legacyDescriptor = FetchDescriptor<PPAccountingProfile>(
-                sortBy: [SortDescriptor(\.createdAt)]
+            let legacyProfiles = try modelContext.fetch(
+                FetchDescriptor<PPAccountingProfile>(sortBy: [SortDescriptor(\.createdAt)])
             )
-            guard let legacy = try modelContext.fetch(legacyDescriptor).first else {
-                return .noLegacyProfile()
-            }
 
             let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
                 sortBy: [SortDescriptor(\.createdAt)]
             )
             let existingBusiness = try modelContext.fetch(businessDescriptor).first
-            let businessId = existingBusiness?.businessId ?? UUID()
+            let taxYearEntities = try modelContext.fetch(FetchDescriptor<TaxYearProfileEntity>())
 
-            let taxDescriptor = FetchDescriptor<TaxYearProfileEntity>()
-            let existingTaxYear = try modelContext.fetch(taxDescriptor).first {
-                $0.businessId == businessId && $0.taxYear == legacy.fiscalYear
+            guard let legacy = legacyProfiles.first else {
+                if existingBusiness != nil || !taxYearEntities.isEmpty {
+                    return LegacyProfileMigrationReport(
+                        outcome: .alreadyMigrated,
+                        legacyProfileId: nil,
+                        businessProfileId: existingBusiness?.businessId,
+                        taxYear: nil,
+                        createdBusinessProfile: false,
+                        updatedBusinessProfile: false,
+                        createdTaxYearProfile: false,
+                        updatedTaxYearProfile: false,
+                        deletedLegacyProfiles: 0,
+                        warnings: [],
+                        errorDescription: nil
+                    )
+                }
+                return .noLegacyProfile()
             }
 
+            let businessId = existingBusiness?.businessId ?? UUID()
             let businessDraft = makeBusinessProfileEntity(legacy: legacy, businessId: businessId)
-            let taxYearDraft = makeTaxYearProfileEntity(legacy: legacy, businessId: businessId)
             var warnings: [String] = []
 
             let shouldCreateBusiness = existingBusiness == nil
-            let shouldCreateTax = existingTaxYear == nil
-            let needsMigration = shouldCreateBusiness || shouldCreateTax
-
-            if !needsMigration {
-                if mode == .execute {
-                    warnings.append(contentsOf: migrateSecurePayloadIfNeeded(
-                        legacyProfileId: legacy.id,
-                        canonicalBusinessId: businessId
-                    ))
+            var knownTaxYears = Set(
+                taxYearEntities
+                    .filter { $0.businessId == businessId }
+                    .map(\.taxYear)
+            )
+            var taxProfilesToCreate: [TaxYearProfileEntity] = []
+            for legacyProfile in legacyProfiles {
+                guard !knownTaxYears.contains(legacyProfile.fiscalYear) else {
+                    continue
                 }
-                return LegacyProfileMigrationReport(
-                    outcome: .alreadyMigrated,
-                    legacyProfileId: legacy.id,
-                    businessProfileId: businessId,
-                    taxYear: legacy.fiscalYear,
-                    createdBusinessProfile: false,
-                    updatedBusinessProfile: false,
-                    createdTaxYearProfile: false,
-                    updatedTaxYearProfile: false,
-                    warnings: warnings,
-                    errorDescription: nil
+                taxProfilesToCreate.append(
+                    makeTaxYearProfileEntity(legacy: legacyProfile, businessId: businessId)
                 )
+                knownTaxYears.insert(legacyProfile.fiscalYear)
             }
+            let shouldCreateTax = !taxProfilesToCreate.isEmpty
 
             if mode == .execute {
-                if existingBusiness == nil {
+                if shouldCreateBusiness {
                     modelContext.insert(businessDraft)
                 }
 
-                if existingTaxYear == nil {
-                    modelContext.insert(taxYearDraft)
-                }
-
+                taxProfilesToCreate.forEach(modelContext.insert)
                 try modelContext.save()
+
                 warnings.append(contentsOf: migrateSecurePayloadIfNeeded(
-                    legacyProfileId: legacy.id,
+                    legacyProfileIds: legacyProfiles.map(\.id),
                     canonicalBusinessId: businessId
                 ))
+
+                legacyProfiles.forEach(modelContext.delete)
+                if !legacyProfiles.isEmpty {
+                    try modelContext.save()
+                }
             }
 
             return LegacyProfileMigrationReport(
@@ -149,6 +158,7 @@ final class LegacyProfileMigrationRunner {
                 updatedBusinessProfile: false,
                 createdTaxYearProfile: shouldCreateTax,
                 updatedTaxYearProfile: false,
+                deletedLegacyProfiles: mode == .execute ? legacyProfiles.count : 0,
                 warnings: warnings,
                 errorDescription: nil
             )
@@ -167,6 +177,7 @@ final class LegacyProfileMigrationRunner {
                 updatedBusinessProfile: false,
                 createdTaxYearProfile: false,
                 updatedTaxYearProfile: false,
+                deletedLegacyProfiles: 0,
                 warnings: schemaUnavailable ? ["canonical schema unavailable in current container"] : [],
                 errorDescription: message
             )
@@ -239,21 +250,27 @@ final class LegacyProfileMigrationRunner {
     }
 
     private func migrateSecurePayloadIfNeeded(
-        legacyProfileId: String,
+        legacyProfileIds: [String],
         canonicalBusinessId: UUID
     ) -> [String] {
         let canonicalProfileId = canonicalBusinessId.uuidString
-        guard canonicalProfileId != legacyProfileId else {
-            return []
+        var warnings: [String] = []
+        var hasCanonicalPayload = ProfileSecureStore.load(profileId: canonicalProfileId) != nil
+
+        for legacyProfileId in Set(legacyProfileIds) where legacyProfileId != canonicalProfileId {
+            guard let payload = ProfileSecureStore.load(profileId: legacyProfileId) else {
+                continue
+            }
+            if !hasCanonicalPayload {
+                guard ProfileSecureStore.save(payload, profileId: canonicalProfileId) else {
+                    warnings.append("secure payload migration failed")
+                    continue
+                }
+                hasCanonicalPayload = true
+            }
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
         }
-        guard let payload = ProfileSecureStore.load(profileId: legacyProfileId) else {
-            return []
-        }
-        guard ProfileSecureStore.save(payload, profileId: canonicalProfileId) else {
-            return ["secure payload migration failed"]
-        }
-        _ = ProfileSecureStore.delete(profileId: legacyProfileId)
-        return []
+        return warnings
     }
 
 }

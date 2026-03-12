@@ -119,7 +119,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         XCTAssertTrue(report.issues.contains { $0.code == .unbalancedJournal })
     }
 
-    func testExportPreflightUsesCanonicalTaxYearStateNotLegacyLockedYears() throws {
+    func testExportPreflightUsesCanonicalTaxYearStateNotLegacyLockCompat() throws {
         let targetYear = 2030
         let legacy = PPAccountingProfile(
             id: "legacy-preflight-profile",
@@ -128,7 +128,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
             businessName: "Legacy商店",
             ownerName: "Legacy Owner",
             isBlueReturn: false,
-            lockedYears: [targetYear]
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_400)
         )
         context.insert(legacy)
         try context.save()

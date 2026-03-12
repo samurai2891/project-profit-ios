@@ -47,6 +47,32 @@ final class MigrationReportRunnerTests: XCTestCase {
         XCTAssertTrue(report.warnings.contains("Profile canonical data is empty while legacy data exists"))
     }
 
+    func testDryRunWarnsWhenLegacyProfileStillRemainsAlongsideCanonicalProfile() throws {
+        context.insert(PPAccountingProfile(
+            id: "legacy-profile",
+            fiscalYear: 2025,
+            businessName: "Legacy商店",
+            ownerName: "田中太郎"
+        ))
+        context.insert(BusinessProfileEntity(
+            businessId: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+            ownerName: "Canonical Owner",
+            businessName: "Canonical商店"
+        ))
+        context.insert(TaxYearProfileEntity(
+            businessId: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+            taxYear: 2025,
+            filingStyleRaw: FilingStyle.blueGeneral.rawValue,
+            bookkeepingBasisRaw: BookkeepingBasis.doubleEntry.rawValue,
+            taxPackVersion: "2025-v1"
+        ))
+        try context.save()
+
+        let report = try MigrationReportRunner(modelContext: context).dryRun()
+
+        XCTAssertTrue(report.warnings.contains("Profile legacy data remains after canonical migration"))
+    }
+
     func testDryRunDetectsMissingReceiptImageAndMissingCandidateEvidence() throws {
         context.insert(PPCategory(id: "cat-expense", name: "経費", type: .expense, icon: "tag"))
         context.insert(PPTransaction(

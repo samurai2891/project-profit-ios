@@ -43,9 +43,11 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
 
         let businesses = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
         let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         XCTAssertEqual(businesses.count, 1)
         XCTAssertEqual(businesses.first?.defaultPaymentAccountId, "acct-bank")
         XCTAssertEqual(taxYears.count, 1)
+        XCTAssertTrue(legacyProfiles.isEmpty)
     }
 
     func testSavePersistsUpdatedBusinessAndTaxYearProfiles() async throws {
@@ -180,7 +182,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         }
     }
 
-    func testSaveUpdatesCanonicalYearLockAndKeepsLegacyLockedYearsUntouched() async throws {
+    func testSaveUpdatesCanonicalYearLockAndDeletesLegacyProfile() async throws {
         let container = try TestModelContainer.create()
         let context = container.mainContext
         let legacyId = "legacy-profile-save-path"
@@ -193,13 +195,14 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
             taxOfficeCode: "1111",
             isBlueReturn: false,
             defaultPaymentAccountId: "acct-legacy",
-            lockedYears: [2027]
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_300)
         )
         context.insert(legacy)
         try context.save()
 
         let report = LegacyProfileMigrationRunner(modelContext: context).executeIfNeeded()
         XCTAssertEqual(report.outcome, .executed)
+        XCTAssertEqual(report.deletedLegacyProfiles, 1)
 
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let initial = try await useCase.load(defaultTaxYear: 2027)
@@ -232,9 +235,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         XCTAssertEqual(taxYears.first?.yearLockStateRaw, YearLockState.finalLock.rawValue)
 
         let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
-        let preservedLegacy = try XCTUnwrap(legacyProfiles.first(where: { $0.id == legacyId }))
-        XCTAssertEqual(preservedLegacy.fiscalYear, 2027)
-        XCTAssertEqual(preservedLegacy.lockedYears ?? [], [2027])
+        XCTAssertTrue(legacyProfiles.isEmpty)
     }
 }
 

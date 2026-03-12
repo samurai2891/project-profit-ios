@@ -178,6 +178,7 @@ extension DataStore {
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
                 .flatMap { canonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty
+            let resolvedTaxCategory = transaction?.resolvedTaxCategory
 
             enrichedLines.append((
                 lineId: journalLine.id,
@@ -190,7 +191,7 @@ extension DataStore {
                 credit: journalLine.credit,
                 counterAccountId: counterAccountId,
                 counterparty: resolvedCounterparty,
-                taxCategory: transaction?.taxCategory
+                taxCategory: resolvedTaxCategory
             ))
         }
 

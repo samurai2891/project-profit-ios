@@ -79,6 +79,11 @@ struct TestMutationDriver {
         store.loadData()
     }
 
+    func archiveProject(id: UUID) {
+        store.archiveProject(id: id)
+        store.loadData()
+    }
+
     func addTransactionResult(
         type: TransactionType,
         amount: Int,

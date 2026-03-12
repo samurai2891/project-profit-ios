@@ -2,6 +2,13 @@ import XCTest
 @testable import ProjectProfit
 
 final class TaxCodeTests: XCTestCase {
+    func testResolveFromIdMapsToCanonicalCode() {
+        XCTAssertEqual(TaxCode.resolve(id: TaxCode.standard10.rawValue), .standard10)
+        XCTAssertEqual(TaxCode.resolve(id: TaxCode.reduced8.rawValue), .reduced8)
+        XCTAssertNil(TaxCode.resolve(id: ""))
+        XCTAssertNil(TaxCode.resolve(id: "INVALID"))
+    }
+
     func testResolveFromLegacyCategoryMapsToCanonicalIds() {
         XCTAssertEqual(TaxCode.resolve(legacyCategory: .standardRate, taxRate: nil), .standard10)
         XCTAssertEqual(TaxCode.resolve(legacyCategory: .reducedRate, taxRate: nil), .reduced8)

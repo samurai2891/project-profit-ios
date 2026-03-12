@@ -298,7 +298,7 @@ final class AccountingEngine {
 
         // 消費税対応: taxAmount > 0 かつ課税取引の場合
         if let taxAmount = transaction.taxAmount, taxAmount > 0,
-           let taxCategory = transaction.taxCategory, taxCategory.isTaxable {
+           let taxCode = transaction.resolvedTaxCode, taxCode.isTaxable {
             let netAmount = transaction.amount - taxAmount
             var lines: [PPJournalLine] = []
             lines.append(PPJournalLine(
@@ -350,7 +350,7 @@ final class AccountingEngine {
 
         // 消費税対応: taxAmount > 0 かつ課税取引の場合
         let hasTax = transaction.taxAmount.map { $0 > 0 } ?? false
-            && transaction.taxCategory?.isTaxable == true
+            && transaction.resolvedTaxCode?.isTaxable == true
         let taxAmount = hasTax ? (transaction.taxAmount ?? 0) : 0
         let expenseBase = hasTax ? (amount - taxAmount) : amount
 

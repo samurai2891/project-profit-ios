@@ -797,7 +797,7 @@ struct TransactionFormView: View {
             paymentAccountId = t.paymentAccountId
             transferToAccountId = t.transferToAccountId
             taxDeductibleRate = t.effectiveTaxDeductibleRate
-            selectedTaxCode = TaxCode.resolve(legacyCategory: t.taxCategory, taxRate: t.taxRate)
+            selectedTaxCode = t.resolvedTaxCode
             isTaxIncluded = t.isTaxIncluded ?? true
             if let ta = t.taxAmount { taxAmountText = String(ta) }
             selectedCounterpartyId = t.counterpartyId
@@ -1015,9 +1015,7 @@ struct TransactionFormView: View {
                         taxDeductibleRate: resolvedTaxDeductibleRate,
                         taxAmount: resolvedTaxAmount,
                         taxCodeId: resolvedTaxCodeId,
-                        taxRate: selectedTaxCode?.taxRatePercent,
                         isTaxIncluded: resolvedIsTaxIncluded,
-                        taxCategory: selectedTaxCode?.legacyCategory,
                         counterpartyId: selectedCounterpartyId,
                         counterparty: resolvedCounterparty,
                         candidateSource: .manual

@@ -208,6 +208,17 @@ final class AccountingBootstrapService {
                 transaction.taxDeductibleRate = 100
                 changed = true
             }
+            if transaction.taxCodeId == nil,
+               let taxCode = TaxCode.resolve(
+                legacyCategory: transaction.taxCategory,
+                taxRate: transaction.taxRate
+               )
+            {
+                transaction.taxCodeId = taxCode.rawValue
+                transaction.taxRate = taxCode.taxRatePercent
+                transaction.taxCategory = taxCode.legacyCategory
+                changed = true
+            }
             if transaction.bookkeepingMode == nil {
                 transaction.bookkeepingMode = .auto
                 changed = true
@@ -397,6 +408,7 @@ struct CanonicalTransactionPostingBridge {
         let journalEntryId: UUID?
 
         init(transaction: PPTransaction) {
+            let resolvedTaxCode = transaction.resolvedTaxCode
             id = transaction.id
             type = transaction.type
             amount = transaction.amount
@@ -408,10 +420,10 @@ struct CanonicalTransactionPostingBridge {
             transferToAccountId = transaction.transferToAccountId
             taxDeductibleRate = transaction.taxDeductibleRate
             taxAmount = transaction.taxAmount
-            taxCodeId = nil
-            taxRate = transaction.taxRate
+            taxCodeId = resolvedTaxCode?.rawValue
+            taxRate = resolvedTaxCode?.taxRatePercent
             isTaxIncluded = transaction.isTaxIncluded
-            taxCategory = transaction.taxCategory
+            taxCategory = resolvedTaxCode?.legacyCategory
             receiptImagePath = transaction.receiptImagePath
             lineItems = transaction.lineItems
             counterpartyName = transaction.counterparty
@@ -443,6 +455,9 @@ struct CanonicalTransactionPostingBridge {
             updatedAt: Date,
             journalEntryId: UUID?
         ) {
+            let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
+                ?? TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
+
             self.id = id
             self.type = type
             self.amount = amount
@@ -454,10 +469,10 @@ struct CanonicalTransactionPostingBridge {
             self.transferToAccountId = transferToAccountId
             self.taxDeductibleRate = taxDeductibleRate
             self.taxAmount = taxAmount
-            self.taxCodeId = taxCodeId
-            self.taxRate = taxRate
+            self.taxCodeId = resolvedTaxCode?.rawValue
+            self.taxRate = resolvedTaxCode?.taxRatePercent
             self.isTaxIncluded = isTaxIncluded
-            self.taxCategory = taxCategory
+            self.taxCategory = resolvedTaxCode?.legacyCategory
             self.receiptImagePath = receiptImagePath
             self.lineItems = lineItems
             self.counterpartyName = counterpartyName
@@ -478,10 +493,7 @@ struct CanonicalTransactionPostingBridge {
         }
 
         var resolvedTaxCode: TaxCode? {
-            if let taxCodeId {
-                return TaxCode.resolve(id: taxCodeId)
-            }
-            return TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
+            TaxCode.resolve(id: taxCodeId)
         }
     }
 
@@ -579,6 +591,7 @@ struct CanonicalTransactionPostingBridge {
         let now = snapshot.updatedAt
         let description = normalizedOptionalString(snapshot.memo) ?? ""
         let inferredSource: CandidateSource = source ?? (snapshot.recurringId == nil ? .manual : .recurring)
+        let resolvedTaxCode = resolvedTaxCodeId.flatMap(TaxCode.resolve(id:))
         let candidate = PostingCandidate(
             id: snapshot.id,
             evidenceId: nil,
@@ -600,10 +613,10 @@ struct CanonicalTransactionPostingBridge {
                 transferToAccountId: snapshot.transferToAccountId,
                 taxDeductibleRate: snapshot.taxDeductibleRate,
                 taxAmount: snapshot.taxAmount,
-                taxCodeId: snapshot.taxCodeId,
-                taxRate: snapshot.taxRate,
+                taxCodeId: resolvedTaxCodeId,
+                taxRate: resolvedTaxCode?.taxRatePercent,
                 isTaxIncluded: snapshot.isTaxIncluded,
-                taxCategory: snapshot.taxCategory,
+                taxCategory: resolvedTaxCode?.legacyCategory,
                 receiptImagePath: snapshot.receiptImagePath,
                 lineItems: snapshot.lineItems,
                 counterpartyName: snapshot.counterpartyName

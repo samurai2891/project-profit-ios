@@ -428,10 +428,17 @@ struct RestoreService {
         try upsertDistributionRules(payload.canonical.distributionRules)
         try upsertAuditEvents(payload.canonical.auditEvents)
 
-        if (payload.canonical.businessProfiles.isEmpty || payload.canonical.taxYearProfiles.isEmpty),
+        if payload.canonical.businessProfiles.isEmpty,
+           payload.canonical.taxYearProfiles.isEmpty,
            !payload.legacy.accountingProfiles.isEmpty {
-            try upsertLegacyAccountingProfiles(payload.legacy.accountingProfiles)
-            _ = LegacyProfileMigrationRunner(modelContext: modelContext).executeIfNeeded()
+            let secureIdMapping = try restoreCanonicalProfilesFromLegacySnapshots(payload.legacy.accountingProfiles)
+            try normalizeSecureProfiles(profileIdMapping: secureIdMapping)
+        } else if !payload.legacy.accountingProfiles.isEmpty,
+                  let canonicalBusinessId = try defaultBusinessProfileId()?.uuidString {
+            let secureIdMapping = Dictionary(
+                uniqueKeysWithValues: payload.legacy.accountingProfiles.map { ($0.id, canonicalBusinessId) }
+            )
+            try normalizeSecureProfiles(profileIdMapping: secureIdMapping)
         }
     }
 
@@ -456,6 +463,30 @@ struct RestoreService {
                 throw SnapshotServiceError.restorePreflightFailed(["secure profile save failed: \(profile.profileId)"])
             }
         }
+    }
+
+    private func normalizeSecureProfiles(profileIdMapping: [String: String]) throws {
+        for (legacyProfileId, canonicalProfileId) in profileIdMapping where legacyProfileId != canonicalProfileId {
+            let canonicalPayload = ProfileSecureStore.load(profileId: canonicalProfileId)
+            guard let legacyPayload = ProfileSecureStore.load(profileId: legacyProfileId) else {
+                continue
+            }
+
+            if canonicalPayload == nil {
+                guard ProfileSecureStore.save(legacyPayload, profileId: canonicalProfileId) else {
+                    throw SnapshotServiceError.restorePreflightFailed(["secure profile save failed: \(canonicalProfileId)"])
+                }
+            }
+
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        }
+    }
+
+    private func defaultBusinessProfileId() throws -> UUID? {
+        let descriptor = FetchDescriptor<BusinessProfileEntity>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.businessId
     }
 
     private func collectExistingSecureProfileIds() throws -> Set<String> {

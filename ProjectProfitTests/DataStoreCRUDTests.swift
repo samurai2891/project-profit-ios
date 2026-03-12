@@ -2362,7 +2362,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // プロジェクトAをアーカイブ
-        dataStore.archiveProject(id: projectA.id)
+        mutations(dataStore).archiveProject(id: projectA.id)
 
         // 新プロジェクト追加
         let projectB = mutations(dataStore).addProject(name: "B", description: "")

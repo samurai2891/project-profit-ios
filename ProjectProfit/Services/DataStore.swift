@@ -134,6 +134,20 @@ class DataStore {
         AppError.legacyTransactionMutationDisabled.errorDescription ?? "この操作は現在利用できません"
     }
 
+    private func canonicalTaxCodeId(
+        explicitTaxCodeId: String?,
+        legacyCategory: TaxCategory? = nil,
+        taxRate: Int? = nil
+    ) -> String? {
+        if let resolved = TaxCode.resolve(id: explicitTaxCodeId) {
+            return resolved.rawValue
+        }
+        return TaxCode.resolve(
+            legacyCategory: legacyCategory,
+            taxRate: taxRate
+        )?.rawValue
+    }
+
     private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
         guard let businessId = businessProfile?.id else {
             return
@@ -566,8 +580,26 @@ class DataStore {
     /// allocationMode/yearlyAmortizationMode は非Optionalに変更済み。
     /// SwiftDataが自動的にデフォルト値を適用するため、現在は追加処理不要。
     private func migrateNilOptionalFields() {
-        // SwiftData handles schema migration with default values from init.
-        // This method is retained as a hook for future migrations.
+        var changed = false
+        for transaction in allTransactions where transaction.taxCodeId == nil {
+            guard let taxCodeId = canonicalTaxCodeId(
+                explicitTaxCodeId: nil,
+                legacyCategory: transaction.taxCategory,
+                taxRate: transaction.taxRate
+            ) else {
+                continue
+            }
+            transaction.taxCodeId = taxCodeId
+            if let taxCode = TaxCode.resolve(id: taxCodeId) {
+                transaction.taxRate = taxCode.taxRatePercent
+                transaction.taxCategory = taxCode.legacyCategory
+            }
+            transaction.updatedAt = Date()
+            changed = true
+        }
+        if changed {
+            _ = save()
+        }
     }
 
     func refreshCanonicalProfileCache() {
@@ -738,17 +770,6 @@ class DataStore {
         (try? bundledTaxYearPackProvider.packSync(for: taxYear).version) ?? "\(taxYear)-v1"
     }
 
-    private func guardLegacyTransactionMutationAllowed(
-        source: LegacyTransactionMutationSource
-    ) -> AppError? {
-        guard source == .userInitiated, FeatureFlags.useCanonicalPosting else {
-            return nil
-        }
-        let error = AppError.legacyTransactionMutationDisabled
-        lastError = error
-        return error
-    }
-
     private func enqueueCanonicalRecurringCounterpartySync(for recurringId: UUID) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -770,10 +791,11 @@ class DataStore {
             )
         }
 
-        let explicitTaxCodeId = TaxCode.resolve(
+        let explicitTaxCodeId = canonicalTaxCodeId(
+            explicitTaxCodeId: transaction.taxCodeId,
             legacyCategory: transaction.taxCategory,
             taxRate: transaction.taxRate
-        )?.rawValue
+        )
         let counterpartyStatus = await syncCanonicalCounterparty(
             id: transaction.counterpartyId,
             named: transaction.counterparty,
@@ -811,10 +833,11 @@ class DataStore {
             )
         }
 
-        let explicitTaxCodeId = TaxCode.resolve(
+        let explicitTaxCodeId = canonicalTaxCodeId(
+            explicitTaxCodeId: transaction.taxCodeId,
             legacyCategory: transaction.taxCategory,
             taxRate: transaction.taxRate
-        )?.rawValue
+        )
         let counterpartyStatus = syncCanonicalCounterpartyNow(
             id: transaction.counterpartyId,
             named: transaction.counterparty,
@@ -959,6 +982,11 @@ class DataStore {
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) async -> Result<PostingCandidate, AppError> {
+        let resolvedTaxCodeId = canonicalTaxCodeId(
+            explicitTaxCodeId: taxCodeId,
+            legacyCategory: taxCategory,
+            taxRate: taxRate
+        )
         do {
             return .success(
                 try await postingIntakeUseCase.saveManualCandidate(
@@ -973,10 +1001,8 @@ class DataStore {
                         transferToAccountId: transferToAccountId,
                         taxDeductibleRate: taxDeductibleRate,
                         taxAmount: taxAmount,
-                        taxCodeId: taxCodeId,
-                        taxRate: taxRate,
+                        taxCodeId: resolvedTaxCodeId,
                         isTaxIncluded: isTaxIncluded,
-                        taxCategory: taxCategory,
                         counterpartyId: counterpartyId,
                         counterparty: counterparty,
                         candidateSource: candidateSource ?? .manual
@@ -1015,6 +1041,11 @@ class DataStore {
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
 
         do {
+            let resolvedTaxCodeId = canonicalTaxCodeId(
+                explicitTaxCodeId: taxCodeId,
+                legacyCategory: taxCategory,
+                taxRate: taxRate
+            )
             let posting = try canonicalPostingSupport.buildApprovedPosting(
                 seed: CanonicalPostingSeed(
                     id: UUID(),
@@ -1028,7 +1059,7 @@ class DataStore {
                     transferToAccountId: transferToAccountId,
                     taxDeductibleRate: taxDeductibleRate,
                     taxAmount: taxAmount,
-                    taxCodeId: taxCodeId,
+                    taxCodeId: resolvedTaxCodeId,
                     taxRate: taxRate,
                     isTaxIncluded: isTaxIncluded,
                     taxCategory: taxCategory,
@@ -1377,10 +1408,7 @@ class DataStore {
                 transferToAccountId: transaction.transferToAccountId,
                 taxDeductibleRate: transaction.taxDeductibleRate,
                 taxAmount: transaction.taxAmount,
-                taxCodeId: TaxCode.resolve(
-                    legacyCategory: transaction.taxCategory,
-                    taxRate: transaction.taxRate
-                )?.rawValue,
+                taxCodeId: transaction.taxCodeId,
                 taxRate: transaction.taxRate,
                 isTaxIncluded: transaction.isTaxIncluded,
                 taxCategory: transaction.taxCategory,
@@ -1810,359 +1838,6 @@ class DataStore {
         projects.first { $0.id == id }
     }
 
-    // MARK: - Transaction CRUD
-
-#if DEBUG
-    /// Legacy `PPTransaction` を追加する互換ヘルパー。
-    /// canonical cutover 後も migration / fixtures / tests 用に残すが、自動で canonical へ同期しない。
-    func addTransactionResult(
-        type: TransactionType,
-        amount: Int,
-        date: Date,
-        categoryId: String,
-        memo: String,
-        allocations: [(projectId: UUID, ratio: Int)],
-        recurringId: UUID? = nil,
-        receiptImagePath: String? = nil,
-        lineItems: [ReceiptLineItem] = [],
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        taxAmount: Int? = nil,
-        taxRate: Int? = nil,
-        isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
-        counterpartyId: UUID? = nil,
-        counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) -> Result<PPTransaction, AppError> {
-        if let error = guardLegacyTransactionMutationAllowed(source: mutationSource) {
-            return .failure(error)
-        }
-        // T5: 年度ロックガード（段階的チェック）
-        guard !cannotPostNormalEntry(for: date) else {
-            return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
-        }
-        let safeCategoryId: String
-        switch type {
-        case .transfer:
-            // 振替はカテゴリ不要。入力がなければ空文字を保持する。
-            safeCategoryId = categoryId
-        case .income, .expense:
-            safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        }
-        let baseAllocations = type == .transfer ? [] : allocations
-        let allocs = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
-        let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: taxCategory,
-            taxRate: taxRate
-        )?.rawValue
-        let resolvedCounterparty = resolveLegacyCounterpartyReference(
-            explicitId: counterpartyId,
-            rawName: counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let transaction = PPTransaction(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: safeCategoryId,
-            memo: memo,
-            allocations: allocs,
-            recurringId: recurringId,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyId: resolvedCounterparty.id,
-            counterparty: resolvedCounterparty.displayName
-        )
-        modelContext.insert(transaction)
-
-        // canonical正本では legacy journal を生成しない
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-        return .success(transaction)
-    }
-
-    @discardableResult
-    /// Legacy `PPTransaction` を追加する互換ヘルパー。
-    func addTransaction(
-        type: TransactionType,
-        amount: Int,
-        date: Date,
-        categoryId: String,
-        memo: String,
-        allocations: [(projectId: UUID, ratio: Int)],
-        recurringId: UUID? = nil,
-        receiptImagePath: String? = nil,
-        lineItems: [ReceiptLineItem] = [],
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        taxAmount: Int? = nil,
-        taxRate: Int? = nil,
-        isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
-        counterpartyId: UUID? = nil,
-        counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) -> PPTransaction {
-        switch addTransactionResult(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: categoryId,
-            memo: memo,
-            allocations: allocations,
-            recurringId: recurringId,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyId: counterpartyId,
-            counterparty: counterparty,
-            candidateSource: candidateSource,
-            enqueueCanonicalSync: enqueueCanonicalSync,
-            mutationSource: mutationSource
-        ) {
-        case .success(let transaction):
-            return transaction
-        case .failure(let error):
-            preconditionFailure("DataStore.addTransaction failed: \(error.localizedDescription). Use addTransactionResult() for failure handling.")
-        }
-    }
-
-    @discardableResult
-    /// Legacy `PPTransaction` を更新する互換ヘルパー。
-    func updateTransaction(
-        id: UUID,
-        type: TransactionType? = nil,
-        amount: Int? = nil,
-        date: Date? = nil,
-        categoryId: String? = nil,
-        memo: String? = nil,
-        allocations: [(projectId: UUID, ratio: Int)]? = nil,
-        receiptImagePath: String?? = nil,
-        lineItems: [ReceiptLineItem]? = nil,
-        paymentAccountId: String?? = nil,
-        transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil,
-        taxAmount: Int?? = nil,
-        taxRate: Int?? = nil,
-        isTaxIncluded: Bool?? = nil,
-        taxCategory: TaxCategory?? = nil,
-        counterpartyId: UUID?? = nil,
-        counterparty: String?? = nil,
-        candidateSource: CandidateSource? = nil,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) -> Bool {
-        if guardLegacyTransactionMutationAllowed(source: mutationSource) != nil {
-            return false
-        }
-        guard let transaction = transactions.first(where: { $0.id == id }) else {
-            lastError = .transactionNotFound(id: id)
-            return false
-        }
-        // T5: 年度ロックガード（段階的チェック：変更先の日付と現在の日付の両方）
-        if cannotPostNormalEntry(for: transaction.date) {
-            return false
-        }
-        if let date, cannotPostNormalEntry(for: date) {
-            return false
-        }
-        lastError = nil
-        // Phase 9: 監査ログ（変更前の値を記録）
-        let txId = transaction.id
-        if let type {
-            logFieldChange(transactionId: txId, fieldName: "type", oldValue: transaction.type.rawValue, newValue: type.rawValue)
-            transaction.type = type
-        }
-        if let date {
-            logFieldChange(transactionId: txId, fieldName: "date", oldValue: transaction.date.ISO8601Format(), newValue: date.ISO8601Format())
-            transaction.date = date
-        }
-        if let categoryId {
-            logFieldChange(transactionId: txId, fieldName: "categoryId", oldValue: transaction.categoryId, newValue: categoryId)
-            transaction.categoryId = categoryId
-        }
-        if let memo {
-            logFieldChange(transactionId: txId, fieldName: "memo", oldValue: transaction.memo, newValue: memo)
-            transaction.memo = memo
-        }
-        if let receiptImagePath {
-            logFieldChange(transactionId: txId, fieldName: "receiptImagePath", oldValue: transaction.receiptImagePath, newValue: receiptImagePath)
-            transaction.receiptImagePath = receiptImagePath
-        }
-        if let lineItems { transaction.lineItems = lineItems }
-        if let paymentAccountId {
-            logFieldChange(transactionId: txId, fieldName: "paymentAccountId", oldValue: transaction.paymentAccountId, newValue: paymentAccountId)
-            transaction.paymentAccountId = paymentAccountId
-        }
-        if let transferToAccountId {
-            logFieldChange(transactionId: txId, fieldName: "transferToAccountId", oldValue: transaction.transferToAccountId, newValue: transferToAccountId)
-            transaction.transferToAccountId = transferToAccountId
-        }
-        if let taxDeductibleRate {
-            logFieldChange(transactionId: txId, fieldName: "taxDeductibleRate", oldValue: transaction.taxDeductibleRate.map(String.init), newValue: taxDeductibleRate.map(String.init))
-            transaction.taxDeductibleRate = taxDeductibleRate
-        }
-        if let taxAmount {
-            logFieldChange(transactionId: txId, fieldName: "taxAmount", oldValue: transaction.taxAmount.map(String.init), newValue: taxAmount.map(String.init))
-            transaction.taxAmount = taxAmount
-        }
-        if let taxRate {
-            logFieldChange(transactionId: txId, fieldName: "taxRate", oldValue: transaction.taxRate.map(String.init), newValue: taxRate.map(String.init))
-            transaction.taxRate = taxRate
-        }
-        if let isTaxIncluded {
-            logFieldChange(transactionId: txId, fieldName: "isTaxIncluded", oldValue: transaction.isTaxIncluded.map(String.init), newValue: isTaxIncluded.map(String.init))
-            transaction.isTaxIncluded = isTaxIncluded
-        }
-        if let taxCategory {
-            logFieldChange(transactionId: txId, fieldName: "taxCategory", oldValue: transaction.taxCategory?.rawValue, newValue: taxCategory?.rawValue)
-            transaction.taxCategory = taxCategory
-        }
-        if let counterpartyId {
-            logFieldChange(
-                transactionId: txId,
-                fieldName: "counterpartyId",
-                oldValue: transaction.counterpartyId?.uuidString,
-                newValue: counterpartyId?.uuidString
-            )
-            transaction.counterpartyId = counterpartyId
-        }
-        if let counterparty {
-            logFieldChange(transactionId: txId, fieldName: "counterparty", oldValue: transaction.counterparty, newValue: counterparty)
-            transaction.counterparty = counterparty
-        }
-
-        if counterpartyId != nil || counterparty != nil {
-            let explicitTaxCodeId = TaxCode.resolve(
-                legacyCategory: taxCategory ?? transaction.taxCategory,
-                taxRate: taxRate ?? transaction.taxRate
-            )?.rawValue
-            let resolvedCounterparty = resolveLegacyCounterpartyReference(
-                explicitId: transaction.counterpartyId,
-                rawName: transaction.counterparty,
-                defaultTaxCodeId: explicitTaxCodeId
-            )
-            transaction.counterpartyId = resolvedCounterparty.id
-            transaction.counterparty = resolvedCounterparty.displayName
-        }
-
-        let finalAmount = amount ?? transaction.amount
-        if let amount {
-            logFieldChange(transactionId: txId, fieldName: "amount", oldValue: String(transaction.amount), newValue: String(amount))
-            transaction.amount = amount
-        }
-
-        if let allocations {
-            transaction.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
-            // H10: equalAll定期取引の配分をユーザーが手動変更した場合にフラグを立てる
-            if let recurringId = transaction.recurringId,
-               let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-               recurring.allocationMode == .equalAll {
-                transaction.isManuallyEdited = true
-            }
-        } else if amount != nil {
-            transaction.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: transaction.allocations)
-            // H8: 金額変更時、pro-rata調整を再適用（ユーザー指定allocationsの場合は意図を尊重し適用しない）
-            reapplyProRataIfNeeded(transaction: transaction, amount: finalAmount)
-        }
-
-        transaction.updatedAt = Date()
-
-        // canonical正本では legacy journal を再生成しない
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-        return true
-    }
-
-    /// Legacy `PPTransaction` を削除する互換ヘルパー。
-    func deleteTransaction(
-        id: UUID,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) {
-        if guardLegacyTransactionMutationAllowed(source: mutationSource) != nil {
-            return
-        }
-        guard let transaction = allTransactions.first(where: { $0.id == id }) else { return }
-        // T5: 年度ロックガード（段階的チェック）
-        if cannotPostNormalEntry(for: transaction.date) { return }
-
-        // ソフトデリート: 物理削除ではなく deletedAt を設定
-        transaction.deletedAt = Date()
-        transaction.updatedAt = Date()
-
-        // canonical正本では legacy journal を削除しない
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-
-        // Roll back recurring generation tracking so the deleted period can be regenerated
-        if let recurringId = transaction.recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
-            rollBackRecurringGenerationState(recurring: recurring, deletedTransactionDate: transaction.date)
-        }
-    }
-
-    /// Roll back recurring generation tracking after a linked transaction is deleted.
-    /// Allows processRecurringTransactions() to regenerate the deleted period on next run.
-    private func rollBackRecurringGenerationState(
-        recurring: PPRecurringTransaction,
-        deletedTransactionDate: Date
-    ) {
-        let calendar = Calendar.current
-
-        // Find remaining transactions still linked to this recurring template
-        let remainingTransactions = transactions
-            .filter { $0.recurringId == recurring.id }
-            .sorted { $0.date < $1.date }
-
-        if recurring.frequency == .yearly,
-           recurring.yearlyAmortizationMode == .monthlySpread {
-            // Monthly spread mode: remove the deleted month key from lastGeneratedMonths
-            let deletedComps = calendar.dateComponents([.year, .month], from: deletedTransactionDate)
-            if let year = deletedComps.year, let month = deletedComps.month {
-                let monthKey = String(format: "%d-%02d", year, month)
-                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths.filter { $0 != monthKey }
-            }
-            // Also update lastGeneratedDate to the latest remaining transaction date, or nil
-            recurring.lastGeneratedDate = remainingTransactions.last?.date
-        } else {
-            // Monthly or Yearly (lumpSum): set lastGeneratedDate to the latest
-            // remaining linked transaction's date, or nil if none remain.
-            recurring.lastGeneratedDate = remainingTransactions.last?.date
-        }
-
-        recurring.updatedAt = Date()
-        save()
-        refreshRecurring()
-    }
-#endif
-
     func removeReceiptImage(transactionId: UUID) {
         guard let transaction = transactions.first(where: { $0.id == transactionId }) else { return }
         // C4: save成功後に削除するため画像パスを保持
@@ -2221,210 +1896,6 @@ class DataStore {
     func getCategory(id: String) -> PPCategory? {
         categories.first { $0.id == id }
     }
-
-    static func defaultCategoryId(for type: TransactionType) -> String {
-        switch type {
-        case .expense, .transfer: "cat-other-expense"
-        case .income: "cat-other-income"
-        }
-    }
-
-    // MARK: - Recurring CRUD
-
-#if DEBUG
-    @discardableResult
-    func addRecurring(
-        name: String,
-        type: TransactionType,
-        amount: Int,
-        categoryId: String,
-        memo: String,
-        allocationMode: AllocationMode = .manual,
-        allocations: [(projectId: UUID, ratio: Int)],
-        frequency: RecurringFrequency,
-        dayOfMonth: Int,
-        monthOfYear: Int? = nil,
-        endDate: Date? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode = .lumpSum,
-        receiptImagePath: String? = nil,
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        counterpartyId: UUID? = nil,
-        counterparty: String? = nil
-    ) -> PPRecurringTransaction {
-        let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        let allocs: [Allocation]
-        switch allocationMode {
-        case .equalAll:
-            allocs = []
-        case .manual:
-            allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
-        }
-        let resolvedCounterparty = resolveLegacyCounterpartyReference(
-            explicitId: counterpartyId,
-            rawName: counterparty,
-            defaultTaxCodeId: nil
-        )
-        let recurring = PPRecurringTransaction(
-            name: name,
-            type: type,
-            amount: amount,
-            categoryId: safeCategoryId,
-            memo: memo,
-            allocationMode: allocationMode,
-            allocations: allocs,
-            frequency: frequency,
-            dayOfMonth: dayOfMonth,
-            monthOfYear: monthOfYear,
-            endDate: endDate,
-            yearlyAmortizationMode: yearlyAmortizationMode,
-            receiptImagePath: receiptImagePath,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            counterpartyId: resolvedCounterparty.id,
-            counterparty: resolvedCounterparty.displayName
-        )
-        modelContext.insert(recurring)
-        save()
-        refreshRecurring()
-        onRecurringScheduleChanged?(recurringTransactions)
-        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
-        return recurring
-    }
-
-    func updateRecurring(
-        id: UUID,
-        name: String? = nil,
-        type: TransactionType? = nil,
-        amount: Int? = nil,
-        categoryId: String? = nil,
-        memo: String? = nil,
-        allocationMode: AllocationMode? = nil,
-        allocations: [(projectId: UUID, ratio: Int)]? = nil,
-        frequency: RecurringFrequency? = nil,
-        dayOfMonth: Int? = nil,
-        monthOfYear: Int? = nil,
-        isActive: Bool? = nil,
-        endDate: Date?? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
-        notificationTiming: NotificationTiming? = nil,
-        skipDates: [Date]? = nil,
-        receiptImagePath: String?? = nil,
-        paymentAccountId: String?? = nil,
-        transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil,
-        counterpartyId: UUID?? = nil,
-        counterparty: String?? = nil
-    ) {
-        guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
-        if let name { recurring.name = name }
-        if let type { recurring.type = type }
-        if let categoryId { recurring.categoryId = categoryId }
-        if let memo { recurring.memo = memo }
-        if let allocationMode { recurring.allocationMode = allocationMode }
-        if let frequency {
-            let frequencyChanged = recurring.frequency != frequency
-            recurring.frequency = frequency
-            if frequency == .monthly {
-                recurring.monthOfYear = nil
-                // monthlyに変更した場合、月次分割モードをクリア
-                recurring.yearlyAmortizationMode = .lumpSum
-                recurring.lastGeneratedMonths = []
-                if frequencyChanged {
-                    recurring.lastGeneratedDate = nil
-                }
-            } else {
-                if let monthOfYear {
-                    recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
-                }
-                if frequencyChanged {
-                    recurring.lastGeneratedDate = nil
-                    recurring.lastGeneratedMonths = []
-                }
-            }
-        } else if let monthOfYear {
-            recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
-        }
-        if let dayOfMonth { recurring.dayOfMonth = min(28, max(1, dayOfMonth)) }
-        if let isActive { recurring.isActive = isActive }
-        if let endDate { recurring.endDate = endDate }
-        if let yearlyAmortizationMode {
-            let previousMode = recurring.yearlyAmortizationMode
-            recurring.yearlyAmortizationMode = yearlyAmortizationMode
-            // モード切替時の処理
-            if previousMode != yearlyAmortizationMode {
-                if yearlyAmortizationMode == .lumpSum {
-                    // 月次→一括: lastGeneratedMonthsをクリア
-                    recurring.lastGeneratedMonths = []
-                }
-                // 一括→月次: lastGeneratedDateが今年ならその年は生成しない（既存ロジックで対応）
-            }
-        }
-        if let notificationTiming { recurring.notificationTiming = notificationTiming }
-        if let skipDates { recurring.skipDates = skipDates }
-        if let receiptImagePath { recurring.receiptImagePath = receiptImagePath }
-        if let paymentAccountId { recurring.paymentAccountId = paymentAccountId }
-        if let transferToAccountId { recurring.transferToAccountId = transferToAccountId }
-        if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
-        if let counterpartyId { recurring.counterpartyId = counterpartyId }
-        if let counterparty { recurring.counterparty = counterparty }
-        if counterpartyId != nil || counterparty != nil {
-            let resolvedCounterparty = resolveLegacyCounterpartyReference(
-                explicitId: recurring.counterpartyId,
-                rawName: recurring.counterparty,
-                defaultTaxCodeId: nil
-            )
-            recurring.counterpartyId = resolvedCounterparty.id
-            recurring.counterparty = resolvedCounterparty.displayName
-        }
-
-        let resolvedMode = allocationMode ?? recurring.allocationMode
-        let finalAmount = amount ?? recurring.amount
-        if let amount { recurring.amount = amount }
-
-        switch resolvedMode {
-        case .equalAll:
-            recurring.allocations = []
-        case .manual:
-            if let allocations {
-                recurring.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
-            } else if amount != nil {
-                recurring.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: recurring.allocations)
-            }
-        }
-
-        recurring.updatedAt = Date()
-        save()
-        refreshRecurring()
-        onRecurringScheduleChanged?(recurringTransactions)
-        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
-    }
-
-    func deleteRecurring(id: UUID) {
-        guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
-
-        // 生成済みトランザクションの recurringId をクリア（ダングリング参照防止）
-        let now = Date()
-        for transaction in transactions where transaction.recurringId == id {
-            transaction.recurringId = nil
-            transaction.updatedAt = now
-        }
-
-        // C4: save成功後に削除するため画像パスを保持
-        let imageToDelete = recurring.receiptImagePath
-        modelContext.delete(recurring)
-        if save() {
-            if let imagePath = imageToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshRecurring()
-        refreshTransactions()
-        onRecurringScheduleChanged?(recurringTransactions)
-    }
-#endif
 
     func getRecurring(id: UUID) -> PPRecurringTransaction? {
         recurringTransactions.first { $0.id == id }

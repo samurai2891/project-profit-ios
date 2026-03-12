@@ -44,9 +44,7 @@ struct PostingIntakeStore {
                 taxDeductibleRate: input.taxDeductibleRate,
                 taxAmount: input.taxAmount,
                 taxCodeId: input.taxCodeId,
-                taxRate: input.taxRate,
                 isTaxIncluded: input.isTaxIncluded,
-                taxCategory: input.taxCategory,
                 receiptImagePath: nil,
                 lineItems: [],
                 counterpartyId: input.counterpartyId,
@@ -126,6 +124,10 @@ struct PostingIntakeStore {
             }
 
             do {
+                let resolvedTaxCodeId = TaxCode.resolve(
+                    legacyCategory: entry.taxCategory,
+                    taxRate: entry.taxRate
+                )?.rawValue
                 let posting = try postingSupport.buildApprovedPosting(
                     seed: CanonicalPostingSeed(
                         id: UUID(),
@@ -139,10 +141,8 @@ struct PostingIntakeStore {
                         transferToAccountId: entry.type == .transfer ? entry.transferToAccountId : nil,
                         taxDeductibleRate: entry.type == .expense ? entry.taxDeductibleRate : nil,
                         taxAmount: entry.taxAmount,
-                        taxCodeId: nil,
-                        taxRate: entry.taxRate,
+                        taxCodeId: resolvedTaxCodeId,
                         isTaxIncluded: entry.isTaxIncluded,
-                        taxCategory: entry.taxCategory,
                         receiptImagePath: nil,
                         lineItems: [],
                         counterpartyId: nil,

@@ -172,6 +172,45 @@ final class BackupRestoreServiceTests: XCTestCase {
         XCTAssertNil(ProfileSecureStore.load(profileId: replacement.business.id.uuidString))
     }
 
+    func testApplyLegacyProfileOnlySnapshotRestoresCanonicalProfilesAndNormalizesSecurePayloadIds() throws {
+        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
+        let seeded = try seedSnapshotState(
+            profileId: "profile-legacy-restore",
+            transactionId: UUID(uuidString: "50000000-0000-0000-0000-000000000001")!,
+            transactionDate: Date(timeIntervalSince1970: 1_745_452_800),
+            receiptFileName: "receipt-legacy-restore.jpg",
+            documentId: UUID(uuidString: "50000000-0000-0000-0000-000000000002")!,
+            documentFileName: "document-legacy-restore.pdf",
+            securePostalCode: "5410041"
+        )
+        let archive = try BackupService(modelContext: context).export(scope: .full).archiveURL
+        let legacyProfileId = "legacy-profile-restore"
+        trackedProfileIds.insert(legacyProfileId)
+
+        let mutatedArchive = try rewriteAsLegacyProfileOnlySnapshot(
+            archiveURL: archive,
+            legacyProfileId: legacyProfileId,
+            transactionDate: seeded.transaction.date
+        )
+
+        let result = try RestoreService(modelContext: context).apply(snapshotURL: mutatedArchive)
+
+        let businessProfiles = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
+        let taxYearProfiles = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+
+        XCTAssertTrue(result.report.canApply)
+        XCTAssertEqual(businessProfiles.count, 1)
+        XCTAssertEqual(taxYearProfiles.map(\.taxYear), [seeded.taxYear.taxYear])
+        XCTAssertTrue(legacyProfiles.isEmpty)
+        XCTAssertEqual(businessProfiles.first?.ownerName, "Legacy Owner")
+        XCTAssertEqual(businessProfiles.first?.businessName, "Legacy商店")
+
+        let canonicalProfileId = try XCTUnwrap(businessProfiles.first?.businessId.uuidString)
+        XCTAssertEqual(ProfileSecureStore.load(profileId: canonicalProfileId)?.postalCode, "5410041")
+        XCTAssertNil(ProfileSecureStore.load(profileId: legacyProfileId))
+    }
+
     private func seedSnapshotState(
         profileId: String,
         transactionId: UUID,
@@ -289,5 +328,117 @@ final class BackupRestoreServiceTests: XCTestCase {
         try SnapshotArchiveStore.archiveDirectory(extracted.directory, to: tamperedURL)
         try FileManager.default.removeItem(at: extracted.directory)
         return tamperedURL
+    }
+
+    private func rewriteAsLegacyProfileOnlySnapshot(
+        archiveURL: URL,
+        legacyProfileId: String,
+        transactionDate: Date
+    ) throws -> URL {
+        let extracted = try extractSnapshot(from: archiveURL)
+        let securePayload = ProfileSensitivePayload(
+            ownerNameKana: "レガシーオーナー",
+            postalCode: "5410041",
+            address: "大阪府大阪市中央区1-1-1",
+            phoneNumber: "0612345678",
+            dateOfBirth: nil,
+            businessCategory: "IT",
+            myNumberFlag: true,
+            includeSensitiveInExport: true
+        )
+        let restoredFiscalYear = fiscalYear(for: transactionDate, startMonth: FiscalYearSettings.startMonth)
+        let legacyProfile = PPAccountingProfile(
+            id: legacyProfileId,
+            fiscalYear: restoredFiscalYear,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            taxOfficeCode: "1234",
+            isBlueReturn: false,
+            defaultPaymentAccountId: "acct-cash",
+            openingDate: Date(timeIntervalSince1970: 1_600_000_000),
+            lockedAt: Date(timeIntervalSince1970: 1_600_000_150),
+            createdAt: Date(timeIntervalSince1970: 1_600_000_100),
+            updatedAt: Date(timeIntervalSince1970: 1_600_000_200)
+        )
+        legacyProfile.ownerNameKana = securePayload.ownerNameKana
+        legacyProfile.postalCode = securePayload.postalCode
+        legacyProfile.address = securePayload.address
+        legacyProfile.phoneNumber = securePayload.phoneNumber
+        legacyProfile.dateOfBirth = securePayload.dateOfBirth
+        legacyProfile.businessCategory = securePayload.businessCategory
+        legacyProfile.myNumberFlag = securePayload.myNumberFlag
+        let legacySnapshot = LegacyAccountingProfileSnapshot(legacyProfile)
+
+        let payload = AppSnapshotPayload(
+            fiscalStartMonth: extracted.payload.fiscalStartMonth,
+            legacy: LegacySnapshotSection(
+                projects: extracted.payload.legacy.projects,
+                categories: extracted.payload.legacy.categories,
+                recurringTransactions: extracted.payload.legacy.recurringTransactions,
+                transactions: extracted.payload.legacy.transactions,
+                accounts: extracted.payload.legacy.accounts,
+                journalEntries: extracted.payload.legacy.journalEntries,
+                journalLines: extracted.payload.legacy.journalLines,
+                accountingProfiles: [legacySnapshot],
+                userRules: extracted.payload.legacy.userRules,
+                fixedAssets: extracted.payload.legacy.fixedAssets,
+                inventoryRecords: extracted.payload.legacy.inventoryRecords,
+                documentRecords: extracted.payload.legacy.documentRecords,
+                complianceLogs: extracted.payload.legacy.complianceLogs,
+                transactionLogs: extracted.payload.legacy.transactionLogs,
+                ledgerBooks: extracted.payload.legacy.ledgerBooks,
+                ledgerEntries: extracted.payload.legacy.ledgerEntries
+            ),
+            canonical: CanonicalSnapshotSection(
+                businessProfiles: [],
+                taxYearProfiles: [],
+                evidenceDocuments: extracted.payload.canonical.evidenceDocuments,
+                postingCandidates: extracted.payload.canonical.postingCandidates,
+                journalEntries: extracted.payload.canonical.journalEntries,
+                counterparties: extracted.payload.canonical.counterparties,
+                accounts: extracted.payload.canonical.accounts,
+                distributionRules: extracted.payload.canonical.distributionRules,
+                auditEvents: extracted.payload.canonical.auditEvents
+            )
+        )
+
+        let secureProfiles = [SnapshotSecureProfile(profileId: legacyProfileId, payload: securePayload)]
+        let payloadData = try BackupService.encoder.encode(payload)
+        let secureData = try BackupService.encoder.encode(secureProfiles)
+        try payloadData.write(to: extracted.directory.appendingPathComponent(BackupService.payloadFileName), options: .atomic)
+        try secureData.write(
+            to: extracted.directory
+                .appendingPathComponent("settings", isDirectory: true)
+                .appendingPathComponent(BackupService.securePayloadFileName),
+            options: .atomic
+        )
+
+        let updatedManifest = SnapshotManifest(
+            snapshotId: extracted.manifest.snapshotId,
+            createdAt: extracted.manifest.createdAt,
+            scope: extracted.manifest.scope,
+            fiscalStartMonth: extracted.manifest.fiscalStartMonth,
+            payloadChecksum: ReceiptImageStore.sha256Hex(data: payloadData),
+            securePayloadChecksum: ReceiptImageStore.sha256Hex(data: secureData),
+            fileRecords: extracted.manifest.fileRecords,
+            counts: extracted.manifest.counts.merging([
+                "legacy.accountingProfiles": 1,
+                "canonical.businessProfiles": 0,
+                "canonical.taxYearProfiles": 0,
+                "settings.secureProfiles": 1
+            ]) { _, new in new },
+            warnings: extracted.manifest.warnings
+        )
+        let manifestData = try BackupService.encoder.encode(updatedManifest)
+        try manifestData.write(
+            to: extracted.directory.appendingPathComponent(BackupService.manifestFileName),
+            options: .atomic
+        )
+
+        let mutatedURL = FileManager.default.temporaryDirectory.appendingPathComponent("legacy-only-\(UUID().uuidString).aar")
+        try SnapshotArchiveStore.archiveDirectory(extracted.directory, to: mutatedURL)
+        try FileManager.default.removeItem(at: extracted.directory)
+        return mutatedURL
     }
 }

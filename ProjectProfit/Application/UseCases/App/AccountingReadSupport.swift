@@ -416,6 +416,7 @@ struct AccountingReadSupport {
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
                 .flatMap { fetchCanonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty
+            let resolvedTaxCategory = transaction?.resolvedTaxCategory
 
             return AccountingLedgerEntry(
                 id: line.id,
@@ -426,7 +427,7 @@ struct AccountingReadSupport {
                 credit: line.credit,
                 runningBalance: runningBalance,
                 counterparty: resolvedCounterparty,
-                taxCategory: transaction?.taxCategory
+                taxCategory: resolvedTaxCategory
             )
         }
     }
@@ -517,6 +518,7 @@ struct AccountingReadSupport {
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
                 .flatMap { fetchCanonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty
+            let resolvedTaxCategory = transaction?.resolvedTaxCategory
 
             enrichedLines.append((
                 lineId: journalLine.id,
@@ -529,7 +531,7 @@ struct AccountingReadSupport {
                 credit: journalLine.credit,
                 counterAccountId: siblingLines.max(by: { $0.amount < $1.amount })?.accountId,
                 counterparty: resolvedCounterparty,
-                taxCategory: transaction?.taxCategory
+                taxCategory: resolvedTaxCategory
             ))
         }
 

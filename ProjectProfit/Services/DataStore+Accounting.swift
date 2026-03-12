@@ -306,86 +306,6 @@ struct ClosingEntryUseCase {
 extension DataStore {
     // MARK: - Manual Journal Entry CRUD
 
-#if DEBUG
-    @discardableResult
-    func addManualJournalEntry(
-        date: Date,
-        memo: String,
-        lines: [(accountId: String, debit: Int, credit: Int, memo: String)],
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) -> PPJournalEntry? {
-        guard !lines.isEmpty else { return nil }
-        if mutationSource == .userInitiated, FeatureFlags.useCanonicalPosting {
-            lastError = .legacyManualJournalMutationDisabled
-            return nil
-        }
-        // T5: 年度ロックガード
-        guard !isYearLocked(for: date) else { return nil }
-
-        let entry = PPJournalEntry(
-            sourceKey: "manual:\(UUID().uuidString)",
-            date: date,
-            entryType: .manual,
-            memo: memo,
-            isPosted: false
-        )
-        modelContext.insert(entry)
-
-        for (index, line) in lines.enumerated() {
-            let journalLine = PPJournalLine(
-                entryId: entry.id,
-                accountId: line.accountId,
-                debit: line.debit,
-                credit: line.credit,
-                memo: line.memo,
-                displayOrder: index
-            )
-            modelContext.insert(journalLine)
-        }
-
-        // バリデーション: 借方合計 == 貸方合計 かつ金額正常
-        let debitTotal = lines.reduce(0) { $0 + $1.debit }
-        let creditTotal = lines.reduce(0) { $0 + $1.credit }
-        let allLinesValid = lines.allSatisfy { line in
-            line.debit >= 0 && line.credit >= 0
-                && !(line.debit > 0 && line.credit > 0)
-                && (line.debit > 0 || line.credit > 0)
-        }
-        if debitTotal == creditTotal && debitTotal > 0 && allLinesValid {
-            entry.isPosted = true
-        }
-
-        save()
-        refreshJournalEntries()
-        refreshJournalLines()
-        return entry
-    }
-
-    func deleteManualJournalEntry(
-        id: UUID,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
-    ) {
-        guard let entry = journalEntries.first(where: { $0.id == id }) else { return }
-        guard entry.entryType == .manual else { return }
-        if mutationSource == .userInitiated, FeatureFlags.useCanonicalPosting {
-            lastError = .legacyManualJournalMutationDisabled
-            return
-        }
-        // T5: 年度ロックガード
-        if isYearLocked(for: entry.date) { return }
-
-        let linesToDelete = journalLines.filter { $0.entryId == id }
-        for line in linesToDelete {
-            modelContext.delete(line)
-        }
-        modelContext.delete(entry)
-
-        save()
-        refreshJournalEntries()
-        refreshJournalLines()
-    }
-#endif
-
     @discardableResult
     func saveApprovedPostingSynchronously(
         _ posting: CanonicalTransactionPostingBridge.Posting,
@@ -663,6 +583,7 @@ extension DataStore {
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[pair.entry.id])
                 .flatMap { canonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty
+            let resolvedTaxCategory = transaction?.resolvedTaxCategory
 
             return LedgerEntry(
                 id: pair.line.id,
@@ -673,7 +594,7 @@ extension DataStore {
                 credit: pair.line.credit,
                 runningBalance: runningBalance,
                 counterparty: resolvedCounterparty,
-                taxCategory: transaction?.taxCategory
+                taxCategory: resolvedTaxCategory
             )
         }
     }

@@ -192,6 +192,7 @@ final class PPTransaction {
     var journalEntryId: UUID?           // 対応する仕訳の ID（FK → PPJournalEntry.id）
     // Phase 5: 消費税対応フィールド
     var taxAmount: Int?                 // 消費税額（円）
+    var taxCodeId: String?              // canonical 消費税区分ID
     var taxRate: Int?                   // 税率（%: 8 or 10）
     var isTaxIncluded: Bool?            // 税込金額かどうか（true = amount は税込）
     var taxCategory: TaxCategory?       // 消費税区分
@@ -219,6 +220,7 @@ final class PPTransaction {
         bookkeepingMode: BookkeepingMode? = nil,
         journalEntryId: UUID? = nil,
         taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
@@ -244,10 +246,13 @@ final class PPTransaction {
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
         self.bookkeepingMode = bookkeepingMode
         self.journalEntryId = journalEntryId
+        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
+            ?? TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
         self.taxAmount = taxAmount
-        self.taxRate = taxRate
+        self.taxCodeId = resolvedTaxCode?.rawValue
+        self.taxRate = resolvedTaxCode?.taxRatePercent ?? taxRate
         self.isTaxIncluded = isTaxIncluded
-        self.taxCategory = taxCategory
+        self.taxCategory = resolvedTaxCode?.legacyCategory ?? taxCategory
         self.counterpartyId = counterpartyId
         self.counterparty = counterparty
         self.deletedAt = deletedAt
@@ -262,15 +267,26 @@ extension PPTransaction {
     /// 実効経費算入率（nil の場合は 100% = 全額経費）
     var effectiveTaxDeductibleRate: Int { taxDeductibleRate ?? 100 }
 
+    var resolvedTaxCode: TaxCode? {
+        guard let taxCodeId else {
+            return nil
+        }
+        return TaxCode.resolve(id: taxCodeId)
+    }
+
+    var resolvedTaxCategory: TaxCategory? {
+        resolvedTaxCode?.legacyCategory
+    }
+
     /// 経費算入後の金額（家事按分適用後）
     /// 整数除算のため端数切り捨て。例: 999円 × 50% = 499円
     var deductibleAmount: Int {
         amount * effectiveTaxDeductibleRate / 100
     }
 
-    /// 実効税率（taxCategory の rate を優先、なければ taxRate、なければ 0）
+    /// 実効税率（canonical tax code を優先、なければ legacy 値を使用）
     var effectiveTaxRate: Int {
-        taxCategory?.rate ?? taxRate ?? 0
+        resolvedTaxCode?.taxRatePercent ?? taxRate ?? 0
     }
 
     /// 税抜金額（税込の場合は逆算、税抜の場合はそのまま）

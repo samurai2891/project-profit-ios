@@ -294,6 +294,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     let bookkeepingMode: BookkeepingMode?
     let journalEntryId: UUID?
     let taxAmount: Int?
+    let taxCodeId: String?
     let taxRate: Int?
     let isTaxIncluded: Bool?
     let taxCategory: TaxCategory?
@@ -321,6 +322,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
         self.bookkeepingMode = transaction.bookkeepingMode
         self.journalEntryId = transaction.journalEntryId
         self.taxAmount = transaction.taxAmount
+        self.taxCodeId = transaction.taxCodeId
         self.taxRate = transaction.taxRate
         self.isTaxIncluded = transaction.isTaxIncluded
         self.taxCategory = transaction.taxCategory
@@ -350,6 +352,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
             bookkeepingMode: bookkeepingMode,
             journalEntryId: journalEntryId,
             taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
@@ -493,7 +496,6 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
     let defaultPaymentAccountId: String
     let openingDate: Date?
     let lockedAt: Date?
-    let lockedYears: [Int]?
     let ownerNameKana: String?
     let postalCode: String?
     let address: String?
@@ -515,7 +517,6 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         self.defaultPaymentAccountId = profile.defaultPaymentAccountId
         self.openingDate = profile.openingDate
         self.lockedAt = profile.lockedAt
-        self.lockedYears = profile.lockedYears
         self.ownerNameKana = profile.ownerNameKana
         self.postalCode = profile.postalCode
         self.address = profile.address
@@ -527,6 +528,73 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         self.updatedAt = profile.updatedAt
     }
 
+    func toBusinessProfile(
+        existingId: UUID? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil
+    ) -> BusinessProfile {
+        BusinessProfile(
+            id: existingId ?? UUID(),
+            ownerName: ownerName,
+            ownerNameKana: normalized(sensitivePayload?.ownerNameKana ?? ownerNameKana),
+            businessName: businessName,
+            defaultPaymentAccountId: defaultPaymentAccountId,
+            businessAddress: normalized(sensitivePayload?.address ?? address),
+            postalCode: normalized(sensitivePayload?.postalCode ?? postalCode),
+            phoneNumber: normalized(sensitivePayload?.phoneNumber ?? phoneNumber),
+            openingDate: openingDate,
+            taxOfficeCode: normalized(taxOfficeCode),
+            invoiceRegistrationNumber: nil,
+            invoiceIssuerStatus: .unknown,
+            defaultCurrency: "JPY",
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    func toTaxYearProfile(
+        businessId: UUID,
+        taxPackVersion: String = "legacy-restored",
+        existingId: UUID? = nil
+    ) -> TaxYearProfile {
+        let bookkeepingBasis: BookkeepingBasis = switch bookkeepingMode {
+        case .singleEntry:
+            .singleEntry
+        case .doubleEntry, .auto, .locked:
+            .doubleEntry
+        }
+        let blueDeductionLevel: BlueDeductionLevel = {
+            guard isBlueReturn else {
+                return .none
+            }
+            switch bookkeepingMode {
+            case .singleEntry:
+                return .ten
+            case .doubleEntry, .auto, .locked:
+                return .sixtyFive
+            }
+        }()
+
+        return TaxYearProfile(
+            id: existingId ?? UUID(),
+            businessId: businessId,
+            taxYear: fiscalYear,
+            filingStyle: isBlueReturn ? .blueGeneral : .white,
+            blueDeductionLevel: blueDeductionLevel,
+            bookkeepingBasis: bookkeepingBasis,
+            vatStatus: .exempt,
+            vatMethod: .general,
+            simplifiedBusinessCategory: nil,
+            invoiceIssuerStatusAtYear: .unknown,
+            electronicBookLevel: .none,
+            etaxSubmissionPlanned: false,
+            yearLockState: lockedAt == nil ? .open : .finalLock,
+            taxPackVersion: taxPackVersion,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    @available(*, deprecated, message: "Legacy profile snapshots are restore-compat only. Convert to canonical profiles instead.")
     func toModel() -> PPAccountingProfile {
         PPAccountingProfile(
             id: id,
@@ -539,7 +607,6 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
             defaultPaymentAccountId: defaultPaymentAccountId,
             openingDate: openingDate,
             lockedAt: lockedAt,
-            lockedYears: lockedYears,
             ownerNameKana: ownerNameKana,
             postalCode: postalCode,
             address: address,
@@ -550,6 +617,10 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private func normalized(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }
 

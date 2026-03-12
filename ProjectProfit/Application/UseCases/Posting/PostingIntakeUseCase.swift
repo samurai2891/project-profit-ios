@@ -13,9 +13,7 @@ struct ManualPostingCandidateInput: Sendable {
     let taxDeductibleRate: Int?
     let taxAmount: Int?
     let taxCodeId: String?
-    let taxRate: Int?
     let isTaxIncluded: Bool?
-    let taxCategory: TaxCategory?
     let counterpartyId: UUID?
     let counterparty: String?
     let candidateSource: CandidateSource

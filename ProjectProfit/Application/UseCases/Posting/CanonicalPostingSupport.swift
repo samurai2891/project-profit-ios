@@ -26,6 +26,59 @@ struct CanonicalPostingSeed: Sendable {
     let createdAt: Date
     let updatedAt: Date
     let journalEntryId: UUID?
+
+    init(
+        id: UUID,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        recurringId: UUID?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxCodeId: String?,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool?,
+        taxCategory: TaxCategory? = nil,
+        receiptImagePath: String?,
+        lineItems: [ReceiptLineItem],
+        counterpartyId: UUID?,
+        counterpartyName: String?,
+        source: CandidateSource,
+        createdAt: Date,
+        updatedAt: Date,
+        journalEntryId: UUID?
+    ) {
+        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
+            ?? TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
+
+        self.id = id
+        self.type = type
+        self.amount = amount
+        self.date = date
+        self.categoryId = categoryId
+        self.memo = memo
+        self.recurringId = recurringId
+        self.paymentAccountId = paymentAccountId
+        self.transferToAccountId = transferToAccountId
+        self.taxDeductibleRate = taxDeductibleRate
+        self.taxAmount = taxAmount
+        self.taxCodeId = resolvedTaxCode?.rawValue
+        self.taxRate = resolvedTaxCode?.taxRatePercent
+        self.isTaxIncluded = isTaxIncluded
+        self.taxCategory = resolvedTaxCode?.legacyCategory
+        self.receiptImagePath = receiptImagePath
+        self.lineItems = lineItems
+        self.counterpartyId = counterpartyId
+        self.counterpartyName = counterpartyName
+        self.source = source
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.journalEntryId = journalEntryId
+    }
 }
 
 @MainActor
@@ -64,11 +117,7 @@ struct CanonicalPostingSupport {
             throw AppError.invalidInput(message: "事業者プロフィールが未設定のため承認待ち候補を作成できません")
         }
 
-        let explicitTaxCodeId = resolvedExplicitTaxCodeId(
-            explicitTaxCodeId: seed.taxCodeId,
-            taxCategory: seed.taxCategory,
-            taxRate: seed.taxRate
-        )
+        let explicitTaxCodeId = seed.taxCodeId
         let resolvedCounterparty = try resolveCounterpartyReference(
             explicitId: seed.counterpartyId,
             rawName: seed.counterpartyName,
@@ -413,20 +462,6 @@ struct CanonicalPostingSupport {
             return nil
         }
         return trimmed
-    }
-
-    private func resolvedExplicitTaxCodeId(
-        explicitTaxCodeId: String?,
-        taxCategory: TaxCategory?,
-        taxRate: Int?
-    ) -> String? {
-        if let explicitTaxCodeId {
-            return explicitTaxCodeId
-        }
-        return TaxCode.resolve(
-            legacyCategory: taxCategory,
-            taxRate: taxRate
-        )?.rawValue
     }
 
     private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {

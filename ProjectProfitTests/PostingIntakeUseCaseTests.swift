@@ -50,9 +50,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
                 taxDeductibleRate: 100,
                 taxAmount: 1_200,
                 taxCodeId: TaxCode.standard10.rawValue,
-                taxRate: 10,
                 isTaxIncluded: false,
-                taxCategory: .standardRate,
                 counterpartyId: nil,
                 counterparty: nil,
                 candidateSource: .manual
@@ -65,6 +63,9 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(candidate.status, .draft)
         XCTAssertEqual(candidate.source, .manual)
         XCTAssertEqual(candidate.legacySnapshot?.categoryId, "cat-tools")
+        XCTAssertEqual(candidate.legacySnapshot?.taxCodeId, TaxCode.standard10.rawValue)
+        XCTAssertEqual(candidate.legacySnapshot?.taxRate, 10)
+        XCTAssertEqual(candidate.legacySnapshot?.taxCategory, .standardRate)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
         XCTAssertEqual(journals.count, beforeJournals.count)
         XCTAssertTrue(pendingCandidates.contains(where: { $0.id == candidate.id }))
@@ -90,9 +91,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
                     taxDeductibleRate: nil,
                     taxAmount: nil,
                     taxCodeId: nil,
-                    taxRate: nil,
                     isTaxIncluded: nil,
-                    taxCategory: nil,
                     counterpartyId: nil,
                     counterparty: nil,
                     candidateSource: .manual

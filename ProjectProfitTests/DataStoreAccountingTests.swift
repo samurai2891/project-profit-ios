@@ -1079,6 +1079,31 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(counterparties.first?.defaultTaxCodeId, TaxCode.standard10.rawValue)
     }
 
+    func testLoadDataBackfillsTransactionTaxCodeIdFromLegacyFields() throws {
+        let transaction = PPTransaction(
+            type: .expense,
+            amount: 1_100,
+            date: Date(),
+            categoryId: "cat-tools",
+            memo: "legacy tax",
+            allocations: [],
+            paymentAccountId: "acct-cash",
+            taxAmount: 100,
+            taxRate: 10,
+            isTaxIncluded: true,
+            taxCategory: .standardRate
+        )
+        transaction.taxCodeId = nil
+        context.insert(transaction)
+        try context.save()
+
+        dataStore.loadData()
+
+        let reloaded = try XCTUnwrap(dataStore.allTransactions.first(where: { $0.id == transaction.id }))
+        XCTAssertEqual(reloaded.taxCodeId, TaxCode.standard10.rawValue)
+        XCTAssertEqual(reloaded.resolvedTaxCategory, .standardRate)
+    }
+
     func testSyncCanonicalArtifactsFallsBackToCounterpartyDefaultTaxCode() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let project = mutations(dataStore).addProject(name: "Tax Default Project", description: "")
