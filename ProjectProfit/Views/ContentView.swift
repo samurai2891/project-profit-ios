@@ -62,18 +62,7 @@ struct ContentView: View {
                     store.recalculateAllPartialPeriodProjects()
                 },
                 loadProfile: { defaultTaxYear in
-                    await ProfileSettingsWorkflowUseCase(
-                        modelContext: store.modelContext,
-                        ports: .init(
-                            readSensitivePayload: { store.profileSensitivePayload },
-                            readCurrentTaxYear: { store.currentTaxYearProfile?.taxYear },
-                            applyState: { store.applyProfileSettingsState($0) },
-                            persistSensitivePayload: { payload, businessProfileId in
-                                store.persistSensitivePayload(payload, businessProfileId: businessProfileId)
-                            },
-                            setLastError: { store.lastError = $0 }
-                        )
-                    ).loadProfile(defaultTaxYear: defaultTaxYear)
+                    await loadCanonicalProfile(for: store, defaultTaxYear: defaultTaxYear)
                 }
             )
         )
@@ -94,6 +83,27 @@ struct ContentView: View {
                 writeCurrentError: { store.lastError = $0 }
             )
         )
+    }
+
+    @MainActor
+    private func loadCanonicalProfile(for store: DataStore, defaultTaxYear: Int?) async -> Bool {
+        WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: store.modelContext)
+
+        let resolvedTaxYear = defaultTaxYear
+            ?? store.currentTaxYearProfile?.taxYear
+            ?? Calendar.current.component(.year, from: Date())
+
+        do {
+            _ = try await ProfileSettingsUseCase(modelContext: store.modelContext).load(
+                defaultTaxYear: resolvedTaxYear
+            )
+            store.lastError = nil
+            return true
+        } catch {
+            AppLogger.dataStore.error("Failed to prepare canonical profile during bootstrap: \(error.localizedDescription)")
+            store.lastError = .dataLoadFailed(underlying: error)
+            return false
+        }
     }
 }
 

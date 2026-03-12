@@ -787,6 +787,8 @@ struct ReceiptReviewView: View {
             prefix = "mail"
         case .importedPDF:
             prefix = "import"
+        case .importedCSV:
+            prefix = "csv"
         case .manualNoFile:
             prefix = "manual"
         }

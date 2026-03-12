@@ -7,5 +7,6 @@ enum EvidenceSourceType: String, Codable, Sendable, CaseIterable {
     case scannedPDF
     case emailAttachment
     case importedPDF
+    case importedCSV
     case manualNoFile
 }

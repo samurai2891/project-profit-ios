@@ -1,6 +1,19 @@
 import Foundation
 import SwiftData
 
+enum CSVImportChannel: Sendable, Equatable {
+    case settingsTransactionCSV
+    case ledgerBook(ledgerType: LedgerType, metadataJSON: String?)
+}
+
+struct CSVImportRequest: Sendable, Equatable {
+    let csvString: String
+    let originalFileName: String
+    let fileData: Data
+    let mimeType: String
+    let channel: CSVImportChannel
+}
+
 struct ManualPostingCandidateInput: Sendable {
     let type: TransactionType
     let amount: Int
@@ -46,9 +59,9 @@ struct PostingIntakeUseCase {
         )
     }
 
-    func importTransactions(csvString: String) async -> CSVImportResult {
+    func importTransactions(request: CSVImportRequest) async -> CSVImportResult {
         await repository.importTransactions(
-            csvString: csvString,
+            request: request,
             postingWorkflowUseCase: postingWorkflowUseCase
         )
     }
@@ -61,7 +74,7 @@ private protocol PostingIntakeRepository {
         postingWorkflowUseCase: PostingWorkflowUseCase
     ) async throws -> PostingCandidate
     func importTransactions(
-        csvString: String,
+        request: CSVImportRequest,
         postingWorkflowUseCase: PostingWorkflowUseCase
     ) async -> CSVImportResult
 }
@@ -85,11 +98,11 @@ private struct SwiftDataPostingIntakeRepository: PostingIntakeRepository {
     }
 
     func importTransactions(
-        csvString: String,
+        request: CSVImportRequest,
         postingWorkflowUseCase: PostingWorkflowUseCase
     ) async -> CSVImportResult {
         await store.importTransactions(
-            csvString: csvString,
+            request: request,
             postingWorkflowUseCase: postingWorkflowUseCase
         )
     }

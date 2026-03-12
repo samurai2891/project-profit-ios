@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct CounterpartyFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -24,17 +23,16 @@ struct CounterpartyFormView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var registrationNumberError: String?
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
+    @State private var availableAccounts: [CanonicalAccount] = []
 
     private var isEditMode: Bool { counterparty != nil }
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && registrationNumberError == nil
     }
-    private var availableAccounts: [CanonicalAccount] {
-        dataStore.canonicalAccounts().filter { $0.archivedAt == nil }
-    }
     private var availableProjects: [PPProject] {
-        dataStore.projects.filter { $0.isArchived != true }
+        formSnapshot.projects.filter { $0.isArchived != true }
     }
 
     init(counterparty: Counterparty?, onSaved: (() -> Void)? = nil) {
@@ -123,6 +121,9 @@ struct CounterpartyFormView: View {
             }
         }
         .onAppear { populateFields() }
+        .task {
+            await loadReferenceData()
+        }
         .alert("エラー", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -130,6 +131,28 @@ struct CounterpartyFormView: View {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private func loadReferenceData() async {
+        do {
+            let snapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+            formSnapshot = snapshot
+
+            guard let businessId = snapshot.businessId else {
+                availableAccounts = []
+                errorMessage = nil
+                return
+            }
+
+            availableAccounts = try await ChartOfAccountsUseCase(modelContext: modelContext)
+                .accounts(businessId: businessId)
+                .filter { $0.archivedAt == nil }
+            errorMessage = nil
+        } catch {
+            formSnapshot = .empty
+            availableAccounts = []
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -164,7 +187,7 @@ struct CounterpartyFormView: View {
     }
 
     private func save() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = formSnapshot.businessId else {
             errorMessage = "事業者情報が未設定です"
             return
         }

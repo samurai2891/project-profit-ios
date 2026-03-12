@@ -2684,18 +2684,21 @@ final class DataStoreCRUDTests: XCTestCase {
         let result = await mutations(dataStore).importTransactions(from: csv)
         XCTAssertEqual(result.successCount, 1)
         XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(result.evidenceCount, 1)
+        XCTAssertEqual(result.candidateCount, 1)
         XCTAssertTrue(dataStore.transactions.isEmpty)
 
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let journals = try await PostingWorkflowUseCase(modelContext: context).journals(
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let journals = try await workflow.journals(
             businessId: businessId,
             taxYear: 2026
         )
-        XCTAssertEqual(journals.count, 1)
-        let journal = try XCTUnwrap(journals.first)
-        XCTAssertEqual(journal.entryType, .normal)
-        XCTAssertEqual(journal.totalDebit, Decimal(5000))
-        XCTAssertEqual(journal.totalCredit, Decimal(5000))
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
+        XCTAssertEqual(journals.count, 0)
+        XCTAssertTrue(pending.contains(where: {
+            $0.memo == "口座間移動" && $0.status == .needsReview && $0.source == .importFile
+        }))
     }
 
     func testImportTransactionsRejectsRatioNotEqual100() async {

@@ -28,8 +28,7 @@ struct TransactionFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
-    @State private var pendingDistributionPreview: DistributionTemplatePreview?
-    @State private var showDistributionPreviewConfirmation = false
+    @State private var pendingDistributionApproval: DistributionTemplateApplicationUseCase.ApprovalPreview?
     @State private var formSnapshot: TransactionFormSnapshot = .empty
     @State private var didPrepareForm = false
     // Phase 4C: 会計フィールド
@@ -51,6 +50,10 @@ struct TransactionFormView: View {
 
     private var isLegacyEditingDisabled: Bool {
         !formSnapshot.isLegacyTransactionEditingEnabled && isEditMode
+    }
+
+    private var hasPendingDistributionApproval: Bool {
+        pendingDistributionApproval != nil
     }
 
     private var paymentAccounts: [PPAccount] {
@@ -117,11 +120,8 @@ struct TransactionFormView: View {
         PostingIntakeUseCase(modelContext: modelContext)
     }
 
-    private struct DistributionTemplatePreview {
-        let templateName: String
-        let allocations: [(projectId: UUID, ratio: Int)]
-        let warnings: [String]
-        let totalAllocatedAmount: Int
+    private var distributionTemplateApplicationUseCase: DistributionTemplateApplicationUseCase {
+        DistributionTemplateApplicationUseCase()
     }
 
     var body: some View {
@@ -185,21 +185,6 @@ struct TransactionFormView: View {
             } message: {
                 Text(saveError ?? "保存に失敗しました")
             }
-            .confirmationDialog(
-                "配賦テンプレートを適用",
-                isPresented: $showDistributionPreviewConfirmation,
-                titleVisibility: .visible,
-                presenting: pendingDistributionPreview
-            ) { _ in
-                Button("適用する") {
-                    confirmDistributionTemplatePreview()
-                }
-                Button("キャンセル", role: .cancel) {
-                    pendingDistributionPreview = nil
-                }
-            } message: { preview in
-                Text(distributionPreviewMessage(for: preview))
-            }
             .navigationTitle(
                 isEditMode
                     ? "取引を編集"
@@ -214,19 +199,27 @@ struct TransactionFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
-                        .disabled(!isValid || isSubmitting || isLegacyEditingDisabled)
+                        .disabled(!isValid || isSubmitting || isLegacyEditingDisabled || hasPendingDistributionApproval)
                         .accessibilityLabel("保存")
                         .accessibilityHint(
                             isLegacyEditingDisabled
                                 ? formSnapshot.legacyTransactionMutationDisabledMessage
-                                : (isCanonicalDraftMode
+                                : (hasPendingDistributionApproval
+                                    ? "配賦テンプレートのプレビューを承認または破棄してください"
+                                    : (isCanonicalDraftMode
                                     ? (isValid ? "タップして承認待ち候補を保存" : "すべての必須項目を入力してください")
-                                    : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください"))
+                                    : (isValid ? "タップして取引を保存" : "すべての必須項目を入力してください")))
                         )
                 }
             }
             .onAppear { prepareFormIfNeeded() }
-            .onChange(of: type) { _, _ in autoSelectCategory() }
+            .onChange(of: type) { _, _ in
+                autoSelectCategory()
+                invalidatePendingDistributionApproval()
+            }
+            .onChange(of: amountText) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: date) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: selectedDistributionTemplateId) { _, _ in invalidatePendingDistributionApproval() }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
             }
@@ -689,6 +682,7 @@ struct TransactionFormView: View {
             || !distributionTemplates.isEmpty
             || distributionTemplateErrorMessage != nil
             || unavailableDistributionTemplateCount > 0
+            || pendingDistributionApproval != nil
         {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -711,8 +705,8 @@ struct TransactionFormView: View {
                     }
                     .pickerStyle(.menu)
 
-                    Button("テンプレートを適用") {
-                        applySelectedDistributionTemplate()
+                    Button("テンプレートをプレビュー") {
+                        previewSelectedDistributionTemplate()
                     }
                     .disabled(selectedDistributionTemplateId == nil)
                 } else if !isLoadingDistributionTemplates {
@@ -732,10 +726,105 @@ struct TransactionFormView: View {
                         .font(.caption)
                         .foregroundStyle(AppColors.error)
                 }
+
+                if let pendingDistributionApproval {
+                    distributionApprovalCard(preview: pendingDistributionApproval)
+                }
             }
             .padding(12)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func distributionApprovalCard(
+        preview: DistributionTemplateApplicationUseCase.ApprovalPreview
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("承認待ちプレビュー")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppColors.primary)
+
+            Text(preview.ruleName)
+                .font(.subheadline.weight(.semibold))
+
+            distributionApprovalStateView(title: "変更前", state: preview.currentState)
+
+            if let proposedState = preview.proposedState {
+                distributionApprovalStateView(title: "変更後", state: proposedState)
+            }
+
+            if !preview.warnings.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(preview.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+            }
+
+            HStack {
+                Button("破棄", role: .destructive) {
+                    discardPendingDistributionApproval()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("承認して反映") {
+                    applyPendingDistributionApproval()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
+    }
+
+    private func distributionApprovalStateView(
+        title: String,
+        state: DistributionTemplateApplicationUseCase.ApprovalState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            switch state {
+            case .equalAll:
+                Text(AllocationMode.equalAll.label)
+                    .font(.subheadline)
+            case let .manual(allocations):
+                if allocations.isEmpty {
+                    Text("未設定")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(allocations, id: \.projectId) { allocation in
+                            let name = transactionFormQueryUseCase.projectName(
+                                id: allocation.projectId,
+                                snapshot: formSnapshot
+                            ) ?? "不明なプロジェクト"
+                            HStack {
+                                Text(name)
+                                Spacer()
+                                Text("\(allocation.ratio)%")
+                                    .foregroundStyle(.secondary)
+                                Text(formatCurrency(allocation.amount))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -870,59 +959,57 @@ struct TransactionFormView: View {
         }
     }
 
-    private func applySelectedDistributionTemplate() {
+    private func previewSelectedDistributionTemplate() {
         guard let selectedDistributionTemplateId,
               let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
         else {
             return
         }
 
-        let preview = transactionFormQueryUseCase.previewDistribution(
+        let preview = distributionTemplateApplicationUseCase.makeApprovalPreview(
             rule: rule,
-            snapshot: formSnapshot,
+            currentState: distributionTemplateApplicationUseCase.currentApprovalState(
+                allocationMode: .manual,
+                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                totalAmount: Int(amountText) ?? 0
+            ),
+            projects: formSnapshot.projects,
             referenceDate: date,
-            totalAmount: Int(amountText) ?? 0
+            totalAmount: Int(amountText) ?? 0,
+            supportsEqualAllMode: false
         )
 
-        guard !preview.allocations.isEmpty else {
-            pendingDistributionPreview = nil
+        guard preview.isApprovable else {
+            pendingDistributionApproval = nil
             distributionTemplateErrorMessage = preview.warnings.first ?? "配賦プレビューを生成できませんでした。"
             return
         }
 
-        pendingDistributionPreview = DistributionTemplatePreview(
-            templateName: rule.name,
-            allocations: preview.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-            warnings: preview.warnings,
-            totalAllocatedAmount: preview.totalAllocatedAmount
-        )
-        showDistributionPreviewConfirmation = true
+        pendingDistributionApproval = preview
         distributionTemplateErrorMessage = nil
     }
 
-    private func confirmDistributionTemplatePreview() {
-        guard let preview = pendingDistributionPreview else { return }
-        allocations = preview.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
-        pendingDistributionPreview = nil
+    private func applyPendingDistributionApproval() {
+        guard let pendingDistributionApproval else { return }
+        do {
+            let approved = try distributionTemplateApplicationUseCase.approve(pendingDistributionApproval)
+            allocations = approved.allocations.map { allocation in
+                (id: UUID(), projectId: allocation.projectId, ratio: allocation.ratio)
+            }
+            self.pendingDistributionApproval = nil
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
+        }
     }
 
-    private func distributionPreviewMessage(for preview: DistributionTemplatePreview) -> String {
-        if preview.allocations.isEmpty {
-            return "\(preview.templateName) の適用対象がありません。"
-        }
+    private func discardPendingDistributionApproval() {
+        pendingDistributionApproval = nil
+    }
 
-        let rows = preview.allocations
-            .map { allocation in
-                let name = transactionFormQueryUseCase.projectName(
-                    id: allocation.projectId,
-                    snapshot: formSnapshot
-                ) ?? "不明なプロジェクト"
-                return "・\(name): \(allocation.ratio)%"
-            }
-            .joined(separator: "\n")
-        let warnings = preview.warnings.map { "注意: \($0)" }.joined(separator: "\n")
-        let warningBlock = warnings.isEmpty ? "" : "\n\n\(warnings)"
-        return "\(preview.templateName) を適用します。\n\n\(rows)\n\n配賦合計: \(formatCurrency(preview.totalAllocatedAmount))\(warningBlock)"
+    private func invalidatePendingDistributionApproval() {
+        guard pendingDistributionApproval != nil else { return }
+        pendingDistributionApproval = nil
     }
 
     private func applySelectedCounterpartyDefaults() {
@@ -952,6 +1039,10 @@ struct TransactionFormView: View {
         guard isValid, let amount = Int(amountText) else { return }
         guard !isLegacyEditingDisabled else {
             saveError = formSnapshot.legacyTransactionMutationDisabledMessage
+            return
+        }
+        guard !hasPendingDistributionApproval else {
+            saveError = "配賦テンプレートのプレビューを承認または破棄してください。"
             return
         }
         isSubmitting = true

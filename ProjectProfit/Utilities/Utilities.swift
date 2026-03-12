@@ -580,13 +580,70 @@ func redistributeAllocations(totalAmount: Int, remainingAllocations: [Allocation
 
 // MARK: - CSV Import
 
+struct CSVImportLineError: Identifiable, Equatable {
+    let line: Int
+    let reason: String
+
+    var id: String {
+        "\(line):\(reason)"
+    }
+}
+
 struct CSVImportResult {
+    let evidenceCount: Int
+    let candidateCount: Int
+    let assetCount: Int
     let successCount: Int
     let errorCount: Int
     let errors: [String]
+    let lineErrors: [CSVImportLineError]
+
+    init(
+        evidenceCount: Int = 0,
+        candidateCount: Int = 0,
+        assetCount: Int = 0,
+        errors: [String] = [],
+        lineErrors: [CSVImportLineError] = []
+    ) {
+        let normalizedErrors = errors.isEmpty && !lineErrors.isEmpty
+            ? lineErrors.map { "行\($0.line): \($0.reason)" }
+            : errors
+
+        self.evidenceCount = evidenceCount
+        self.candidateCount = candidateCount
+        self.assetCount = assetCount
+        self.successCount = candidateCount + assetCount
+        self.lineErrors = lineErrors
+        self.errorCount = normalizedErrors.count
+        self.errors = normalizedErrors
+    }
+
+    init(
+        successCount: Int,
+        errorCount: Int,
+        errors: [String],
+        evidenceCount: Int = 0,
+        candidateCount: Int? = nil,
+        assetCount: Int = 0,
+        lineErrors: [CSVImportLineError] = []
+    ) {
+        let normalizedCandidateCount = candidateCount ?? successCount
+        let normalizedErrors = errors.isEmpty && !lineErrors.isEmpty
+            ? lineErrors.map { "行\($0.line): \($0.reason)" }
+            : errors
+
+        self.evidenceCount = evidenceCount
+        self.candidateCount = normalizedCandidateCount
+        self.assetCount = assetCount
+        self.successCount = successCount
+        self.lineErrors = lineErrors
+        self.errorCount = max(errorCount, normalizedErrors.count)
+        self.errors = normalizedErrors
+    }
 }
 
 struct CSVParsedTransaction {
+    let sourceLine: Int
     let type: TransactionType
     let amount: Int
     let date: Date
@@ -629,7 +686,7 @@ func parseCSV(csvString: String) -> [CSVParsedTransaction] {
 
     var results: [CSVParsedTransaction] = []
 
-    for line in lines.dropFirst() {
+    for (index, line) in lines.dropFirst().enumerated() {
         let fields = parseCSVLine(line)
         guard fields.count >= 6 else { continue }
 
@@ -654,6 +711,7 @@ func parseCSV(csvString: String) -> [CSVParsedTransaction] {
         let allocations = parseProjectAllocations(projectStr)
 
         results.append(CSVParsedTransaction(
+            sourceLine: index + 2,
             type: type,
             amount: amount,
             date: date,

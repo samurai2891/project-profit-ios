@@ -28,6 +28,19 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         super.tearDown()
     }
 
+    private func makeCSVRequest(
+        _ csv: String,
+        fileName: String = "import.csv"
+    ) -> CSVImportRequest {
+        CSVImportRequest(
+            csvString: csv,
+            originalFileName: fileName,
+            fileData: Data(csv.utf8),
+            mimeType: "text/csv",
+            channel: .settingsTransactionCSV
+        )
+    }
+
     func testSaveManualCandidateCreatesDraftWithoutLegacyTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
@@ -108,31 +121,42 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         }
     }
 
-    func testImportTransactionsCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
+    func testImportTransactionsCreatesNeedsReviewCandidateAndEvidenceWithoutLegacyMirrorTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let beforeTransactions = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let beforePending = try await workflow.pendingCandidates(businessId: businessId)
+        let evidenceRepository = SwiftDataEvidenceRepository(modelContext: context)
+        let beforeEvidence = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2026)
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,税率,税込区分,税区分
         2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み,acct-cash,10,税込,課税（10%）
         """
 
-        let result = await useCase.importTransactions(csvString: csv)
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv))
         dataStore.refreshProjects()
         dataStore.refreshTransactions()
-        dataStore.refreshJournalEntries()
-        dataStore.refreshJournalLines()
         let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
+        let evidence = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2026)
         let project = try XCTUnwrap(dataStore.projects.first { $0.name == "ImportProject" })
+        let imported = try XCTUnwrap(pending.first { $0.memo == "CSV取り込み" })
 
         XCTAssertEqual(result.successCount, 1)
         XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(result.evidenceCount, 1)
+        XCTAssertEqual(result.candidateCount, 1)
+        XCTAssertEqual(result.assetCount, 0)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
-        XCTAssertEqual(journals.count, beforeJournals.count + 1)
-        XCTAssertEqual(Set(journals.last?.lines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
-        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 5_500)
+        XCTAssertEqual(journals.count, beforeJournals.count)
+        XCTAssertEqual(pending.count, beforePending.count + 1)
+        XCTAssertEqual(evidence.count, beforeEvidence.count + 1)
+        XCTAssertEqual(imported.status, .needsReview)
+        XCTAssertEqual(imported.source, .importFile)
+        XCTAssertNotNil(imported.evidenceId)
+        XCTAssertTrue(imported.proposedLines.contains(where: { $0.projectAllocationId == project.id }))
     }
 
     func testImportTransactionsReportsInvalidAllocationRatio() async {
@@ -141,11 +165,12 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         2026-01-10,経費,5500,ツール,ImportProjectA(60%);ImportProjectB(30%),CSV取り込み
         """
 
-        let result = await useCase.importTransactions(csvString: csv)
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv))
 
         XCTAssertEqual(result.successCount, 0)
         XCTAssertEqual(result.errorCount, 1)
-        XCTAssertEqual(result.errors.first, "配分比率が不正です（合計: 90%）")
+        XCTAssertEqual(result.errors.first, "行2: 配分比率が不正です（合計: 90%）")
+        XCTAssertEqual(result.evidenceCount, 1)
     }
 
     func testImportTransactionsReportsUnknownCategory() async {
@@ -154,10 +179,25 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         2026-01-10,経費,5500,存在しないカテゴリ,ImportProject(100%),CSV取り込み
         """
 
-        let result = await useCase.importTransactions(csvString: csv)
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv))
 
         XCTAssertEqual(result.successCount, 0)
         XCTAssertEqual(result.errorCount, 1)
-        XCTAssertEqual(result.errors.first, "カテゴリが見つかりません: 存在しないカテゴリ")
+        XCTAssertEqual(result.errors.first, "行2: カテゴリが見つかりません: 存在しないカテゴリ")
+        XCTAssertEqual(result.lineErrors.first?.line, 2)
+    }
+
+    func testImportTransactionsRejectsDuplicateFileHash() async {
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ
+        2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み
+        """
+
+        _ = await useCase.importTransactions(request: makeCSVRequest(csv, fileName: "duplicate.csv"))
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv, fileName: "duplicate.csv"))
+
+        XCTAssertEqual(result.successCount, 0)
+        XCTAssertEqual(result.errorCount, 1)
+        XCTAssertTrue(result.errors.first?.contains("同一の CSV ファイル") == true)
     }
 }

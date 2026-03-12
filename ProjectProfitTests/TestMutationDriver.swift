@@ -510,7 +510,15 @@ struct TestMutationDriver {
     }
 
     func importTransactions(from csvString: String) async -> CSVImportResult {
-        let result = await PostingIntakeUseCase(modelContext: modelContext).importTransactions(csvString: csvString)
+        let result = await PostingIntakeUseCase(modelContext: modelContext).importTransactions(
+            request: CSVImportRequest(
+                csvString: csvString,
+                originalFileName: "test-import.csv",
+                fileData: Data(csvString.utf8),
+                mimeType: "text/csv",
+                channel: .settingsTransactionCSV
+            )
+        )
         store.loadData()
         return result
     }

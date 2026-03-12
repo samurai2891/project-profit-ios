@@ -7,12 +7,14 @@ struct PostingIntakeStore {
     private let projectRepository: any ProjectRepository
     private let transactionFormQueryUseCase: TransactionFormQueryUseCase
     private let postingSupport: CanonicalPostingSupport
+    private let evidenceRepository: any EvidenceRepository
 
     init(
         modelContext: ModelContext,
         projectRepository: (any ProjectRepository)? = nil,
         transactionFormQueryUseCase: TransactionFormQueryUseCase? = nil,
-        postingSupport: CanonicalPostingSupport? = nil
+        postingSupport: CanonicalPostingSupport? = nil,
+        evidenceRepository: (any EvidenceRepository)? = nil
     ) {
         self.modelContext = modelContext
         self.projectRepository = projectRepository ?? SwiftDataProjectRepository(modelContext: modelContext)
@@ -22,6 +24,7 @@ struct PostingIntakeStore {
             modelContext: modelContext,
             transactionFormQueryUseCase: queryUseCase
         )
+        self.evidenceRepository = evidenceRepository ?? SwiftDataEvidenceRepository(modelContext: modelContext)
     }
 
     func makeManualCandidate(
@@ -68,38 +71,82 @@ struct PostingIntakeStore {
     }
 
     func importTransactions(
-        csvString: String,
+        request: CSVImportRequest,
         postingWorkflowUseCase: PostingWorkflowUseCase
     ) async -> CSVImportResult {
-        var successCount = 0
-        var errorCount = 0
-        var errors: [String] = []
+        switch request.channel {
+        case .settingsTransactionCSV:
+            return await importTransactionCSV(
+                request: request,
+                postingWorkflowUseCase: postingWorkflowUseCase
+            )
+        case .ledgerBook(let ledgerType, let metadataJSON):
+            return await importLedgerCSV(
+                request: request,
+                ledgerType: ledgerType,
+                metadataJSON: metadataJSON,
+                postingWorkflowUseCase: postingWorkflowUseCase
+            )
+        }
+    }
+
+    private func importTransactionCSV(
+        request: CSVImportRequest,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async -> CSVImportResult {
+        let parsedEntries = parseCSV(csvString: request.csvString)
+        guard !parsedEntries.isEmpty else {
+            return CSVImportResult(errors: ["ヘッダー行またはデータが見つかりません"])
+        }
+
         let formSnapshot = (try? transactionFormQueryUseCase.snapshot()) ?? .empty
+        guard let businessId = formSnapshot.businessId else {
+            return CSVImportResult(errors: ["事業者プロフィールが未設定のため CSV を取り込めません"])
+        }
+
+        let suggestedTaxYear = fiscalYear(
+            for: parsedEntries.first?.date ?? Date(),
+            startMonth: FiscalYearSettings.startMonth
+        )
+
+        let evidence: EvidenceDocument
+        do {
+            evidence = try await createEvidence(
+                request: request,
+                businessId: businessId,
+                suggestedTaxYear: suggestedTaxYear,
+                searchTokens: ["csv", "transaction-import"]
+            )
+        } catch {
+            return CSVImportResult(errors: [error.localizedDescription])
+        }
+
         var projects = formSnapshot.projects
         let categories = formSnapshot.activeCategories
+        var candidateCount = 0
+        var lineErrors: [CSVImportLineError] = []
 
-        for entry in parseCSV(csvString: csvString) {
+        for entry in parsedEntries {
             let allocations: [(projectId: UUID, ratio: Int)]
             do {
                 allocations = try resolvedImportAllocations(
                     for: entry,
                     projects: &projects
                 )
-            } catch let error as AppError {
-                errorCount += 1
-                errors.append(error.errorDescription ?? error.localizedDescription)
-                continue
             } catch {
-                errorCount += 1
-                errors.append(error.localizedDescription)
+                lineErrors.append(CSVImportLineError(line: entry.sourceLine, reason: error.localizedDescription))
                 continue
             }
 
             if entry.type != .transfer {
                 let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
                 guard totalRatio == 100 else {
-                    errorCount += 1
-                    errors.append("配分比率が不正です（合計: \(totalRatio)%）")
+                    lineErrors.append(
+                        CSVImportLineError(
+                            line: entry.sourceLine,
+                            reason: "配分比率が不正です（合計: \(totalRatio)%）"
+                        )
+                    )
                     continue
                 }
             }
@@ -117,8 +164,12 @@ struct PostingIntakeStore {
                 } else if let fallback = categories.first(where: { $0.name == entry.categoryName }) {
                     categoryId = fallback.id
                 } else {
-                    errorCount += 1
-                    errors.append("カテゴリが見つかりません: \(entry.categoryName)")
+                    lineErrors.append(
+                        CSVImportLineError(
+                            line: entry.sourceLine,
+                            reason: "カテゴリが見つかりません: \(entry.categoryName)"
+                        )
+                    )
                     continue
                 }
             }
@@ -154,19 +205,196 @@ struct PostingIntakeStore {
                     ),
                     snapshot: formSnapshot.replacing(projects: projects)
                 )
-                _ = postingWorkflowUseCase
-                _ = try await postingSupport.syncApprovedCandidate(
-                    posting: posting,
-                    allocations: entry.type == .transfer ? [] : allocations
+                let queuedCandidate = queuedImportCandidate(
+                    from: postingSupport.candidateWithProjectAllocations(
+                        posting.candidate,
+                        allocations: entry.type == .transfer ? [] : allocations
+                    ),
+                    evidenceId: evidence.id
                 )
-                successCount += 1
+                try await postingWorkflowUseCase.saveCandidate(queuedCandidate)
+                candidateCount += 1
             } catch {
-                errorCount += 1
-                errors.append(error.localizedDescription)
+                lineErrors.append(CSVImportLineError(line: entry.sourceLine, reason: error.localizedDescription))
             }
         }
 
-        return CSVImportResult(successCount: successCount, errorCount: errorCount, errors: errors)
+        return CSVImportResult(
+            evidenceCount: 1,
+            candidateCount: candidateCount,
+            assetCount: 0,
+            lineErrors: lineErrors
+        )
+    }
+
+    private func importLedgerCSV(
+        request: CSVImportRequest,
+        ledgerType: LedgerType,
+        metadataJSON: String?,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async -> CSVImportResult {
+        let snapshot = (try? transactionFormQueryUseCase.snapshot()) ?? .empty
+        guard let businessId = snapshot.businessId else {
+            return CSVImportResult(errors: ["事業者プロフィールが未設定のため CSV を取り込めません"])
+        }
+
+        let draftBatch: LedgerCSVImportDraftBatch
+        do {
+            draftBatch = try await LedgerCSVImportService(modelContext: modelContext).prepareImport(
+                content: request.csvString,
+                ledgerType: ledgerType,
+                metadataJSON: metadataJSON,
+                snapshot: snapshot
+            )
+        } catch {
+            return CSVImportResult(errors: [error.localizedDescription])
+        }
+
+        let evidence: EvidenceDocument
+        do {
+            evidence = try await createEvidence(
+                request: request,
+                businessId: businessId,
+                suggestedTaxYear: draftBatch.suggestedTaxYear,
+                searchTokens: ["csv", "ledger-import", ledgerType.rawValue]
+            )
+        } catch {
+            return CSVImportResult(errors: [error.localizedDescription])
+        }
+
+        var candidateCount = 0
+        var assetCount = 0
+        var lineErrors = draftBatch.lineErrors
+        let fixedAssetWorkflowUseCase = FixedAssetWorkflowUseCase(modelContext: modelContext)
+
+        for draft in draftBatch.candidateDrafts {
+            let candidate = PostingCandidate(
+                evidenceId: evidence.id,
+                businessId: businessId,
+                taxYear: fiscalYear(for: draft.date, startMonth: FiscalYearSettings.startMonth),
+                candidateDate: draft.date,
+                counterpartyId: draft.counterpartyId,
+                proposedLines: draft.proposedLines,
+                taxAnalysis: nil,
+                confidenceScore: 0,
+                status: .needsReview,
+                source: .importFile,
+                memo: draft.memo,
+                legacySnapshot: nil
+            )
+
+            do {
+                try await postingWorkflowUseCase.saveCandidate(candidate)
+                candidateCount += 1
+            } catch {
+                lineErrors.append(CSVImportLineError(line: draft.sourceLine, reason: error.localizedDescription))
+            }
+        }
+
+        for draft in draftBatch.fixedAssetDrafts {
+            do {
+                try fixedAssetWorkflowUseCase.saveAsset(
+                    existingAssetId: draft.existingAssetId,
+                    input: draft.input
+                )
+                assetCount += 1
+            } catch {
+                lineErrors.append(CSVImportLineError(line: draft.sourceLine, reason: error.localizedDescription))
+            }
+        }
+
+        return CSVImportResult(
+            evidenceCount: 1,
+            candidateCount: candidateCount,
+            assetCount: assetCount,
+            lineErrors: lineErrors
+        )
+    }
+
+    private func queuedImportCandidate(
+        from candidate: PostingCandidate,
+        evidenceId: UUID
+    ) -> PostingCandidate {
+        PostingCandidate(
+            id: candidate.id,
+            evidenceId: evidenceId,
+            businessId: candidate.businessId,
+            taxYear: candidate.taxYear,
+            candidateDate: candidate.candidateDate,
+            counterpartyId: candidate.counterpartyId,
+            proposedLines: candidate.proposedLines,
+            taxAnalysis: candidate.taxAnalysis,
+            confidenceScore: candidate.confidenceScore,
+            status: .needsReview,
+            source: .importFile,
+            memo: candidate.memo,
+            legacySnapshot: candidate.legacySnapshot,
+            createdAt: candidate.createdAt,
+            updatedAt: Date()
+        )
+    }
+
+    private func createEvidence(
+        request: CSVImportRequest,
+        businessId: UUID,
+        suggestedTaxYear: Int?,
+        searchTokens: [String]
+    ) async throws -> EvidenceDocument {
+        let fileHash = ReceiptImageStore.sha256Hex(data: request.fileData)
+        if try existingEvidenceId(businessId: businessId, fileHash: fileHash) != nil {
+            throw AppError.invalidInput(message: "同一の CSV ファイルは既に取り込み済みです")
+        }
+
+        let storedFileName = try ReceiptImageStore.saveDocumentData(
+            request.fileData,
+            originalFileName: request.originalFileName
+        )
+        let evidence = EvidenceDocument(
+            businessId: businessId,
+            taxYear: suggestedTaxYear ?? fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth),
+            sourceType: .importedCSV,
+            legalDocumentType: .other,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(),
+            issueDate: nil,
+            paymentDate: nil,
+            originalFilename: request.originalFileName,
+            mimeType: request.mimeType,
+            fileHash: fileHash,
+            originalFilePath: storedFileName,
+            ocrText: nil,
+            extractionVersion: nil,
+            searchTokens: searchTokens + [request.originalFileName],
+            structuredFields: nil,
+            linkedCounterpartyId: nil,
+            linkedProjectIds: [],
+            complianceStatus: .pendingReview,
+            retentionPolicyId: nil,
+            deletedAt: nil,
+            lockedAt: nil
+        )
+        do {
+            try await evidenceRepository.save(evidence)
+            return evidence
+        } catch {
+            ReceiptImageStore.deleteDocumentFile(fileName: storedFileName)
+            throw error
+        }
+    }
+
+    private func existingEvidenceId(
+        businessId: UUID,
+        fileHash: String
+    ) throws -> UUID? {
+        let descriptor = FetchDescriptor<EvidenceRecordEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId &&
+                    $0.fileHash == fileHash &&
+                    $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.evidenceId
     }
 
     private func resolvedImportAllocations(

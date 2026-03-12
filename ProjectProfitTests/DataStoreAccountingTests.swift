@@ -765,6 +765,7 @@ final class DataStoreAccountingTests: XCTestCase {
         let beforeTransactions = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let beforePending = try await workflow.pendingCandidates(businessId: businessId)
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,税率,税込区分,税区分
         2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み,acct-cash,10,税込,課税（10%）
@@ -772,14 +773,18 @@ final class DataStoreAccountingTests: XCTestCase {
 
         let result = await mutations(dataStore).importTransactions(from: csv)
         let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
         let project = try XCTUnwrap(dataStore.projects.first { $0.name == "ImportProject" })
 
         XCTAssertEqual(result.successCount, 1)
         XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(result.evidenceCount, 1)
+        XCTAssertEqual(result.candidateCount, 1)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactions)
-        XCTAssertEqual(journals.count, beforeJournals.count + 1)
-        XCTAssertEqual(Set(journals.last?.lines.compactMap(\.taxCodeId) ?? []), [TaxCode.standard10.rawValue])
-        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 5_500)
+        XCTAssertEqual(journals.count, beforeJournals.count)
+        XCTAssertEqual(pending.count, beforePending.count + 1)
+        XCTAssertTrue(pending.contains(where: { $0.source == .importFile && $0.status == .needsReview }))
+        XCTAssertTrue(dataStore.projects.contains(where: { $0.id == project.id }))
     }
 
     func testLoadDataSeedsCanonicalAccountsForLegacyAccounts() async throws {

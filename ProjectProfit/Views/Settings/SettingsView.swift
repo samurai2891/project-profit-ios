@@ -105,25 +105,36 @@ struct SettingsView: View {
             case .success(let urls):
                 guard let url = urls.first else { return }
                 guard url.startAccessingSecurityScopedResource() else {
-                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルへのアクセスが拒否されました。"])
+                    importResult = CSVImportResult(errors: ["ファイルへのアクセスが拒否されました。"])
                     showImportResultAlert = true
                     return
                 }
                 defer { url.stopAccessingSecurityScopedResource() }
                 do {
-                    let csvString = try String(contentsOf: url, encoding: .utf8)
+                    let fileData = try Data(contentsOf: url)
+                    guard let csvString = String(data: fileData, encoding: .utf8) else {
+                        throw AppError.invalidInput(message: "CSV の文字コードを UTF-8 として読み取れません")
+                    }
                     Task {
-                        importResult = await postingIntakeUseCase.importTransactions(csvString: csvString)
+                        importResult = await postingIntakeUseCase.importTransactions(
+                            request: CSVImportRequest(
+                                csvString: csvString,
+                                originalFileName: url.lastPathComponent,
+                                fileData: fileData,
+                                mimeType: "text/csv",
+                                channel: .settingsTransactionCSV
+                            )
+                        )
                         reloadStoreState()
                         refreshOverview()
                         showImportResultAlert = true
                     }
                 } catch {
-                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"])
+                    importResult = CSVImportResult(errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"])
                     showImportResultAlert = true
                 }
             case .failure(let error):
-                importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイル選択エラー: \(error.localizedDescription)"])
+                importResult = CSVImportResult(errors: ["ファイル選択エラー: \(error.localizedDescription)"])
                 showImportResultAlert = true
             }
         }
@@ -139,7 +150,7 @@ struct SettingsView: View {
         } message: {
             if let result = importResult {
                 if result.errorCount == 0 {
-                    Text("\(result.successCount)件の取引をインポートしました。")
+                    Text("evidence \(result.evidenceCount)件 / candidate \(result.candidateCount)件 / asset \(result.assetCount)件を取り込みました。")
                 } else {
                     Text("成功: \(result.successCount)件\nエラー: \(result.errorCount)件\n\(result.errors.prefix(3).joined(separator: "\n"))")
                 }

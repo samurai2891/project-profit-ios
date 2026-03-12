@@ -88,6 +88,7 @@
 		2F24C6589293A53F5466EEF9 /* ProjectProfitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA7BFF7AC521FFFE0C4FAF2 /* ProjectProfitApp.swift */; };
 		2F6713F8F73AC21C5C621B84 /* AccountingBootstrapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C6532DB8C31AE2C49E00DF4 /* AccountingBootstrapService.swift */; };
 		2F857F3E99C99846B4D13B95 /* JournalSearchUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA86EC3CB2939D7D94FF68A /* JournalSearchUseCase.swift */; };
+		2FA73D7DD6E1FD76109A2475 /* LedgerCSVImportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BE008493422A269D382506 /* LedgerCSVImportServiceTests.swift */; };
 		2FDA31DB4C27E4BA26212B3F /* ProfileSettingsUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86356159840B163FDB562ECF /* ProfileSettingsUseCaseTests.swift */; };
 		2FEA70AD7309ED271160B61D /* SettingsMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1070674378F9B7F1E25F7419 /* SettingsMainView.swift */; };
 		301888DB64A34F041EC90E26 /* LedgerDataStore+Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CC3CFFC28792AC7E5EC598 /* LedgerDataStore+Export.swift */; };
@@ -704,6 +705,7 @@
 		45CD7966754C892419C79BE1 /* SwiftDataCategoryQueryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataCategoryQueryRepository.swift; sourceTree = "<group>"; };
 		45D894E36B47FF62E7F2AC20 /* DataStore+MonthlySummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+MonthlySummary.swift"; sourceTree = "<group>"; };
 		4657F014A14E1329AA2DD771 /* ShushiNaiyakushoBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShushiNaiyakushoBuilder.swift; sourceTree = "<group>"; };
+		46BE008493422A269D382506 /* LedgerCSVImportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerCSVImportServiceTests.swift; sourceTree = "<group>"; };
 		46CF94A1C45956F232FA2153 /* EtaxXtxExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtaxXtxExporterTests.swift; sourceTree = "<group>"; };
 		475789AB42EC1807854DA8B7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		475F63C211C182832BA9A8E4 /* LedgerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerBridge.swift; sourceTree = "<group>"; };
@@ -1407,6 +1409,7 @@
 				C76FE82446FE3072797CB261 /* InventoryViewModelTests.swift */,
 				9950B16B0D60B7032750C595 /* InventoryWorkflowUseCaseTests.swift */,
 				3D5B2F6990993B64C0491769 /* JournalValidationTests.swift */,
+				46BE008493422A269D382506 /* LedgerCSVImportServiceTests.swift */,
 				3CD8D47AF5FBE1CA06AE2E66 /* LedgerDataStoreReadOnlyTests.swift */,
 				B1F6B0815DA6A6B50DDE6CCD /* LedgerDataStoreTests.swift */,
 				3A3B3B3E885981EE43E14CBB /* LegacyProfileMigrationRunnerTests.swift */,
@@ -3630,6 +3633,7 @@
 				A0C89FCAC6C78FAB62892112 /* InventoryViewModelTests.swift in Sources */,
 				0056405A3778D6E8D130322C /* InventoryWorkflowUseCaseTests.swift in Sources */,
 				2910729067E7F3407730CAE8 /* JournalValidationTests.swift in Sources */,
+				2FA73D7DD6E1FD76109A2475 /* LedgerCSVImportServiceTests.swift in Sources */,
 				2040DF1B45B4886F3B14F6B4 /* LedgerDataStoreReadOnlyTests.swift in Sources */,
 				F7A02359B889CA70D406119A /* LedgerDataStoreTests.swift in Sources */,
 				19BBEAF0E1D7F92BD9BFCCC4 /* LegacyProfileMigrationRunnerTests.swift in Sources */,

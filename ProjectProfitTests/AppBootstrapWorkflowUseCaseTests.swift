@@ -56,6 +56,41 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(store.currentTaxYearProfile?.yearLockState, .taxClose)
     }
 
+    func testInitializeHydratesStoreAfterRepositoryBackedProfilePreparation() async throws {
+        let container = try TestModelContainer.create()
+        let context = ModelContext(container)
+        let store = ProjectProfit.DataStore(modelContext: context)
+        var preparedBusinessId: UUID?
+
+        let useCase = AppBootstrapWorkflowUseCase(
+            ports: .init(
+                reloadStoreState: {
+                    store.loadData()
+                    store.recalculateAllPartialPeriodProjects()
+                },
+                loadProfile: { defaultTaxYear in
+                    WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: context)
+                    do {
+                        let state = try await ProfileSettingsUseCase(modelContext: context).load(
+                            defaultTaxYear: defaultTaxYear ?? 2026
+                        )
+                        preparedBusinessId = state.businessProfile.id
+                        return true
+                    } catch {
+                        store.lastError = .dataLoadFailed(underlying: error)
+                        return false
+                    }
+                }
+            )
+        )
+
+        await useCase.initialize(defaultTaxYear: 2026)
+
+        XCTAssertEqual(store.businessProfile?.id, preparedBusinessId)
+        XCTAssertEqual(store.currentTaxYearProfile?.taxYear, 2026)
+        XCTAssertNil(store.lastError)
+    }
+
     func testInitializeRecalculatesPartialPeriodProjects() async throws {
         let container = try TestModelContainer.create()
         let context = ModelContext(container)

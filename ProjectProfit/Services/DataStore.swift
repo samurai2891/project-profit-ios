@@ -3295,11 +3295,20 @@ class DataStore {
 
 #if DEBUG
     func importTransactions(from csvString: String) async -> CSVImportResult {
-        let result = await postingIntakeUseCase.importTransactions(csvString: csvString)
+        let result = await postingIntakeUseCase.importTransactions(
+            request: CSVImportRequest(
+                csvString: csvString,
+                originalFileName: "debug-import.csv",
+                fileData: Data(csvString.utf8),
+                mimeType: "text/csv",
+                channel: .settingsTransactionCSV
+            )
+        )
         refreshProjects()
         refreshTransactions()
         refreshJournalEntries()
         refreshJournalLines()
+        loadData()
         return result
     }
 

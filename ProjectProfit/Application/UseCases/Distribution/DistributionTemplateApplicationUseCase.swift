@@ -34,6 +34,24 @@ struct DistributionTemplateApplicationUseCase {
         case year
     }
 
+    func currentApprovalState(
+        allocationMode: AllocationMode,
+        allocations: [(projectId: UUID, ratio: Int)],
+        totalAmount: Int
+    ) -> ApprovalState {
+        switch allocationMode {
+        case .equalAll:
+            return .equalAll
+        case .manual:
+            let amountAllocations = calculateRatioAllocations(amount: max(totalAmount, 0), allocations: allocations)
+            return .manual(
+                amountAllocations.map {
+                    ApprovalState.Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: $0.amount)
+                }
+            )
+        }
+    }
+
     func isSupported(
         _ rule: DistributionRule,
         allocationPeriod: AllocationPeriod = .month
@@ -168,6 +186,81 @@ struct DistributionTemplateApplicationUseCase {
         )
     }
 
+    func makeApprovalPreview(
+        rule: DistributionRule,
+        currentState: ApprovalState,
+        projects: [PPProject],
+        referenceDate: Date,
+        totalAmount: Int,
+        allocationPeriod: AllocationPeriod = .month,
+        supportsEqualAllMode: Bool = true
+    ) -> ApprovalPreview {
+        if supportsEqualAllMode && shouldUseDynamicEqualAll(for: rule) {
+            let warnings = currentState == .equalAll ? ["現在の配分と同じ内容です。"] : []
+            return ApprovalPreview(
+                ruleName: rule.name,
+                currentState: currentState,
+                proposedState: .equalAll,
+                warnings: warnings,
+                isApprovable: true
+            )
+        }
+
+        let preview = previewAllocations(
+            rule: rule,
+            projects: projects,
+            referenceDate: referenceDate,
+            totalAmount: totalAmount,
+            allocationPeriod: allocationPeriod
+        )
+
+        guard !preview.allocations.isEmpty else {
+            return ApprovalPreview(
+                ruleName: rule.name,
+                currentState: currentState,
+                proposedState: nil,
+                warnings: preview.warnings,
+                isApprovable: false
+            )
+        }
+
+        let proposedState: ApprovalState = .manual(
+            preview.allocations.map {
+                ApprovalState.Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: $0.amount)
+            }
+        )
+        var warnings = preview.warnings
+        if proposedState == currentState {
+            warnings.append("現在の配分と同じ内容です。")
+        }
+
+        return ApprovalPreview(
+            ruleName: rule.name,
+            currentState: currentState,
+            proposedState: proposedState,
+            warnings: warnings,
+            isApprovable: true
+        )
+    }
+
+    func approve(_ preview: ApprovalPreview) throws -> ApprovedApplication {
+        guard preview.isApprovable, let proposedState = preview.proposedState else {
+            throw ApplicationError.approvalPreviewNotApplicable
+        }
+
+        switch proposedState {
+        case .equalAll:
+            return ApprovedApplication(allocationMode: .equalAll, allocations: [])
+        case let .manual(allocations):
+            return ApprovedApplication(
+                allocationMode: .manual,
+                allocations: allocations.map {
+                    ApprovedApplication.Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: $0.amount)
+                }
+            )
+        }
+    }
+
     private func unsupportedReason(
         for rule: DistributionRule,
         allocationPeriod: AllocationPeriod
@@ -287,12 +380,43 @@ struct DistributionTemplateApplicationUseCase {
 }
 
 extension DistributionTemplateApplicationUseCase {
+    struct ApprovalPreview: Sendable, Equatable {
+        let ruleName: String
+        let currentState: ApprovalState
+        let proposedState: ApprovalState?
+        let warnings: [String]
+        let isApprovable: Bool
+    }
+
+    enum ApprovalState: Sendable, Equatable {
+        struct Allocation: Sendable, Equatable {
+            let projectId: UUID
+            let ratio: Int
+            let amount: Int
+        }
+
+        case equalAll
+        case manual([Allocation])
+    }
+
+    struct ApprovedApplication: Sendable, Equatable {
+        struct Allocation: Sendable, Equatable {
+            let projectId: UUID
+            let ratio: Int
+            let amount: Int
+        }
+
+        let allocationMode: AllocationMode
+        let allocations: [Allocation]
+    }
+
     enum ApplicationError: LocalizedError, Equatable {
         case unsupportedScope(DistributionScope)
         case unsupportedBasis(DistributionBasis)
         case unsupportedFixedWeightScope(DistributionScope)
         case noEligibleProjects
         case missingWeights
+        case approvalPreviewNotApplicable
 
         var errorDescription: String? {
             switch self {
@@ -306,6 +430,8 @@ extension DistributionTemplateApplicationUseCase {
                 return "適用対象のプロジェクトがありません。"
             case .missingWeights:
                 return "固定重みテンプレートに重みが設定されていません。"
+            case .approvalPreviewNotApplicable:
+                return "この配賦プレビューは承認できません。"
             }
         }
     }

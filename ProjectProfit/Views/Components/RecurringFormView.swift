@@ -47,8 +47,7 @@ struct RecurringFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
-    @State private var pendingDistributionPreview: DistributionTemplatePreview?
-    @State private var showDistributionTemplatePreview = false
+    @State private var pendingDistributionApproval: DistributionTemplateApplicationUseCase.ApprovalPreview?
     @State private var formSnapshot: RecurringFormSnapshot = .empty
 
     private var isEditMode: Bool { recurring != nil }
@@ -118,6 +117,10 @@ struct RecurringFormView: View {
             && dayOfMonth <= 28
     }
 
+    private var hasPendingDistributionApproval: Bool {
+        pendingDistributionApproval != nil
+    }
+
     private var templateReferenceDate: Date {
         let calendar = Calendar.current
         let today = todayDate()
@@ -153,6 +156,10 @@ struct RecurringFormView: View {
 
     private var activeProjects: [PPProject] {
         recurringQueryUseCase.activeProjects(snapshot: formSnapshot)
+    }
+
+    private var distributionTemplateApplicationUseCase: DistributionTemplateApplicationUseCase {
+        DistributionTemplateApplicationUseCase()
     }
 
     // MARK: - Body
@@ -215,27 +222,13 @@ struct RecurringFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
                         .foregroundStyle(isFormValid ? AppColors.primary : AppColors.muted)
-                        .disabled(!isFormValid)
+                        .disabled(!isFormValid || hasPendingDistributionApproval)
                 }
             }
             .alert("入力エラー", isPresented: $showValidationError) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(validationMessage)
-            }
-            .alert(
-                "配賦テンプレートの適用確認",
-                isPresented: $showDistributionTemplatePreview,
-                presenting: pendingDistributionPreview
-            ) { preview in
-                Button("キャンセル", role: .cancel) {
-                    pendingDistributionPreview = nil
-                }
-                Button("適用する") {
-                    applyDistributionTemplatePreview(preview)
-                }
-            } message: { preview in
-                Text(distributionTemplatePreviewMessage(for: preview))
             }
             .sheet(isPresented: $showCamera) {
                 CameraView(image: $selectedImage)
@@ -255,6 +248,11 @@ struct RecurringFormView: View {
             .task {
                 loadFormSnapshot()
             }
+            .onChange(of: amountText) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: frequency) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: dayOfMonth) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: monthOfYear) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: selectedDistributionTemplateId) { _, _ in invalidatePendingDistributionApproval() }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
             }
@@ -519,6 +517,7 @@ struct RecurringFormView: View {
             || !distributionTemplates.isEmpty
             || distributionTemplateErrorMessage != nil
             || unavailableDistributionTemplateCount > 0
+            || pendingDistributionApproval != nil
         {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -541,7 +540,7 @@ struct RecurringFormView: View {
                     }
                     .pickerStyle(.menu)
 
-                    Button("テンプレートを適用") {
+                    Button("テンプレートをプレビュー") {
                         previewSelectedDistributionTemplate()
                     }
                     .disabled(selectedDistributionTemplateId == nil)
@@ -562,10 +561,105 @@ struct RecurringFormView: View {
                         .font(.caption)
                         .foregroundStyle(AppColors.error)
                 }
+
+                if let pendingDistributionApproval {
+                    distributionApprovalCard(preview: pendingDistributionApproval)
+                }
             }
             .padding(16)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func distributionApprovalCard(
+        preview: DistributionTemplateApplicationUseCase.ApprovalPreview
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("承認待ちプレビュー")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppColors.primary)
+
+            Text(preview.ruleName)
+                .font(.subheadline.weight(.semibold))
+
+            distributionApprovalStateView(title: "変更前", state: preview.currentState)
+
+            if let proposedState = preview.proposedState {
+                distributionApprovalStateView(title: "変更後", state: proposedState)
+            }
+
+            if !preview.warnings.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(preview.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+            }
+
+            HStack {
+                Button("破棄", role: .destructive) {
+                    discardPendingDistributionApproval()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("承認して反映") {
+                    applyPendingDistributionApproval()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
+    }
+
+    private func distributionApprovalStateView(
+        title: String,
+        state: DistributionTemplateApplicationUseCase.ApprovalState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            switch state {
+            case .equalAll:
+                Text(AllocationMode.equalAll.label)
+                    .font(.subheadline)
+            case let .manual(allocations):
+                if allocations.isEmpty {
+                    Text("未設定")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(allocations, id: \.projectId) { allocation in
+                            let name = recurringQueryUseCase.projectName(
+                                id: allocation.projectId,
+                                snapshot: formSnapshot
+                            ) ?? "不明なプロジェクト"
+                            HStack {
+                                Text(name)
+                                Spacer()
+                                Text("\(allocation.ratio)%")
+                                    .foregroundStyle(.secondary)
+                                Text(formatCurrency(allocation.amount))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -745,75 +839,52 @@ struct RecurringFormView: View {
             return
         }
 
-        let applier = DistributionTemplateApplicationUseCase()
-        if applier.shouldUseDynamicEqualAll(for: rule) {
-            pendingDistributionPreview = DistributionTemplatePreview(
-                ruleName: rule.name,
-                allocationMode: .equalAll,
-                allocations: [],
-                warnings: []
-            )
-            showDistributionTemplatePreview = true
-            distributionTemplateErrorMessage = nil
-            return
-        }
-
-        let preview = recurringQueryUseCase.previewDistribution(
+        let preview = distributionTemplateApplicationUseCase.makeApprovalPreview(
             rule: rule,
-            snapshot: formSnapshot,
+            currentState: distributionTemplateApplicationUseCase.currentApprovalState(
+                allocationMode: allocationMode,
+                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                totalAmount: parsedAmount ?? 0
+            ),
+            projects: formSnapshot.projects,
             referenceDate: templateReferenceDate,
             totalAmount: parsedAmount ?? 0,
-            allocationPeriod: distributionTemplateAllocationPeriod
+            allocationPeriod: distributionTemplateAllocationPeriod,
+            supportsEqualAllMode: true
         )
 
-        guard !preview.allocations.isEmpty else {
-            pendingDistributionPreview = nil
+        guard preview.isApprovable else {
+            pendingDistributionApproval = nil
             distributionTemplateErrorMessage = preview.warnings.first ?? "配賦プレビューを生成できませんでした。"
             return
         }
 
-        pendingDistributionPreview = DistributionTemplatePreview(
-            ruleName: rule.name,
-            allocationMode: .manual,
-            allocations: preview.allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-            warnings: preview.warnings
-        )
-        showDistributionTemplatePreview = true
+        pendingDistributionApproval = preview
         distributionTemplateErrorMessage = nil
     }
 
-    private func applyDistributionTemplatePreview(_ preview: DistributionTemplatePreview) {
-        switch preview.allocationMode {
-        case .equalAll:
-            allocationMode = .equalAll
-            allocations = []
-        case .manual:
-            allocationMode = .manual
-            allocations = preview.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
-        }
-        pendingDistributionPreview = nil
-        distributionTemplateErrorMessage = nil
-    }
-
-    private func distributionTemplatePreviewMessage(for preview: DistributionTemplatePreview) -> String {
-        let header = "テンプレート: \(preview.ruleName)"
-        switch preview.allocationMode {
-        case .equalAll:
-            return [
-                header,
-                "配分方式を「全体（均等割）」に変更します。",
-                "この変更を適用しますか？"
-            ].joined(separator: "\n")
-        case .manual:
-            let projectNameById = Dictionary(uniqueKeysWithValues: formSnapshot.projects.map { ($0.id, $0.name) })
-            let allocationLines = preview.allocations.map { allocation in
-                let name = projectNameById[allocation.projectId] ?? "不明なプロジェクト"
-                return "・\(name): \(allocation.ratio)%"
+    private func applyPendingDistributionApproval() {
+        guard let pendingDistributionApproval else { return }
+        do {
+            let approved = try distributionTemplateApplicationUseCase.approve(pendingDistributionApproval)
+            allocationMode = approved.allocationMode
+            allocations = approved.allocations.map { allocation in
+                (id: UUID(), projectId: allocation.projectId, ratio: allocation.ratio)
             }
-            let warningLines = preview.warnings.map { "注意: \($0)" }
-            return ([header, "以下の配分を設定します。"] + allocationLines + warningLines + ["この変更を適用しますか？"])
-                .joined(separator: "\n")
+            self.pendingDistributionApproval = nil
+            distributionTemplateErrorMessage = nil
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
         }
+    }
+
+    private func discardPendingDistributionApproval() {
+        pendingDistributionApproval = nil
+    }
+
+    private func invalidatePendingDistributionApproval() {
+        guard pendingDistributionApproval != nil else { return }
+        pendingDistributionApproval = nil
     }
 
     private func applySelectedCounterpartyDefaults() {
@@ -874,6 +945,11 @@ struct RecurringFormView: View {
 
         guard let categoryId = selectedCategoryId, !categoryId.isEmpty else {
             validationMessage = "カテゴリを選択してください"
+            showValidationError = true
+            return
+        }
+        guard !hasPendingDistributionApproval else {
+            validationMessage = "配賦テンプレートのプレビューを承認または破棄してください"
             showValidationError = true
             return
         }
@@ -941,13 +1017,6 @@ struct RecurringFormView: View {
 
         dismiss()
     }
-}
-
-private struct DistributionTemplatePreview {
-    let ruleName: String
-    let allocationMode: AllocationMode
-    let allocations: [(projectId: UUID, ratio: Int)]
-    let warnings: [String]
 }
 
 #Preview {

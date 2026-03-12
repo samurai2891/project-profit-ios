@@ -7,13 +7,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LedgerCSVImportView: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(LedgerDataStore.self) private var ledgerStore
     @Environment(\.dismiss) private var dismiss
 
     let bookId: UUID
 
     @State private var showFilePicker = false
-    @State private var importResult: LedgerCSVImportResult?
+    @State private var importResult: CSVImportResult?
     @State private var isImporting = false
     @State private var previewRows: [[String]] = []
     @State private var selectedURL: URL?
@@ -21,6 +22,10 @@ struct LedgerCSVImportView: View {
 
     private var book: SDLedgerBook? {
         ledgerStore.book(for: bookId)
+    }
+
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -110,7 +115,7 @@ struct LedgerCSVImportView: View {
                                 Text("\(result.errorCount)件")
                                     .font(.headline)
                             }
-                            ForEach(result.errors.prefix(10), id: \.line) { error in
+                            ForEach(result.lineErrors.prefix(10)) { error in
                                 Text("行\(error.line): \(error.reason)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -198,13 +203,21 @@ struct LedgerCSVImportView: View {
         defer { url.stopAccessingSecurityScopedResource() }
 
         do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            let cleaned = content.replacingOccurrences(of: "\u{FEFF}", with: "")
-            let result = LedgerCSVImportService.shared.importCSV(
-                content: cleaned,
-                ledgerType: ledgerType,
-                ledgerStore: ledgerStore,
-                bookId: bookId
+            let fileData = try Data(contentsOf: url)
+            guard let content = String(data: fileData, encoding: .utf8) else {
+                throw AppError.invalidInput(message: "CSV の文字コードを UTF-8 として読み取れません")
+            }
+            let result = await postingIntakeUseCase.importTransactions(
+                request: CSVImportRequest(
+                    csvString: content,
+                    originalFileName: url.lastPathComponent,
+                    fileData: fileData,
+                    mimeType: "text/csv",
+                    channel: .ledgerBook(
+                        ledgerType: ledgerType,
+                        metadataJSON: book?.metadataJSON
+                    )
+                )
             )
             importResult = result
             errorMessage = nil
