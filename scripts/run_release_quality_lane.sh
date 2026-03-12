@@ -112,7 +112,7 @@ grep -Eo 'performance\.[A-Za-z0-9_]+\.seconds=[0-9]+(\.[0-9]+)?' "$log_path" > "
   fi
 } > "$summary_path"
 
-evidence_latest_path=""
+evidence_latest_lane_path=""
 evidence_lane_path=""
 if [[ -n "$evidence_dir" ]]; then
   mkdir -p "$evidence_dir"
@@ -123,7 +123,7 @@ if [[ -n "$evidence_dir" ]]; then
   xcresult_rel="$(to_repo_relative_path "$result_bundle_path")"
   metrics_rel="$(to_repo_relative_path "$metrics_path")"
 
-  evidence_latest_path="$evidence_dir/latest.md"
+  evidence_latest_lane_path="$evidence_dir/latest-lane.md"
   evidence_lane_path="$evidence_dir/${lane}.md"
 
   {
@@ -139,9 +139,9 @@ if [[ -n "$evidence_dir" ]]; then
     echo "- log_path: $log_rel"
     echo "- xcresult_path: $xcresult_rel"
     echo "- metrics_path: $metrics_rel"
-  } > "$evidence_latest_path"
+  } > "$evidence_latest_lane_path"
 
-  cp "$evidence_latest_path" "$evidence_lane_path"
+  cp "$evidence_latest_lane_path" "$evidence_lane_path"
 fi
 
 echo "status=$status"
@@ -151,8 +151,8 @@ echo "log_path=$log_path"
 echo "xcresult_path=$result_bundle_path"
 echo "summary_path=$summary_path"
 echo "metrics_path=$metrics_path"
-if [[ -n "$evidence_latest_path" ]]; then
-  echo "evidence_latest_path=$evidence_latest_path"
+if [[ -n "$evidence_latest_lane_path" ]]; then
+  echo "evidence_latest_lane_path=$evidence_latest_lane_path"
   echo "evidence_lane_path=$evidence_lane_path"
 fi
 

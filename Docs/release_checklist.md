@@ -18,6 +18,7 @@
 - `scripts/check_simulator_health.sh`
 - `scripts/run_release_quality_lane.sh`
 - `Docs/release_quality/latest.md`
+- `Docs/release_quality/latest-lane.md`
 
 ## Checklist
 
@@ -92,7 +93,6 @@
 - lane: `books`
 - 証跡:
   - `Docs/release_quality/books.md`
-  - `Docs/release_quality/latest.md`
 - 確認項目:
   - `status: ok`
   - `reason` が成功理由で埋まっている
@@ -105,7 +105,6 @@
 - lane: `forms`
 - 証跡:
   - `Docs/release_quality/forms.md`
-  - `Docs/release_quality/latest.md`
 - 確認項目:
   - `status: ok`
   - `reason` が成功理由で埋まっている
@@ -116,5 +115,7 @@
 ## 実行時の固定条件
 
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release_quality'` を設定する。
-- `Docs/release_quality/latest.md` は最後に実行した lane の証跡として上書きされる。
-- lane ごとの判定は `Docs/release_quality/<lane>.md` を優先し、直近実行確認には `Docs/release_quality/latest.md` を使う。
+- `Docs/release_quality/latest.md` は REL-P0-12 対象 gate の最新 fully-green snapshot として commit 管理する。
+- `Docs/release_quality/latest-lane.md` は最後に実行した lane の証跡として上書きされる。
+- lane ごとの判定は `Docs/release_quality/<lane>.md` を優先し、単一 lane の直近実行確認には `Docs/release_quality/latest-lane.md` を使う。
+- release gate 全体の最新 green 確認には `Docs/release_quality/latest.md` を使う。
