@@ -53,6 +53,9 @@ struct PostingIntakeStore {
                 counterpartyId: input.counterpartyId,
                 counterpartyName: input.counterparty,
                 source: input.candidateSource,
+                isWithholdingEnabled: input.isWithholdingEnabled,
+                withholdingTaxCodeId: input.withholdingTaxCodeId,
+                withholdingTaxAmount: input.withholdingTaxAmount,
                 createdAt: Date(),
                 updatedAt: Date(),
                 journalEntryId: nil
@@ -199,6 +202,9 @@ struct PostingIntakeStore {
                         counterpartyId: nil,
                         counterpartyName: entry.counterparty,
                         source: .importFile,
+                        isWithholdingEnabled: false,
+                        withholdingTaxCodeId: nil,
+                        withholdingTaxAmount: nil,
                         createdAt: Date(),
                         updatedAt: Date(),
                         journalEntryId: nil

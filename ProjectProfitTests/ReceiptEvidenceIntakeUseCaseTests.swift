@@ -70,7 +70,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxAmount: nil,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: "文具センター"
+            counterpartyName: "文具センター",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let result = try await useCase.intake(request)
@@ -157,7 +160,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxAmount: nil,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: "重複チェック商店"
+            counterpartyName: "重複チェック商店",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
         let firstResult = try await useCase.intake(firstRequest)
         defer { ReceiptImageStore.deleteDocumentFile(fileName: firstResult.evidence.originalFilePath) }
@@ -191,7 +197,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxAmount: nil,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: "重複チェック商店"
+            counterpartyName: "重複チェック商店",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         do {
@@ -290,7 +299,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxAmount: 100,
             registrationNumber: "T1234567890123",
             counterpartyId: nil,
-            counterpartyName: "登録済み商事"
+            counterpartyName: "登録済み商事",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let result = try await useCase.intake(request)
@@ -372,7 +384,10 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             taxAmount: 80,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: "食品ストア"
+            counterpartyName: "食品ストア",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let result = try await useCase.intake(request)
@@ -381,6 +396,198 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(result.candidate.proposedLines.compactMap(\.taxCodeId), [TaxCode.reduced8.rawValue])
         XCTAssertEqual(result.evidence.structuredFields?.taxReducedRate, Decimal(80))
         XCTAssertNil(result.evidence.structuredFields?.taxStandardRate)
+    }
+
+    func testIntakeAppliesCounterpartyWithholdingDefaultsToCandidate() async throws {
+        let businessId = try await seedBusinessProfile()
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies",
+            code: "611",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.withholdingTaxPayableAccountId,
+            code: "205",
+            name: "源泉所得税預り金",
+            accountType: .liability,
+            normalBalance: .credit,
+            displayOrder: 3
+        )
+
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "顧問税理士",
+            payeeInfo: PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: .professionalFee
+            )
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let request = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 100_000,
+                date: "2026-03-07",
+                storeName: "顧問税理士",
+                registrationNumber: nil,
+                estimatedCategory: "tools",
+                itemSummary: "顧問料"
+            ),
+            ocrText: "顧問税理士\n合計 100,000円",
+            sourceType: .camera,
+            fileData: Data("jpeg-withholding".utf8),
+            originalFileName: "withholding-default.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 100_000,
+            reviewedDate: date(2026, 3, 7),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "顧問料",
+            lineItems: [LineItem(name: "顧問料", quantity: 1, unitPrice: 100_000)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: nil,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: counterparty.id,
+            counterpartyName: "顧問税理士",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
+        )
+
+        let result = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(request)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        let expectedWithholding = WithholdingTaxCalculator.calculate(
+            grossAmount: Decimal(100_000),
+            code: .professionalFee
+        ).withholdingAmount
+        let annotatedLine = try XCTUnwrap(result.candidate.proposedLines.first { $0.withholdingTaxAmount != nil })
+
+        XCTAssertEqual(result.candidate.proposedLines.count, 3)
+        XCTAssertEqual(annotatedLine.withholdingTaxCodeId, WithholdingTaxCode.professionalFee.rawValue)
+        XCTAssertEqual(annotatedLine.withholdingTaxAmount, expectedWithholding)
+        XCTAssertEqual(annotatedLine.withholdingTaxBaseAmount, Decimal(100_000))
+        XCTAssertTrue(result.candidate.proposedLines.contains {
+            $0.creditAccountId != nil && $0.amount == expectedWithholding
+        })
+    }
+
+    func testIntakeAppliesUserRuleToResolvedCategoryAndCandidateLines() async throws {
+        let businessId = try await seedBusinessProfile()
+        let communicationLegacyAccountId = "acct-communication"
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: communicationLegacyAccountId,
+            code: "612",
+            name: "クラウド通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+
+        context.insert(
+            PPAccount(
+                id: communicationLegacyAccountId,
+                code: "612",
+                name: "クラウド通信費",
+                accountType: .expense,
+                subtype: .communicationExpense,
+                displayOrder: 1
+            )
+        )
+        context.insert(
+            PPCategory(
+                id: "cat-cloud-communication",
+                name: "クラウド通信費",
+                type: .expense,
+                icon: "wifi",
+                linkedAccountId: communicationLegacyAccountId
+            )
+        )
+        context.insert(
+            PPUserRule(
+                keyword: "AWS",
+                taxLine: .communicationExpense,
+                priority: 300
+            )
+        )
+        try context.save()
+
+        let expectedExpenseAccount = try await ChartOfAccountsUseCase(modelContext: context).account(
+            businessId: businessId,
+            legacyAccountId: communicationLegacyAccountId
+        )
+        let expectedExpenseAccountId = try XCTUnwrap(expectedExpenseAccount?.id)
+
+        let useCase = ReceiptEvidenceIntakeUseCase(modelContext: context)
+        let request = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 3_300,
+                date: "2026-03-07",
+                storeName: "AWS",
+                registrationNumber: nil,
+                estimatedCategory: "tools",
+                itemSummary: "月額利用料"
+            ),
+            ocrText: "AWS\n合計 3,300円",
+            sourceType: .camera,
+            fileData: Data("jpeg-aws".utf8),
+            originalFileName: "aws-receipt.jpg",
+            mimeType: "image/jpeg",
+            reviewedAmount: 3_300,
+            reviewedDate: date(2026, 3, 7),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "AWS 月額利用料",
+            lineItems: [LineItem(name: "月額利用料", quantity: 1, unitPrice: 3_300)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: nil,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: "AWS",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
+        )
+
+        let result = try await useCase.intake(request)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        XCTAssertEqual(result.candidate.legacySnapshot?.categoryId, "cat-cloud-communication")
+        XCTAssertEqual(result.candidate.proposedLines.first?.debitAccountId, expectedExpenseAccountId)
     }
 
     private func seedBusinessProfile() async throws -> UUID {

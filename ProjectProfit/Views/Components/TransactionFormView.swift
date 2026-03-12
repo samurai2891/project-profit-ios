@@ -42,6 +42,8 @@ struct TransactionFormView: View {
     // Phase 8: 取引先
     @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String = ""
+    @State private var isWithholdingEnabled = false
+    @State private var selectedWithholdingTaxCode: WithholdingTaxCode?
 
     private var isEditMode: Bool { transaction != nil }
     private var isCanonicalDraftMode: Bool {
@@ -99,6 +101,9 @@ struct TransactionFormView: View {
                   let to = transferToAccountId, !to.isEmpty else { return false }
             return from != to
         }
+        if isWithholdingEnabled && resolvedWithholdingPosting == nil {
+            return false
+        }
         return !categoryId.isEmpty && !allocations.isEmpty && totalRatio == 100
     }
 
@@ -114,6 +119,33 @@ struct TransactionFormView: View {
 
     private var transactionFormQueryUseCase: TransactionFormQueryUseCase {
         TransactionFormQueryUseCase(modelContext: modelContext)
+    }
+
+    private var withholdingInput: WithholdingPostingInput {
+        WithholdingPostingInput(
+            isEnabled: isWithholdingEnabled,
+            codeId: selectedWithholdingTaxCode?.rawValue,
+            explicitAmount: nil,
+            totalAmount: Int(amountText) ?? 0,
+            taxAmount: resolvedTaxAmountValue,
+            isTaxIncluded: selectedTaxCode?.isTaxable == true ? isTaxIncluded : nil
+        )
+    }
+
+    private var resolvedWithholdingPosting: ResolvedWithholdingPosting? {
+        try? WithholdingPostingSupport.resolve(input: withholdingInput)
+    }
+
+    private var resolvedTaxAmountValue: Int? {
+        guard let amount = Int(amountText),
+              let tc = selectedTaxCode,
+              tc.isTaxable else {
+            return nil
+        }
+        if isTaxIncluded {
+            return amount * tc.taxRatePercent / (100 + tc.taxRatePercent)
+        }
+        return Int(taxAmountText)
     }
 
     private var postingIntakeUseCase: PostingIntakeUseCase {
@@ -147,6 +179,7 @@ struct TransactionFormView: View {
                         allocationSection
                     }
                     counterpartySection
+                    withholdingSection
                     memoSection
                 }
                 .padding(20)
@@ -858,6 +891,78 @@ struct TransactionFormView: View {
         }
     }
 
+    @ViewBuilder
+    private var withholdingSection: some View {
+        if type == .expense {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("源泉徴収")
+                    .font(.subheadline.weight(.medium))
+
+                VStack(spacing: 12) {
+                    Toggle("この支払で源泉徴収する", isOn: $isWithholdingEnabled)
+                        .font(.subheadline)
+
+                    if isWithholdingEnabled {
+                        Picker("源泉区分", selection: Binding(
+                            get: { selectedWithholdingTaxCode },
+                            set: { selectedWithholdingTaxCode = $0 }
+                        )) {
+                            Text("選択してください").tag(WithholdingTaxCode?.none)
+                            ForEach(WithholdingTaxCode.allCases, id: \.self) { code in
+                                Text(code.displayName).tag(WithholdingTaxCode?.some(code))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        if let resolvedWithholdingPosting {
+                            HStack {
+                                Text("計算基礎額")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.calculationBaseAmount).intValue))
+                                    .font(.subheadline.monospacedDigit())
+                            }
+
+                            HStack {
+                                Text("源泉徴収税額")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.withholdingAmount).intValue))
+                                    .font(.subheadline.monospacedDigit())
+                            }
+
+                            HStack {
+                                Text("実支払額")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(
+                                    formatCurrency(
+                                        max(
+                                            0,
+                                            (Int(amountText) ?? 0)
+                                                - NSDecimalNumber(decimal: resolvedWithholdingPosting.withholdingAmount).intValue
+                                        )
+                                    )
+                                )
+                                .font(.subheadline.monospacedDigit())
+                            }
+                        } else {
+                            Text("金額と源泉区分を確認してください")
+                                .font(.caption)
+                                .foregroundStyle(AppColors.warning)
+                        }
+                    }
+                }
+                .padding(16)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
     // MARK: - Memo
     private var memoSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -893,6 +998,8 @@ struct TransactionFormView: View {
             counterparty = t.counterparty
                 ?? t.counterpartyId.flatMap { transactionFormQueryUseCase.counterparty(id: $0, snapshot: formSnapshot)?.displayName }
                 ?? ""
+            isWithholdingEnabled = false
+            selectedWithholdingTaxCode = nil
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -901,6 +1008,8 @@ struct TransactionFormView: View {
             }
             paymentAccountId = formSnapshot.defaultPaymentAccountId ?? paymentAccounts.first?.id
             autoSelectCategory()
+            isWithholdingEnabled = selectedCounterparty?.payeeInfo?.isWithholdingSubject ?? false
+            selectedWithholdingTaxCode = selectedCounterparty?.payeeInfo?.withholdingCategory
         }
     }
 
@@ -1013,7 +1122,11 @@ struct TransactionFormView: View {
     }
 
     private func applySelectedCounterpartyDefaults() {
-        guard let selectedCounterparty else { return }
+        guard let selectedCounterparty else {
+            isWithholdingEnabled = false
+            selectedWithholdingTaxCode = nil
+            return
+        }
 
         guard let defaults = transactionFormQueryUseCase.counterpartyDefaults(
             for: selectedCounterparty.id,
@@ -1033,6 +1146,8 @@ struct TransactionFormView: View {
         if let defaultProjectId = defaults.projectId {
             allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
         }
+        isWithholdingEnabled = selectedCounterparty.payeeInfo?.isWithholdingSubject ?? false
+        selectedWithholdingTaxCode = selectedCounterparty.payeeInfo?.withholdingCategory
     }
 
     private func save() {
@@ -1078,6 +1193,15 @@ struct TransactionFormView: View {
         } else {
             resolvedTaxAmount = nil
         }
+        let resolvedWithholding = resolvedWithholdingPosting
+        if isWithholdingEnabled && resolvedWithholding == nil {
+            if let imagePath {
+                ReceiptImageStore.deleteImage(fileName: imagePath)
+            }
+            isSubmitting = false
+            saveError = "源泉徴収の設定を確認してください。"
+            return
+        }
 
         guard isCanonicalDraftMode else {
             if let imagePath {
@@ -1109,6 +1233,9 @@ struct TransactionFormView: View {
                         isTaxIncluded: resolvedIsTaxIncluded,
                         counterpartyId: selectedCounterpartyId,
                         counterparty: resolvedCounterparty,
+                        isWithholdingEnabled: isWithholdingEnabled,
+                        withholdingTaxCodeId: selectedWithholdingTaxCode?.rawValue,
+                        withholdingTaxAmount: resolvedWithholding?.withholdingAmount,
                         candidateSource: .manual
                     )
                 )

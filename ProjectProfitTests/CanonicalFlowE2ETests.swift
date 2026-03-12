@@ -251,7 +251,10 @@ final class CanonicalFlowE2ETests: XCTestCase {
             taxAmount: amount / 11,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: counterpartyName
+            counterpartyName: counterpartyName,
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let intakeResult = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(request)

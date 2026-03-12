@@ -135,6 +135,11 @@ struct ClassificationSnapshot {
     let userRules: [PPUserRule]
 }
 
+struct CanonicalClassificationSuggestion {
+    let result: ClassificationEngine.ClassificationResult
+    let resolvedCategoryId: String
+}
+
 struct EtaxExportContext {
     let businessId: UUID?
     let fallbackTaxYearProfile: TaxYearProfile?
@@ -176,6 +181,17 @@ struct AccountingReadSupport {
         fetch(
             FetchDescriptor<PPAccount>(
                 sortBy: [SortDescriptor(\.displayOrder)]
+            )
+        )
+    }
+
+    func fetchUserRules() -> [PPUserRule] {
+        fetch(
+            FetchDescriptor<PPUserRule>(
+                sortBy: [
+                    SortDescriptor(\.priority, order: .reverse),
+                    SortDescriptor(\.updatedAt, order: .reverse),
+                ]
             )
         )
     }
@@ -228,6 +244,89 @@ struct AccountingReadSupport {
             ]
         )
         return fetch(descriptor).map(CanonicalAccountEntityMapper.toDomain)
+    }
+
+    func classificationSuggestion(
+        memo: String,
+        transactionType: TransactionType,
+        categoryId: String
+    ) -> CanonicalClassificationSuggestion? {
+        guard transactionType != .transfer else {
+            return nil
+        }
+
+        let transaction = PPTransaction(
+            type: transactionType,
+            amount: 0,
+            date: Date(),
+            categoryId: categoryId,
+            memo: normalizedClassificationText(memo)
+        )
+        let result = ClassificationEngine.classify(
+            transaction: transaction,
+            categories: fetchCategories(),
+            accounts: fetchAccounts(),
+            userRules: fetchUserRules()
+        )
+        return CanonicalClassificationSuggestion(
+            result: result,
+            resolvedCategoryId: preferredCategoryId(
+                for: result.taxLine,
+                transactionType: transactionType,
+                fallbackCategoryId: categoryId
+            )
+        )
+    }
+
+    func preferredCategoryId(
+        for taxLine: TaxLine,
+        transactionType: TransactionType,
+        fallbackCategoryId: String
+    ) -> String {
+        guard transactionType != .transfer else {
+            return fallbackCategoryId
+        }
+        let expectedCategoryType: CategoryType = transactionType == .income ? .income : .expense
+
+        let categories = fetchCategories()
+            .filter { $0.archivedAt == nil && $0.type == expectedCategoryType }
+        let accountsById = Dictionary(uniqueKeysWithValues: fetchAccounts().map { ($0.id, $0) })
+
+        if let currentCategory = categories.first(where: { $0.id == fallbackCategoryId }),
+           let linkedAccountId = currentCategory.linkedAccountId,
+           accountsById[linkedAccountId]?.subtype == taxLine.accountSubtype {
+            return currentCategory.id
+        }
+
+        if let matchedCategory = categories.first(where: { category in
+            guard let linkedAccountId = category.linkedAccountId else {
+                return false
+            }
+            return accountsById[linkedAccountId]?.subtype == taxLine.accountSubtype
+        }) {
+            return matchedCategory.id
+        }
+
+        return fallbackCategoryId
+    }
+
+    func resolvedTaxLine(forApprovedCandidate candidate: PostingCandidate) -> TaxLine? {
+        let canonicalAccountsById = Dictionary(
+            uniqueKeysWithValues: fetchCanonicalAccounts(businessId: candidate.businessId).map { ($0.id, $0) }
+        )
+        let legacyAccountsById = Dictionary(uniqueKeysWithValues: fetchAccounts().map { ($0.id, $0) })
+
+        for line in candidate.proposedLines {
+            if let resolved = resolvedTaxLine(
+                for: line,
+                canonicalAccountsById: canonicalAccountsById,
+                legacyAccountsById: legacyAccountsById
+            ) {
+                return resolved
+            }
+        }
+
+        return nil
     }
 
     func fetchCanonicalJournalEntries(
@@ -796,6 +895,29 @@ struct AccountingReadSupport {
 
     private func fetch<T>(_ descriptor: FetchDescriptor<T>) -> [T] where T: PersistentModel {
         (try? modelContext.fetch(descriptor)) ?? []
+    }
+}
+
+private extension AccountingReadSupport {
+    func resolvedTaxLine(
+        for line: PostingCandidateLine,
+        canonicalAccountsById: [UUID: CanonicalAccount],
+        legacyAccountsById: [String: PPAccount]
+    ) -> TaxLine? {
+        for accountId in [line.debitAccountId, line.creditAccountId].compactMap({ $0 }) {
+            guard let canonicalAccount = canonicalAccountsById[accountId],
+                  let legacyAccountId = canonicalAccount.legacyAccountId,
+                  let subtype = legacyAccountsById[legacyAccountId]?.subtype,
+                  let taxLine = TaxLine.allCases.first(where: { $0.accountSubtype == subtype }) else {
+                continue
+            }
+            return taxLine
+        }
+        return nil
+    }
+
+    func normalizedClassificationText(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

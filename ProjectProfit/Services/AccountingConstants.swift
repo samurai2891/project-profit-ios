@@ -57,6 +57,7 @@ enum AccountingConstants {
         // 負債 (Liabilities) — 2xx
         DefaultAccountDefinition(id: "acct-ap", code: "201", name: "買掛金", accountType: .liability, normalBalance: .credit, subtype: .accountsPayable, displayOrder: 10),
         DefaultAccountDefinition(id: "acct-accrued", code: "202", name: "未払費用", accountType: .liability, normalBalance: .credit, subtype: .accruedExpenses, displayOrder: 11),
+        DefaultAccountDefinition(id: "acct-withholding-tax-payable", code: "205", name: "源泉所得税預り金", accountType: .liability, normalBalance: .credit, subtype: .withholdingTaxPayable, displayOrder: 12),
 
         // 資本 (Equity) — 3xx
         DefaultAccountDefinition(id: "acct-owner-capital", code: "301", name: "元入金", accountType: .equity, normalBalance: .credit, subtype: .ownerCapital, displayOrder: 20),
@@ -167,6 +168,8 @@ enum AccountingConstants {
     static let outputTaxAccountId = "acct-output-tax"
     /// 未払消費税
     static let taxPayableAccountId = "acct-tax-payable"
+    /// 源泉所得税預り金
+    static let withholdingTaxPayableAccountId = "acct-withholding-tax-payable"
     /// 期首商品棚卸高
     static let openingInventoryAccountId = "acct-opening-inventory"
     /// 仕入高

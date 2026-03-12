@@ -84,6 +84,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.label, "取引履歴")
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.label, "補助簿")
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.label, "e-Tax")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.label, "支払調書")
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.label, "固定資産台帳")
         XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.label, "旧台帳")
     }
@@ -106,6 +107,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.supportedFormats, [.csv, .xtx])
@@ -120,6 +122,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(ExportCoordinator.ExportTarget.ledger.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssets.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.etax.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.withholdingStatement.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.transactions.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.subLedger.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.legacyLedgerBook.requiresPreflight)

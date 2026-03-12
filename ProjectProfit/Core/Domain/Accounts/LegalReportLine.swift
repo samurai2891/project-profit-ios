@@ -45,6 +45,7 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
     case suspense = "suspense"                   // 仮勘定
     case accountsPayable = "accounts_payable"    // 買掛金
     case accruedExpenses = "accrued_expenses"    // 未払費用
+    case withholdingTaxPayable = "withholding_tax_payable" // 源泉所得税預り金
     case outputTax = "output_tax"                // 仮受消費税
     case taxPayable = "tax_payable"              // 未払消費税
     case borrowings = "borrowings"               // 借入金
@@ -91,6 +92,7 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
         case .suspense: "仮勘定"
         case .accountsPayable: "買掛金"
         case .accruedExpenses: "未払費用"
+        case .withholdingTaxPayable: "源泉所得税預り金"
         case .outputTax: "仮受消費税"
         case .taxPayable: "未払消費税"
         case .borrowings: "借入金"
@@ -114,7 +116,7 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
             return .expenses
         case .cash, .deposits, .accountsReceivable, .prepaidExpenses, .creditCard,
              .inventory, .fixedAssets, .accumulatedDepreciation, .inputTax, .suspense,
-             .accountsPayable, .accruedExpenses, .outputTax, .taxPayable,
+             .accountsPayable, .accruedExpenses, .withholdingTaxPayable, .outputTax, .taxPayable,
              .borrowings, .ownerContributions, .capital, .ownerDrawings:
             return .balanceSheet
         }
@@ -136,6 +138,8 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
             return .accountsPayable
         case .accruedExpenses:
             return .accruedExpenses
+        case .withholdingTaxPayable:
+            return .withholdingTaxPayable
         case .ownerCapital:
             return .capital
         case .ownerContributions:

@@ -196,6 +196,9 @@ private struct CandidateLineDraft: Identifiable {
     var taxCodeId: String?
     var projectAllocationId: UUID?
     var memo: String
+    var withholdingTaxCodeId: String?
+    var withholdingTaxAmountText: String
+    var withholdingTaxBaseAmount: Decimal?
 
     init(line: PostingCandidateLine) {
         self.id = line.id
@@ -205,6 +208,9 @@ private struct CandidateLineDraft: Identifiable {
         self.taxCodeId = line.taxCodeId
         self.projectAllocationId = line.projectAllocationId
         self.memo = line.memo ?? ""
+        self.withholdingTaxCodeId = line.withholdingTaxCodeId
+        self.withholdingTaxAmountText = line.withholdingTaxAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? ""
+        self.withholdingTaxBaseAmount = line.withholdingTaxBaseAmount
     }
 
     init() {
@@ -215,6 +221,9 @@ private struct CandidateLineDraft: Identifiable {
         self.taxCodeId = nil
         self.projectAllocationId = nil
         self.memo = ""
+        self.withholdingTaxCodeId = nil
+        self.withholdingTaxAmountText = ""
+        self.withholdingTaxBaseAmount = nil
     }
 }
 
@@ -598,6 +607,38 @@ struct ApprovalCandidateDetailView: View {
             ))
             .textFieldStyle(.roundedBorder)
             .font(.caption)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("源泉徴収")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Menu {
+                    Button("未設定") {
+                        lineDrafts[index].withholdingTaxCodeId = nil
+                        lineDrafts[index].withholdingTaxAmountText = ""
+                    }
+                    ForEach(WithholdingTaxCode.allCases, id: \.rawValue) { code in
+                        Button(code.displayName) {
+                            lineDrafts[index].withholdingTaxCodeId = code.rawValue
+                        }
+                    }
+                } label: {
+                    pickerLabel(
+                        lineDrafts[index].withholdingTaxCodeId.flatMap { WithholdingTaxCode.resolve(id: $0)?.displayName } ?? "未設定"
+                    )
+                }
+
+                if lineDrafts[index].withholdingTaxCodeId != nil {
+                    TextField("源泉徴収税額", text: Binding(
+                        get: { lineDrafts[index].withholdingTaxAmountText },
+                        set: { lineDrafts[index].withholdingTaxAmountText = $0 }
+                    ))
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                }
+            }
         }
         .padding(12)
         .background(AppColors.surface)
@@ -778,7 +819,11 @@ struct ApprovalCandidateDetailView: View {
                 legalReportLineId: nil,
                 projectAllocationId: draft.projectAllocationId,
                 memo: normalizedOptionalString(draft.memo),
-                evidenceLineReferenceId: nil
+                evidenceLineReferenceId: nil,
+                withholdingTaxCodeId: normalizedOptionalString(draft.withholdingTaxCodeId),
+                withholdingTaxAmount: normalizedOptionalString(draft.withholdingTaxAmountText)
+                    .flatMap { Decimal(string: $0) },
+                withholdingTaxBaseAmount: draft.withholdingTaxBaseAmount
             )
         }
 

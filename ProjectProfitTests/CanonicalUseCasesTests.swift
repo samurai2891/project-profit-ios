@@ -70,6 +70,26 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(registered?.id, counterparty.id)
     }
 
+    func testCounterpartyMasterUseCasePersistsPayeeInfoRoundTrip() async throws {
+        let useCase = CounterpartyMasterUseCase(modelContext: context)
+        let businessId = UUID()
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "源泉対象支払先",
+            payeeInfo: PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: .professionalFee
+            )
+        )
+
+        try await useCase.save(counterparty)
+        let loaded = try await useCase.loadCounterparties(businessId: businessId)
+
+        XCTAssertEqual(loaded.map(\.id), [counterparty.id])
+        XCTAssertEqual(loaded.first?.payeeInfo?.isWithholdingSubject, true)
+        XCTAssertEqual(loaded.first?.payeeInfo?.withholdingCategory, .professionalFee)
+    }
+
     func testChartOfAccountsUseCaseLoadsAccountsByTypeAndCode() async throws {
         let useCase = ChartOfAccountsUseCase(modelContext: context)
         let businessId = UUID()
@@ -207,6 +227,71 @@ final class CanonicalUseCasesTests: XCTestCase {
             Set(auditEvents.map(\.eventTypeRaw)),
             Set([AuditEventType.candidateApproved.rawValue, AuditEventType.journalApproved.rawValue])
         )
+    }
+
+    func testPostingWorkflowUseCaseApprovalLearnsUserRuleFromApprovedCandidate() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        let expenseAccountId = UUID()
+        let cashAccountId = UUID()
+        context.insert(
+            PPAccount(
+                id: "acct-communication",
+                code: "612",
+                name: "通信費",
+                accountType: .expense,
+                subtype: .communicationExpense
+            )
+        )
+        try context.save()
+        try await seedAccount(
+            id: expenseAccountId,
+            businessId: businessId,
+            legacyAccountId: "acct-communication",
+            code: "612",
+            name: "通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.communication.rawValue
+        )
+        try await seedAccount(
+            id: cashAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
+
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: expenseAccountId,
+                    amount: Decimal(string: "3300")!,
+                    memo: "AWS 月額利用料"
+                ),
+                PostingCandidateLine(
+                    creditAccountId: cashAccountId,
+                    amount: Decimal(string: "3300")!,
+                    memo: "AWS 月額利用料"
+                )
+            ],
+            status: .needsReview,
+            source: .ocr,
+            memo: "AWS 月額利用料"
+        )
+
+        try await useCase.saveCandidate(candidate)
+        _ = try await useCase.approveCandidate(candidateId: candidate.id)
+        let rules = try context.fetch(FetchDescriptor<PPUserRule>())
+
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(rules.first?.keyword, "AWS 月額利用料")
+        XCTAssertEqual(rules.first?.taxLine, .communicationExpense)
     }
 
     func testPostingWorkflowUseCaseSyncApprovedCandidateReusesVoucherAndCreatedAt() async throws {
@@ -525,6 +610,7 @@ final class CanonicalUseCasesTests: XCTestCase {
     private func seedAccount(
         id: UUID,
         businessId: UUID,
+        legacyAccountId: String? = nil,
         code: String,
         name: String,
         accountType: CanonicalAccountType,
@@ -535,6 +621,7 @@ final class CanonicalUseCasesTests: XCTestCase {
             seededAccount(
                 id: id,
                 businessId: businessId,
+                legacyAccountId: legacyAccountId,
                 code: code,
                 name: name,
                 accountType: accountType,
@@ -547,6 +634,7 @@ final class CanonicalUseCasesTests: XCTestCase {
     private func seededAccount(
         id: UUID,
         businessId: UUID,
+        legacyAccountId: String? = nil,
         code: String,
         name: String,
         accountType: CanonicalAccountType,
@@ -556,6 +644,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         CanonicalAccount(
             id: id,
             businessId: businessId,
+            legacyAccountId: legacyAccountId,
             code: code,
             name: name,
             accountType: accountType,

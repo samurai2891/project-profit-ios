@@ -83,6 +83,73 @@ final class ClassificationLearningServiceTests: XCTestCase {
         XCTAssertEqual(rule?.keyword, "サーバー代")
     }
 
+    func testLearnFromApprovedCandidate_usesCounterpartyFallbackWhenMemoIsEmpty() {
+        let candidate = PostingCandidate(
+            businessId: UUID(),
+            taxYear: 2026,
+            candidateDate: Date(),
+            proposedLines: [],
+            status: .approved,
+            source: .ocr,
+            memo: nil,
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: nil,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                receiptImagePath: nil,
+                lineItems: [],
+                counterpartyName: "クラウドサービス"
+            )
+        )
+
+        let rule = ClassificationLearningService.learnFromApprovedCandidate(
+            candidate: candidate,
+            resolvedTaxLine: .communicationExpense,
+            existingRules: [],
+            modelContext: context
+        )
+
+        XCTAssertEqual(rule?.keyword, "クラウドサービス")
+        XCTAssertEqual(rule?.taxLine, .communicationExpense)
+    }
+
+    func testExtractKeywordFromCandidate_prefersEvidenceCounterpartyWhenCandidateTextMissing() {
+        let candidate = PostingCandidate(
+            businessId: UUID(),
+            taxYear: 2026,
+            candidateDate: Date(),
+            proposedLines: [],
+            status: .needsReview,
+            source: .ocr,
+            memo: "   ",
+            legacySnapshot: nil
+        )
+        let evidence = EvidenceDocument(
+            businessId: UUID(),
+            taxYear: 2026,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .paperScan,
+            originalFilename: "receipt.jpg",
+            mimeType: "image/jpeg",
+            fileHash: "hash",
+            originalFilePath: "receipt.jpg",
+            structuredFields: EvidenceStructuredFields(counterpartyName: "さくらインターネット")
+        )
+
+        let keyword = ClassificationLearningService.extractKeyword(from: candidate, evidence: evidence)
+
+        XCTAssertEqual(keyword, "さくらインターネット")
+    }
+
     // MARK: - extractKeyword
 
     func testExtractKeyword_shortMemoUsedAsIs() {

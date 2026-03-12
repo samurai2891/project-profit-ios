@@ -17,6 +17,7 @@ final class JournalLineEntity {
     var sortOrder: Int
     var withholdingTaxCodeId: String?
     var withholdingTaxAmount: Decimal?
+    var withholdingTaxBaseAmount: Decimal?
 
     var journalEntry: JournalEntryEntity?
 
@@ -33,7 +34,8 @@ final class JournalLineEntity {
         evidenceReferenceId: UUID? = nil,
         sortOrder: Int = 0,
         withholdingTaxCodeId: String? = nil,
-        withholdingTaxAmount: Decimal? = nil
+        withholdingTaxAmount: Decimal? = nil,
+        withholdingTaxBaseAmount: Decimal? = nil
     ) {
         self.lineId = lineId
         self.accountId = accountId
@@ -48,5 +50,6 @@ final class JournalLineEntity {
         self.sortOrder = sortOrder
         self.withholdingTaxCodeId = withholdingTaxCodeId
         self.withholdingTaxAmount = withholdingTaxAmount
+        self.withholdingTaxBaseAmount = withholdingTaxBaseAmount
     }
 }

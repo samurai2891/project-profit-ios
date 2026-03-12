@@ -16,6 +16,7 @@ struct JournalLine: Identifiable, Codable, Sendable, Equatable {
     let sortOrder: Int
     let withholdingTaxCodeId: String?
     let withholdingTaxAmount: Decimal?
+    let withholdingTaxBaseAmount: Decimal?
 
     init(
         id: UUID = UUID(),
@@ -31,7 +32,8 @@ struct JournalLine: Identifiable, Codable, Sendable, Equatable {
         evidenceReferenceId: UUID? = nil,
         sortOrder: Int = 0,
         withholdingTaxCodeId: String? = nil,
-        withholdingTaxAmount: Decimal? = nil
+        withholdingTaxAmount: Decimal? = nil,
+        withholdingTaxBaseAmount: Decimal? = nil
     ) {
         self.id = id
         self.journalId = journalId
@@ -47,6 +49,7 @@ struct JournalLine: Identifiable, Codable, Sendable, Equatable {
         self.sortOrder = sortOrder
         self.withholdingTaxCodeId = withholdingTaxCodeId
         self.withholdingTaxAmount = withholdingTaxAmount
+        self.withholdingTaxBaseAmount = withholdingTaxBaseAmount
     }
 
     /// この行が借方行か

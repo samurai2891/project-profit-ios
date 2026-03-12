@@ -23,6 +23,9 @@ struct CanonicalPostingSeed: Sendable {
     let counterpartyId: UUID?
     let counterpartyName: String?
     let source: CandidateSource
+    let isWithholdingEnabled: Bool
+    let withholdingTaxCodeId: String?
+    let withholdingTaxAmount: Decimal?
     let createdAt: Date
     let updatedAt: Date
     let journalEntryId: UUID?
@@ -48,6 +51,9 @@ struct CanonicalPostingSeed: Sendable {
         counterpartyId: UUID?,
         counterpartyName: String?,
         source: CandidateSource,
+        isWithholdingEnabled: Bool = false,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
         createdAt: Date,
         updatedAt: Date,
         journalEntryId: UUID?
@@ -75,6 +81,9 @@ struct CanonicalPostingSeed: Sendable {
         self.counterpartyId = counterpartyId
         self.counterpartyName = counterpartyName
         self.source = source
+        self.isWithholdingEnabled = isWithholdingEnabled
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.journalEntryId = journalEntryId
@@ -144,6 +153,9 @@ struct CanonicalPostingSupport {
             receiptImagePath: seed.receiptImagePath,
             lineItems: seed.lineItems,
             counterpartyName: resolvedCounterparty.displayName,
+            isWithholdingEnabled: seed.isWithholdingEnabled,
+            withholdingTaxCodeId: seed.withholdingTaxCodeId,
+            withholdingTaxAmount: seed.withholdingTaxAmount,
             createdAt: seed.createdAt,
             updatedAt: seed.updatedAt,
             journalEntryId: seed.journalEntryId
@@ -263,9 +275,37 @@ struct CanonicalPostingSupport {
 
             let lineAmount = NSDecimalNumber(decimal: line.amount).intValue
             let splitAllocations = calculateRatioAllocations(amount: lineAmount, allocations: normalizedAllocations)
-            return splitAllocations.compactMap { allocation in
+            var distributedWithholding = Decimal.zero
+            var distributedWithholdingBase = Decimal.zero
+            return splitAllocations.enumerated().compactMap { index, allocation in
                 guard allocation.amount > 0 else {
                     return nil
+                }
+                let splitWithholdingAmount: Decimal?
+                if let totalWithholdingAmount = line.withholdingTaxAmount {
+                    if index == splitAllocations.count - 1 {
+                        splitWithholdingAmount = totalWithholdingAmount - distributedWithholding
+                    } else {
+                        let ratio = Decimal(allocation.amount) / Decimal(lineAmount)
+                        let split = totalWithholdingAmount * ratio
+                        distributedWithholding += split
+                        splitWithholdingAmount = split
+                    }
+                } else {
+                    splitWithholdingAmount = nil
+                }
+                let splitWithholdingBaseAmount: Decimal?
+                if let totalWithholdingBaseAmount = line.withholdingTaxBaseAmount {
+                    if index == splitAllocations.count - 1 {
+                        splitWithholdingBaseAmount = totalWithholdingBaseAmount - distributedWithholdingBase
+                    } else {
+                        let ratio = Decimal(allocation.amount) / Decimal(lineAmount)
+                        let split = totalWithholdingBaseAmount * ratio
+                        distributedWithholdingBase += split
+                        splitWithholdingBaseAmount = split
+                    }
+                } else {
+                    splitWithholdingBaseAmount = nil
                 }
                 return PostingCandidateLine(
                     debitAccountId: line.debitAccountId,
@@ -277,7 +317,8 @@ struct CanonicalPostingSupport {
                     memo: line.memo,
                     evidenceLineReferenceId: line.evidenceLineReferenceId,
                     withholdingTaxCodeId: line.withholdingTaxCodeId,
-                    withholdingTaxAmount: line.withholdingTaxAmount
+                    withholdingTaxAmount: splitWithholdingAmount,
+                    withholdingTaxBaseAmount: splitWithholdingBaseAmount
                 )
             }
         }
@@ -311,6 +352,8 @@ struct CanonicalPostingSupport {
             }
 
             var distributedSoFar = 0
+            var distributedWithholding = Decimal.zero
+            var distributedWithholdingBase = Decimal.zero
             return normalizedAllocations.enumerated().compactMap { index, allocation in
                 let splitAmount: Int
                 if index == normalizedAllocations.count - 1 {
@@ -323,6 +366,32 @@ struct CanonicalPostingSupport {
                 guard splitAmount > 0 else {
                     return nil
                 }
+                let splitWithholdingAmount: Decimal?
+                if let totalWithholdingAmount = line.withholdingTaxAmount {
+                    if index == normalizedAllocations.count - 1 {
+                        splitWithholdingAmount = totalWithholdingAmount - distributedWithholding
+                    } else {
+                        let ratio = Decimal(splitAmount) / Decimal(lineAmount)
+                        let split = totalWithholdingAmount * ratio
+                        distributedWithholding += split
+                        splitWithholdingAmount = split
+                    }
+                } else {
+                    splitWithholdingAmount = nil
+                }
+                let splitWithholdingBaseAmount: Decimal?
+                if let totalWithholdingBaseAmount = line.withholdingTaxBaseAmount {
+                    if index == normalizedAllocations.count - 1 {
+                        splitWithholdingBaseAmount = totalWithholdingBaseAmount - distributedWithholdingBase
+                    } else {
+                        let ratio = Decimal(splitAmount) / Decimal(lineAmount)
+                        let split = totalWithholdingBaseAmount * ratio
+                        distributedWithholdingBase += split
+                        splitWithholdingBaseAmount = split
+                    }
+                } else {
+                    splitWithholdingBaseAmount = nil
+                }
 
                 return PostingCandidateLine(
                     debitAccountId: line.debitAccountId,
@@ -334,7 +403,8 @@ struct CanonicalPostingSupport {
                     memo: line.memo,
                     evidenceLineReferenceId: line.evidenceLineReferenceId,
                     withholdingTaxCodeId: line.withholdingTaxCodeId,
-                    withholdingTaxAmount: line.withholdingTaxAmount
+                    withholdingTaxAmount: splitWithholdingAmount,
+                    withholdingTaxBaseAmount: splitWithholdingBaseAmount
                 )
             }
         }

@@ -294,6 +294,70 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(matched?.result.taxLine, .suppliesExpense)
     }
 
+    func testAccountingReadSupportResolvesCanonicalClassificationSuggestionAndApprovedCandidateTaxLine() async throws {
+        let legacyAccount = PPAccount(
+            id: "acct-cloud-communication",
+            code: "612",
+            name: "クラウド通信費",
+            accountType: .expense,
+            subtype: .communicationExpense,
+            displayOrder: 999
+        )
+        let category = PPCategory(
+            id: "cat-cloud-communication",
+            name: "クラウド通信費",
+            type: .expense,
+            icon: "wifi",
+            linkedAccountId: legacyAccount.id
+        )
+        let rule = PPUserRule(keyword: "aws", taxLine: .communicationExpense, priority: 300)
+        context.insert(legacyAccount)
+        context.insert(category)
+        context.insert(rule)
+        try context.save()
+
+        let canonicalAccountId = UUID()
+        let canonicalAccount = CanonicalAccount(
+            id: canonicalAccountId,
+            businessId: businessId,
+            legacyAccountId: legacyAccount.id,
+            code: "612",
+            name: "クラウド通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.communication.rawValue,
+            displayOrder: 999
+        )
+        try await SwiftDataChartOfAccountsRepository(modelContext: context).save(canonicalAccount)
+
+        let support = AccountingReadSupport(modelContext: context)
+        let suggestion = support.classificationSuggestion(
+            memo: "AWS 月額利用料",
+            transactionType: .expense,
+            categoryId: "cat-tools"
+        )
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: makeDate(year: 2025, month: 8, day: 10),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: canonicalAccountId,
+                    amount: Decimal(1_200),
+                    memo: "AWS 月額利用料"
+                )
+            ],
+            status: .approved,
+            source: .ocr,
+            memo: "AWS 月額利用料"
+        )
+
+        XCTAssertEqual(suggestion?.result.source, .userRule)
+        XCTAssertEqual(suggestion?.result.taxLine, .communicationExpense)
+        XCTAssertEqual(suggestion?.resolvedCategoryId, category.id)
+        XCTAssertEqual(support.resolvedTaxLine(forApprovedCandidate: candidate), .communicationExpense)
+    }
+
     func testEtaxExportContextQueryUseCaseReturnsBusinessAndFallbackProfile() {
         seedTaxYearProfile(
             TaxYearProfile(

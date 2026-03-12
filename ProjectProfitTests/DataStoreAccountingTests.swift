@@ -1219,7 +1219,10 @@ final class DataStoreAccountingTests: XCTestCase {
             taxAmount: nil,
             registrationNumber: nil,
             counterpartyId: nil,
-            counterpartyName: "文具センター"
+            counterpartyName: "文具センター",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let result = try await useCase.intake(request)

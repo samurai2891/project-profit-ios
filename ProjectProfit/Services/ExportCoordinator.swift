@@ -34,6 +34,7 @@ enum ExportCoordinator {
         case transactions
         case subLedger
         case etax
+        case withholdingStatement
         case fixedAssets
         case legacyLedgerBook
 
@@ -47,6 +48,7 @@ enum ExportCoordinator {
             case .transactions: "取引履歴"
             case .subLedger: "補助簿"
             case .etax: "e-Tax"
+            case .withholdingStatement: "支払調書"
             case .fixedAssets: "固定資産台帳"
             case .legacyLedgerBook: "旧台帳"
             }
@@ -62,6 +64,7 @@ enum ExportCoordinator {
             case .transactions: "transactions"
             case .subLedger: "sub_ledger"
             case .etax: "etax"
+            case .withholdingStatement: "withholding_statement"
             case .fixedAssets: "fixed_assets"
             case .legacyLedgerBook: "legacy_ledger"
             }
@@ -71,7 +74,7 @@ enum ExportCoordinator {
         /// ExportMenuButton / EtaxExportView / 旧台帳詳細画面の実使用範囲を正本として管理する。
         var supportedFormats: Set<ExportFormat> {
             switch self {
-            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets:
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .withholdingStatement:
                 return [.csv, .pdf]
             case .transactions, .subLedger:
                 return [.csv]
@@ -86,7 +89,7 @@ enum ExportCoordinator {
         /// 旧台帳/汎用CSV（取引履歴/補助簿）は日常運用で使うため preflight を要求しない。
         var requiresPreflight: Bool {
             switch self {
-            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax:
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax, .withholdingStatement:
                 return true
             case .transactions, .subLedger, .legacyLedgerBook:
                 return false
@@ -159,6 +162,17 @@ enum ExportCoordinator {
         let form: EtaxForm
     }
 
+    struct WithholdingStatementExportOptions {
+        enum Scope: Sendable, Equatable {
+            case annualSummary
+            case payee(UUID)
+        }
+
+        let scope: Scope
+        let annualSummary: WithholdingStatementAnnualSummary
+        let document: WithholdingStatementDocument?
+    }
+
     // MARK: - Export
 
     /// 指定の帳票をフォーマットでエクスポートし、一時ファイルのURLを返す
@@ -172,6 +186,7 @@ enum ExportCoordinator {
         transactionOptions: TransactionExportOptions? = nil,
         subLedgerOptions: SubLedgerExportOptions? = nil,
         etaxOptions: EtaxExportOptions? = nil,
+        withholdingStatementOptions: WithholdingStatementExportOptions? = nil,
         legacyLedgerOptions: LegacyLedgerExportOptions? = nil
     ) throws -> URL {
         try exportInternal(
@@ -184,6 +199,7 @@ enum ExportCoordinator {
             transactionOptions: transactionOptions,
             subLedgerOptions: subLedgerOptions,
             etaxOptions: etaxOptions,
+            withholdingStatementOptions: withholdingStatementOptions,
             legacyLedgerOptions: legacyLedgerOptions
         )
     }
@@ -204,6 +220,7 @@ enum ExportCoordinator {
             transactionOptions: nil,
             subLedgerOptions: nil,
             etaxOptions: nil,
+            withholdingStatementOptions: nil,
             legacyLedgerOptions: legacyLedgerOptions
         )
     }
@@ -218,6 +235,7 @@ enum ExportCoordinator {
         transactionOptions: TransactionExportOptions?,
         subLedgerOptions: SubLedgerExportOptions?,
         etaxOptions: EtaxExportOptions?,
+        withholdingStatementOptions: WithholdingStatementExportOptions?,
         legacyLedgerOptions: LegacyLedgerExportOptions?
     ) throws -> URL {
         let supportedFormats = supportedFormats(for: target, legacyLedgerOptions: legacyLedgerOptions)
@@ -241,6 +259,7 @@ enum ExportCoordinator {
             transactionOptions: transactionOptions,
             subLedgerOptions: subLedgerOptions,
             etaxOptions: etaxOptions,
+            withholdingStatementOptions: withholdingStatementOptions,
             legacyLedgerOptions: legacyLedgerOptions
         )
 
@@ -341,6 +360,7 @@ enum ExportCoordinator {
         transactionOptions: TransactionExportOptions?,
         subLedgerOptions: SubLedgerExportOptions?,
         etaxOptions: EtaxExportOptions?,
+        withholdingStatementOptions: WithholdingStatementExportOptions?,
         legacyLedgerOptions: LegacyLedgerExportOptions?
     ) throws -> ExportContent {
         if target == .legacyLedgerBook {
@@ -509,6 +529,34 @@ enum ExportCoordinator {
                 return .data(data)
             case .failure(let error):
                 throw ExportError.etaxGenerationFailed(error.description)
+            }
+
+        case (.withholdingStatement, .csv):
+            guard let opts = withholdingStatementOptions else {
+                throw ExportError.dataUnavailable
+            }
+            switch opts.scope {
+            case .annualSummary:
+                return .text(ReportCSVExportService.exportWithholdingStatementAnnualCSV(summary: opts.annualSummary))
+            case .payee:
+                guard let document = opts.document else {
+                    throw ExportError.dataUnavailable
+                }
+                return .text(ReportCSVExportService.exportWithholdingStatementPayeeCSV(document: document))
+            }
+
+        case (.withholdingStatement, .pdf):
+            guard let opts = withholdingStatementOptions else {
+                throw ExportError.dataUnavailable
+            }
+            switch opts.scope {
+            case .annualSummary:
+                return .data(PDFExportService.exportWithholdingStatementAnnualPDF(summary: opts.annualSummary))
+            case .payee:
+                guard let document = opts.document else {
+                    throw ExportError.dataUnavailable
+                }
+                return .data(PDFExportService.exportWithholdingStatementPayeePDF(document: document))
             }
 
         case (.fixedAssets, .csv):

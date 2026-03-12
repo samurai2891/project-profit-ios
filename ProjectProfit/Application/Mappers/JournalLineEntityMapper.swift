@@ -17,7 +17,8 @@ enum JournalLineEntityMapper {
             evidenceReferenceId: entity.evidenceReferenceId,
             sortOrder: entity.sortOrder,
             withholdingTaxCodeId: entity.withholdingTaxCodeId,
-            withholdingTaxAmount: entity.withholdingTaxAmount
+            withholdingTaxAmount: entity.withholdingTaxAmount,
+            withholdingTaxBaseAmount: entity.withholdingTaxBaseAmount
         )
     }
 
@@ -35,7 +36,8 @@ enum JournalLineEntityMapper {
             evidenceReferenceId: domain.evidenceReferenceId,
             sortOrder: domain.sortOrder,
             withholdingTaxCodeId: domain.withholdingTaxCodeId,
-            withholdingTaxAmount: domain.withholdingTaxAmount
+            withholdingTaxAmount: domain.withholdingTaxAmount,
+            withholdingTaxBaseAmount: domain.withholdingTaxBaseAmount
         )
     }
 }

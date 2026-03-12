@@ -258,7 +258,10 @@ struct CanonicalPostingEngine {
                         projectAllocationId: line.projectAllocationId,
                         genreTagIds: [],
                         evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
-                        sortOrder: sortOrder
+                        sortOrder: sortOrder,
+                        withholdingTaxCodeId: line.withholdingTaxCodeId,
+                        withholdingTaxAmount: line.withholdingTaxAmount,
+                        withholdingTaxBaseAmount: line.withholdingTaxBaseAmount
                     )
                 )
                 sortOrder += 1
@@ -325,7 +328,10 @@ struct CanonicalPostingEngine {
                         projectAllocationId: line.projectAllocationId,
                         genreTagIds: [],
                         evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
-                        sortOrder: sortOrder
+                        sortOrder: sortOrder,
+                        withholdingTaxCodeId: line.withholdingTaxCodeId,
+                        withholdingTaxAmount: line.withholdingTaxAmount,
+                        withholdingTaxBaseAmount: line.withholdingTaxBaseAmount
                     )
                 )
                 sortOrder += 1

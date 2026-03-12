@@ -13,6 +13,7 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
     let evidenceLineReferenceId: UUID?
     let withholdingTaxCodeId: String?
     let withholdingTaxAmount: Decimal?
+    let withholdingTaxBaseAmount: Decimal?
 
     init(
         id: UUID = UUID(),
@@ -25,7 +26,8 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
         memo: String? = nil,
         evidenceLineReferenceId: UUID? = nil,
         withholdingTaxCodeId: String? = nil,
-        withholdingTaxAmount: Decimal? = nil
+        withholdingTaxAmount: Decimal? = nil,
+        withholdingTaxBaseAmount: Decimal? = nil
     ) {
         self.id = id
         self.debitAccountId = debitAccountId
@@ -38,6 +40,7 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
         self.evidenceLineReferenceId = evidenceLineReferenceId
         self.withholdingTaxCodeId = withholdingTaxCodeId
         self.withholdingTaxAmount = withholdingTaxAmount
+        self.withholdingTaxBaseAmount = withholdingTaxBaseAmount
     }
 
     /// イミュータブル更新
@@ -51,7 +54,8 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
         memo: String?? = nil,
         evidenceLineReferenceId: UUID?? = nil,
         withholdingTaxCodeId: String?? = nil,
-        withholdingTaxAmount: Decimal?? = nil
+        withholdingTaxAmount: Decimal?? = nil,
+        withholdingTaxBaseAmount: Decimal?? = nil
     ) -> PostingCandidateLine {
         PostingCandidateLine(
             id: self.id,
@@ -64,7 +68,8 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
             memo: memo ?? self.memo,
             evidenceLineReferenceId: evidenceLineReferenceId ?? self.evidenceLineReferenceId,
             withholdingTaxCodeId: withholdingTaxCodeId ?? self.withholdingTaxCodeId,
-            withholdingTaxAmount: withholdingTaxAmount ?? self.withholdingTaxAmount
+            withholdingTaxAmount: withholdingTaxAmount ?? self.withholdingTaxAmount,
+            withholdingTaxBaseAmount: withholdingTaxBaseAmount ?? self.withholdingTaxBaseAmount
         )
     }
 }

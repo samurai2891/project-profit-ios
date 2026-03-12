@@ -66,6 +66,9 @@ final class PostingIntakeUseCaseTests: XCTestCase {
                 isTaxIncluded: false,
                 counterpartyId: nil,
                 counterparty: nil,
+                isWithholdingEnabled: false,
+                withholdingTaxCodeId: nil,
+                withholdingTaxAmount: nil,
                 candidateSource: .manual
             )
         )
@@ -107,6 +110,9 @@ final class PostingIntakeUseCaseTests: XCTestCase {
                     isTaxIncluded: nil,
                     counterpartyId: nil,
                     counterparty: nil,
+                    isWithholdingEnabled: false,
+                    withholdingTaxCodeId: nil,
+                    withholdingTaxAmount: nil,
                     candidateSource: .manual
                 )
             )
@@ -119,6 +125,55 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         } catch {
             XCTFail("unexpected error: \(error.localizedDescription)")
         }
+    }
+
+    func testSaveManualCandidateBuildsThreeLinesWhenWithholdingEnabled() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let project = mutations(dataStore).addProject(name: "Withholding PJ", description: "")
+
+        let candidate = try await useCase.saveManualCandidate(
+            input: ManualPostingCandidateInput(
+                type: .expense,
+                amount: 100_000,
+                date: Date(),
+                categoryId: "cat-tools",
+                memo: "withholding candidate",
+                allocations: [(projectId: project.id, ratio: 100)],
+                paymentAccountId: AccountingConstants.cashAccountId,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                isTaxIncluded: nil,
+                counterpartyId: nil,
+                counterparty: "税理士法人テスト",
+                isWithholdingEnabled: true,
+                withholdingTaxCodeId: WithholdingTaxCode.professionalFee.rawValue,
+                withholdingTaxAmount: nil,
+                candidateSource: .manual
+            )
+        )
+
+        let debitTotal = candidate.proposedLines
+            .filter { $0.debitAccountId != nil }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        let creditTotal = candidate.proposedLines
+            .filter { $0.creditAccountId != nil }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        let annotatedLine = try XCTUnwrap(candidate.proposedLines.first { $0.withholdingTaxAmount != nil })
+        let expectedWithholding = WithholdingTaxCalculator.calculate(
+            grossAmount: Decimal(100_000),
+            code: .professionalFee
+        ).withholdingAmount
+
+        XCTAssertEqual(candidate.proposedLines.count, 3)
+        XCTAssertEqual(debitTotal, creditTotal)
+        XCTAssertEqual(annotatedLine.withholdingTaxCodeId, WithholdingTaxCode.professionalFee.rawValue)
+        XCTAssertEqual(annotatedLine.withholdingTaxAmount, expectedWithholding)
+        XCTAssertEqual(annotatedLine.withholdingTaxBaseAmount, Decimal(100_000))
+        XCTAssertTrue(candidate.proposedLines.contains {
+            $0.creditAccountId != nil && $0.amount == expectedWithholding
+        })
     }
 
     func testImportTransactionsCreatesNeedsReviewCandidateAndEvidenceWithoutLegacyMirrorTransaction() async throws {

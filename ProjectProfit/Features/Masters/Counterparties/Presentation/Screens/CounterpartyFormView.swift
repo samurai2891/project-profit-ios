@@ -20,6 +20,8 @@ struct CounterpartyFormView: View {
     @State private var selectedDefaultAccountId: UUID?
     @State private var selectedTaxCodeId: String?
     @State private var selectedDefaultProjectId: UUID?
+    @State private var isWithholdingSubject = false
+    @State private var selectedWithholdingCategory: WithholdingTaxCode?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var registrationNumberError: String?
@@ -30,6 +32,7 @@ struct CounterpartyFormView: View {
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && registrationNumberError == nil
+            && (!isWithholdingSubject || selectedWithholdingCategory != nil)
     }
     private var availableProjects: [PPProject] {
         formSnapshot.projects.filter { $0.isArchived != true }
@@ -102,6 +105,19 @@ struct CounterpartyFormView: View {
                 }
             }
 
+            Section("源泉徴収") {
+                Toggle("源泉徴収対象の支払先", isOn: $isWithholdingSubject)
+
+                if isWithholdingSubject {
+                    Picker("源泉区分", selection: $selectedWithholdingCategory) {
+                        Text("選択してください").tag(WithholdingTaxCode?.none)
+                        ForEach(WithholdingTaxCode.allCases, id: \.self) { code in
+                            Text(code.displayName).tag(WithholdingTaxCode?.some(code))
+                        }
+                    }
+                }
+            }
+
             Section("メモ") {
                 TextField("メモ", text: $notes, axis: .vertical)
                     .lineLimit(3...6)
@@ -170,6 +186,8 @@ struct CounterpartyFormView: View {
         selectedDefaultAccountId = cp.defaultAccountId
         selectedTaxCodeId = cp.defaultTaxCodeId
         selectedDefaultProjectId = cp.defaultProjectId
+        isWithholdingSubject = cp.payeeInfo?.isWithholdingSubject ?? false
+        selectedWithholdingCategory = cp.payeeInfo?.withholdingCategory
     }
 
     private func validateRegistrationNumber(_ value: String) {
@@ -202,6 +220,14 @@ struct CounterpartyFormView: View {
         let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payeeInfo: PayeeInfo? = isWithholdingSubject
+            ? PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: selectedWithholdingCategory
+            )
+            : selectedWithholdingCategory.map {
+                PayeeInfo(isWithholdingSubject: false, withholdingCategory: $0)
+            }
 
         let newCounterparty: Counterparty
         if let existing = counterparty {
@@ -223,6 +249,7 @@ struct CounterpartyFormView: View {
                 defaultTaxCodeId: selectedTaxCodeId,
                 defaultProjectId: selectedDefaultProjectId,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                payeeInfo: payeeInfo,
                 createdAt: existing.createdAt,
                 updatedAt: Date()
             )
@@ -240,7 +267,8 @@ struct CounterpartyFormView: View {
                 defaultAccountId: selectedDefaultAccountId,
                 defaultTaxCodeId: selectedTaxCodeId,
                 defaultProjectId: selectedDefaultProjectId,
-                notes: trimmedNotes.isEmpty ? nil : trimmedNotes
+                notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                payeeInfo: payeeInfo
             )
         }
 

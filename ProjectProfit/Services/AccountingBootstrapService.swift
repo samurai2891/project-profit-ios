@@ -403,6 +403,9 @@ struct CanonicalTransactionPostingBridge {
         let receiptImagePath: String?
         let lineItems: [ReceiptLineItem]
         let counterpartyName: String?
+        let isWithholdingEnabled: Bool
+        let withholdingTaxCodeId: String?
+        let withholdingTaxAmount: Decimal?
         let createdAt: Date
         let updatedAt: Date
         let journalEntryId: UUID?
@@ -427,6 +430,9 @@ struct CanonicalTransactionPostingBridge {
             receiptImagePath = transaction.receiptImagePath
             lineItems = transaction.lineItems
             counterpartyName = transaction.counterparty
+            isWithholdingEnabled = false
+            withholdingTaxCodeId = nil
+            withholdingTaxAmount = nil
             createdAt = transaction.createdAt
             updatedAt = transaction.updatedAt
             journalEntryId = transaction.journalEntryId
@@ -451,6 +457,9 @@ struct CanonicalTransactionPostingBridge {
             receiptImagePath: String? = nil,
             lineItems: [ReceiptLineItem] = [],
             counterpartyName: String? = nil,
+            isWithholdingEnabled: Bool = false,
+            withholdingTaxCodeId: String? = nil,
+            withholdingTaxAmount: Decimal? = nil,
             createdAt: Date,
             updatedAt: Date,
             journalEntryId: UUID?
@@ -476,6 +485,9 @@ struct CanonicalTransactionPostingBridge {
             self.receiptImagePath = receiptImagePath
             self.lineItems = lineItems
             self.counterpartyName = counterpartyName
+            self.isWithholdingEnabled = isWithholdingEnabled
+            self.withholdingTaxCodeId = withholdingTaxCodeId
+            self.withholdingTaxAmount = withholdingTaxAmount
             self.createdAt = createdAt
             self.updatedAt = updatedAt
             self.journalEntryId = journalEntryId
@@ -584,7 +596,42 @@ struct CanonicalTransactionPostingBridge {
             )
         }
 
-        guard !candidateLines.isEmpty else {
+        let resolvedCandidateLines: [PostingCandidateLine]
+        if snapshot.type == .expense {
+            let withholding = try? WithholdingPostingSupport.resolve(
+                input: WithholdingPostingInput(
+                    isEnabled: snapshot.isWithholdingEnabled,
+                    codeId: snapshot.withholdingTaxCodeId,
+                    explicitAmount: snapshot.withholdingTaxAmount,
+                    totalAmount: snapshot.amount,
+                    taxAmount: snapshot.taxAmount,
+                    isTaxIncluded: snapshot.isTaxIncluded
+                )
+            )
+
+            let paymentLegacyAccountId = snapshot.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+            if let withholding,
+               let paymentAccountId = canonicalAccountId(
+                    for: paymentLegacyAccountId,
+                    canonicalIdsByLegacyId: canonicalIdsByLegacyId
+               ),
+               let liabilityAccount = canonicalAccountsByLegacyId[AccountingConstants.withholdingTaxPayableAccountId]
+            {
+                resolvedCandidateLines = (try? WithholdingPostingSupport.applyToExpenseLines(
+                    candidateLines,
+                    paymentAccountId: paymentAccountId,
+                    liabilityAccount: liabilityAccount,
+                    withholding: withholding,
+                    memo: normalizedOptionalString(snapshot.memo)
+                )) ?? candidateLines
+            } else {
+                resolvedCandidateLines = candidateLines
+            }
+        } else {
+            resolvedCandidateLines = candidateLines
+        }
+
+        guard !resolvedCandidateLines.isEmpty else {
             return nil
         }
 
@@ -599,7 +646,7 @@ struct CanonicalTransactionPostingBridge {
             taxYear: taxYear,
             candidateDate: snapshot.date,
             counterpartyId: counterpartyId,
-            proposedLines: candidateLines,
+            proposedLines: resolvedCandidateLines,
             taxAnalysis: resolvedTaxAnalysis,
             confidenceScore: 1.0,
             status: .approved,
@@ -910,7 +957,8 @@ struct CanonicalTransactionPostingBridge {
                         evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
                         sortOrder: sortOrder,
                         withholdingTaxCodeId: line.withholdingTaxCodeId,
-                        withholdingTaxAmount: line.withholdingTaxAmount
+                        withholdingTaxAmount: line.withholdingTaxAmount,
+                        withholdingTaxBaseAmount: line.withholdingTaxBaseAmount
                     )
                 )
                 sortOrder += 1
@@ -931,9 +979,7 @@ struct CanonicalTransactionPostingBridge {
                         counterpartyId: candidate.counterpartyId,
                         projectAllocationId: line.projectAllocationId,
                         evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
-                        sortOrder: sortOrder,
-                        withholdingTaxCodeId: line.withholdingTaxCodeId,
-                        withholdingTaxAmount: line.withholdingTaxAmount
+                        sortOrder: sortOrder
                     )
                 )
                 sortOrder += 1

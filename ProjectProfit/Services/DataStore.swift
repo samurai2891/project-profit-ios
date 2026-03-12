@@ -1005,6 +1005,9 @@ class DataStore {
                         isTaxIncluded: isTaxIncluded,
                         counterpartyId: counterpartyId,
                         counterparty: counterparty,
+                        isWithholdingEnabled: false,
+                        withholdingTaxCodeId: nil,
+                        withholdingTaxAmount: nil,
                         candidateSource: candidateSource ?? .manual
                     )
                 )

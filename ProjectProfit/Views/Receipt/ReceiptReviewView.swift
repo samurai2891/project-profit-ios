@@ -756,7 +756,10 @@ struct ReceiptReviewView: View {
                     taxAmount: resolvedTaxAmount,
                     registrationNumber: receiptData.registrationNumber,
                     counterpartyId: selectedCounterpartyId,
-                    counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty
+                    counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty,
+                    isWithholdingEnabled: false,
+                    withholdingTaxCodeId: nil,
+                    withholdingTaxAmount: nil
                 )
                 _ = try await ReceiptEvidenceIntakeUseCase(modelContext: modelContext).intake(request)
                 onIntakeSucceeded?()

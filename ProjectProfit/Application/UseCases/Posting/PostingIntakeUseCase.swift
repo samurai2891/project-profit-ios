@@ -29,6 +29,9 @@ struct ManualPostingCandidateInput: Sendable {
     let isTaxIncluded: Bool?
     let counterpartyId: UUID?
     let counterparty: String?
+    let isWithholdingEnabled: Bool
+    let withholdingTaxCodeId: String?
+    let withholdingTaxAmount: Decimal?
     let candidateSource: CandidateSource
 }
 

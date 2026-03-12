@@ -53,19 +53,28 @@ struct PostingWorkflowUseCase {
     private let chartOfAccountsRepository: any ChartOfAccountsRepository
     private let auditRepository: (any AuditRepository)?
     private let journalSearchIndex: LocalJournalSearchIndex?
+    private let modelContext: ModelContext?
+    private let classificationSupport: AccountingReadSupport?
+    private let userRuleRepository: (any UserRuleRepository)?
 
     init(
         postingCandidateRepository: any PostingCandidateRepository,
         journalEntryRepository: any CanonicalJournalEntryRepository,
         chartOfAccountsRepository: any ChartOfAccountsRepository,
         auditRepository: (any AuditRepository)? = nil,
-        journalSearchIndex: LocalJournalSearchIndex? = nil
+        journalSearchIndex: LocalJournalSearchIndex? = nil,
+        modelContext: ModelContext? = nil,
+        classificationSupport: AccountingReadSupport? = nil,
+        userRuleRepository: (any UserRuleRepository)? = nil
     ) {
         self.postingCandidateRepository = postingCandidateRepository
         self.journalEntryRepository = journalEntryRepository
         self.chartOfAccountsRepository = chartOfAccountsRepository
         self.auditRepository = auditRepository
         self.journalSearchIndex = journalSearchIndex
+        self.modelContext = modelContext
+        self.classificationSupport = classificationSupport
+        self.userRuleRepository = userRuleRepository
     }
 
     init(modelContext: ModelContext) {
@@ -74,7 +83,10 @@ struct PostingWorkflowUseCase {
             journalEntryRepository: SwiftDataCanonicalJournalEntryRepository(modelContext: modelContext),
             chartOfAccountsRepository: SwiftDataChartOfAccountsRepository(modelContext: modelContext),
             auditRepository: SwiftDataAuditRepository(modelContext: modelContext),
-            journalSearchIndex: LocalJournalSearchIndex(modelContext: modelContext)
+            journalSearchIndex: LocalJournalSearchIndex(modelContext: modelContext),
+            modelContext: modelContext,
+            classificationSupport: AccountingReadSupport(modelContext: modelContext),
+            userRuleRepository: SwiftDataUserRuleRepository(modelContext: modelContext)
         )
     }
 
@@ -141,12 +153,14 @@ struct PostingWorkflowUseCase {
         guard let candidate = try await postingCandidateRepository.findById(candidateId) else {
             throw PostingWorkflowUseCaseError.candidateNotFound(candidateId)
         }
-        return try await postingEngine.persistApprovedCandidateAsync(
+        let journal = try await postingEngine.persistApprovedCandidateAsync(
             candidate,
             entryType: entryType,
             description: description,
             approvedAt: approvedAt
         )
+        learnFromApprovedCandidateIfPossible(candidate)
+        return journal
     }
 
     func syncApprovedCandidate(
@@ -334,6 +348,28 @@ struct PostingWorkflowUseCase {
             )
         )
         return reopened
+    }
+
+    private func learnFromApprovedCandidateIfPossible(_ candidate: PostingCandidate) {
+        guard let modelContext,
+              let classificationSupport,
+              let userRuleRepository,
+              let resolvedTaxLine = classificationSupport.resolvedTaxLine(forApprovedCandidate: candidate) else {
+            return
+        }
+
+        do {
+            let existingRules = try userRuleRepository.allRules()
+            _ = ClassificationLearningService.learnFromApprovedCandidate(
+                candidate: candidate,
+                resolvedTaxLine: resolvedTaxLine,
+                existingRules: existingRules,
+                modelContext: modelContext
+            )
+            try userRuleRepository.saveChanges()
+        } catch {
+            AppLogger.general.warning("Classification learning skipped after approval: \(error.localizedDescription)")
+        }
     }
 
     private func rebuildJournalSearchIndex(businessId: UUID, taxYear: Int) throws {

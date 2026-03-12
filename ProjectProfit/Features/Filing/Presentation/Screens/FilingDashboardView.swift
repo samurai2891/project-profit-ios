@@ -150,6 +150,16 @@ struct FilingDashboardView: View {
             }
 
             NavigationLink {
+                WithholdingStatementView(initialFiscalYear: selectedFiscalYear)
+            } label: {
+                workflowRow(
+                    icon: "doc.text.magnifyingglass",
+                    title: "支払調書",
+                    subtitle: "源泉徴収の年次一覧と支払先単票を確認"
+                )
+            }
+
+            NavigationLink {
                 ClosingEntryView()
             } label: {
                 workflowRow(
