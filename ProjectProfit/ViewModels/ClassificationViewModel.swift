@@ -4,40 +4,27 @@ import SwiftUI
 @MainActor
 @Observable
 final class ClassificationViewModel {
-    private let dataStore: DataStore
+    private let modelContext: ModelContext
+    private let queryUseCase: ClassificationQueryUseCase
+    private let userRuleRepository: any UserRuleRepository
 
-    var results: [(transaction: PPTransaction, result: ClassificationEngine.ClassificationResult)] = []
+    var results: [ClassificationResultItem] = []
     var userRules: [PPUserRule] = []
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+        self.queryUseCase = ClassificationQueryUseCase(modelContext: modelContext)
+        self.userRuleRepository = SwiftDataUserRuleRepository(modelContext: modelContext)
         refresh()
     }
 
     func refresh() {
-        loadUserRules()
-        classifyAll()
+        let snapshot = queryUseCase.snapshot()
+        results = snapshot.results
+        userRules = snapshot.userRules
     }
 
-    private func loadUserRules() {
-        do {
-            let descriptor = FetchDescriptor<PPUserRule>(sortBy: [SortDescriptor(\.priority, order: .reverse)])
-            userRules = try dataStore.modelContext.fetch(descriptor)
-        } catch {
-            userRules = []
-        }
-    }
-
-    private func classifyAll() {
-        results = ClassificationEngine.classifyBatch(
-            transactions: dataStore.transactions,
-            categories: dataStore.categories,
-            accounts: dataStore.accounts,
-            userRules: userRules
-        )
-    }
-
-    var unclassifiedResults: [(transaction: PPTransaction, result: ClassificationEngine.ClassificationResult)] {
+    var unclassifiedResults: [ClassificationResultItem] {
         results.filter { $0.result.source == .fallback }
     }
 
@@ -49,7 +36,7 @@ final class ClassificationViewModel {
 
     /// ユーザーの手動分類修正を学習し、PPUserRuleを自動生成・更新する
     func correctClassification(transactionId: UUID, newTaxLine: TaxLine) {
-        guard let transaction = dataStore.transactions.first(where: { $0.id == transactionId }) else {
+        guard let transaction = results.first(where: { $0.transaction.id == transactionId })?.transaction else {
             return
         }
 
@@ -57,9 +44,9 @@ final class ClassificationViewModel {
             transaction: transaction,
             correctedTaxLine: newTaxLine,
             existingRules: userRules,
-            modelContext: dataStore.modelContext
+            modelContext: modelContext
         )
-        dataStore.save()
+        try? userRuleRepository.saveChanges()
         refresh()
     }
 }

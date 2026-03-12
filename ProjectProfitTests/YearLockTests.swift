@@ -36,11 +36,11 @@ final class YearLockTests: XCTestCase {
         // ブートストラップで canonical プロファイルが作成される前提。
         // loadData() により businessProfile が確実にセットされた状態で lockFiscalYear を呼ぶ。
         dataStore.loadData()
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 
     private func makeProject() -> PPProject {
-        dataStore.addProject(name: "TestProject", description: "desc")
+        mutations(dataStore).addProject(name: "TestProject", description: "desc")
     }
 
     // MARK: - Lock/Unlock
@@ -51,14 +51,14 @@ final class YearLockTests: XCTestCase {
         XCTAssertTrue(dataStore.isYearLocked(2025))
         XCTAssertEqual(persistedTaxYearProfile(2025)?.yearLockStateRaw, YearLockState.finalLock.rawValue)
 
-        dataStore.unlockFiscalYear(2025)
+        mutations(dataStore).unlockFiscalYear(2025)
         XCTAssertFalse(dataStore.isYearLocked(2025))
         XCTAssertEqual(persistedTaxYearProfile(2025)?.yearLockStateRaw, YearLockState.open.rawValue)
     }
 
     func testMultipleYearsLock() {
         setupProfileAndLockYear(2024)
-        dataStore.lockFiscalYear(2025)
+        mutations(dataStore).lockFiscalYear(2025)
 
         XCTAssertTrue(dataStore.isYearLocked(2024))
         XCTAssertTrue(dataStore.isYearLocked(2025))
@@ -68,31 +68,31 @@ final class YearLockTests: XCTestCase {
     }
 
     func testUnlockYearUsesCanonicalState() {
-        dataStore.lockFiscalYear(2025)
+        mutations(dataStore).lockFiscalYear(2025)
         XCTAssertTrue(dataStore.isYearLocked(2025))
 
-        dataStore.unlockFiscalYear(2025)
+        mutations(dataStore).unlockFiscalYear(2025)
 
         XCTAssertFalse(dataStore.isYearLocked(2025))
         XCTAssertEqual(persistedTaxYearProfile(2025)?.yearLockStateRaw, YearLockState.open.rawValue)
     }
 
     func testTransitionFiscalYearStateFollowsAllowedSequence() {
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: 2025))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .softClose)
 
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.taxClose, for: 2025))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .taxClose)
 
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.filed, for: 2025))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.filed, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .filed)
 
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.finalLock, for: 2025))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.finalLock, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .finalLock)
     }
 
     func testTransitionFiscalYearStateRejectsInvalidJump() {
-        XCTAssertFalse(dataStore.transitionFiscalYearState(.finalLock, for: 2025))
+        XCTAssertFalse(mutations(dataStore).transitionFiscalYearState(.finalLock, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .open)
         guard case .saveFailed(let underlying)? = dataStore.lastError else {
             return XCTFail("Expected saveFailed error, got \(String(describing: dataStore.lastError))")
@@ -126,7 +126,7 @@ final class YearLockTests: XCTestCase {
 
         let lockedDate = dateFrom(year: 2025, month: 6, day: 15)
 
-        let result = dataStore.addTransactionResult(
+        let result = mutations(dataStore).addTransactionResult(
             type: .expense,
             amount: 1000,
             date: lockedDate,
@@ -157,7 +157,7 @@ final class YearLockTests: XCTestCase {
 
         XCTAssertFalse(dataStore.isYearLocked(2025), "2025年は未ロックの前提: \(yearLockDiagnostics(for: 2025))")
 
-        let result = dataStore.addTransactionResult(
+        let result = mutations(dataStore).addTransactionResult(
             type: .expense,
             amount: 1000,
             date: unlockedDate,
@@ -177,7 +177,7 @@ final class YearLockTests: XCTestCase {
     func testUpdateTransaction_blockedByYearLock() {
         let _ = makeProject()
         let date2025 = dateFrom(year: 2025, month: 3, day: 1)
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: date2025,
@@ -188,7 +188,7 @@ final class YearLockTests: XCTestCase {
 
         setupProfileAndLockYear(2025)
 
-        let updated = dataStore.updateTransaction(id: tx.id, memo: "updated")
+        let updated = mutations(dataStore).updateTransaction(id: tx.id, memo: "updated")
 
         // memoが変更されていないこと
         let found = dataStore.transactions.first { $0.id == tx.id }
@@ -205,7 +205,7 @@ final class YearLockTests: XCTestCase {
     func testDeleteTransaction_blockedByYearLock() {
         let _ = makeProject()
         let date2025 = dateFrom(year: 2025, month: 3, day: 1)
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: date2025,
@@ -217,7 +217,7 @@ final class YearLockTests: XCTestCase {
         setupProfileAndLockYear(2025)
         let countBefore = dataStore.transactions.count
 
-        dataStore.deleteTransaction(id: tx.id)
+        mutations(dataStore).deleteTransaction(id: tx.id)
 
         XCTAssertEqual(dataStore.transactions.count, countBefore, "Transaction should not be deleted in locked year")
     }
@@ -228,7 +228,7 @@ final class YearLockTests: XCTestCase {
         setupProfileAndLockYear(2025)
 
         let lockedDate = dateFrom(year: 2025, month: 6, day: 15)
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: lockedDate,
             memo: "manual entry",
             lines: [
@@ -247,7 +247,7 @@ final class YearLockTests: XCTestCase {
 
         XCTAssertFalse(dataStore.isYearLocked(2025), "2025年は仕訳追加前に未ロックの前提: \(yearLockDiagnostics(for: 2025))")
 
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: date2025,
             memo: "test entry",
             lines: [
@@ -263,8 +263,8 @@ final class YearLockTests: XCTestCase {
         let countBefore = dataStore.journalEntries.count
 
         // ロックしてから削除試行
-        dataStore.lockFiscalYear(2025)
-        dataStore.deleteManualJournalEntry(id: entryId)
+        mutations(dataStore).lockFiscalYear(2025)
+        mutations(dataStore).deleteManualJournalEntry(id: entryId)
 
         XCTAssertEqual(dataStore.journalEntries.count, countBefore, "Journal entry should not be deleted in locked year")
     }

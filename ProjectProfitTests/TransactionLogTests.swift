@@ -26,11 +26,11 @@ final class TransactionLogTests: XCTestCase {
     // MARK: - Helpers
 
     private func createProject() -> PPProject {
-        dataStore.addProject(name: "Test Project", description: "")
+        mutations(dataStore).addProject(name: "Test Project", description: "")
     }
 
     private func createTransaction(projectId: UUID, amount: Int = 10000) -> PPTransaction {
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income,
             amount: amount,
             date: Date(),
@@ -46,7 +46,7 @@ final class TransactionLogTests: XCTestCase {
         let project = createProject()
         let transaction = createTransaction(projectId: project.id, amount: 10000)
 
-        dataStore.updateTransaction(id: transaction.id, amount: 20000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 20000)
 
         let logs = dataStore.getTransactionLogs(for: transaction.id)
         let amountLog = logs.first(where: { $0.fieldName == "amount" })
@@ -64,7 +64,7 @@ final class TransactionLogTests: XCTestCase {
         let transaction = createTransaction(projectId: project.id, amount: 10000)
 
         // Update with the same amount value
-        dataStore.updateTransaction(id: transaction.id, amount: 10000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 10000)
 
         let logs = dataStore.getTransactionLogs(for: transaction.id)
         let amountLogs = logs.filter { $0.fieldName == "amount" }
@@ -80,7 +80,7 @@ final class TransactionLogTests: XCTestCase {
         let originalType = transaction.type
         let originalCategoryId = transaction.categoryId
 
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: transaction.id,
             type: .expense,
             amount: 25000,
@@ -114,13 +114,13 @@ final class TransactionLogTests: XCTestCase {
         let transaction = createTransaction(projectId: project.id, amount: 5000)
 
         // First update: change amount
-        dataStore.updateTransaction(id: transaction.id, amount: 8000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 8000)
 
         // Small delay so changedAt timestamps differ
         Thread.sleep(forTimeInterval: 0.05)
 
         // Second update: change amount again
-        dataStore.updateTransaction(id: transaction.id, amount: 12000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 12000)
 
         let logs = dataStore.getTransactionLogs(for: transaction.id)
         let amountLogs = logs.filter { $0.fieldName == "amount" }

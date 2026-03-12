@@ -49,7 +49,10 @@ struct PostingIntakeUseCase {
     }
 
     func importTransactions(csvString: String) async -> CSVImportResult {
-        await repository.importTransactions(csvString: csvString)
+        await repository.importTransactions(
+            csvString: csvString,
+            postingWorkflowUseCase: postingWorkflowUseCase
+        )
     }
 }
 
@@ -59,7 +62,10 @@ private protocol PostingIntakeRepository {
         input: ManualPostingCandidateInput,
         postingWorkflowUseCase: PostingWorkflowUseCase
     ) async throws -> PostingCandidate
-    func importTransactions(csvString: String) async -> CSVImportResult
+    func importTransactions(
+        csvString: String,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async -> CSVImportResult
 }
 
 @MainActor
@@ -80,7 +86,13 @@ private struct SwiftDataPostingIntakeRepository: PostingIntakeRepository {
         )
     }
 
-    func importTransactions(csvString: String) async -> CSVImportResult {
-        await store.importTransactions(csvString: csvString)
+    func importTransactions(
+        csvString: String,
+        postingWorkflowUseCase: PostingWorkflowUseCase
+    ) async -> CSVImportResult {
+        await store.importTransactions(
+            csvString: csvString,
+            postingWorkflowUseCase: postingWorkflowUseCase
+        )
     }
 }

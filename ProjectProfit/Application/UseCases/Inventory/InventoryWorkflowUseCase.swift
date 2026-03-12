@@ -92,6 +92,33 @@ struct InventoryWorkflowUseCase {
         return true
     }
 
+    @discardableResult
+    func deleteInventoryRecord(id: UUID) -> Bool {
+        let record: PPInventoryRecord
+        do {
+            guard let fetched = try inventoryRepository.inventoryRecord(id: id) else {
+                return false
+            }
+            record = fetched
+        } catch {
+            setError(.saveFailed(underlying: error))
+            return false
+        }
+
+        guard !isYearLocked(record.fiscalYear) else {
+            return false
+        }
+
+        modelContext.delete(record)
+        guard saveChanges() else {
+            return false
+        }
+
+        setError(nil)
+        reloadInventoryRecords()
+        return true
+    }
+
     private func saveChanges() -> Bool {
         do {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)

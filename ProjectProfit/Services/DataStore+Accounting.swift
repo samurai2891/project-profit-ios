@@ -306,6 +306,7 @@ struct ClosingEntryUseCase {
 extension DataStore {
     // MARK: - Manual Journal Entry CRUD
 
+#if DEBUG
     @discardableResult
     func addManualJournalEntry(
         date: Date,
@@ -383,6 +384,7 @@ extension DataStore {
         refreshJournalEntries()
         refreshJournalLines()
     }
+#endif
 
     @discardableResult
     func saveApprovedPostingSynchronously(
@@ -871,6 +873,14 @@ extension DataStore {
         let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
         let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
         let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let transactionMapByJournalEntryId: [UUID: PPTransaction] = Dictionary(
+            uniqueKeysWithValues: transactions.compactMap { transaction in
+                guard let journalEntryId = transaction.journalEntryId else {
+                    return nil
+                }
+                return (journalEntryId, transaction)
+            }
+        )
         let canonicalCounterpartyByEntryId: [UUID: UUID] = {
             guard let businessId = businessProfile?.id else { return [:] }
             return Dictionary(
@@ -905,6 +915,7 @@ extension DataStore {
             }
 
             let transaction = pair.entry.sourceTransactionId.flatMap { transactionMap[$0] }
+                ?? transactionMapByJournalEntryId[pair.entry.id]
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[pair.entry.id])
                 .flatMap { canonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty

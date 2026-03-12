@@ -27,6 +27,10 @@ struct AppShellWorkflowUseCase {
         ports.readCurrentError()
     }
 
+    func setCurrentError(_ error: AppError?) {
+        ports.writeCurrentError(error)
+    }
+
     func dismissCurrentError() {
         ports.writeCurrentError(nil)
     }

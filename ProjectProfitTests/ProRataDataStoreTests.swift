@@ -31,7 +31,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
     /// Creates a project in the data store and returns it.
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     /// Fetches all PPTransaction objects from the model context.
@@ -133,7 +133,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2024, month: 2, day: 28)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -155,7 +155,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Complete project A on Feb 15, 2024 (leap year, 29 days)
         let completedDate = makeDate(year: 2024, month: 2, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Project A: 5000 * 15 / 29 = 2586
         // Project B: 5000 + (5000 - 2586) = 7414
@@ -173,7 +173,7 @@ final class ProRataDataStoreTests: XCTestCase {
     func testUpdateProject_completedAutoSetsDate() {
         let project = makeProject(name: "Auto Complete")
 
-        dataStore.updateProject(id: project.id, status: .completed)
+        mutations(dataStore).updateProject(id: project.id, status: .completed)
 
         let updated = dataStore.getProject(id: project.id)!
         XCTAssertNotNil(updated.completedAt, "completedAt should be auto-set")
@@ -194,13 +194,13 @@ final class ProRataDataStoreTests: XCTestCase {
         let project = makeProject(name: "Reactivate")
 
         let completedDate = makeDate(year: 2024, month: 2, day: 15)
-        dataStore.updateProject(id: project.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: project.id, status: .completed, completedAt: completedDate)
 
         var updated = dataStore.getProject(id: project.id)!
         XCTAssertEqual(updated.status, .completed)
         XCTAssertNotNil(updated.completedAt)
 
-        dataStore.updateProject(id: project.id, status: .active)
+        mutations(dataStore).updateProject(id: project.id, status: .active)
 
         updated = dataStore.getProject(id: project.id)!
         XCTAssertEqual(updated.status, .active)
@@ -214,7 +214,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2024, month: 2, day: 28)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -228,7 +228,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Complete on Feb 15 first
         let firstCompletedDate = makeDate(year: 2024, month: 2, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: firstCompletedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: firstCompletedDate)
 
         var transactions = fetchAllTransactions()
         var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -236,7 +236,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Change to Feb 10
         let secondCompletedDate = makeDate(year: 2024, month: 2, day: 10)
-        dataStore.updateProject(id: projectA.id, completedAt: secondCompletedDate)
+        mutations(dataStore).updateProject(id: projectA.id, completedAt: secondCompletedDate)
 
         transactions = fetchAllTransactions()
         allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -264,10 +264,10 @@ final class ProRataDataStoreTests: XCTestCase {
         let lastMonth = month == 1 ? 12 : month - 1
         let lastMonthYear = month == 1 ? year - 1 : year
         let completedDate = makeDate(year: lastMonthYear, month: lastMonth, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Create equalAll recurring with dayOfMonth = 1 (already passed or is today for day>=1)
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "EqualAll Monthly",
             type: .expense,
             amount: 9000,
@@ -279,7 +279,7 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one recurring posting")
+        XCTAssertEqual(mutations(dataStore).processRecurringTransactions(), 1, "Should generate one recurring posting")
 
         let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
@@ -313,10 +313,10 @@ final class ProRataDataStoreTests: XCTestCase {
         let lastMonth = month == 1 ? 12 : month - 1
         let lastMonthYear = month == 1 ? year - 1 : year
         let completedDate = makeDate(year: lastMonthYear, month: lastMonth, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Create manual recurring with 50/50 to both projects, dayOfMonth = 1
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Manual Monthly",
             type: .expense,
             amount: 10000,
@@ -331,7 +331,7 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one recurring posting")
+        XCTAssertEqual(mutations(dataStore).processRecurringTransactions(), 1, "Should generate one recurring posting")
 
         let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
@@ -357,7 +357,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Add a transaction for Feb 2024 with 50/50 allocation
         let transactionDate = makeDate(year: 2024, month: 2, day: 28)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -404,7 +404,7 @@ final class ProRataDataStoreTests: XCTestCase {
         // Add transactions in Feb and March 2024
         let febDate = makeDate(year: 2024, month: 2, day: 28)
         let marchDate = makeDate(year: 2024, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: febDate,
@@ -415,7 +415,7 @@ final class ProRataDataStoreTests: XCTestCase {
                 (projectId: projectB.id, ratio: 50)
             ]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: marchDate,
@@ -429,7 +429,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Complete project A on Feb 15, 2024
         let completedDate = makeDate(year: 2024, month: 2, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         let transactions = fetchAllTransactions()
         let febTx = transactions.first { $0.memo == "feb expense" }!
@@ -542,7 +542,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
     func testAddProject_withStartDate() {
         let startDate = makeDate(year: 2026, month: 3, day: 15)
-        let project = dataStore.addProject(name: "Started Project", description: "desc", startDate: startDate)
+        let project = mutations(dataStore).addProject(name: "Started Project", description: "desc", startDate: startDate)
 
         XCTAssertEqual(project.name, "Started Project")
         XCTAssertNotNil(project.startDate)
@@ -561,7 +561,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Add a transaction for March 2026 (31 days)
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -575,7 +575,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Set startDate to March 15 for project A
         let startDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.updateProject(id: projectA.id, startDate: startDate)
+        mutations(dataStore).updateProject(id: projectA.id, startDate: startDate)
 
         let transactions = fetchAllTransactions()
         let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -593,7 +593,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -606,14 +606,14 @@ final class ProRataDataStoreTests: XCTestCase {
         )
 
         // First set startDate to March 15
-        dataStore.updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 15))
+        mutations(dataStore).updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 15))
 
         var transactions = fetchAllTransactions()
         var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
         XCTAssertEqual(allocA.amount, 8500, "First: 15500 * 17 / 31")
 
         // Change startDate to March 20 (12 days active)
-        dataStore.updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 20))
+        mutations(dataStore).updateProject(id: projectA.id, startDate: makeDate(year: 2026, month: 3, day: 20))
 
         transactions = fetchAllTransactions()
         allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -630,7 +630,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -643,7 +643,7 @@ final class ProRataDataStoreTests: XCTestCase {
         )
 
         // Set startDate to March 10 and completedAt to March 20
-        dataStore.updateProject(
+        mutations(dataStore).updateProject(
             id: projectA.id,
             status: .completed,
             startDate: makeDate(year: 2026, month: 3, day: 10),
@@ -668,7 +668,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // April 2026 (30 days)
         let transactionDate = makeDate(year: 2026, month: 4, day: 1)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -682,9 +682,9 @@ final class ProRataDataStoreTests: XCTestCase {
         )
 
         // A: 完了日=4月15日（15日稼働）
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 4, day: 15))
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 4, day: 15))
         // C: 開始日=4月10日（21日稼働）
-        dataStore.updateProject(id: projectC.id, startDate: makeDate(year: 2026, month: 4, day: 10))
+        mutations(dataStore).updateProject(id: projectC.id, startDate: makeDate(year: 2026, month: 4, day: 10))
 
         let transactions = fetchAllTransactions()
         let tx = transactions.first { $0.memo == "holistic test" }!
@@ -712,7 +712,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // April 2026 (30 days)
         let transactionDate = makeDate(year: 2026, month: 4, day: 1)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -762,7 +762,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Add a transaction for March 2026
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -810,7 +810,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let pastMonth: Int? = (today.month ?? 1) >= 2 ? (today.month! - 1) : nil
         guard let pMonth = pastMonth else { return } // Skip if January
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Annual License",
             type: .expense,
             amount: 120000,
@@ -826,7 +826,7 @@ final class ProRataDataStoreTests: XCTestCase {
             monthOfYear: pMonth
         )
 
-        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one yearly recurring posting")
+        XCTAssertEqual(mutations(dataStore).processRecurringTransactions(), 1, "Should generate one yearly recurring posting")
 
         // Verify transaction was generated
         let transactions = fetchGeneratedRecurringTransactions()
@@ -837,7 +837,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Now complete project A mid-year
         let completedDate = makeDate(year: year, month: 6, day: 30)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Verify the yearly transaction was recalculated with yearly days (365/366)
         let updatedTransactions = fetchGeneratedRecurringTransactions()
@@ -860,7 +860,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectA = makeProject(name: "Project A")
 
         // Create equalAll monthly recurring
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "EqualAll Fee",
             type: .expense,
             amount: 12000,
@@ -872,7 +872,7 @@ final class ProRataDataStoreTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        XCTAssertEqual(dataStore.processRecurringTransactions(), 1, "Should generate one equalAll recurring posting")
+        XCTAssertEqual(mutations(dataStore).processRecurringTransactions(), 1, "Should generate one equalAll recurring posting")
 
         // Verify: only project A gets the full amount
         var transactions = fetchGeneratedRecurringTransactions()
@@ -885,7 +885,7 @@ final class ProRataDataStoreTests: XCTestCase {
         }
 
         // Add a new project
-        let projectB = dataStore.addProject(name: "Project B", description: "new")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "new")
 
         // Verify: the existing transaction now includes project B
         transactions = fetchGeneratedRecurringTransactions()
@@ -925,7 +925,7 @@ final class ProRataDataStoreTests: XCTestCase {
         dataStore.loadData()
 
         // Process should deactivate
-        dataStore.processRecurringTransactions()
+        mutations(dataStore).processRecurringTransactions()
 
         let updated = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(updated?.isActive, false, "Recurring with past endDate should be deactivated")
@@ -941,7 +941,7 @@ final class ProRataDataStoreTests: XCTestCase {
         let projectC = makeProject(name: "Project C")
 
         let transactionDate = makeDate(year: 2024, month: 6, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: transactionDate,
@@ -956,10 +956,10 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // 完了 → 日割り適用
         let completedDate = makeDate(year: 2024, month: 6, day: 20)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // 再活性化 → reverseCompletionAllocations が呼ばれ比率ベースに復元
-        dataStore.updateProject(id: projectA.id, status: .active)
+        mutations(dataStore).updateProject(id: projectA.id, status: .active)
 
         let transactions = fetchAllTransactions()
         let tx = transactions.first { $0.memo == "rounding test" }!
@@ -984,7 +984,7 @@ final class ProRataDataStoreTests: XCTestCase {
 
         // Add a transaction for March 2026 (31 days)
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -997,7 +997,7 @@ final class ProRataDataStoreTests: XCTestCase {
         )
 
         // Set project B startDate to March 15 (17 days active)
-        dataStore.updateProject(id: projectB.id, startDate: makeDate(year: 2026, month: 3, day: 15))
+        mutations(dataStore).updateProject(id: projectB.id, startDate: makeDate(year: 2026, month: 3, day: 15))
 
         var transactions = fetchAllTransactions()
         var allocB = transactions.first!.allocations.first { $0.projectId == projectB.id }!
@@ -1005,10 +1005,10 @@ final class ProRataDataStoreTests: XCTestCase {
         XCTAssertEqual(allocB.amount, 8500, "B should be pro-rated initially")
 
         // Complete project A on March 20
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 3, day: 20))
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: makeDate(year: 2026, month: 3, day: 20))
 
         // Now reactivate project A
-        dataStore.updateProject(id: projectA.id, status: .active)
+        mutations(dataStore).updateProject(id: projectA.id, status: .active)
 
         // After reactivation, A's allocations are restored to ratio-based first,
         // then B's pro-rata should be re-applied

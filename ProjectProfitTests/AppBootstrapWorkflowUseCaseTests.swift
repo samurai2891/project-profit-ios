@@ -62,10 +62,10 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
         let setupStore = ProjectProfit.DataStore(modelContext: context)
         setupStore.loadData()
 
-        let projectA = setupStore.addProject(name: "Project A", description: "")
-        let projectB = setupStore.addProject(name: "Project B", description: "")
+        let projectA = mutations(setupStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(setupStore).addProject(name: "Project B", description: "")
         let transactionDate = Self.makeDate(year: 2024, month: 2, day: 28)
-        _ = setupStore.addTransaction(
+        _ = mutations(setupStore).addTransaction(
             type: .expense,
             amount: 10_000,
             date: transactionDate,

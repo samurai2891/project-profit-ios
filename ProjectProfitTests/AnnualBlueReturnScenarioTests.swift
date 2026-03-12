@@ -42,12 +42,12 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
 
     private func setupFullYear() -> AnnualSetupResult {
         // -- Projects --
-        let webProject = dataStore.addProject(name: "ウェブ制作", description: "Webサイト制作")
-        let appProject = dataStore.addProject(name: "アプリ開発", description: "iOSアプリ開発")
+        let webProject = mutations(dataStore).addProject(name: "ウェブ制作", description: "Webサイト制作")
+        let appProject = mutations(dataStore).addProject(name: "アプリ開発", description: "iOSアプリ開発")
 
         // -- Income Transactions --
         // Jan: Cash sale 300k (cat-sales, ウェブ制作, counterparty "A社")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 300_000, date: date(2025, 1, 15),
             categoryId: "cat-sales", memo: "1月売上",
             allocations: [(projectId: webProject.id, ratio: 100)],
@@ -56,7 +56,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         )
 
         // Feb: Credit sale 200k (cat-sales, アプリ開発, paymentAccountId "acct-ar", counterparty "B社")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: date(2025, 2, 15),
             categoryId: "cat-sales", memo: "2月売上",
             allocations: [(projectId: appProject.id, ratio: 100)],
@@ -65,7 +65,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         )
 
         // Mar: Cash sale 150k (cat-sales, ウェブ制作, counterparty "A社")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 150_000, date: date(2025, 3, 15),
             categoryId: "cat-sales", memo: "3月売上",
             allocations: [(projectId: webProject.id, ratio: 100)],
@@ -74,7 +74,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         )
 
         // Apr: Credit sale 250k (cat-sales, アプリ開発, paymentAccountId "acct-ar", counterparty "B社")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 250_000, date: date(2025, 4, 15),
             categoryId: "cat-sales", memo: "4月売上",
             allocations: [(projectId: appProject.id, ratio: 100)],
@@ -83,7 +83,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         )
 
         // May: AR collection 200k (manual entry: Dr cash 200k / Cr ar 200k)
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 10),
             memo: "B社売掛金回収",
             lines: [
@@ -93,7 +93,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         )
 
         // Jun: Cash sale 180k (cat-sales, ウェブ制作, counterparty "A社")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 180_000, date: date(2025, 6, 15),
             categoryId: "cat-sales", memo: "6月売上",
             allocations: [(projectId: webProject.id, ratio: 100)],
@@ -103,7 +103,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
 
         // -- Monthly Rent: Jan-Dec 80k/month (manual journal: Dr rent 80k / Cr cash 80k) --
         for month in 1...12 {
-            _ = dataStore.addManualJournalEntry(
+            _ = mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 25),
                 memo: "\(month)月家賃",
                 lines: [
@@ -115,7 +115,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
 
         // -- Q1 Travel: 15k each month Jan-Mar (manual: Dr travel / Cr cash) --
         for month in 1...3 {
-            _ = dataStore.addManualJournalEntry(
+            _ = mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 20),
                 memo: "\(month)月交通費",
                 lines: [
@@ -126,7 +126,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         }
 
         // -- Supplies: Mar 10k, Jun 5k, Sep 8k (manual: Dr supplies / Cr cash) --
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 10),
             memo: "3月消耗品",
             lines: [
@@ -134,7 +134,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
                 (accountId: "acct-cash", debit: 0, credit: 10_000, memo: "現金支払"),
             ]
         )
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 10),
             memo: "6月消耗品",
             lines: [
@@ -142,7 +142,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
                 (accountId: "acct-cash", debit: 0, credit: 5_000, memo: "現金支払"),
             ]
         )
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 10),
             memo: "9月消耗品",
             lines: [
@@ -514,10 +514,10 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
     // MARK: - Test 7: Tax Marks
 
     func testAnnualBlueReturn_TaxMarks() {
-        let project = dataStore.addProject(name: "税区分テスト", description: "")
+        let project = mutations(dataStore).addProject(name: "税区分テスト", description: "")
 
         // Standard rate (10%) income transaction
-        let standardIncome = dataStore.addTransaction(
+        let standardIncome = mutations(dataStore).addTransaction(
             type: .income, amount: 110_000, date: date(2025, 7, 1),
             categoryId: "cat-sales", memo: "標準税率売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -529,7 +529,7 @@ final class AnnualBlueReturnScenarioTests: XCTestCase {
         XCTAssertEqual(standardIncome.taxCategory, .standardRate)
 
         // Reduced rate (8%) expense transaction
-        let reducedExpense = dataStore.addTransaction(
+        let reducedExpense = mutations(dataStore).addTransaction(
             type: .expense, amount: 10_800, date: date(2025, 7, 5),
             categoryId: "cat-food", memo: "軽減税率経費",
             allocations: [(projectId: project.id, ratio: 100)],

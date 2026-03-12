@@ -24,8 +24,8 @@ final class ReportViewModelTests: XCTestCase {
     }
 
     func testNavigatePreviousYearUpdatesOverallSummaryAndPreviousYearComparison() {
-        let project = dataStore.addProject(name: "YoY Project", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "YoY Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 20_000,
             date: makeDate(year: 2024, month: 6, day: 10),
@@ -33,7 +33,7 @@ final class ReportViewModelTests: XCTestCase {
             memo: "2024 income",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 35_000,
             date: makeDate(year: 2025, month: 6, day: 10),

@@ -27,9 +27,9 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
     }
 
     func testDeleteAllDataClearsDataAndReseedsDefaultCategories() throws {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: Date(),
@@ -37,7 +37,7 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
             memo: "delete all",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Monthly",
             type: .expense,
             amount: 3_000,

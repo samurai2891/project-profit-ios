@@ -148,14 +148,14 @@ struct GoldenFixtureLoader {
         for fixtureProject in fixtureProjects {
             let startDate = fixtureProject.startDate.flatMap { dateFormatter.date(from: $0) }
             let completedAt = fixtureProject.completedAt.flatMap { dateFormatter.date(from: $0) }
-            let project = dataStore.addProject(
+            let project = mutations(dataStore).addProject(
                 name: fixtureProject.name,
                 description: fixtureProject.name,
                 startDate: startDate,
                 plannedEndDate: completedAt
             )
             let status = projectStatus(from: fixtureProject.status)
-            dataStore.updateProject(
+            mutations(dataStore).updateProject(
                 id: project.id,
                 status: status,
                 startDate: .some(startDate),
@@ -180,7 +180,7 @@ struct GoldenFixtureLoader {
                 return (projectId, allocation.ratio)
             }
             let date = try XCTUnwrap(GoldenSnapshotStore.dateFormatter.date(from: fixtureTransaction.date))
-            let transaction = dataStore.addTransaction(
+            let transaction = mutations(dataStore).addTransaction(
                 type: transactionType(from: fixtureTransaction.type),
                 amount: fixtureTransaction.amount,
                 date: date,

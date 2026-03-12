@@ -31,7 +31,7 @@ final class RecurringProcessingTests: XCTestCase {
 
     /// Creates a project in the data store and returns it.
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     /// Returns the current date components used by processRecurringTransactions.
@@ -167,7 +167,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Fee",
             type: .expense,
             amount: 10000,
@@ -179,7 +179,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         // 明示実行時のみ生成される
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(count, 1, "Should generate one transaction when explicitly processed")
 
         let transactions = fetchAllTransactions()
@@ -211,7 +211,7 @@ final class RecurringProcessingTests: XCTestCase {
 
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Future Monthly",
             type: .expense,
             amount: 5000,
@@ -222,7 +222,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: futureDay
         )
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 0, "Should not generate a transaction when dayOfMonth is in the future")
         XCTAssertTrue(fetchAllTransactions().isEmpty)
@@ -234,7 +234,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Already Done",
             type: .income,
             amount: 20000,
@@ -246,9 +246,9 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         XCTAssertEqual(fetchAllTransactions().count, 0, "addRecurring only schedules; it should not auto-generate")
-        let firstCount = dataStore.processRecurringTransactions()
+        let firstCount = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(firstCount, 1, "First explicit processing should generate one transaction")
-        let secondCount = dataStore.processRecurringTransactions()
+        let secondCount = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(secondCount, 0, "Should not generate a duplicate for the same month")
         XCTAssertEqual(fetchAllTransactions().count, 1, "Still only 1 transaction — no duplicate")
@@ -265,7 +265,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = 1
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Annual License",
             type: .expense,
             amount: 120000,
@@ -278,7 +278,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         // 明示実行時のみ生成される
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(count, 1, "Should generate one transaction when explicitly processed")
 
         let transactions = fetchAllTransactions()
@@ -304,7 +304,7 @@ final class RecurringProcessingTests: XCTestCase {
 
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Future Annual",
             type: .expense,
             amount: 60000,
@@ -316,7 +316,7 @@ final class RecurringProcessingTests: XCTestCase {
             monthOfYear: upcoming
         )
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 0, "Should not generate when monthOfYear is in the future")
         XCTAssertTrue(fetchAllTransactions().isEmpty)
@@ -350,7 +350,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 0, "Should not count skipped transactions")
         XCTAssertTrue(fetchAllTransactions().isEmpty, "No transaction should be created for skipped date")
@@ -384,7 +384,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 0, "Inactive recurring should not generate transactions")
         XCTAssertTrue(fetchAllTransactions().isEmpty)
@@ -409,7 +409,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 0, "Recurring with empty allocations should be skipped")
         XCTAssertTrue(fetchAllTransactions().isEmpty)
@@ -422,7 +422,7 @@ final class RecurringProcessingTests: XCTestCase {
         let dayOfMonth = pastDayOfMonth
 
         // Eligible recurring 1
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Recurring A",
             type: .expense,
             amount: 1000,
@@ -434,7 +434,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         // Eligible recurring 2
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Recurring B",
             type: .income,
             amount: 50000,
@@ -461,7 +461,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
 
         XCTAssertEqual(count, 2, "Two eligible recurring entries should be generated")
         XCTAssertEqual(fetchAllTransactions().count, 2, "Only 2 eligible recurring should have generated transactions")
@@ -472,7 +472,7 @@ final class RecurringProcessingTests: XCTestCase {
     func testMemoFormat_withMemo() {
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Server Cost",
             type: .expense,
             amount: 10000,
@@ -483,7 +483,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: pastDayOfMonth
         )
 
-        dataStore.processRecurringTransactions()
+        mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         XCTAssertEqual(transactions.count, 1)
@@ -493,7 +493,7 @@ final class RecurringProcessingTests: XCTestCase {
     func testMemoFormat_withoutMemo() {
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Domain",
             type: .expense,
             amount: 2000,
@@ -504,7 +504,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: pastDayOfMonth
         )
 
-        dataStore.processRecurringTransactions()
+        mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         XCTAssertEqual(transactions.count, 1)
@@ -517,7 +517,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "EqualAll Expense",
             type: .expense,
             amount: 9000,
@@ -530,7 +530,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(generated, 1, "equalAll recurring should generate on explicit processing")
 
         let transactions = fetchAllTransactions()
@@ -552,7 +552,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "EqualAll Income",
             type: .income,
             amount: 50000,
@@ -565,7 +565,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(generated, 1, "equalAll income recurring should generate on explicit processing")
 
         let transactions = fetchAllTransactions()
@@ -588,7 +588,7 @@ final class RecurringProcessingTests: XCTestCase {
             return
         }
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Deferred",
             type: .expense,
             amount: 4000,
@@ -603,10 +603,10 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertTrue(fetchAllTransactions().isEmpty, "Future dayOfMonth should not generate on add")
 
         // Update dayOfMonth to a past day
-        dataStore.updateRecurring(id: recurring.id, dayOfMonth: pastDayOfMonth)
+        mutations(dataStore).updateRecurring(id: recurring.id, dayOfMonth: pastDayOfMonth)
 
         XCTAssertTrue(fetchAllTransactions().isEmpty, "updateRecurring should not auto-generate")
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(generated, 1, "Updated recurring should generate on explicit processing")
 
         let transactions = fetchAllTransactions()
@@ -620,7 +620,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let dayOfMonth = pastDayOfMonth
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "NoDup",
             type: .expense,
             amount: 6000,
@@ -632,15 +632,15 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         XCTAssertTrue(fetchAllTransactions().isEmpty, "addRecurring should not auto-generate")
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(generated, 1, "Should generate one transaction on explicit processing")
         XCTAssertEqual(fetchAllTransactions().count, 1, "Should have 1 transaction after explicit processing")
 
         // updateRecurring alone should NOT create a duplicate
-        dataStore.updateRecurring(id: recurring.id, memo: "updated memo")
+        mutations(dataStore).updateRecurring(id: recurring.id, memo: "updated memo")
 
         XCTAssertEqual(fetchAllTransactions().count, 1, "Should still have 1 transaction — no duplicate")
-        let duplicateCount = dataStore.processRecurringTransactions()
+        let duplicateCount = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(duplicateCount, 0, "Should still avoid duplicates after update")
     }
 
@@ -649,7 +649,7 @@ final class RecurringProcessingTests: XCTestCase {
     func testRecurringIdLink_transactionLinkedToRecurring() {
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Linked",
             type: .expense,
             amount: 7000,
@@ -660,7 +660,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: pastDayOfMonth
         )
 
-        dataStore.processRecurringTransactions()
+        mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         XCTAssertEqual(transactions.count, 1)
@@ -682,13 +682,13 @@ final class RecurringProcessingTests: XCTestCase {
 
         // A: 今月15日に完了
         let completedDate = calendar.date(from: DateComponents(year: year, month: month, day: 15))!
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
         // C: 今月10日に開始
         let startDate = calendar.date(from: DateComponents(year: year, month: month, day: 10))!
-        dataStore.updateProject(id: projectC.id, startDate: startDate)
+        mutations(dataStore).updateProject(id: projectC.id, startDate: startDate)
 
         // Manual recurring with 3 projects
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Manual Multi Partial",
             type: .expense,
             amount: 10000,
@@ -703,7 +703,7 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("regression") }
@@ -729,10 +729,10 @@ final class RecurringProcessingTests: XCTestCase {
 
         // Complete project A mid-year
         let completedDate = calendar.date(from: DateComponents(year: year, month: 6, day: 30))!
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
         // Create yearly manual recurring
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Annual Fee",
             type: .expense,
             amount: 120000,
@@ -747,7 +747,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: 1,
             monthOfYear: passedMonth
         )
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         let yearlyTx = transactions.filter { $0.memo.contains("[定期]") && $0.memo.contains("Annual Fee") }
@@ -791,7 +791,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let count = dataStore.processRecurringTransactions()
+        let count = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(count, 0, "Should not generate for ended recurring")
 
         let updated = fetchRecurring(id: recurring.id)
@@ -804,7 +804,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject(name: "Project A")
         let futureEndDate = calendar.date(byAdding: .year, value: 1, to: Date())!
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Future End",
             type: .expense,
             amount: 8000,
@@ -815,7 +815,7 @@ final class RecurringProcessingTests: XCTestCase {
             dayOfMonth: pastDayOfMonth,
             endDate: futureEndDate
         )
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
         XCTAssertEqual(generated, 1, "Should generate for recurring with future endDate")
 
         let transactions = fetchAllTransactions()
@@ -831,7 +831,7 @@ final class RecurringProcessingTests: XCTestCase {
         let projectA = makeProject(name: "Project A")
 
         // Create equalAll recurring
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "EqualAll Reprocess",
             type: .expense,
             amount: 10000,
@@ -842,7 +842,7 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: pastDayOfMonth
         )
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
 
         // Verify only project A allocated
         var transactions = fetchAllTransactions()
@@ -851,7 +851,7 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(tx?.allocations.count, 1)
 
         // Add new project
-        let projectB = dataStore.addProject(name: "Project B", description: "new")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "new")
 
         // Verify transaction now includes both projects
         transactions = fetchAllTransactions()
@@ -1007,7 +1007,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
 
         // 3ヶ月のギャップ → 3件生成（gap月、gap+1月、gap+2月＝今月）
         XCTAssertEqual(generated, 3, "Should generate 3 transactions to catch up 3 months")
@@ -1072,7 +1072,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
 
         // 2ヶ月ギャップ、1ヶ月スキップ → 1件のみ生成
         XCTAssertEqual(generated, 1, "Should generate only 1 transaction (1 month skipped)")
@@ -1122,7 +1122,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
 
         // endDateまでの分のみ生成（3ヶ月ギャップだが、endDateで2ヶ月まで）
         XCTAssertEqual(generated, 2, "Should generate only 2 transactions (endDate stops before current month)")
@@ -1162,7 +1162,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
 
         // lastGenerated = currentYear-3 → currentYear-2, currentYear-1, currentYear = 3件
         // ただし今月 > targetMonth の場合のみ currentYear 分も生成
@@ -1205,7 +1205,7 @@ final class RecurringProcessingTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        let generated = dataStore.processRecurringTransactions()
+        let generated = mutations(dataStore).processRecurringTransactions()
 
         // lastGenerated = currentYear-4, endDate = currentYear-1/12/31
         // → currentYear-3, currentYear-2, currentYear-1 の3件（currentYear は endDate 超過）
@@ -1221,7 +1221,7 @@ final class RecurringProcessingTests: XCTestCase {
         let project = makeProject()
         let useDayOfMonth = pastDayOfMonth
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Regen Test",
             type: .expense,
             amount: 10000,
@@ -1231,7 +1231,7 @@ final class RecurringProcessingTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: useDayOfMonth
         )
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
 
         throw XCTSkip("processRecurringTransactions() now writes canonical recurring journals only; deleteTransaction(id:) applies to legacy PPTransaction rows")
     }
@@ -1239,7 +1239,7 @@ final class RecurringProcessingTests: XCTestCase {
     func testDeleteNonRecurringTransaction_noRecurringStateChange() {
         let project = makeProject()
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -1251,7 +1251,7 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(dataStore.transactions.count, 1)
 
         // Delete it - should not crash or affect any recurring state
-        dataStore.deleteTransaction(id: tx.id)
+        mutations(dataStore).deleteTransaction(id: tx.id)
 
         XCTAssertTrue(dataStore.transactions.filter { $0.id == tx.id }.isEmpty, "Transaction should be deleted")
     }
@@ -1268,7 +1268,7 @@ final class RecurringProcessingTests: XCTestCase {
             receivedRecurrings = recurrings
         }
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Test Recurring",
             type: .expense,
             amount: 1000,
@@ -1285,7 +1285,7 @@ final class RecurringProcessingTests: XCTestCase {
 
     func testUpdateRecurring_triggersScheduleChangedCallback() {
         let project = makeProject()
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -1301,14 +1301,14 @@ final class RecurringProcessingTests: XCTestCase {
             callbackInvoked = true
         }
 
-        dataStore.updateRecurring(id: recurring.id, name: "Updated")
+        mutations(dataStore).updateRecurring(id: recurring.id, name: "Updated")
 
         XCTAssertTrue(callbackInvoked, "updateRecurringでコールバックが発火すべき")
     }
 
     func testDeleteRecurring_triggersScheduleChangedCallback() {
         let project = makeProject()
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -1324,7 +1324,7 @@ final class RecurringProcessingTests: XCTestCase {
             callbackInvoked = true
         }
 
-        dataStore.deleteRecurring(id: recurring.id)
+        mutations(dataStore).deleteRecurring(id: recurring.id)
 
         XCTAssertTrue(callbackInvoked, "deleteRecurringでコールバックが発火すべき")
     }
@@ -1333,7 +1333,7 @@ final class RecurringProcessingTests: XCTestCase {
 
     func testRecurringAccountingFields_inheritedByTransaction() {
         let project = makeProject()
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "サーバー代",
             type: .expense,
             amount: 5000,
@@ -1346,7 +1346,7 @@ final class RecurringProcessingTests: XCTestCase {
             transferToAccountId: nil,
             taxDeductibleRate: 80
         )
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
 
         // 明示処理後に生成されたトランザクションを確認
         let generated = fetchAllTransactions().filter { $0.recurringId == recurring.id }
@@ -1362,7 +1362,7 @@ final class RecurringProcessingTests: XCTestCase {
 
     func testRecurringAccountingFields_updateRoundTrip() {
         let project = makeProject()
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "家賃",
             type: .expense,
             amount: 100000,
@@ -1376,7 +1376,7 @@ final class RecurringProcessingTests: XCTestCase {
         )
 
         // 会計フィールドを更新
-        dataStore.updateRecurring(
+        mutations(dataStore).updateRecurring(
             id: recurring.id,
             paymentAccountId: "acct-cash",
             taxDeductibleRate: 70

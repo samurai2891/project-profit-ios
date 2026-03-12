@@ -151,6 +151,7 @@ enum ExportCoordinator {
         format: ExportFormat,
         fiscalYear: Int,
         dataStore: DataStore,
+        skipPreflightValidation: Bool = false,
         ledgerOptions: LedgerExportOptions? = nil,
         transactionOptions: TransactionExportOptions? = nil,
         subLedgerOptions: SubLedgerExportOptions? = nil,
@@ -160,7 +161,7 @@ enum ExportCoordinator {
             throw ExportError.unsupportedFormat(target, format)
         }
 
-        if target.requiresPreflight {
+        if target.requiresPreflight && !skipPreflightValidation {
             try validatePreflight(fiscalYear: fiscalYear, dataStore: dataStore)
         }
 

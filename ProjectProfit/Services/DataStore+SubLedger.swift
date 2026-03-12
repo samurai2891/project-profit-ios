@@ -117,6 +117,14 @@ extension DataStore {
         let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
         let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
         let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
+        let transactionMapByJournalEntryId: [UUID: PPTransaction] = Dictionary(
+            uniqueKeysWithValues: transactions.compactMap { transaction in
+                guard let journalEntryId = transaction.journalEntryId else {
+                    return nil
+                }
+                return (journalEntryId, transaction)
+            }
+        )
         let linesByEntry = Dictionary(grouping: projected.lines) { $0.entryId }
         let targetAccountIdSet = Set(targetAccountIds)
         let canonicalCounterpartyByEntryId: [UUID: UUID] = {
@@ -166,6 +174,7 @@ extension DataStore {
 
             // 元取引から取引先・消費税区分を取得
             let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
+                ?? transactionMapByJournalEntryId[entry.id]
             let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
                 .flatMap { canonicalCounterparty(id: $0)?.displayName }
                 ?? transaction?.counterparty

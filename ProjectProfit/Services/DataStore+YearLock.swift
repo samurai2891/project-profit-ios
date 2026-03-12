@@ -63,6 +63,7 @@ extension DataStore {
 
     // MARK: - Lock / Unlock
 
+#if DEBUG
     /// 指定年度をロックする
     func lockFiscalYear(_ year: Int) {
         forceUpdateYearLockState(.finalLock, for: year)
@@ -103,6 +104,7 @@ extension DataStore {
             return false
         }
     }
+#endif
 
     private func persistedYearLockState(for year: Int) -> YearLockState? {
         if let currentTaxYearProfile, currentTaxYearProfile.taxYear == year {

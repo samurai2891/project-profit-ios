@@ -246,6 +246,6 @@ final class DataStoreFixedAssetTests: XCTestCase {
             dataStore.save()
             dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 }

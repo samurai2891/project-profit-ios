@@ -28,7 +28,7 @@ final class DataStoreAccountingTests: XCTestCase {
     // MARK: - Manual Journal Entry CRUD
 
     func testAddManualJournalEntry() {
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "決算整理仕訳",
             lines: [
@@ -44,7 +44,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testAddManualJournalEntryUnbalanced() {
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "不均衡仕訳",
             lines: [
@@ -58,7 +58,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testAddManualJournalEntryEmptyLines() {
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "空",
             lines: []
@@ -68,7 +68,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testDeleteManualJournalEntry() {
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "削除テスト",
             lines: [
@@ -80,7 +80,7 @@ final class DataStoreAccountingTests: XCTestCase {
 
         XCTAssertTrue(dataStore.journalEntries.contains { $0.id == entryId })
 
-        dataStore.deleteManualJournalEntry(id: entryId)
+        mutations(dataStore).deleteManualJournalEntry(id: entryId)
 
         XCTAssertFalse(dataStore.journalEntries.contains { $0.id == entryId })
         XCTAssertTrue(dataStore.journalLines.filter { $0.entryId == entryId }.isEmpty)
@@ -88,8 +88,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testDeleteAutoJournalEntryIsIgnored() async {
         // Auto entries should not be deletable via manual delete
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense, amount: 1000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -102,7 +102,7 @@ final class DataStoreAccountingTests: XCTestCase {
         }
 
         let countBefore = dataStore.canonicalJournalEntries().count
-        dataStore.deleteManualJournalEntry(id: journalId)
+        mutations(dataStore).deleteManualJournalEntry(id: journalId)
         XCTAssertEqual(dataStore.canonicalJournalEntries().count, countBefore, "Auto entry should not be deleted")
         XCTAssertTrue(dataStore.canonicalJournalEntries().contains { $0.id == journalId })
     }
@@ -110,8 +110,8 @@ final class DataStoreAccountingTests: XCTestCase {
     // MARK: - Account Balance
 
     func testGetAccountBalance() async {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense, amount: 3000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -131,9 +131,9 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testGetAccountBalanceWithMultipleTransactions() async {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        let income = dataStore.addTransaction(
+        let income = mutations(dataStore).addTransaction(
             type: .income, amount: 50000, date: Date(),
             categoryId: "cat-project-income", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -141,7 +141,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let expense = dataStore.addTransaction(
+        let expense = mutations(dataStore).addTransaction(
             type: .expense, amount: 10000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -169,9 +169,9 @@ final class DataStoreAccountingTests: XCTestCase {
     // MARK: - Ledger Entries
 
     func testGetLedgerEntries() async {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        let income = dataStore.addTransaction(
+        let income = mutations(dataStore).addTransaction(
             type: .income, amount: 20000, date: Date(),
             categoryId: "cat-project-income", memo: "売上1",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -179,7 +179,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let expense = dataStore.addTransaction(
+        let expense = mutations(dataStore).addTransaction(
             type: .expense, amount: 5000, date: Date(),
             categoryId: "cat-tools", memo: "ツール代",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -370,7 +370,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testLegacyLedgerDiagnosticsCompareCanonicalAndLegacyJournalCounts() throws {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "canonical",
             lines: [
@@ -419,8 +419,8 @@ final class DataStoreAccountingTests: XCTestCase {
         try context.save()
 
         let before = dataStore.legacyLedgerDiagnostics()
-        let project = dataStore.addProject(name: "P1", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -441,10 +441,10 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testUserInitiatedLegacyTransactionMutationsAreRejectedWhenCanonicalPostingEnabled() {
         FeatureFlags.useCanonicalPosting = true
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         let beforeCount = dataStore.transactions.count
 
-        let addResult = dataStore.addTransactionResult(
+        let addResult = mutations(dataStore).addTransactionResult(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -463,7 +463,7 @@ final class DataStoreAccountingTests: XCTestCase {
         }
         XCTAssertEqual(dataStore.transactions.count, beforeCount)
 
-        let systemTransaction = dataStore.addTransaction(
+        let systemTransaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 800,
             date: Date(),
@@ -473,7 +473,7 @@ final class DataStoreAccountingTests: XCTestCase {
             paymentAccountId: "acct-cash"
         )
 
-        let didUpdate = dataStore.updateTransaction(
+        let didUpdate = mutations(dataStore).updateTransaction(
             id: systemTransaction.id,
             memo: "blocked update",
             mutationSource: .userInitiated
@@ -481,7 +481,7 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertFalse(didUpdate)
         XCTAssertEqual(systemTransaction.memo, "system generated")
 
-        dataStore.deleteTransaction(
+        mutations(dataStore).deleteTransaction(
             id: systemTransaction.id,
             mutationSource: .userInitiated
         )
@@ -495,12 +495,12 @@ final class DataStoreAccountingTests: XCTestCase {
     func testLegacySystemTransactionMutationsDoNotAutoSyncCanonicalArtifactsWhenCanonicalPostingEnabled() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
 
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 2400,
             date: Date(),
@@ -508,7 +508,8 @@ final class DataStoreAccountingTests: XCTestCase {
             memo: "system generated legacy helper",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-cash",
-            candidateSource: .manual
+            candidateSource: .manual,
+            enqueueCanonicalSync: false
         )
 
         let candidateBeforeSync = try await workflow.candidate(transaction.id)
@@ -517,10 +518,11 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertNil(transaction.journalEntryId)
         XCTAssertEqual(journalsAfterAdd.count, beforeJournals.count)
 
-        let didUpdate = dataStore.updateTransaction(
+        let didUpdate = mutations(dataStore).updateTransaction(
             id: transaction.id,
             memo: "updated legacy helper",
-            candidateSource: .manual
+            candidateSource: .manual,
+            enqueueCanonicalSync: false
         )
         XCTAssertTrue(didUpdate)
         XCTAssertEqual(transaction.memo, "updated legacy helper")
@@ -547,7 +549,7 @@ final class DataStoreAccountingTests: XCTestCase {
         FeatureFlags.useCanonicalPosting = true
         let beforeCount = dataStore.journalEntries.count
 
-        let blockedEntry = dataStore.addManualJournalEntry(
+        let blockedEntry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "manual blocked",
             lines: [
@@ -564,7 +566,7 @@ final class DataStoreAccountingTests: XCTestCase {
             AppError.legacyManualJournalMutationDisabled.errorDescription
         )
 
-        let systemEntry = dataStore.addManualJournalEntry(
+        let systemEntry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "system generated journal",
             lines: [
@@ -575,7 +577,7 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertNotNil(systemEntry)
 
         if let systemEntry {
-            dataStore.deleteManualJournalEntry(
+            mutations(dataStore).deleteManualJournalEntry(
                 id: systemEntry.id,
                 mutationSource: .userInitiated
             )
@@ -590,7 +592,7 @@ final class DataStoreAccountingTests: XCTestCase {
     func testSaveManualPostingCandidateCreatesDraftWithoutLegacyTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         let beforeTransactionCount = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
@@ -638,8 +640,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testSaveManualPostingCandidateSplitsProjectAllocationsAcrossLines() async throws {
         FeatureFlags.useCanonicalPosting = true
-        let projectA = dataStore.addProject(name: "P1", description: "")
-        let projectB = dataStore.addProject(name: "P2", description: "")
+        let projectA = mutations(dataStore).addProject(name: "P1", description: "")
+        let projectB = mutations(dataStore).addProject(name: "P2", description: "")
 
         let result = await dataStore.saveManualPostingCandidate(
             type: .expense,
@@ -677,7 +679,7 @@ final class DataStoreAccountingTests: XCTestCase {
     func testApprovePostingCandidateCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Approval Queue Project", description: "")
+        let project = mutations(dataStore).addProject(name: "Approval Queue Project", description: "")
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
@@ -725,8 +727,8 @@ final class DataStoreAccountingTests: XCTestCase {
     func testApproveRecurringItemsCreatesCanonicalJournalWithoutLegacyMirrorTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Recurring Candidate Project", description: "")
-        _ = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Recurring Candidate Project", description: "")
+        _ = mutations(dataStore).addRecurring(
             name: "定期費用",
             type: .expense,
             amount: 6_000,
@@ -768,7 +770,7 @@ final class DataStoreAccountingTests: XCTestCase {
         2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み,acct-cash,10,税込,課税（10%）
         """
 
-        let result = await dataStore.importTransactions(from: csv)
+        let result = await mutations(dataStore).importTransactions(from: csv)
         let journals = try await workflow.journals(businessId: businessId, taxYear: 2026)
         let project = try XCTUnwrap(dataStore.projects.first { $0.name == "ImportProject" })
 
@@ -803,8 +805,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testSyncCanonicalArtifactsCreatesPostingForDefaultLegacyAccountIds() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "P1", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -864,7 +866,7 @@ final class DataStoreAccountingTests: XCTestCase {
     func testSyncCanonicalArtifactsCreatesAndUpsertsCanonicalPostingWhenLegacyAccountIdsAreUUIDStrings() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let fixture = try makeUUIDBackedExpenseFixture()
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1800,
             date: Date(),
@@ -899,7 +901,7 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(firstJournal?.totalDebit, Decimal(1800))
         XCTAssertEqual(firstJournal?.totalCredit, Decimal(1800))
 
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: transaction.id,
             amount: 2400,
             memo: "UUID経費 更新後",
@@ -925,8 +927,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testSyncCanonicalCounterpartyForRecurringPersistsCounterpartyMaster() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Recurring Project", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Recurring Project", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "サーバー代",
             type: .expense,
             amount: 3000,
@@ -962,8 +964,8 @@ final class DataStoreAccountingTests: XCTestCase {
         )
         try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
 
-        let project = dataStore.addProject(name: "P1", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -988,8 +990,8 @@ final class DataStoreAccountingTests: XCTestCase {
         )
         try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
 
-        let project = dataStore.addProject(name: "Recurring Project", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Recurring Project", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "月額費用",
             type: .expense,
             amount: 2000,
@@ -1015,8 +1017,8 @@ final class DataStoreAccountingTests: XCTestCase {
         )
         try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
 
-        let project = dataStore.addProject(name: "Ledger Project", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Ledger Project", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1500,
             date: Date(),
@@ -1042,8 +1044,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testSyncCanonicalArtifactsStoresExplicitTaxCodeOnCandidateAndCounterparty() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Tax Project", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Tax Project", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1100,
             date: Date(),
@@ -1079,9 +1081,9 @@ final class DataStoreAccountingTests: XCTestCase {
 
     func testSyncCanonicalArtifactsFallsBackToCounterpartyDefaultTaxCode() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Tax Default Project", description: "")
+        let project = mutations(dataStore).addProject(name: "Tax Default Project", description: "")
 
-        let firstTransaction = dataStore.addTransaction(
+        let firstTransaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1080,
             date: Date(),
@@ -1098,7 +1100,7 @@ final class DataStoreAccountingTests: XCTestCase {
         )
         _ = await dataStore.syncCanonicalArtifacts(forTransactionId: firstTransaction.id, source: .manual)
 
-        let secondTransaction = dataStore.addTransaction(
+        let secondTransaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -1132,8 +1134,8 @@ final class DataStoreAccountingTests: XCTestCase {
             suppliesAccount.updated(defaultTaxCodeId: .some(TaxCode.standard10.rawValue))
         )
 
-        let project = dataStore.addProject(name: "Account Default Project", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Account Default Project", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -1204,7 +1206,7 @@ final class DataStoreAccountingTests: XCTestCase {
     }
 
     func testProjectedCanonicalJournalsRetainLegacyManualEntries() {
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "補助仕訳",
             lines: [
@@ -1249,7 +1251,7 @@ final class DataStoreAccountingTests: XCTestCase {
 
         let category = dataStore.addCategory(name: "UUID経費カテゴリ", type: .expense, icon: "wrench")
         dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: expenseAccountId)
-        let project = dataStore.addProject(name: "UUID Project", description: "")
+        let project = mutations(dataStore).addProject(name: "UUID Project", description: "")
         return (project, paymentAccountId, category.id)
     }
 }

@@ -33,8 +33,8 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     }
 
     func testAddDocumentSuccessCreatesRecordAndComplianceLog() {
-        let project = dataStore.addProject(name: "Doc Workflow", description: "test")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Doc Workflow", description: "test")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 2_400,
             date: Date(),
@@ -136,8 +136,8 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     }
 
     func testAvailableProjectsReturnsProjectsForFilterSheet() {
-        let first = dataStore.addProject(name: "First", description: "one")
-        let second = dataStore.addProject(name: "Second", description: "two")
+        let first = mutations(dataStore).addProject(name: "First", description: "one")
+        let second = mutations(dataStore).addProject(name: "Second", description: "two")
 
         let projects = useCase.availableProjects()
 
@@ -153,7 +153,7 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     }
 
     func testMatchingStoredFileNamesReturnsResultsWhenBusinessProfileExistsAndFiltersActive() async throws {
-        let project = dataStore.addProject(name: "Evidence Project", description: "doc")
+        let project = mutations(dataStore).addProject(name: "Evidence Project", description: "doc")
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let evidence = makeEvidence(
             businessId: businessId,
@@ -174,7 +174,7 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     }
 
     func testRebuildEvidenceIndexKeepsSearchResultsAvailable() async throws {
-        let project = dataStore.addProject(name: "Rebuild Project", description: "doc")
+        let project = mutations(dataStore).addProject(name: "Rebuild Project", description: "doc")
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let evidence = makeEvidence(
             businessId: businessId,
@@ -198,8 +198,8 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         issueDate: Date = Date(),
         documentType: LegalDocumentType = .invoice
     ) -> PPDocumentRecord? {
-        let project = dataStore.addProject(name: "Delete Doc", description: "test")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Delete Doc", description: "test")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_000,
             date: issueDate,

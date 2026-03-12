@@ -3,6 +3,7 @@ import Foundation
 /// 確定仕訳リポジトリプロトコル
 protocol CanonicalJournalEntryRepository: Sendable {
     func findById(_ id: UUID) async throws -> CanonicalJournalEntry?
+    func findAllByBusiness(businessId: UUID) async throws -> [CanonicalJournalEntry]
     func findByBusinessAndYear(businessId: UUID, taxYear: Int) async throws -> [CanonicalJournalEntry]
     func findByDateRange(businessId: UUID, from: Date, to: Date) async throws -> [CanonicalJournalEntry]
     func findByEvidence(evidenceId: UUID) async throws -> [CanonicalJournalEntry]
@@ -16,6 +17,7 @@ protocol CanonicalJournalEntryRepository: Sendable {
 /// 仕訳候補リポジトリプロトコル
 protocol PostingCandidateRepository: Sendable {
     func findById(_ id: UUID) async throws -> PostingCandidate?
+    func findByIds(_ ids: Set<UUID>) async throws -> [PostingCandidate]
     func findByEvidence(evidenceId: UUID) async throws -> [PostingCandidate]
     func findByStatus(businessId: UUID, status: CandidateStatus) async throws -> [PostingCandidate]
     func save(_ candidate: PostingCandidate) async throws

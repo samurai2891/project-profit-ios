@@ -58,7 +58,7 @@ final class AccountingPerformanceTests: XCTestCase {
         for i in 0..<500 {
             let catId = categories[i % categories.count]
             let type: TransactionType = i % 4 == 0 ? .income : .expense
-            dataStore.addTransaction(
+            mutations(dataStore).addTransaction(
                 type: type,
                 amount: Int.random(in: 1000...50_000),
                 date: Date(),
@@ -92,7 +92,7 @@ final class AccountingPerformanceTests: XCTestCase {
         for i in 0..<500 {
             let catId = categories[i % categories.count]
             let type: TransactionType = i % 3 == 0 ? .income : .expense
-            dataStore.addTransaction(
+            mutations(dataStore).addTransaction(
                 type: type,
                 amount: Int.random(in: 1000...50_000),
                 date: Date(),

@@ -98,7 +98,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
         var previewForm: EtaxForm?
         var exportResult: EtaxExportViewModel.ExportResult?
         let elapsed = measureSeconds {
-            let viewModel = EtaxExportViewModel(dataStore: dataStore)
+            let viewModel = makeEtaxExportViewModel()
             viewModel.fiscalYear = 2025
             viewModel.generatePreview()
             previewForm = viewModel.exportedForm
@@ -118,6 +118,38 @@ final class ReleasePerformanceGateTests: XCTestCase {
 
         print("performance.export.seconds=\(elapsed)")
         XCTAssertLessThan(elapsed, Threshold.exportSeconds)
+    }
+
+    private func makeEtaxExportViewModel() -> EtaxExportViewModel {
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        return EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { fiscalYear in
+                EtaxExportContext(
+                    businessId: self.dataStore.businessProfile?.id,
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
+                        ? self.dataStore.currentTaxYearProfile
+                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
+                )
+            },
+            formBuilder: { filingStyle, fiscalYear in
+                try FormEngine.build(
+                    filingStyle: filingStyle,
+                    dataStore: self.dataStore,
+                    fiscalYear: fiscalYear
+                )
+            },
+            exporter: { format, form in
+                try ExportCoordinator.export(
+                    target: .etax,
+                    format: format,
+                    fiscalYear: form.fiscalYear,
+                    dataStore: self.dataStore,
+                    skipPreflightValidation: true,
+                    etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                )
+            }
+        )
     }
 
     func testMigrationDryRunStaysUnderGate() async throws {
@@ -324,8 +356,8 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     private func ensureTaxClose(for fiscalYear: Int) throws {
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: fiscalYear))
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.taxClose, for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
     }
 
     private func canonicalAccount(legacyAccountId: String) async throws -> CanonicalAccount {

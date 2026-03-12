@@ -29,7 +29,7 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     /// 今日の日付コンポーネント
@@ -224,7 +224,7 @@ final class RecurringPreviewTests: XCTestCase {
             try? context.save()
             dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 
     /// 年度ロック中の日付はプレビューからスキップされる
@@ -252,6 +252,6 @@ final class RecurringPreviewTests: XCTestCase {
         XCTAssertTrue(lockedItems.isEmpty, "年度ロック中の日付はプレビューに含まれないべき")
 
         // Unlock for cleanup
-        dataStore.unlockFiscalYear(currentYear)
+        mutations(dataStore).unlockFiscalYear(currentYear)
     }
 }

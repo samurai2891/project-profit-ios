@@ -1,7 +1,9 @@
+import SwiftData
 import SwiftUI
 
 struct FixedAssetListView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     @State private var showAddForm = false
     @State private var showBulkPostConfirmation = false
@@ -9,6 +11,14 @@ struct FixedAssetListView: View {
 
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
+    }
+
+    private var queryUseCase: FixedAssetQueryUseCase {
+        FixedAssetQueryUseCase(modelContext: modelContext)
+    }
+
+    private var snapshot: FixedAssetListSnapshot {
+        queryUseCase.listSnapshot(currentYear: currentYear)
     }
 
     private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
@@ -25,7 +35,7 @@ struct FixedAssetListView: View {
 
     var body: some View {
         Group {
-            if dataStore.fixedAssets.isEmpty {
+            if snapshot.assets.isEmpty {
                 emptyState
             } else {
                 assetList
@@ -35,7 +45,7 @@ struct FixedAssetListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
-                    if !dataStore.fixedAssets.isEmpty {
+                    if !snapshot.assets.isEmpty {
                         ExportMenuButton(
                             target: .fixedAssets,
                             fiscalYear: currentYear,
@@ -92,7 +102,7 @@ struct FixedAssetListView: View {
 
     private var assetList: some View {
         List {
-            ForEach(dataStore.fixedAssets, id: \.id) { asset in
+            ForEach(snapshot.assets, id: \.id) { asset in
                 NavigationLink(destination: FixedAssetDetailView(assetId: asset.id)) {
                     assetRow(asset)
                 }
@@ -123,10 +133,7 @@ struct FixedAssetListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                let accumulated = dataStore.calculatePriorAccumulatedDepreciation(
-                    asset: asset, beforeYear: currentYear + 1
-                )
-                let bookValue = asset.acquisitionCost - accumulated
+                let bookValue = snapshot.bookValueByAssetId[asset.id] ?? asset.acquisitionCost
                 Text("帳簿: ¥\(bookValue.formatted())")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

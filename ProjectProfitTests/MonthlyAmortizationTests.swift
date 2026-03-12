@@ -30,7 +30,7 @@ final class MonthlyAmortizationTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
@@ -132,7 +132,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         // If startMonth is before current month, at least 1 transaction should be generated
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Annual Fee",
             type: .expense,
             amount: 120000,
@@ -145,7 +145,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
 
@@ -169,7 +169,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        _ = dataStore.addRecurring(
+        _ = mutations(dataStore).addRecurring(
             name: "Annual Support Fee",
             type: .expense,
             amount: 120000,
@@ -183,7 +183,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             counterparty: "年次配賦先株式会社"
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let spreadTx = fetchAllTransactions().filter { $0.memo.contains("[定期/月次]") }
 
         XCTAssertFalse(spreadTx.isEmpty)
@@ -209,7 +209,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "No Dup",
             type: .expense,
             amount: 120000,
@@ -222,11 +222,11 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let countBefore = fetchAllTransactions().count
 
         // Process again - should not create duplicates
-        let generatedCount = dataStore.processRecurringTransactions()
+        let generatedCount = mutations(dataStore).processRecurringTransactions()
 
         let countAfter = fetchAllTransactions().count
         XCTAssertEqual(countBefore, countAfter, "Should not create duplicates on reprocess")
@@ -239,7 +239,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Tracked",
             type: .expense,
             amount: 120000,
@@ -252,7 +252,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let updated = fetchRecurring(id: recurring.id)
         XCTAssertFalse(updated?.lastGeneratedMonths.isEmpty ?? true, "lastGeneratedMonths should be populated")
 
@@ -269,7 +269,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Annual License",
             type: .expense,
             amount: 120000,
@@ -282,7 +282,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty)
@@ -298,7 +298,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Domain",
             type: .expense,
             amount: 12000,
@@ -311,7 +311,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty)
@@ -327,7 +327,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Lump Sum",
             type: .expense,
             amount: 120000,
@@ -340,7 +340,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .lumpSum
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         // Lump sum generates 1 transaction with full amount
         let lumpTx = transactions.filter { $0.memo.contains("[定期] Lump Sum") }
@@ -354,7 +354,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Default",
             type: .expense,
             amount: 120000,
@@ -367,7 +367,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             // yearlyAmortizationMode not specified, defaults to .lumpSum
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let tx = transactions.filter { $0.memo.contains("[定期] Default") }
         XCTAssertEqual(tx.count, 1, "nil mode should behave like lumpSum")
@@ -386,9 +386,9 @@ final class MonthlyAmortizationTests: XCTestCase {
 
         // Complete project A mid-month in the startMonth
         let completedDate = makeDate(year: year, month: startMonth, day: 15)
-        dataStore.updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
+        mutations(dataStore).updateProject(id: projectA.id, status: .completed, completedAt: completedDate)
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Prorated Spread",
             type: .expense,
             amount: 120000,
@@ -405,7 +405,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("prorata") }
         XCTAssertFalse(spreadTx.isEmpty, "Should have generated spread transactions")
@@ -450,7 +450,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         try? context.save()
         dataStore.loadData()
 
-        dataStore.processRecurringTransactions()
+        mutations(dataStore).processRecurringTransactions()
 
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
@@ -480,7 +480,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Switch Mode",
             type: .expense,
             amount: 120000,
@@ -493,13 +493,13 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         // Verify lastGeneratedMonths is populated
         var updated = fetchRecurring(id: recurring.id)
         XCTAssertFalse(updated?.lastGeneratedMonths.isEmpty ?? true)
 
         // Switch to lumpSum
-        dataStore.updateRecurring(id: recurring.id, yearlyAmortizationMode: .lumpSum)
+        mutations(dataStore).updateRecurring(id: recurring.id, yearlyAmortizationMode: .lumpSum)
 
         updated = fetchRecurring(id: recurring.id)
         XCTAssertTrue(updated?.lastGeneratedMonths.isEmpty ?? false, "lastGeneratedMonths should be cleared on switch to lumpSum")
@@ -511,7 +511,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Freq Switch",
             type: .expense,
             amount: 120000,
@@ -525,7 +525,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         )
 
         // Switch frequency to monthly
-        dataStore.updateRecurring(id: recurring.id, frequency: .monthly)
+        mutations(dataStore).updateRecurring(id: recurring.id, frequency: .monthly)
 
         let updated = fetchRecurring(id: recurring.id)
         XCTAssertEqual(updated?.yearlyAmortizationMode, .lumpSum, "yearlyAmortizationMode should be .lumpSum after switch to monthly")
@@ -538,7 +538,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         guard let startMonth = pastMonth else { return }
         let project = makeProject()
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "EqualAll Spread",
             type: .expense,
             amount: 120000,
@@ -552,7 +552,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") }
         XCTAssertFalse(spreadTx.isEmpty, "equalAll with monthly spread should generate transactions")
@@ -585,7 +585,7 @@ final class MonthlyAmortizationTests: XCTestCase {
 
         let project = makeProject(name: "H4Project")
 
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Annual Mid-Year",
             type: .expense,
             amount: 120000,
@@ -598,7 +598,7 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions.filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h4test") }
 
@@ -633,7 +633,7 @@ final class MonthlyAmortizationTests: XCTestCase {
         // by using endDate at month 3. Then skip month 3 so remainder goes to month 2.
         let endDate = calendar.date(from: DateComponents(year: currentYear, month: 3, day: 28))!
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Remainder Shift",
             type: .expense,
             amount: 100000,
@@ -647,9 +647,9 @@ final class MonthlyAmortizationTests: XCTestCase {
             yearlyAmortizationMode: .monthlySpread
         )
         // skipDatesはaddRecurringに直接渡せないため、updateRecurringで設定
-        dataStore.updateRecurring(id: recurring.id, skipDates: [skipDate])
+        mutations(dataStore).updateRecurring(id: recurring.id, skipDates: [skipDate])
 
-        _ = dataStore.processRecurringTransactions()
+        _ = mutations(dataStore).processRecurringTransactions()
         let transactions = fetchAllTransactions()
         let spreadTx = transactions
             .filter { $0.memo.contains("[定期/月次]") && $0.memo.contains("h3test") }

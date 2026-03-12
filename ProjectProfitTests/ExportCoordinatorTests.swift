@@ -205,7 +205,7 @@ final class ExportCoordinatorTests: XCTestCase {
     }
 
     func testTransactionsExportDoesNotRequirePreflight() throws {
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_200,
             date: makeDate(year: 2025, month: 1, day: 10),

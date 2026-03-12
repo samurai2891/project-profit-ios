@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct JournalDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     let entry: PPJournalEntry
 
@@ -12,10 +11,12 @@ struct JournalDetailView: View {
     @State private var showCancelConfirmation = false
     @State private var actionErrorMessage: String?
 
+    private var detailSnapshot: JournalDetailSnapshot {
+        JournalReadQueryUseCase(modelContext: modelContext).detailSnapshot(entryId: entry.id)
+    }
+
     private var lines: [PPJournalLine] {
-        dataStore.projectedCanonicalJournals().lines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        detailSnapshot.lines
     }
 
     private var debitTotal: Int {
@@ -155,7 +156,7 @@ struct JournalDetailView: View {
     }
 
     private func lineRow(_ line: PPJournalLine) -> some View {
-        let accountName = dataStore.accounts.first(where: { $0.id == line.accountId })?.name ?? line.accountId
+        let accountName = detailSnapshot.accountNamesById[line.accountId] ?? line.accountId
 
         return HStack {
             VStack(alignment: .leading, spacing: 2) {

@@ -32,8 +32,8 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     }
 
     func testDocumentDeletionFlow_requiresWarningBeforeDeletion() {
-        let project = dataStore.addProject(name: "書類テスト", description: "doc")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "書類テスト", description: "doc")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -73,7 +73,7 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     }
 
     func testSubLedger_cashBookExtractsCashLines() {
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "現金売上",
             lines: [
@@ -89,15 +89,16 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
     func testLegacyReceiptImageBackfill_migratesToDocumentRecordAndClearsPath() throws {
         let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
-        let project = dataStore.addProject(name: "移行テスト", description: "legacy")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "移行テスト", description: "legacy")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 980,
             date: Date(timeIntervalSince1970: 1_735_689_600),
             categoryId: "cat-other-expense",
             memo: "旧領収書",
             allocations: [(projectId: project.id, ratio: 100)],
-            receiptImagePath: legacyImageFile
+            receiptImagePath: legacyImageFile,
+            reloadStoreAfterMutation: false
         )
 
         let reloadedStore = ProjectProfit.DataStore(modelContext: context)
@@ -123,15 +124,16 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
     func testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists() throws {
         let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
-        let project = dataStore.addProject(name: "移行重複テスト", description: "legacy")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "移行重複テスト", description: "legacy")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
             categoryId: "cat-other-expense",
             memo: "既存書類あり",
             allocations: [(projectId: project.id, ratio: 100)],
-            receiptImagePath: legacyImageFile
+            receiptImagePath: legacyImageFile,
+            reloadStoreAfterMutation: false
         )
 
         let existingDocumentResult = dataStore.addDocumentRecord(

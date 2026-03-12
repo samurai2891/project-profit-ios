@@ -4,6 +4,11 @@ import XCTest
 
 @MainActor
 final class InventoryViewModelTests: XCTestCase {
+    private final class CaptureBox {
+        var reloadCount = 0
+        var capturedError: AppError?
+    }
+
     var container: ModelContainer!
     var dataStore: ProjectProfit.DataStore!
 
@@ -21,7 +26,8 @@ final class InventoryViewModelTests: XCTestCase {
     }
 
     func testSaveCreateFailureOnLockedYearKeepsInput() {
-        let viewModel = InventoryViewModel(dataStore: dataStore)
+        let capture = CaptureBox()
+        let viewModel = makeViewModel(capture: capture)
         viewModel.fiscalYear = 2025
         viewModel.loadForYear()
         XCTAssertNil(viewModel.existingRecord)
@@ -39,7 +45,8 @@ final class InventoryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.closingInventoryText, "80000")
         XCTAssertEqual(viewModel.memo, "入力中")
         XCTAssertNil(dataStore.getInventoryRecord(fiscalYear: 2025))
-        if case .yearLocked(let year) = dataStore.lastError {
+        XCTAssertEqual(capture.reloadCount, 0)
+        if case .yearLocked(let year) = capture.capturedError {
             XCTAssertEqual(year, 2025)
         } else {
             XCTFail("yearLockedエラーが設定されるべき")
@@ -47,7 +54,7 @@ final class InventoryViewModelTests: XCTestCase {
     }
 
     func testSaveUpdateFailureOnLockedYearKeepsInput() {
-        _ = dataStore.addInventoryRecord(
+        _ = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -55,7 +62,8 @@ final class InventoryViewModelTests: XCTestCase {
             memo: "保存済み"
         )
 
-        let viewModel = InventoryViewModel(dataStore: dataStore)
+        let capture = CaptureBox()
+        let viewModel = makeViewModel(capture: capture)
         viewModel.fiscalYear = 2025
         viewModel.loadForYear()
         XCTAssertNotNil(viewModel.existingRecord)
@@ -71,7 +79,8 @@ final class InventoryViewModelTests: XCTestCase {
         let stored = dataStore.getInventoryRecord(fiscalYear: 2025)
         XCTAssertEqual(stored?.openingInventory, 100_000)
         XCTAssertEqual(stored?.memo, "保存済み")
-        if case .yearLocked(let year) = dataStore.lastError {
+        XCTAssertEqual(capture.reloadCount, 0)
+        if case .yearLocked(let year) = capture.capturedError {
             XCTAssertEqual(year, 2025)
         } else {
             XCTFail("yearLockedエラーが設定されるべき")
@@ -79,14 +88,15 @@ final class InventoryViewModelTests: XCTestCase {
     }
 
     func testSaveSuccessReloadsFromPersistedData() {
-        _ = dataStore.addInventoryRecord(
+        _ = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
             closingInventory: 80_000
         )
 
-        let viewModel = InventoryViewModel(dataStore: dataStore)
+        let capture = CaptureBox()
+        let viewModel = makeViewModel(capture: capture)
         viewModel.fiscalYear = 2025
         viewModel.loadForYear()
         XCTAssertNotNil(viewModel.existingRecord)
@@ -97,6 +107,8 @@ final class InventoryViewModelTests: XCTestCase {
 
         XCTAssertEqual(dataStore.getInventoryRecord(fiscalYear: 2025)?.openingInventory, 0)
         XCTAssertEqual(viewModel.openingInventoryText, "", "保存成功時は再読込され、0は空文字表示になる")
+        XCTAssertEqual(capture.reloadCount, 1)
+        XCTAssertNil(capture.capturedError)
     }
 
     private func setupProfileAndLockYear(_ year: Int) {
@@ -110,6 +122,23 @@ final class InventoryViewModelTests: XCTestCase {
             dataStore.save()
             dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
+    }
+
+    private func makeViewModel(capture: CaptureBox) -> InventoryViewModel {
+        let workflowUseCase = InventoryWorkflowUseCase(
+            modelContext: dataStore.modelContext,
+            reloadInventoryRecords: {
+                capture.reloadCount += 1
+                self.dataStore.refreshInventoryRecords()
+            },
+            setError: {
+                capture.capturedError = $0
+            }
+        )
+        return InventoryViewModel(
+            modelContext: dataStore.modelContext,
+            workflowUseCase: workflowUseCase
+        )
     }
 }

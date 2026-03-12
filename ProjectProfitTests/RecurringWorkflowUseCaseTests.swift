@@ -27,7 +27,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     }
 
     func testCreateRecurringPersistsUpsertInput() {
-        let project = dataStore.addProject(name: "UseCase PJ", description: "desc")
+        let project = mutations(dataStore).addProject(name: "UseCase PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
         let endDate = Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 31))
         let input = makeInput(
@@ -63,8 +63,8 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     }
 
     func testUpdateRecurringReplacesEditableFields() {
-        let project = dataStore.addProject(name: "Initial PJ", description: "desc")
-        let replacementProject = dataStore.addProject(name: "Updated PJ", description: "desc")
+        let project = mutations(dataStore).addProject(name: "Initial PJ", description: "desc")
+        let replacementProject = mutations(dataStore).addProject(name: "Updated PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
         let recurring = useCase.createRecurring(
             input: makeInput(
@@ -116,7 +116,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     }
 
     func testDeleteRecurringRemovesPersistedRecurring() {
-        let project = dataStore.addProject(name: "Delete PJ", description: "desc")
+        let project = mutations(dataStore).addProject(name: "Delete PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
         let recurring = useCase.createRecurring(
             input: makeInput(
@@ -169,7 +169,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     }
 
     func testPreviewRecurringTransactionsReturnsDueItems() {
-        let project = dataStore.addProject(name: "Preview PJ", description: "desc")
+        let project = mutations(dataStore).addProject(name: "Preview PJ", description: "desc")
         let recurring = insertRecurringDirectly(
             name: "定期サブスク",
             type: .expense,
@@ -190,8 +190,8 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     func testApproveRecurringItemsCreatesCanonicalJournalAndUpdatesBookkeeping() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "Approve PJ", description: "desc")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Approve PJ", description: "desc")
+        let recurring = mutations(dataStore).addRecurring(
             name: "承認テスト定期",
             type: .expense,
             amount: 6_000,
@@ -226,7 +226,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
     }
 
     private func makeRecurring() -> PPRecurringTransaction {
-        let project = dataStore.addProject(name: "Recurring PJ", description: "desc")
+        let project = mutations(dataStore).addProject(name: "Recurring PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
         return useCase.createRecurring(
             input: makeInput(

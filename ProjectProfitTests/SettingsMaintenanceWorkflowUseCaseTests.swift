@@ -86,7 +86,7 @@ final class SettingsMaintenanceWorkflowUseCaseTests: XCTestCase {
         seedCanonicalProfile(businessId: UUID(), taxYear: 2025)
         dataStore.loadData()
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_200,
             date: Self.stableDate(year: 2025, month: 6, day: 1),

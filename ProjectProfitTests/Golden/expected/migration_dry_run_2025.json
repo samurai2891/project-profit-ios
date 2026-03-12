@@ -51,7 +51,7 @@
     {
       "canonicalCount" : 42,
       "executeSupported" : true,
-      "legacyCount" : 42,
+      "legacyCount" : 0,
       "modelName" : "Journal"
     },
     {
@@ -63,7 +63,7 @@
     {
       "canonicalCount" : 3,
       "executeSupported" : true,
-      "legacyCount" : 1,
+      "legacyCount" : 0,
       "modelName" : "Profile"
     },
     {

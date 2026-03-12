@@ -31,8 +31,8 @@ final class SettingsOverviewUseCaseTests: XCTestCase {
     }
 
     func testSnapshotMatchesCurrentCounts() throws {
-        _ = dataStore.addProject(name: "Settings Project", description: "")
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addProject(name: "Settings Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: Self.stableDate(year: 2025, month: 5, day: 10),
@@ -71,7 +71,7 @@ final class SettingsOverviewUseCaseTests: XCTestCase {
         )
         context.insert(PPInventoryRecord(fiscalYear: 2024, openingInventory: 100))
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: Self.stableDate(year: 2025, month: 3, day: 10),
@@ -79,7 +79,7 @@ final class SettingsOverviewUseCaseTests: XCTestCase {
             memo: "fy2024",
             allocations: []
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 8_000,
             date: Self.stableDate(year: 2025, month: 4, day: 10),

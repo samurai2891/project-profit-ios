@@ -1,9 +1,10 @@
 import SwiftUI
+import SwiftData
 
 @MainActor
 @Observable
 final class InventoryViewModel {
-    let dataStore: DataStore
+    private let queryUseCase: InventoryQueryUseCase
     private let workflowUseCase: InventoryWorkflowUseCase
 
     var fiscalYear: Int
@@ -13,16 +14,9 @@ final class InventoryViewModel {
     var memo: String = ""
     var existingRecord: PPInventoryRecord?
 
-    init(
-        dataStore: DataStore,
-        workflowUseCase: InventoryWorkflowUseCase? = nil
-    ) {
-        self.dataStore = dataStore
-        self.workflowUseCase = workflowUseCase ?? InventoryWorkflowUseCase(
-            modelContext: dataStore.modelContext,
-            reloadInventoryRecords: { dataStore.refreshInventoryRecords() },
-            setError: { dataStore.lastError = $0 }
-        )
+    init(modelContext: ModelContext, workflowUseCase: InventoryWorkflowUseCase? = nil) {
+        self.queryUseCase = InventoryQueryUseCase(modelContext: modelContext)
+        self.workflowUseCase = workflowUseCase ?? InventoryWorkflowUseCase(modelContext: modelContext)
         let currentYear = Calendar.current.component(.year, from: Date())
         self.fiscalYear = currentYear - 1
     }
@@ -49,7 +43,7 @@ final class InventoryViewModel {
     // MARK: - Data Loading
 
     func loadForYear() {
-        let record = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
+        let record = queryUseCase.snapshot(fiscalYear: fiscalYear).record
         existingRecord = record
 
         if let record {

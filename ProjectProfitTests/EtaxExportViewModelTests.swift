@@ -24,13 +24,13 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testInitUsesSupportedFiscalYear() {
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: .blueReturn)
         XCTAssertTrue(supportedYears.contains(viewModel.fiscalYear))
     }
 
     func testGeneratePreviewUnsupportedYearSetsValidationError() {
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.fiscalYear = 1900
 
         viewModel.generatePreview()
@@ -55,7 +55,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             )
         )
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.fiscalYear = 2025
         viewModel.generatePreview()
         XCTAssertNotNil(viewModel.exportedForm)
@@ -70,7 +70,7 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testExportXtxUnsupportedYearReturnsFailure() {
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.fiscalYear = 1900
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 1900,
@@ -96,7 +96,7 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testExportCsvUnsupportedYearReturnsFailure() {
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.fiscalYear = 1900
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 1900,
@@ -123,7 +123,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testGeneratePreviewRespectsFiscalStartMonthBoundary() {
         let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
         viewModel.fiscalYear = 2025
 
@@ -132,7 +132,7 @@ final class EtaxExportViewModelTests: XCTestCase {
         UserDefaults.standard.set(4, forKey: key)
         defer { UserDefaults.standard.set(previousStartMonth, forKey: key) }
 
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 3, day: 31),
             memo: "before",
             lines: [
@@ -140,7 +140,7 @@ final class EtaxExportViewModelTests: XCTestCase {
                 (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 100_000, memo: ""),
             ]
         )
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 4, day: 1),
             memo: "in-range",
             lines: [
@@ -192,7 +192,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             )
         )
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
         viewModel.fiscalYear = 2025
 
@@ -259,7 +259,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             )
         )
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
         viewModel.fiscalYear = 2025
         viewModel.exportedForm = EtaxForm(
@@ -316,7 +316,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             taxPackVersion: "2025-v1"
         )
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
         viewModel.fiscalYear = 2025
 
@@ -347,7 +347,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             taxPackVersion: "2025-v1"
         )
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
         viewModel.fiscalYear = 2025
         viewModel.exportedForm = EtaxForm(
@@ -376,6 +376,38 @@ final class EtaxExportViewModelTests: XCTestCase {
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
         let calendar = Calendar(identifier: .gregorian)
         return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    private func makeViewModel() -> EtaxExportViewModel {
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        return EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { fiscalYear in
+                EtaxExportContext(
+                    businessId: self.dataStore.businessProfile?.id,
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
+                        ? self.dataStore.currentTaxYearProfile
+                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
+                )
+            },
+            formBuilder: { filingStyle, fiscalYear in
+                try FormEngine.build(
+                    filingStyle: filingStyle,
+                    dataStore: self.dataStore,
+                    fiscalYear: fiscalYear
+                )
+            },
+            exporter: { format, form in
+                try ExportCoordinator.export(
+                    target: .etax,
+                    format: format,
+                    fiscalYear: form.fiscalYear,
+                    dataStore: self.dataStore,
+                    skipPreflightValidation: true,
+                    etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                )
+            }
+        )
     }
 
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {

@@ -133,6 +133,6 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
             dataStore.save()
             dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 }

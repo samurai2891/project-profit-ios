@@ -106,11 +106,11 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
     }
 
     func testDeleteCategoryMigratesTransactionAndRecurringReferences() {
-        let project = dataStore.addProject(name: "Category Workflow", description: "")
+        let project = mutations(dataStore).addProject(name: "Category Workflow", description: "")
         let category = useCase.createCategory(
             input: CategoryCreateInput(name: "削除カテゴリ", type: .expense, icon: "trash")
         )
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_200,
             date: Date(),
@@ -118,7 +118,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
             memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "月次費用",
             type: .expense,
             amount: 1_200,

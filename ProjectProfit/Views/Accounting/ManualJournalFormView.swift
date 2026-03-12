@@ -1,9 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct ManualJournalFormView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
     @State private var date = Date()
     @State private var memo = ""
     @State private var saveError: String?
@@ -44,7 +46,7 @@ struct ManualJournalFormView: View {
     }
 
     private var isLegacyEditingDisabled: Bool {
-        !dataStore.isLegacyTransactionEditingEnabled
+        !formSnapshot.isLegacyTransactionEditingEnabled
     }
 
     var body: some View {
@@ -88,6 +90,18 @@ struct ManualJournalFormView: View {
             } message: {
                 Text(saveError ?? "")
             }
+            .task {
+                loadFormSnapshot()
+            }
+        }
+    }
+
+    private func loadFormSnapshot() {
+        do {
+            formSnapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+        } catch {
+            formSnapshot = .empty
+            saveError = error.localizedDescription
         }
     }
 
@@ -151,7 +165,7 @@ struct ManualJournalFormView: View {
 
             AccountPickerView(
                 label: "勘定科目",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: Binding(
                     get: { lines[index].accountId },
                     set: { lines[index].accountId = $0 }

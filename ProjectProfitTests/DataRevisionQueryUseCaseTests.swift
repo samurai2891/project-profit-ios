@@ -31,8 +31,8 @@ final class DataRevisionQueryUseCaseTests: XCTestCase {
         let reportBefore = useCase.reportRevisionKey()
         let transactionsBefore = useCase.transactionsRevisionKey()
 
-        let project = dataStore.addProject(name: "Revision Project", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Revision Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_000,
             date: makeDate(2025, 4, 10),

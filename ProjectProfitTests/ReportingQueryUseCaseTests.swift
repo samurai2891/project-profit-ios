@@ -29,8 +29,8 @@ final class ReportingQueryUseCaseTests: XCTestCase {
 
     func testOverallCategoryAndProjectSummariesMatchDataStoreIncludingCanonicalSupplemental() async throws {
         FeatureFlags.useCanonicalPosting = true
-        let project = dataStore.addProject(name: "Reporting Project", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Reporting Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 4_000,
             date: makeDate(year: 2025, month: 5, day: 10),
@@ -94,8 +94,8 @@ final class ReportingQueryUseCaseTests: XCTestCase {
     func testMonthlySummariesMatchDataStoreForFiscalYearOrdering() {
         UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
 
-        let project = dataStore.addProject(name: "FY Project", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "FY Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10_000,
             date: makeDate(year: 2025, month: 4, day: 10),
@@ -103,7 +103,7 @@ final class ReportingQueryUseCaseTests: XCTestCase {
             memo: "april income",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 3_000,
             date: makeDate(year: 2026, month: 3, day: 20),

@@ -1,7 +1,9 @@
+import SwiftData
 import SwiftUI
 
 struct FixedAssetDetailView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let assetId: UUID
@@ -11,8 +13,16 @@ struct FixedAssetDetailView: View {
     @State private var showPostConfirmation = false
     @State private var showDisposeConfirmation = false
 
+    private var queryUseCase: FixedAssetQueryUseCase {
+        FixedAssetQueryUseCase(modelContext: modelContext)
+    }
+
+    private var snapshot: FixedAssetDetailSnapshot {
+        queryUseCase.detailSnapshot(assetId: assetId, currentYear: currentYear)
+    }
+
     private var asset: PPFixedAsset? {
-        dataStore.fixedAssets.first { $0.id == assetId }
+        snapshot.asset
     }
 
     private var currentYear: Int {
@@ -20,13 +30,11 @@ struct FixedAssetDetailView: View {
     }
 
     private var isAssetFiscalYearLocked: Bool {
-        guard let asset else { return false }
-        let year = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        return dataStore.isYearLocked(year)
+        snapshot.isAssetFiscalYearLocked
     }
 
     private var isCurrentYearLocked: Bool {
-        dataStore.isYearLocked(currentYear)
+        snapshot.isCurrentYearLocked
     }
 
     private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
@@ -42,18 +50,11 @@ struct FixedAssetDetailView: View {
     }
 
     private var schedule: [DepreciationCalculation] {
-        guard let asset else { return [] }
-        return dataStore.previewDepreciationSchedule(asset: asset)
+        snapshot.schedule
     }
 
     private var relatedEntries: [PPJournalEntry] {
-        guard let asset else { return [] }
-        let calendar = Calendar(identifier: .gregorian)
-        let acquisitionYear = calendar.component(.year, from: asset.acquisitionDate)
-        return (acquisitionYear...currentYear).compactMap { year in
-            let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: assetId, year: year)
-            return dataStore.journalEntries.first { $0.sourceKey == sourceKey }
-        }
+        snapshot.relatedEntries
     }
 
     var body: some View {

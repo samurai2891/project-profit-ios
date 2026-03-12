@@ -29,10 +29,10 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
     }
 
     func testFilteredTransactionsMatchesDataStoreForCombinedFiltersAndSort() {
-        let alpha = dataStore.addProject(name: "Alpha", description: "")
-        let beta = dataStore.addProject(name: "Beta", description: "")
+        let alpha = mutations(dataStore).addProject(name: "Alpha", description: "")
+        let beta = mutations(dataStore).addProject(name: "Beta", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 12_000,
             date: makeDate(2025, 1, 10),
@@ -41,7 +41,7 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
             allocations: [(projectId: alpha.id, ratio: 100)],
             counterparty: "Alpha Client"
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 9_000,
             date: makeDate(2025, 1, 20),
@@ -50,7 +50,7 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
             allocations: [(projectId: beta.id, ratio: 100)],
             counterparty: "Beta Client"
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 4_000,
             date: makeDate(2025, 1, 25),
@@ -80,9 +80,9 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
     }
 
     func testFilteredTransactionsMatchesDataStoreForSearchAndCounterpartyFiltering() {
-        let project = dataStore.addProject(name: "Alpha", description: "")
+        let project = mutations(dataStore).addProject(name: "Alpha", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 3_000,
             date: makeDate(2025, 2, 1),
@@ -91,7 +91,7 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             counterparty: "Tokyo Store"
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: makeDate(2025, 2, 2),
@@ -113,8 +113,8 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
     }
 
     func testDisplayHelpersResolveCurrentValues() throws {
-        let project = dataStore.addProject(name: "Client A", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Client A", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "家賃",
             type: .expense,
             amount: 80_000,
@@ -124,7 +124,7 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 8_000,
             date: makeDate(2025, 3, 3),
@@ -158,8 +158,8 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
     }
 
     func testExportCSVMatchesCurrentGeneratorAndFileNaming() throws {
-        let project = dataStore.addProject(name: "Client A", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Client A", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 11_000,
             date: makeDate(2025, 4, 10),

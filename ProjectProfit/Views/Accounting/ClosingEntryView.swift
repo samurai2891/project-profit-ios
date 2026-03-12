@@ -24,6 +24,14 @@ struct ClosingEntryView: View {
         _selectedYear = State(initialValue: currentYear)
     }
 
+    private var queryUseCase: ClosingQueryUseCase {
+        ClosingQueryUseCase(modelContext: modelContext)
+    }
+
+    private var snapshot: ClosingEntrySnapshot {
+        queryUseCase.snapshot(year: selectedYear)
+    }
+
     private var closingWorkflowUseCase: ClosingWorkflowUseCase {
         ClosingWorkflowUseCase(
             modelContext: modelContext,
@@ -41,8 +49,7 @@ struct ClosingEntryView: View {
     }
 
     private var canonicalClosingEntry: CanonicalJournalEntry? {
-        dataStore.canonicalJournalEntries(fiscalYear: selectedYear)
-            .first { $0.entryType == .closing }
+        snapshot.closingEntry
     }
 
     private var hasClosingEntry: Bool {
@@ -50,21 +57,18 @@ struct ClosingEntryView: View {
     }
 
     private var closingLines: [DisplayLine] {
-        let accountsById = Dictionary(uniqueKeysWithValues: dataStore.canonicalAccounts().map { ($0.id, $0) })
-        return canonicalClosingEntry?.lines
-            .sorted { $0.sortOrder < $1.sortOrder }
-            .map { line in
-                DisplayLine(
-                    id: line.id,
-                    accountName: accountsById[line.accountId]?.name ?? line.accountId.uuidString,
-                    debit: NSDecimalNumber(decimal: line.debitAmount).intValue,
-                    credit: NSDecimalNumber(decimal: line.creditAmount).intValue
-                )
-            } ?? []
+        snapshot.displayLines.map { line in
+            DisplayLine(
+                id: line.id,
+                accountName: line.accountName,
+                debit: line.debit,
+                credit: line.credit
+            )
+        }
     }
 
     private var currentYearState: YearLockState {
-        dataStore.yearLockState(for: selectedYear)
+        snapshot.yearState
     }
 
     private var availableStateTransitions: [YearLockState] {
@@ -373,11 +377,11 @@ struct ClosingEntryView: View {
     }
 
     private func closingPreflightReport(for state: YearLockState) -> FilingPreflightReport? {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = snapshot.businessId else {
             return nil
         }
         do {
-            return try FilingPreflightUseCase(modelContext: dataStore.modelContext).preflightReport(
+            return try FilingPreflightUseCase(modelContext: modelContext).preflightReport(
                 businessId: businessId,
                 taxYear: selectedYear,
                 context: .closing(targetState: state)

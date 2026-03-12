@@ -141,6 +141,27 @@
 - 画面側の read-only `DataStore` 依存が残っている
   - 確認: `ProjectProfit/Views/Accounting/EtaxExportView.swift`, `ProjectProfit/Views/Accounting/ChartOfAccountsView.swift`, `ProjectProfit/Features/Masters/Accounts/Presentation/Screens/AccountFormView.swift`
 
+#### 残作業バッチ
+- Batch 1: `Application/UseCases/*Store` 内の `DataStore` 再生成を除去する
+  - `ProjectProfit/Application/UseCases/Posting/PostingIntakeStore.swift` の `loadedDataStore()` が manual candidate 作成と CSV import で `buildCanonicalPostingSync(...)`, `candidateWithProjectAllocations(...)`, `addProject(...)`, `saveApprovedPostingSync(...)` を呼んでいる
+  - `ProjectProfit/Application/UseCases/Projects/ProjectWorkflowStore.swift` の `configuredDataStore()` が project 作成 / 更新 / 削除後の `save()`, `refreshProjects()`, `refreshTransactions()`, `reprocessEqualAllCurrentPeriodTransactions()`, `recalculateAllocationsForProject(...)`, `reverseCompletionAllocations(...)`, `recalculateAllPartialPeriodProjects()` を担っている
+  - `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowStore.swift` の `dataStore()` が recurring の create / update / delete / preview / approve を `DataStore` 経由で実行している
+- Batch 2: 会計・帳簿系の read path を query/use case 化する
+  - `ProjectProfit/Application/UseCases/FixedAssets/` には `FixedAssetWorkflowUseCase.swift` のみ、`ProjectProfit/Application/UseCases/Inventory/` には `InventoryWorkflowUseCase.swift` のみがあり、query 用 UseCase は確認できない
+  - `ProjectProfit/Application/UseCases/` 配下では `*TrialBalance*UseCase`, `*ProfitLoss*UseCase`, `*BalanceSheet*UseCase`, `*SubLedger*UseCase`, `*MonthlySummary*UseCase`, `*Etax*UseCase`, `*Classification*UseCase` に一致するファイルを確認できない
+  - `ProjectProfit/ViewModels/AccountingReportViewModel.swift`, `ProjectProfit/ViewModels/AccountingHomeViewModel.swift`, `ProjectProfit/ViewModels/ClassificationViewModel.swift`, `ProjectProfit/ViewModels/InventoryViewModel.swift`, `ProjectProfit/ViewModels/EtaxExportViewModel.swift` が `dataStore.accounts`, `dataStore.journalEntries`, `dataStore.transactions`, `dataStore.getInventoryRecord(...)`, `dataStore.businessProfile` などを直接読んでいる
+  - `ProjectProfit/Views/Accounting/JournalListView.swift`, `ProjectProfit/Views/Accounting/JournalDetailView.swift`, `ProjectProfit/Views/Accounting/LedgerView.swift`, `ProjectProfit/Views/Accounting/SubLedgerView.swift`, `ProjectProfit/Views/Accounting/MonthlySummaryView.swift`, `ProjectProfit/Views/Accounting/ClosingEntryView.swift`, `ProjectProfit/Views/Accounting/FixedAssetListView.swift`, `ProjectProfit/Views/Accounting/FixedAssetDetailView.swift`, `ProjectProfit/Views/Accounting/FixedAssetScheduleView.swift`, `ProjectProfit/Views/Accounting/ChartOfAccountsView.swift` が `DataStore` の read API に直接依存している
+- Batch 3: master / profile / 補助 UI の `DataStore` 直参照を query/use case の入力へ置き換える
+  - `ProjectProfit/Views/Settings/ProfileSettingsView.swift` と `ProjectProfit/Views/ContentView.swift` が `profileSensitivePayload`, `currentTaxYearProfile`, `applyProfileSettingsState(...)`, `persistSensitivePayload(...)` を `DataStore` port として渡している
+  - `ProjectProfit/Features/Masters/Accounts/Presentation/Screens/AccountFormView.swift` は保存前の `businessProfile?.id` 取得を `DataStore` に依存している
+  - `ProjectProfit/Features/Masters/Counterparties/Presentation/Screens/CounterpartyListView.swift` と `ProjectProfit/Features/Masters/Counterparties/Presentation/Screens/CounterpartyFormView.swift` は `businessProfile?.id`, `canonicalAccounts()`, `projects` を `DataStore` から読んでいる
+  - `ProjectProfit/Views/Components/FilterView.swift` は filter 候補の `projects` / `categories` を `DataStore` から直接読んでいる
+- Batch 4: legacy mutation API を互換用途へ閉じ、 test 依存を整理する
+  - `ProjectProfit/Services/DataStore.swift` に `addTransactionResult(...)`, `updateTransaction(...)`, `deleteTransaction(...)`, `processRecurringTransactions()`, `importTransactions(from:)`, `deleteAllData()` が public API として残っている
+  - `ProjectProfit/` 配下を `DataStore.swift` / `DataStore+*.swift` を除いて検索すると、`addTransactionResult(...)`, `updateTransaction(...)`, `deleteTransaction(...)`, `processRecurringTransactions()` の production caller は確認できない
+  - 上記 API の caller は `ProjectProfitTests/DataStoreCRUDTests.swift`, `ProjectProfitTests/RecurringProcessingTests.swift`, `ProjectProfitTests/MonthlyAmortizationTests.swift`, `ProjectProfitTests/ProRataDataStoreTests.swift`, `ProjectProfitTests/PlannedEndDateTests.swift`, `ProjectProfitTests/YearLockTests.swift`, `ProjectProfitTests/TransactionLogTests.swift`, `ProjectProfitTests/DataStoreAccountingTests.swift` などの test suite に残っている
+  - `importTransactions(csvString:)` と `deleteAllData()` の UI 導線は `ProjectProfit/Views/Settings/SettingsView.swift` と `ProjectProfit/Features/Settings/Presentation/Screens/SettingsMainView.swift` で UseCase 化済みだが、`PostingIntakeUseCase` の内部は Batch 1 の `PostingIntakeStore.swift` に依存している
+
 #### 未実装
 - UI からの直接 mutation を UseCase / Repository 境界へ完全移管する
 - `DataStore` の直接依存を旧画面・旧 service から全面的に縮退する

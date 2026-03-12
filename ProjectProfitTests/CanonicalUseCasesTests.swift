@@ -521,6 +521,11 @@ private actor InMemoryPostingCandidateRepository: PostingCandidateRepository {
         storage[id]
     }
 
+    func findByIds(_ ids: Set<UUID>) async throws -> [PostingCandidate] {
+        guard !ids.isEmpty else { return [] }
+        return storage.values.filter { ids.contains($0.id) }
+    }
+
     func findByEvidence(evidenceId: UUID) async throws -> [PostingCandidate] {
         storage.values.filter { $0.evidenceId == evidenceId }
     }
@@ -551,6 +556,10 @@ private actor FailingCanonicalJournalEntryRepository: CanonicalJournalEntryRepos
 
     func findById(_ id: UUID) async throws -> CanonicalJournalEntry? {
         savedEntries.first { $0.id == id }
+    }
+
+    func findAllByBusiness(businessId: UUID) async throws -> [CanonicalJournalEntry] {
+        savedEntries.filter { $0.businessId == businessId }
     }
 
     func findByBusinessAndYear(businessId: UUID, taxYear: Int) async throws -> [CanonicalJournalEntry] {

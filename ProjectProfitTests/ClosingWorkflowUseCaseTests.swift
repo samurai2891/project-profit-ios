@@ -47,7 +47,7 @@ final class ClosingWorkflowUseCaseTests: XCTestCase {
     }
 
     func testGenerateClosingEntryReturnsNilForLockedYear() {
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: 2025))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: 2025))
 
         createApprovedJournal(
             debitLegacyAccountId: AccountingConstants.cashAccountId,

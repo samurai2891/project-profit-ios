@@ -15,6 +15,13 @@ final class SwiftDataFixedAssetRepository: FixedAssetRepository {
         return try modelContext.fetch(descriptor).first
     }
 
+    func allFixedAssets() throws -> [PPFixedAsset] {
+        let descriptor = FetchDescriptor<PPFixedAsset>(
+            sortBy: [SortDescriptor(\.acquisitionDate, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
     func insert(_ asset: PPFixedAsset) {
         modelContext.insert(asset)
     }

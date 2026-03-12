@@ -31,7 +31,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
     func testSaveManualCandidateCreatesDraftWithoutLegacyTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         let beforeTransactions = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
@@ -73,8 +73,8 @@ final class PostingIntakeUseCaseTests: XCTestCase {
     func testSaveManualCandidateFailsForYearLockedDate() async {
         FeatureFlags.useCanonicalPosting = true
         let lockedYear = Calendar.current.component(.year, from: Date())
-        dataStore.lockFiscalYear(lockedYear)
-        let project = dataStore.addProject(name: "Locked PJ", description: "")
+        mutations(dataStore).lockFiscalYear(lockedYear)
+        let project = mutations(dataStore).addProject(name: "Locked PJ", description: "")
 
         do {
             _ = try await useCase.saveManualCandidate(

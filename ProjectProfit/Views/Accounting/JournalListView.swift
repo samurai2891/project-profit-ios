@@ -13,12 +13,16 @@ struct JournalListView: View {
     @State private var isReindexing = false
     @State private var errorMessage: String?
 
-    private var projectedJournals: (entries: [PPJournalEntry], lines: [PPJournalLine]) {
-        dataStore.projectedCanonicalJournals()
+    private var readQueryUseCase: JournalReadQueryUseCase {
+        JournalReadQueryUseCase(modelContext: modelContext)
+    }
+
+    private var journalSnapshot: JournalListSnapshot {
+        readQueryUseCase.listSnapshot()
     }
 
     private var sortedEntries: [PPJournalEntry] {
-        projectedJournals.entries
+        journalSnapshot.entries
     }
 
     private var visibleEntries: [PPJournalEntry] {
@@ -27,7 +31,7 @@ struct JournalListView: View {
     }
 
     private var canCreateManualJournals: Bool {
-        dataStore.isLegacyTransactionEditingEnabled
+        journalSnapshot.canCreateManualJournals
     }
 
     var body: some View {
@@ -92,7 +96,7 @@ struct JournalListView: View {
         .sheet(isPresented: $showSearchFilters) {
             JournalSearchFilterSheet(
                 form: $searchForm,
-                projects: dataStore.projects
+                projects: journalSnapshot.projects
             )
         }
         .alert("検索エラー", isPresented: Binding(
@@ -107,7 +111,7 @@ struct JournalListView: View {
 
     private var reloadKey: String {
         [
-            dataStore.businessProfile?.id.uuidString ?? "none",
+            journalSnapshot.businessId?.uuidString ?? "none",
             searchForm.reloadToken,
             String(sortedEntries.count)
         ].joined(separator: ":")
@@ -162,7 +166,7 @@ struct JournalListView: View {
     }
 
     private func journalRow(_ entry: PPJournalEntry) -> some View {
-        let lines = projectedJournals.lines
+        let lines = journalSnapshot.lines
             .filter { $0.entryId == entry.id }
             .sorted { $0.displayOrder < $1.displayOrder }
         let debitTotal = lines.reduce(0) { $0 + $1.debit }
@@ -229,7 +233,7 @@ struct JournalListView: View {
 
     private func refreshSearchResults() async {
         guard searchForm.hasActiveFilters,
-              let businessId = dataStore.businessProfile?.id
+              let businessId = journalSnapshot.businessId
         else {
             matchingJournalIds = nil
             return
@@ -241,7 +245,10 @@ struct JournalListView: View {
         do {
             let criteria = searchForm.makeCriteria(businessId: businessId)
             let canonicalMatches = try await JournalSearchUseCase(modelContext: modelContext).search(criteria: criteria)
-            let supplementalMatches = supplementalMatchIds(criteria: criteria)
+            let supplementalMatches = readQueryUseCase.supplementalMatchIds(
+                criteria: criteria,
+                snapshot: journalSnapshot
+            )
             matchingJournalIds = Set(canonicalMatches).union(supplementalMatches)
         } catch {
             matchingJournalIds = nil
@@ -249,46 +256,8 @@ struct JournalListView: View {
         }
     }
 
-    private func supplementalMatchIds(criteria: JournalSearchCriteria) -> Set<UUID> {
-        let supplementalEntries = sortedEntries.filter { entry in
-            entry.sourceKey.hasPrefix("manual:")
-                || entry.sourceKey.hasPrefix("opening:")
-                || entry.sourceKey.hasPrefix("closing:")
-        }
-
-        return Set(supplementalEntries.compactMap { entry in
-            if let dateRange = criteria.dateRange, !dateRange.contains(entry.date) {
-                return nil
-            }
-
-            let lines = projectedJournals.lines.filter { $0.entryId == entry.id }
-            let totalAmount = Decimal(lines.reduce(0) { $0 + max($1.debit, $1.credit) })
-            if let amountRange = criteria.amountRange, !amountRange.contains(totalAmount) {
-                return nil
-            }
-
-            if criteria.counterpartyText != nil
-                || criteria.registrationNumber != nil
-                || criteria.projectId != nil
-                || criteria.fileHash != nil {
-                return nil
-            }
-
-            if let textQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery) {
-                let searchText = SearchIndexNormalizer.normalizeText(
-                    ([entry.memo] + lines.map(\.memo)).joined(separator: " ")
-                )
-                if !searchText.contains(textQuery) {
-                    return nil
-                }
-            }
-
-            return entry.id
-        })
-    }
-
     private func rebuildJournalIndex() async {
-        guard let businessId = dataStore.businessProfile?.id else { return }
+        guard let businessId = journalSnapshot.businessId else { return }
         isReindexing = true
         defer { isReindexing = false }
 

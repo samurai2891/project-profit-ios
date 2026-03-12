@@ -25,4 +25,9 @@ struct RecurringHistoryEntry: Identifiable, Equatable {
 protocol RecurringRepository {
     func listSnapshot() throws -> RecurringListSnapshot
     func historyEntries(recurringId: UUID) throws -> [RecurringHistoryEntry]
+    func findById(_ id: UUID) throws -> PPRecurringTransaction?
+    func allRecurringTransactions() throws -> [PPRecurringTransaction]
+    func insert(_ recurringTransaction: PPRecurringTransaction)
+    func delete(_ recurringTransaction: PPRecurringTransaction)
+    func saveChanges() throws
 }

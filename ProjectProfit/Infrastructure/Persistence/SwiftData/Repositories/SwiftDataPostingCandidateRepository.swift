@@ -19,6 +19,21 @@ final class SwiftDataPostingCandidateRepository: PostingCandidateRepository {
         }
     }
 
+    nonisolated func findByIds(_ ids: Set<UUID>) async throws -> [PostingCandidate] {
+        guard !ids.isEmpty else {
+            return []
+        }
+        return try await MainActor.run {
+            let descriptor = FetchDescriptor<PostingCandidateEntity>(
+                sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            )
+            return try modelContext
+                .fetch(descriptor)
+                .filter { ids.contains($0.candidateId) }
+                .map(PostingCandidateEntityMapper.toDomain)
+        }
+    }
+
     nonisolated func findByEvidence(evidenceId: UUID) async throws -> [PostingCandidate] {
         try await MainActor.run {
             let descriptor = FetchDescriptor<PostingCandidateEntity>(

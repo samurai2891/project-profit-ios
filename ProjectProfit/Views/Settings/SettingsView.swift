@@ -292,7 +292,7 @@ struct SettingsView: View {
 
             VStack(spacing: 0) {
                 NavigationLink {
-                    ProfileSettingsView()
+                    ProfileSettingsView(onSaved: reloadStoreState)
                 } label: {
                     menuRow(
                         icon: "person.text.rectangle",

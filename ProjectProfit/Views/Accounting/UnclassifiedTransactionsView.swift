@@ -1,7 +1,8 @@
+import SwiftData
 import SwiftUI
 
 struct UnclassifiedTransactionsView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ClassificationViewModel?
 
     var body: some View {
@@ -16,7 +17,7 @@ struct UnclassifiedTransactionsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if viewModel == nil {
-                viewModel = ClassificationViewModel(dataStore: dataStore)
+                viewModel = ClassificationViewModel(modelContext: modelContext)
             }
         }
     }

@@ -71,7 +71,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
     }
 
     func testExportPreflightDetectsSuspenseBalance() throws {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 6, day: 1),
             memo: "仮勘定残",
             lines: [
@@ -101,7 +101,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
     }
 
     func testClosingPreflightDetectsUnbalancedJournal() throws {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 6, day: 1),
             memo: "未確定仕訳",
             lines: [

@@ -73,6 +73,10 @@ struct RecurringWorkflowUseCase {
         store.previewRecurringTransactions()
     }
 
+    func processDueRecurringTransactions() -> Int {
+        store.processDueRecurringTransactions()
+    }
+
     func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
         await store.approveRecurringItems(approvedIds, from: items)
     }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct EtaxExportView: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(DataStore.self) private var dataStore
     @State private var viewModel: EtaxExportViewModel?
     @State private var showShareSheet = false
@@ -17,7 +18,30 @@ struct EtaxExportView: View {
         .navigationTitle("e-Tax出力")
         .task {
             if viewModel == nil {
-                viewModel = EtaxExportViewModel(dataStore: dataStore)
+                let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: modelContext)
+                viewModel = EtaxExportViewModel(
+                    modelContext: modelContext,
+                    contextProvider: { fiscalYear in
+                        contextQueryUseCase.context(fiscalYear: fiscalYear)
+                    },
+                    formBuilder: { filingStyle, fiscalYear in
+                        try FormEngine.build(
+                            filingStyle: filingStyle,
+                            dataStore: dataStore,
+                            fiscalYear: fiscalYear
+                        )
+                    },
+                    exporter: { format, form in
+                        try ExportCoordinator.export(
+                            target: .etax,
+                            format: format,
+                            fiscalYear: form.fiscalYear,
+                            dataStore: dataStore,
+                            skipPreflightValidation: true,
+                            etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                        )
+                    }
+                )
             }
         }
         .sheet(isPresented: $showShareSheet) {

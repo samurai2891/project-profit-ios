@@ -10,9 +10,9 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         let setupStore = ProjectProfit.DataStore(modelContext: context)
         setupStore.loadData()
 
-        let projectA = setupStore.addProject(name: "Project A", description: "")
-        let projectB = setupStore.addProject(name: "Project B", description: "")
-        _ = setupStore.addTransaction(
+        let projectA = mutations(setupStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(setupStore).addProject(name: "Project B", description: "")
+        _ = mutations(setupStore).addTransaction(
             type: .expense,
             amount: 10_000,
             date: Self.makeDate(year: 2024, month: 2, day: 28),
@@ -52,7 +52,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         let store = ProjectProfit.DataStore(modelContext: context)
         store.loadData()
 
-        let project = store.addProject(name: "Preview PJ", description: "")
+        let project = mutations(store).addProject(name: "Preview PJ", description: "")
         let recurring = PPRecurringTransaction(
             name: "毎月サーバー",
             type: .expense,

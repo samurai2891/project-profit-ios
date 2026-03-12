@@ -4,13 +4,18 @@ import SwiftData
 @MainActor
 struct ReportingQueryUseCase {
     private let repository: any ReportingRepository
+    private let modelContext: ModelContext?
 
-    init(repository: any ReportingRepository) {
+    init(repository: any ReportingRepository, modelContext: ModelContext? = nil) {
         self.repository = repository
+        self.modelContext = modelContext
     }
 
     init(modelContext: ModelContext) {
-        self.init(repository: SwiftDataReportingRepository(modelContext: modelContext))
+        self.init(
+            repository: SwiftDataReportingRepository(modelContext: modelContext),
+            modelContext: modelContext
+        )
     }
 
     func projectSummaries(startDate: Date? = nil, endDate: Date? = nil) -> [ProjectSummary] {
@@ -32,5 +37,12 @@ struct ReportingQueryUseCase {
 
     func monthlySummaries(fiscalYear: Int, startMonth: Int) -> [MonthlySummary] {
         (try? repository.monthlySummaries(fiscalYear: fiscalYear, startMonth: startMonth)) ?? []
+    }
+
+    func monthlySummaryRows(year: Int) -> [MonthlySummaryRow] {
+        guard let modelContext else {
+            return []
+        }
+        return AccountingReadSupport(modelContext: modelContext).monthlySummaryRows(year: year)
     }
 }

@@ -27,11 +27,11 @@ final class ProjectQueryUseCaseTests: XCTestCase {
     }
 
     func testListSnapshotMatchesProjectListsAndSummaries() {
-        let active = dataStore.addProject(name: "進行中案件", description: "")
-        let archived = dataStore.addProject(name: "アーカイブ案件", description: "")
+        let active = mutations(dataStore).addProject(name: "進行中案件", description: "")
+        let archived = mutations(dataStore).addProject(name: "アーカイブ案件", description: "")
         archived.isArchived = true
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 9_000,
             date: makeDate(year: 2026, month: 4, day: 1),
@@ -49,10 +49,10 @@ final class ProjectQueryUseCaseTests: XCTestCase {
     }
 
     func testDetailSnapshotMatchesRecentTransactionsAndYearlyProfitLoss() {
-        let project = dataStore.addProject(name: "詳細案件", description: "")
+        let project = mutations(dataStore).addProject(name: "詳細案件", description: "")
         let expenseCategoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
         let incomeCategoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .income })?.id)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: makeDate(year: 2026, month: 5, day: 3),
@@ -60,7 +60,7 @@ final class ProjectQueryUseCaseTests: XCTestCase {
             memo: "expense",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 12_000,
             date: makeDate(year: 2026, month: 5, day: 4),
@@ -81,7 +81,7 @@ final class ProjectQueryUseCaseTests: XCTestCase {
     }
 
     func testDetailSnapshotIncludesLegacyMutationState() {
-        let project = dataStore.addProject(name: "状態確認", description: "")
+        let project = mutations(dataStore).addProject(name: "状態確認", description: "")
 
         let snapshot = useCase.detailSnapshot(projectId: project.id)
 

@@ -31,7 +31,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_AllExpenseAccounts() {
         // Create entries for rent, travel, supplies
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 1),
             memo: "事務所家賃",
             lines: [
@@ -40,7 +40,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 5),
             memo: "出張交通費",
             lines: [
@@ -49,7 +49,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 10),
             memo: "文房具購入",
             lines: [
@@ -72,7 +72,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_AccountFilter() {
         // Create entries for multiple expense types
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 1),
             memo: "家賃5月",
             lines: [
@@ -81,7 +81,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 3),
             memo: "電車代",
             lines: [
@@ -90,7 +90,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 10),
             memo: "ペン購入",
             lines: [
@@ -114,7 +114,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_AccountFilter_NoMatch() {
         // Create a rent entry only
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "家賃6月",
             lines: [
@@ -136,7 +136,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_ExcludesPurchases() {
         // Create a purchase entry (仕入高)
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 15),
             memo: "商品仕入",
             lines: [
@@ -146,7 +146,7 @@ final class ExpenseBookTests: XCTestCase {
         )
 
         // Also create a normal expense for comparison
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 15),
             memo: "文房具",
             lines: [
@@ -170,7 +170,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_ExcludesCOGS() {
         // Create a COGS entry (売上原価)
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 12, 31),
             memo: "売上原価算出",
             lines: [
@@ -191,7 +191,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_ExcludesOpeningClosingInventory() {
         // Create opening inventory entry (期首商品棚卸高 — expense type)
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 1),
             memo: "期首棚卸",
             lines: [
@@ -201,7 +201,7 @@ final class ExpenseBookTests: XCTestCase {
         )
 
         // Also create a normal expense
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "通信費",
             lines: [
@@ -230,7 +230,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_CounterAccountId_Cash() {
         // Dr rent 50000 / Cr cash 50000 → counterAccountId = "acct-cash"
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 7, 1),
             memo: "家賃現金払い",
             lines: [
@@ -250,7 +250,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_CounterAccountId_Bank() {
         // Dr rent 50000 / Cr bank 50000 → counterAccountId = "acct-bank"
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 7, 1),
             memo: "家賃振込",
             lines: [
@@ -270,7 +270,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_RunningBalance_PerAccount() {
         // Two entries for rent, one for travel
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 1),
             memo: "家賃4月",
             lines: [
@@ -279,7 +279,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 10),
             memo: "交通費",
             lines: [
@@ -288,7 +288,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 1),
             memo: "家賃5月",
             lines: [
@@ -319,7 +319,7 @@ final class ExpenseBookTests: XCTestCase {
     // MARK: - 10. Date Filter
 
     func testExpenseBook_DateFilter() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 15),
             memo: "3月家賃",
             lines: [
@@ -328,7 +328,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 15),
             memo: "4月家賃",
             lines: [
@@ -337,7 +337,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 15),
             memo: "5月家賃",
             lines: [
@@ -362,7 +362,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_ChronologicalOrder() {
         // Insert entries out of chronological order
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "6月中旬",
             lines: [
@@ -371,7 +371,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "6月初日",
             lines: [
@@ -380,7 +380,7 @@ final class ExpenseBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 30),
             memo: "6月末日",
             lines: [
@@ -403,7 +403,7 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_MultipleExpenses_AnnualScenario() {
         // Jan rent 80k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 25),
             memo: "1月家賃",
             lines: [
@@ -413,7 +413,7 @@ final class ExpenseBookTests: XCTestCase {
         )
 
         // Feb rent 80k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 25),
             memo: "2月家賃",
             lines: [
@@ -423,7 +423,7 @@ final class ExpenseBookTests: XCTestCase {
         )
 
         // Mar travel 15k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 10),
             memo: "3月出張",
             lines: [
@@ -433,7 +433,7 @@ final class ExpenseBookTests: XCTestCase {
         )
 
         // Apr supplies 5k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 20),
             memo: "4月消耗品",
             lines: [
@@ -508,8 +508,8 @@ final class ExpenseBookTests: XCTestCase {
 
     func testExpenseBook_TaxCategoryPreserved() {
         // Use addTransaction which sets taxCategory and auto-generates journal entry
-        let project = dataStore.addProject(name: "税区分テスト", description: "")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "税区分テスト", description: "")
+        let _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10800,
             date: date(2025, 8, 1),

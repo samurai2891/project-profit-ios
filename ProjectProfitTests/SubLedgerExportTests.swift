@@ -46,7 +46,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 2. Basic Entry
 
     func testExportCSV_CashBook_BasicEntry() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "現金売上",
             lines: [
@@ -80,7 +80,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 3. CounterAccountId
 
     func testExportCSV_CashBook_CounterAccountId() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 7, 1),
             memo: "現金売上",
             lines: [
@@ -110,8 +110,8 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 4. Counterparty
 
     func testExportCSV_CashBook_Counterparty() {
-        let project = dataStore.addProject(name: "取引先テスト", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "取引先テスト", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: date(2025, 7, 10),
@@ -136,8 +136,8 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 5. TaxCategory
 
     func testExportCSV_CashBook_TaxCategory() {
-        let project = dataStore.addProject(name: "税区分テスト", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "税区分テスト", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_080,
             date: date(2025, 8, 1),
@@ -164,7 +164,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 6. Empty Counterparty
 
     func testExportCSV_CashBook_EmptyCounterparty() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 1),
             memo: "手動仕訳",
             lines: [
@@ -194,7 +194,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 7. Empty TaxCategory
 
     func testExportCSV_CashBook_EmptyTaxCategory() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 5),
             memo: "税区分なし仕訳",
             lines: [
@@ -224,7 +224,7 @@ final class SubLedgerExportTests: XCTestCase {
 
     func testExportCSV_ExpenseBook_MultipleAccounts() {
         // Communication expense
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 10, 1),
             memo: "通信費",
             lines: [
@@ -234,7 +234,7 @@ final class SubLedgerExportTests: XCTestCase {
         )
 
         // Travel expense
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 10, 5),
             memo: "旅費交通費",
             lines: [
@@ -244,7 +244,7 @@ final class SubLedgerExportTests: XCTestCase {
         )
 
         // Advertising expense
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 10, 10),
             memo: "広告宣伝費",
             lines: [
@@ -278,8 +278,8 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 9. AR Book With Counterparty
 
     func testExportCSV_ARBook_WithCounterparty() {
-        let project = dataStore.addProject(name: "売掛テスト", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "売掛テスト", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 100_000,
             date: date(2025, 11, 1),
@@ -327,7 +327,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 10. Quoted Memo (comma in memo)
 
     func testExportCSV_CashBook_QuotedMemo() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 20),
             memo: "消耗品, 文具, コピー用紙",
             lines: [
@@ -371,7 +371,7 @@ final class SubLedgerExportTests: XCTestCase {
 
     func testExportCSV_CashBook_DateFilter() {
         // January entry
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 15),
             memo: "1月売上",
             lines: [
@@ -381,7 +381,7 @@ final class SubLedgerExportTests: XCTestCase {
         )
 
         // June entry
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "6月売上",
             lines: [
@@ -391,7 +391,7 @@ final class SubLedgerExportTests: XCTestCase {
         )
 
         // December entry
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 12, 15),
             memo: "12月売上",
             lines: [
@@ -428,7 +428,7 @@ final class SubLedgerExportTests: XCTestCase {
 
     func testExportCSV_CashBook_RunningBalance() {
         // Deposit 100k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 1),
             memo: "入金",
             lines: [
@@ -438,7 +438,7 @@ final class SubLedgerExportTests: XCTestCase {
         )
 
         // Withdraw 40k
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 10),
             memo: "出金",
             lines: [
@@ -469,7 +469,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 14. All TaxCategory Raw Values
 
     func testExportCSV_CashBook_AllTaxCategoryValues() {
-        let project = dataStore.addProject(name: "全税区分", description: "")
+        let project = mutations(dataStore).addProject(name: "全税区分", description: "")
 
         let taxCategories: [(TaxCategory, String)] = [
             (.standardRate, "standardRate"),
@@ -479,7 +479,7 @@ final class SubLedgerExportTests: XCTestCase {
         ]
 
         for (index, (taxCat, _)) in taxCategories.enumerated() {
-            _ = dataStore.addTransaction(
+            _ = mutations(dataStore).addTransaction(
                 type: .expense,
                 amount: 1_000 * (index + 1),
                 date: date(2025, 4, index + 1),
@@ -506,7 +506,7 @@ final class SubLedgerExportTests: XCTestCase {
     // MARK: - 15. Double Quotes in Memo Are Escaped
 
     func testExportCSV_CashBook_DoubleQuotesEscaped() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 1),
             memo: "品名\"テスト\"品",
             lines: [
@@ -536,7 +536,7 @@ final class SubLedgerExportTests: XCTestCase {
 
     func testExportCSV_CashBook_ColumnCountConsistency() {
         // Create entries with varying data
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 1),
             memo: "シンプル仕訳",
             lines: [
@@ -545,8 +545,8 @@ final class SubLedgerExportTests: XCTestCase {
             ]
         )
 
-        let project = dataStore.addProject(name: "列数テスト", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "列数テスト", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 3_000,
             date: date(2025, 2, 10),

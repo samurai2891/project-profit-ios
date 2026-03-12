@@ -3,9 +3,9 @@ import SwiftUI
 
 struct ChartOfAccountsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(DataStore.self) private var dataStore
 
     @State private var accounts: [CanonicalAccount] = []
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
     @State private var isLoading = false
     @State private var loadErrorMessage: String?
     @State private var showAddForm = false
@@ -99,7 +99,7 @@ struct ChartOfAccountsView: View {
                 .accessibilityLabel("勘定科目を追加")
             }
         }
-        .task(id: dataStore.businessProfile?.id) {
+        .task {
             await loadAccounts()
         }
         .refreshable {
@@ -192,7 +192,19 @@ struct ChartOfAccountsView: View {
     }
 
     private func loadAccounts() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        let snapshot: TransactionFormSnapshot
+        do {
+            snapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+        } catch {
+            accounts = []
+            formSnapshot = .empty
+            loadErrorMessage = error.localizedDescription
+            return
+        }
+
+        formSnapshot = snapshot
+
+        guard let businessId = snapshot.businessId else {
             accounts = []
             loadErrorMessage = nil
             return
@@ -225,7 +237,7 @@ struct ChartOfAccountsView: View {
         guard let legacyAccountId = account.legacyAccountId else {
             return nil
         }
-        return dataStore.getAccount(id: legacyAccountId)
+        return formSnapshot.accounts.first { $0.id == legacyAccountId }
     }
 
     private func headerNormalBalanceLabel(for accountType: CanonicalAccountType) -> String {

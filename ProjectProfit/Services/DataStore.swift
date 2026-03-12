@@ -793,6 +793,134 @@ class DataStore {
             postingStatus: postingStatus
         )
     }
+
+    /// Legacy transaction から canonical artifact を同期的に再生成する互換ヘルパー。
+    /// テスト / fixture 互換専用で、production surface からは除外する。
+    func syncCanonicalArtifactsSynchronously(
+        forTransactionId transactionId: UUID,
+        source: CandidateSource? = nil
+    ) -> CanonicalTransactionSyncResult {
+        guard let transaction = allTransactions.first(where: { $0.id == transactionId }) else {
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: .skippedSourceNotFound,
+                postingStatus: .skippedSourceNotFound
+            )
+        }
+
+        let explicitTaxCodeId = TaxCode.resolve(
+            legacyCategory: transaction.taxCategory,
+            taxRate: transaction.taxRate
+        )?.rawValue
+        let counterpartyStatus = syncCanonicalCounterpartyNow(
+            id: transaction.counterpartyId,
+            named: transaction.counterparty,
+            defaultTaxCodeId: explicitTaxCodeId
+        )
+        let counterpartyId: UUID?
+        switch counterpartyStatus {
+        case .synced(let id):
+            counterpartyId = id
+        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
+            counterpartyId = nil
+        }
+
+        guard let businessId = businessProfile?.id else {
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedBusinessProfileUnavailable
+            )
+        }
+
+        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
+        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(transaction: transaction)
+        guard let posting = bridge.buildApprovedPosting(
+            for: snapshot,
+            businessId: businessId,
+            counterpartyId: counterpartyId,
+            source: source,
+            categories: categories,
+            legacyAccounts: accounts
+        ) else {
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedLegacyJournalUnavailable
+            )
+        }
+
+        do {
+            let actor = source == .importFile ? "user" : "system"
+            let journal = try saveApprovedPostingSynchronously(
+                posting,
+                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
+                actor: actor
+            )
+            if transaction.journalEntryId != journal.id {
+                transaction.journalEntryId = journal.id
+                save()
+                refreshTransactions()
+            }
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .synced(candidateId: posting.candidate.id, journalId: journal.id)
+            )
+        } catch {
+            AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .failed(error.localizedDescription)
+            )
+        }
+    }
+
+    /// Legacy transaction に紐づく canonical artifact を同期的に削除する互換ヘルパー。
+    /// テスト / fixture 互換専用で、production surface からは除外する。
+    @discardableResult
+    func removeCanonicalArtifactsSynchronously(forTransactionId transactionId: UUID) -> Bool {
+        guard let transaction = allTransactions.first(where: { $0.id == transactionId }),
+              let journalId = transaction.journalEntryId else {
+            return true
+        }
+
+        do {
+            let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.journalId == journalId }
+            )
+            guard let journalEntity = try modelContext.fetch(journalDescriptor).first else {
+                transaction.journalEntryId = nil
+                save()
+                refreshTransactions()
+                return true
+            }
+
+            let businessId = journalEntity.businessId
+            let taxYear = journalEntity.taxYear
+            let sourceCandidateId = journalEntity.sourceCandidateId
+
+            modelContext.delete(journalEntity)
+
+            if let sourceCandidateId {
+                let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
+                    predicate: #Predicate { $0.candidateId == sourceCandidateId }
+                )
+                try modelContext.fetch(candidateDescriptor).forEach(modelContext.delete)
+            }
+
+            transaction.journalEntryId = nil
+            try modelContext.save()
+            try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+                businessId: businessId,
+                taxYear: taxYear
+            )
+            refreshTransactions()
+            refreshJournalEntries()
+            refreshJournalLines()
+            return true
+        } catch {
+            AppLogger.dataStore.warning("Canonical artifact removal failed: \(error.localizedDescription)")
+            return false
+        }
+    }
     #endif
 
     func syncCanonicalCounterparty(forRecurringId recurringId: UUID) async -> CanonicalCounterpartySyncStatus {
@@ -1400,6 +1528,12 @@ class DataStore {
                 return "\(transactionId.uuidString)|\(record.originalFileName)"
             }
         )
+        let existingReceiptTransactionIds = Set(
+            existingRecords.compactMap { record -> UUID? in
+                guard record.documentType == .receipt else { return nil }
+                return record.transactionId
+            }
+        )
 
         var changed = false
         var migratedCount = 0
@@ -1417,7 +1551,7 @@ class DataStore {
             }
 
             let key = "\(transaction.id.uuidString)|\(safeLegacyPath)"
-            if existingKeys.contains(key) {
+            if existingKeys.contains(key) || existingReceiptTransactionIds.contains(transaction.id) {
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 legacyFilesToDelete.append(safeLegacyPath)
@@ -1638,6 +1772,7 @@ class DataStore {
 
     // MARK: - Project CRUD
 
+#if DEBUG
     @discardableResult
     func addProject(name: String, description: String, startDate: Date? = nil, plannedEndDate: Date? = nil) -> PPProject {
         let project = projectWorkflowUseCase.createProject(
@@ -1776,6 +1911,7 @@ class DataStore {
         projectWorkflowUseCase.deleteProjects(ids: ids)
         loadData()
     }
+#endif
 
     func getProject(id: UUID) -> PPProject? {
         projects.first { $0.id == id }
@@ -1783,6 +1919,7 @@ class DataStore {
 
     // MARK: - Transaction CRUD
 
+#if DEBUG
     /// Legacy `PPTransaction` を追加する互換ヘルパー。
     /// canonical cutover 後も migration / fixtures / tests 用に残すが、自動で canonical へ同期しない。
     func addTransactionResult(
@@ -2131,6 +2268,7 @@ class DataStore {
         save()
         refreshRecurring()
     }
+#endif
 
     func removeReceiptImage(transactionId: UUID) {
         guard let transaction = transactions.first(where: { $0.id == transactionId }) else { return }
@@ -2200,6 +2338,7 @@ class DataStore {
 
     // MARK: - Recurring CRUD
 
+#if DEBUG
     @discardableResult
     func addRecurring(
         name: String,
@@ -2392,6 +2531,7 @@ class DataStore {
         refreshTransactions()
         onRecurringScheduleChanged?(recurringTransactions)
     }
+#endif
 
     func getRecurring(id: UUID) -> PPRecurringTransaction? {
         recurringTransactions.first { $0.id == id }
@@ -3294,6 +3434,7 @@ class DataStore {
         return generatedCount
     }
 
+#if DEBUG
     @discardableResult
     func processRecurringTransactions() -> Int {
         let today = todayDate()
@@ -3360,6 +3501,7 @@ class DataStore {
 
         return generatedCount
     }
+#endif
 
     // MARK: - Summary Functions
 
@@ -3787,6 +3929,7 @@ class DataStore {
 
     // MARK: - CSV Import
 
+#if DEBUG
     func importTransactions(from csvString: String) async -> CSVImportResult {
         let result = await postingIntakeUseCase.importTransactions(csvString: csvString)
         refreshProjects()
@@ -3804,6 +3947,7 @@ class DataStore {
             resetStoreState: { self.loadData() }
         ).deleteAllData()
     }
+#endif
 
     // MARK: - Accounting CRUD
 
@@ -3922,6 +4066,7 @@ class DataStore {
             let isSupplemental = entry.sourceKey.hasPrefix("manual:")
                 || entry.sourceKey.hasPrefix("opening:")
                 || entry.sourceKey.hasPrefix("closing:")
+                || entry.sourceKey.hasPrefix("depreciation:")
             guard isSupplemental else {
                 return false
             }

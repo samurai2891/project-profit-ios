@@ -27,7 +27,7 @@ final class RecurringQueryUseCaseTests: XCTestCase {
 
     func testFormSnapshotMatchesRecurringFormData() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
-        let project = dataStore.addProject(name: "定期案件", description: "desc")
+        let project = mutations(dataStore).addProject(name: "定期案件", description: "desc")
         let canonicalAccountId = UUID()
         try await SwiftDataChartOfAccountsRepository(modelContext: context).save(
             CanonicalAccount(
@@ -70,8 +70,8 @@ final class RecurringQueryUseCaseTests: XCTestCase {
     }
 
     func testListSnapshotMatchesRecurringSummaryData() {
-        let project = dataStore.addProject(name: "一覧案件", description: "desc")
-        _ = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "一覧案件", description: "desc")
+        _ = mutations(dataStore).addRecurring(
             name: "有効な定期取引",
             type: .expense,
             amount: 12_000,
@@ -82,7 +82,7 @@ final class RecurringQueryUseCaseTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
-        _ = dataStore.addRecurring(
+        _ = mutations(dataStore).addRecurring(
             name: "年次収益",
             type: .income,
             amount: 24_000,
@@ -94,7 +94,7 @@ final class RecurringQueryUseCaseTests: XCTestCase {
             dayOfMonth: 1
         )
         if let created = dataStore.recurringTransactions.first(where: { $0.name == "年次収益" }) {
-            dataStore.updateRecurring(id: created.id, isActive: false)
+            mutations(dataStore).updateRecurring(id: created.id, isActive: false)
         }
 
         let snapshot = RecurringQueryUseCase(modelContext: context).listSnapshot()
@@ -106,8 +106,8 @@ final class RecurringQueryUseCaseTests: XCTestCase {
     }
 
     func testHistoryEntriesMatchRecurringHistoryViewOrderingAndLabels() {
-        let project = dataStore.addProject(name: "履歴案件", description: "desc")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "履歴案件", description: "desc")
+        let recurring = mutations(dataStore).addRecurring(
             name: "履歴対象",
             type: .expense,
             amount: 5_000,
@@ -118,7 +118,7 @@ final class RecurringQueryUseCaseTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,
             date: date(2026, 2, 10),
@@ -127,7 +127,7 @@ final class RecurringQueryUseCaseTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             recurringId: recurring.id
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 6_000,
             date: date(2026, 3, 10),

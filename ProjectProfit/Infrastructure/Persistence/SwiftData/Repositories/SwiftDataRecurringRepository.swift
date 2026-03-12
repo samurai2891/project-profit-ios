@@ -61,4 +61,31 @@ final class SwiftDataRecurringRepository: RecurringRepository {
             )
         }
     }
+
+    func findById(_ id: UUID) throws -> PPRecurringTransaction? {
+        let targetId = id
+        let descriptor = FetchDescriptor<PPRecurringTransaction>(
+            predicate: #Predicate { $0.id == targetId }
+        )
+        return try modelContext.fetch(descriptor).first
+    }
+
+    func allRecurringTransactions() throws -> [PPRecurringTransaction] {
+        let descriptor = FetchDescriptor<PPRecurringTransaction>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
+    func insert(_ recurringTransaction: PPRecurringTransaction) {
+        modelContext.insert(recurringTransaction)
+    }
+
+    func delete(_ recurringTransaction: PPRecurringTransaction) {
+        modelContext.delete(recurringTransaction)
+    }
+
+    func saveChanges() throws {
+        try modelContext.save()
+    }
 }

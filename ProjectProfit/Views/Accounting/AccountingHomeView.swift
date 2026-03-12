@@ -2,8 +2,18 @@ import SwiftData
 import SwiftUI
 
 struct AccountingHomeView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
+    private let reloadStoreState: @MainActor () -> Void
+    private let setCurrentError: @MainActor (AppError?) -> Void
     @State private var viewModel: AccountingHomeViewModel?
+
+    init(
+        reloadStoreState: @escaping @MainActor () -> Void = {},
+        setCurrentError: @escaping @MainActor (AppError?) -> Void = { _ in }
+    ) {
+        self.reloadStoreState = reloadStoreState
+        self.setCurrentError = setCurrentError
+    }
 
     var body: some View {
         Group {
@@ -15,7 +25,7 @@ struct AccountingHomeView: View {
         }
         .task {
             if viewModel == nil {
-                viewModel = AccountingHomeViewModel(dataStore: dataStore)
+                viewModel = AccountingHomeViewModel(modelContext: modelContext)
             }
         }
     }
@@ -193,7 +203,10 @@ struct AccountingHomeView: View {
                 icon: "cart",
                 title: "棚卸入力",
                 subtitle: "在庫・仕入高・売上原価の管理",
-                destination: InventoryInputView()
+                destination: InventoryInputView(
+                    reloadStoreState: reloadStoreState,
+                    setCurrentError: setCurrentError
+                )
             )
             navigationRow(
                 icon: "doc.badge.gearshape",

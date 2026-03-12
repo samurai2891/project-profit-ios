@@ -25,8 +25,8 @@ final class DashboardViewModelTests: XCTestCase {
     }
 
     func testSelectedMonthUpdatesSummaryForMonthlyMode() {
-        let project = dataStore.addProject(name: "Monthly Project", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Monthly Project", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 11_000,
             date: makeDate(year: 2025, month: 1, day: 15),
@@ -34,7 +34,7 @@ final class DashboardViewModelTests: XCTestCase {
             memo: "jan income",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 7_000,
             date: makeDate(year: 2025, month: 2, day: 15),

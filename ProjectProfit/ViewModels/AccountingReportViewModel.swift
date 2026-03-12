@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 enum AccountingReportType: String, CaseIterable {
@@ -9,7 +10,7 @@ enum AccountingReportType: String, CaseIterable {
 @MainActor
 @Observable
 final class AccountingReportViewModel {
-    private let dataStore: DataStore
+    private let queryUseCase: AccountingReportQueryUseCase
     var selectedReportType: AccountingReportType = .trialBalance
     var fiscalYear: Int
 
@@ -17,36 +18,17 @@ final class AccountingReportViewModel {
     var profitLoss: ProfitLossReport?
     var balanceSheet: BalanceSheetReport?
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(modelContext: ModelContext) {
+        self.queryUseCase = AccountingReportQueryUseCase(modelContext: modelContext)
         self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
         refresh()
     }
 
     func refresh() {
-        let startMonth = FiscalYearSettings.startMonth
-        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        trialBalance = AccountingReportService.generateTrialBalance(
-            fiscalYear: fiscalYear,
-            accounts: dataStore.accounts,
-            journalEntries: projected.entries,
-            journalLines: projected.lines,
-            startMonth: startMonth
-        )
-        profitLoss = AccountingReportService.generateProfitLoss(
-            fiscalYear: fiscalYear,
-            accounts: dataStore.accounts,
-            journalEntries: projected.entries,
-            journalLines: projected.lines,
-            startMonth: startMonth
-        )
-        balanceSheet = AccountingReportService.generateBalanceSheet(
-            fiscalYear: fiscalYear,
-            accounts: dataStore.accounts,
-            journalEntries: projected.entries,
-            journalLines: projected.lines,
-            startMonth: startMonth
-        )
+        let bundle = queryUseCase.reportBundle(fiscalYear: fiscalYear)
+        trialBalance = bundle.trialBalance
+        profitLoss = bundle.profitLoss
+        balanceSheet = bundle.balanceSheet
     }
 
     func navigatePreviousYear() {

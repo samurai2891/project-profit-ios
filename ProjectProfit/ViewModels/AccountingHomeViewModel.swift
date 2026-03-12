@@ -1,9 +1,10 @@
+import SwiftData
 import SwiftUI
 
 @MainActor
 @Observable
 final class AccountingHomeViewModel {
-    private let dataStore: DataStore
+    private let queryUseCase: AccountingHomeQueryUseCase
 
     var unpostedJournalCount: Int = 0
     var suspenseBalance: Int = 0
@@ -11,25 +12,18 @@ final class AccountingHomeViewModel {
     var totalJournalEntries: Int = 0
     var isBootstrapped: Bool = false
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(modelContext: ModelContext) {
+        self.queryUseCase = AccountingHomeQueryUseCase(modelContext: modelContext)
         refresh()
     }
 
     func refresh() {
-        let entries = dataStore.journalEntries
-        let lines = dataStore.journalLines
-
-        unpostedJournalCount = entries.filter { !$0.isPosted }.count
-        totalJournalEntries = entries.count
-        totalAccounts = dataStore.accounts.filter { $0.isActive }.count
-        isBootstrapped = dataStore.isAccountingBootstrapped
-
-        // 仮勘定の借方合計 - 貸方合計
-        let suspenseLines = lines.filter { $0.accountId == AccountingConstants.suspenseAccountId }
-        let debitTotal = suspenseLines.reduce(0) { $0 + $1.debit }
-        let creditTotal = suspenseLines.reduce(0) { $0 + $1.credit }
-        suspenseBalance = debitTotal - creditTotal
+        let snapshot = queryUseCase.snapshot()
+        unpostedJournalCount = snapshot.unpostedJournalCount
+        totalJournalEntries = snapshot.totalJournalEntries
+        totalAccounts = snapshot.totalAccounts
+        isBootstrapped = snapshot.isBootstrapped
+        suspenseBalance = snapshot.suspenseBalance
     }
 
     var hasWarnings: Bool {

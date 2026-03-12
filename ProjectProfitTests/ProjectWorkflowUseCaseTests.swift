@@ -48,7 +48,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
     }
 
     func testUpdateProjectPersistsEditableFieldsAndClearsInvalidCompletedAt() {
-        let project = dataStore.addProject(name: "更新前", description: "old")
+        let project = mutations(dataStore).addProject(name: "更新前", description: "old")
         let startDate = makeDate(year: 2026, month: 4, day: 20)
         let invalidCompletedAt = makeDate(year: 2026, month: 4, day: 10)
 
@@ -74,7 +74,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
     }
 
     func testDeleteProjectHardDeletesProjectWithoutHistoricalReferences() {
-        let project = dataStore.addProject(name: "削除対象", description: "")
+        let project = mutations(dataStore).addProject(name: "削除対象", description: "")
 
         useCase.deleteProject(id: project.id)
         dataStore.loadData()
@@ -84,9 +84,9 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
     }
 
     func testDeleteProjectArchivesProjectWithHistoricalReferences() {
-        let project = dataStore.addProject(name: "参照あり", description: "")
+        let project = mutations(dataStore).addProject(name: "参照あり", description: "")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 12_000,
             date: makeDate(year: 2026, month: 4, day: 1),
@@ -103,11 +103,11 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
     }
 
     func testDeleteProjectsArchivesReferencedAndDeletesUnreferencedProjects() {
-        let referenced = dataStore.addProject(name: "参照あり", description: "")
-        let unreferenced = dataStore.addProject(name: "参照なし", description: "")
-        let untouched = dataStore.addProject(name: "残す", description: "")
+        let referenced = mutations(dataStore).addProject(name: "参照あり", description: "")
+        let unreferenced = mutations(dataStore).addProject(name: "参照なし", description: "")
+        let untouched = mutations(dataStore).addProject(name: "残す", description: "")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 8_000,
             date: makeDate(year: 2026, month: 4, day: 1),

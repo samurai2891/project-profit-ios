@@ -1,10 +1,13 @@
 import SwiftUI
+import SwiftData
 
 struct ProfileSettingsView: View {
     static let secureStoreFailureMessage = "機微情報はKeychainへ保存できなかったため、平文では保存していません。端末設定を確認して再試行してください。"
 
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+
+    private let onSaved: @MainActor () -> Void
 
     @State private var businessName: String = ""
     @State private var ownerName: String = ""
@@ -31,18 +34,29 @@ struct ProfileSettingsView: View {
     @State private var saveErrorMessage: String?
     @State private var isLoadingProfile = false
     @State private var isSavingProfile = false
+    @State private var loadedState: ProfileSettingsState?
+    @State private var loadedSensitivePayload: ProfileSensitivePayload?
+    @State private var workflowError: AppError?
+
+    init(onSaved: @escaping @MainActor () -> Void = {}) {
+        self.onSaved = onSaved
+    }
 
     private var profileSettingsWorkflowUseCase: ProfileSettingsWorkflowUseCase {
         ProfileSettingsWorkflowUseCase(
-            modelContext: dataStore.modelContext,
+            modelContext: modelContext,
             ports: .init(
-                readSensitivePayload: { dataStore.profileSensitivePayload },
-                readCurrentTaxYear: { dataStore.currentTaxYearProfile?.taxYear },
-                applyState: { dataStore.applyProfileSettingsState($0) },
+                readSensitivePayload: { loadedSensitivePayload },
+                readCurrentTaxYear: { loadedState?.taxYearProfile.taxYear },
+                applyState: { loadedState = $0 },
                 persistSensitivePayload: { payload, businessProfileId in
-                    dataStore.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                    let didPersist = ProfileSecureStore.save(payload, profileId: businessProfileId.uuidString)
+                    if didPersist {
+                        loadedSensitivePayload = payload
+                    }
+                    return didPersist
                 },
-                setLastError: { dataStore.lastError = $0 }
+                setLastError: { workflowError = $0 }
             )
         )
     }
@@ -356,53 +370,14 @@ struct ProfileSettingsView: View {
         isLoadingProfile = true
         defer { isLoadingProfile = false }
 
-        _ = await profileSettingsWorkflowUseCase.loadProfile()
+        let didLoad = await profileSettingsWorkflowUseCase.loadProfile()
 
-        let secure = dataStore.profileSensitivePayload
-
-        if let profile = dataStore.businessProfile {
-            businessName = profile.businessName
-            ownerName = profile.ownerName
-            ownerNameKana = secure?.ownerNameKana ?? profile.ownerNameKana
-            taxOfficeCode = profile.taxOfficeCode ?? ""
-            postalCode = secure?.postalCode ?? profile.postalCode
-            address = secure?.address ?? profile.businessAddress
-            phoneNumber = secure?.phoneNumber ?? profile.phoneNumber
-        } else {
-            businessName = ""
-            ownerName = ""
-            ownerNameKana = secure?.ownerNameKana ?? ""
-            taxOfficeCode = ""
-            postalCode = secure?.postalCode ?? ""
-            address = secure?.address ?? ""
-            phoneNumber = secure?.phoneNumber ?? ""
+        guard didLoad, let loadedState else {
+            return
         }
 
-        if let taxProfile = dataStore.currentTaxYearProfile {
-            currentTaxYear = taxProfile.taxYear
-            filingStyle = taxProfile.filingStyle
-            blueDeductionLevel = taxProfile.blueDeductionLevel
-            bookkeepingBasis = taxProfile.bookkeepingBasis
-            vatStatus = taxProfile.vatStatus
-            vatMethod = taxProfile.vatMethod
-            simplifiedBusinessCategory = SimplifiedBusinessCategoryOption(rawValue: taxProfile.simplifiedBusinessCategory ?? 1) ?? .first
-            invoiceIssuerStatusAtYear = taxProfile.invoiceIssuerStatusAtYear
-            electronicBookLevel = taxProfile.electronicBookLevel
-            yearLockState = taxProfile.yearLockState
-        } else {
-            currentTaxYear = Calendar.current.component(.year, from: Date())
-        }
-
-        businessCategory = secure?.businessCategory ?? ""
-        myNumberFlag = secure?.myNumberFlag ?? false
-        includeSensitiveInExport = secure?.includeSensitiveInExport ?? true
-
-        if let dob = secure?.dateOfBirth {
-            dateOfBirth = dob
-            hasDateOfBirth = true
-        } else {
-            hasDateOfBirth = false
-        }
+        loadedSensitivePayload = ProfileSecureStore.load(profileId: loadedState.businessProfile.id.uuidString)
+        applyLoadedState(loadedState, securePayload: loadedSensitivePayload)
     }
 
     private func saveProfile() async {
@@ -427,7 +402,7 @@ struct ProfileSettingsView: View {
             businessAddress: address,
             postalCode: postalCode,
             phoneNumber: phoneNumber,
-            openingDate: dataStore.profileOpeningDate,
+            openingDate: loadedState?.businessProfile.openingDate,
             taxOfficeCode: taxOfficeCode.isEmpty ? nil : taxOfficeCode,
             filingStyle: filingStyle,
             blueDeductionLevel: blueDeductionLevel,
@@ -444,9 +419,51 @@ struct ProfileSettingsView: View {
         switch await profileSettingsWorkflowUseCase.saveProfile(command: command, sensitivePayload: payload) {
         case .success:
             saveErrorMessage = nil
+            if let loadedState {
+                applyLoadedState(loadedState, securePayload: loadedSensitivePayload)
+            }
+            onSaved()
             dismiss()
         case .failure(let error):
             saveErrorMessage = error.localizedDescription.isEmpty ? Self.secureStoreFailureMessage : error.localizedDescription
+        }
+    }
+
+    private func applyLoadedState(
+        _ state: ProfileSettingsState,
+        securePayload: ProfileSensitivePayload?
+    ) {
+        let profile = state.businessProfile
+        let taxProfile = state.taxYearProfile
+
+        businessName = profile.businessName
+        ownerName = profile.ownerName
+        ownerNameKana = securePayload?.ownerNameKana ?? profile.ownerNameKana
+        taxOfficeCode = profile.taxOfficeCode ?? ""
+        postalCode = securePayload?.postalCode ?? profile.postalCode
+        address = securePayload?.address ?? profile.businessAddress
+        phoneNumber = securePayload?.phoneNumber ?? profile.phoneNumber
+
+        currentTaxYear = taxProfile.taxYear
+        filingStyle = taxProfile.filingStyle
+        blueDeductionLevel = taxProfile.blueDeductionLevel
+        bookkeepingBasis = taxProfile.bookkeepingBasis
+        vatStatus = taxProfile.vatStatus
+        vatMethod = taxProfile.vatMethod
+        simplifiedBusinessCategory = SimplifiedBusinessCategoryOption(rawValue: taxProfile.simplifiedBusinessCategory ?? 1) ?? .first
+        invoiceIssuerStatusAtYear = taxProfile.invoiceIssuerStatusAtYear
+        electronicBookLevel = taxProfile.electronicBookLevel
+        yearLockState = taxProfile.yearLockState
+
+        businessCategory = securePayload?.businessCategory ?? ""
+        myNumberFlag = securePayload?.myNumberFlag ?? false
+        includeSensitiveInExport = securePayload?.includeSensitiveInExport ?? true
+
+        if let dob = securePayload?.dateOfBirth {
+            dateOfBirth = dob
+            hasDateOfBirth = true
+        } else {
+            hasDateOfBirth = false
         }
     }
 }
