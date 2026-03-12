@@ -11,6 +11,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -19,6 +20,7 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         useCase = nil
         dataStore = nil
         context = nil
@@ -122,6 +124,38 @@ final class ProjectWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getProject(id: referenced.id)?.isArchived, true)
         XCTAssertNil(dataStore.getProject(id: unreferenced.id))
         XCTAssertNotNil(dataStore.getProject(id: untouched.id))
+    }
+
+    func testCreateProjectReprocessesCurrentEqualAllRecurringPosting() throws {
+        FeatureFlags.useCanonicalPosting = true
+        let projectA = mutations(dataStore).addProject(name: "既存PJ", description: "")
+        let recurring = mutations(dataStore).addRecurring(
+            name: "EqualAll",
+            type: .expense,
+            amount: 12_000,
+            categoryId: "cat-tools",
+            memo: "batch1",
+            allocationMode: .equalAll,
+            allocations: [],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            paymentAccountId: "acct-cash"
+        )
+
+        XCTAssertEqual(RecurringWorkflowUseCase(modelContext: context).processDueRecurringTransactions(), 1)
+        dataStore.loadData()
+
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: projectA.id)?.totalExpense, 12_000)
+
+        let projectB = useCase.createProject(input: makeInput(name: "追加PJ", description: ""))
+        dataStore.loadData()
+
+        let totalA = try XCTUnwrap(dataStore.getProjectSummary(projectId: projectA.id)?.totalExpense)
+        let totalB = try XCTUnwrap(dataStore.getProjectSummary(projectId: projectB.id)?.totalExpense)
+
+        XCTAssertEqual(totalA + totalB, recurring.amount)
+        XCTAssertGreaterThan(totalA, 0)
+        XCTAssertGreaterThan(totalB, 0)
     }
 
     private func makeInput(

@@ -20,6 +20,87 @@
 - **部分実装**: 本線実装はあるが、互換経路・旧導線・未統合箇所が残る
 - **未実装**: 接続や実装をコード上で確認できない
 
+## 2026-03-12 再確認ベースの未完了タスク着手順
+
+以下は、**現リポジトリのコードを再確認した時点で、まだ未完了と確認できた項目だけ**を着手順に並べたもの。  
+既存本文の記載順とは独立した、**現在の作業優先順**の要約。
+
+1. `REL-P0-02 / Batch 1`
+   - `PostingIntakeStore`、`ProjectWorkflowStore`、`RecurringWorkflowStore` に orchestration と保存処理が残っているため、まずここを縮退する。
+   - 確認: `ProjectProfit/Application/UseCases/Posting/PostingIntakeStore.swift`, `ProjectProfit/Application/UseCases/Projects/ProjectWorkflowStore.swift`, `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowStore.swift`
+
+2. `REL-P0-08`
+   - posting 本線がまだ `syncApprovedCandidate(...)` と legacy 互換経路を含んでいるため、canonical posting engine への一本化を進める。
+   - 確認: `ProjectProfit/Application/UseCases/Posting/PostingWorkflowUseCase.swift`, `ProjectProfit/Services/DataStore.swift`
+
+3. `REL-P0-02 / Batch 4`
+   - `DataStore` の legacy mutation API と test 依存が残っているため、互換用途へ閉じて production 本線から切り離す。
+   - 確認: `ProjectProfit/Services/DataStore.swift`, `ProjectProfitTests/TestMutationDriver.swift`
+
+4. `REL-P0-06`
+   - `taxCodeId` 導入後も `taxRate` / `isTaxIncluded` / `taxCategory` と legacy 解決が main path に残っているため、税表現を一本化する。
+   - 確認: `ProjectProfit/Core/Domain/Tax/TaxCode.swift`, `ProjectProfit/Core/Domain/Posting/PostingCandidate.swift`, `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Services/AccountingBootstrapService.swift`
+
+5. `REL-P0-03`
+   - `PPAccountingProfile` と backup / restore / migration 側の legacy profile 経路が残っているため、profile 正本の完全移行を終わらせる。
+   - 確認: `ProjectProfit/Models/PPAccountingProfile.swift`, `ProjectProfit/Infrastructure/FileStorage/AppSnapshotModels.swift`, `ProjectProfit/Infrastructure/FileStorage/RestoreService+Upserts.swift`, `ProjectProfit/Application/Migrations/LegacyProfileMigrationRunner.swift`
+
+6. `REL-P0-05`
+   - `lockedYears` 互換フィールドと restore 経路が残っているため、税務状態エンジン側の旧互換を外す。
+   - 確認: `ProjectProfit/Models/PPAccountingProfile.swift`, `ProjectProfit/Infrastructure/FileStorage/AppSnapshotModels.swift`, `ProjectProfit/Infrastructure/FileStorage/RestoreService+Upserts.swift`
+
+7. `REL-P0-02 / Batch 2`
+   - 会計 read path は query/use case 化が進んでいるが、会計画面の `DataStore` 依存と legacy journal 型依存がまだ残っているため、ここを継続縮退する。
+   - 確認: `ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift`, `ProjectProfit/Views/Accounting/JournalListView.swift`, `ProjectProfit/Views/Accounting/LedgerView.swift`, `ProjectProfit/Views/Accounting/SubLedgerView.swift`, `ProjectProfit/Views/Accounting/FixedAssetListView.swift`, `ProjectProfit/Views/Accounting/ClosingEntryView.swift`
+
+8. `REL-P0-02 / Batch 3`
+   - profile / master 補助 UI の一部がまだ `DataStore` 直参照のため、query / workflow への入力に置き換える。
+   - 確認: `ProjectProfit/Views/ContentView.swift`, `ProjectProfit/Features/Masters/Accounts/Presentation/Screens/AccountFormView.swift`, `ProjectProfit/Features/Masters/Counterparties/Presentation/Screens/CounterpartyListView.swift`, `ProjectProfit/Features/Masters/Counterparties/Presentation/Screens/CounterpartyFormView.swift`
+
+9. `REL-P1-03`
+   - recurring は preview → approve だが、distribution はフォーム内 preview 適用止まりで approval workflow に未統合のため、承認体験を統一する。
+   - 確認: `ProjectProfit/Application/UseCases/Distribution/DistributionTemplateApplicationUseCase.swift`, `ProjectProfit/Views/Components/TransactionFormView.swift`, `ProjectProfit/Views/Components/RecurringFormView.swift`
+
+10. `REL-P2-04`
+    - CSV import は canonical journal 生成へ接続済みだが、evidence draft / posting candidate queue 経由ではなく、legacy ledger import service も残っているため、import チャネルを統一する。
+    - 確認: `ProjectProfit/Application/UseCases/Posting/PostingIntakeStore.swift`, `ProjectProfit/Ledger/Services/LedgerCSVImportService.swift`
+
+11. `REL-P1-04`
+    - 帳簿生成 API がまだ `PPJournalEntry` / `PPJournalLine` 前提のため、canonical 帳簿生成へ統一する。
+    - 確認: `ProjectProfit/Services/AccountingReportService.swift`
+
+12. `REL-P1-05`
+    - `FormEngine` は canonical projection を使うが、白色・現金主義の builder には legacy transaction / journal 依存が残っているため、form build 入力を統一する。
+    - 確認: `ProjectProfit/Services/FormEngine.swift`, `ProjectProfit/Services/CashBasisReturnBuilder.swift`, `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
+
+13. `REL-P1-07`
+    - workflow UI は新導線へ寄っているが、`FilingDashboardView` から `ReportView()` に遷移し、旧 `AccountingHomeView` も残っているため、旧導線を整理する。
+    - 確認: `ProjectProfit/Features/Filing/Presentation/Screens/FilingDashboardView.swift`, `ProjectProfit/Views/Accounting/AccountingHomeView.swift`
+
+14. `REL-P1-08`
+    - `ExportCoordinator` は導入済みだが、ledger 配下の個別 export/import service 群が残っているため、出力本線を集約し切る。
+    - 確認: `ProjectProfit/Services/ExportCoordinator.swift`, `ProjectProfit/Ledger/Services/`
+
+15. `REL-P0-12`
+    - release gate の repo 内証跡はまだプレースホルダのため、最新 green 根拠を追跡可能な形に固定する。
+    - 確認: `Docs/release_quality/latest.md`
+
+16. `REL-P2-02`
+    - user rule engine は `PPTransaction` ベースで、candidate / evidence 承認フローには未接続のため、main workflow へ統合する。
+    - 確認: `ProjectProfit/ViewModels/ClassificationViewModel.swift`, `ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift`, `ProjectProfit/Services/ClassificationLearningService.swift`
+
+17. `REL-P2-03`
+    - 源泉徴収の基礎モデルと計算器はあるが、支払調書 UI / 出力フローは未確認のため、end-to-end workflow を接続する。
+    - 確認: `ProjectProfit/Core/Domain/Tax/WithholdingTaxCode.swift`, `ProjectProfit/Core/Domain/Tax/WithholdingTaxCalculator.swift`
+
+18. `REL-P2-01`
+    - 銀行 / カード照合の専用実装は現コードで確認できないため、専用機能として新規に着手する。
+    - 確認: `ProjectProfit/` 配下の対応コードを確認できず
+
+### この着手順の補足
+- `REL-P2-05` は既存本文に「release checklist 管理ファイル未確認」とあるが、現リポジトリには `Docs/release_checklist.md` が存在するため、未完了としては **support URL の repo 管理物を明示すること**だけを残す。
+- 確認: `Docs/release_checklist.md`
+
 ---
 
 ## P0（リリースブロッカー）

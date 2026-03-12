@@ -225,6 +225,37 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 6_000)
     }
 
+    func testProcessDueRecurringTransactionsCreatesCanonicalJournalAndUpdatesBookkeeping() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let project = mutations(dataStore).addProject(name: "Process PJ", description: "desc")
+        let recurring = useCase.createRecurring(
+            input: makeInput(
+                categoryId: "cat-tools",
+                allocations: [RecurringAllocationInput(projectId: project.id, ratio: 100)],
+                frequency: .monthly,
+                dayOfMonth: 1,
+                paymentAccountId: "acct-cash",
+                counterparty: "取引先B"
+            )
+        )
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+
+        let generated = useCase.processDueRecurringTransactions()
+        dataStore.loadData()
+
+        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let updated = try XCTUnwrap(dataStore.getRecurring(id: recurring.id))
+
+        XCTAssertEqual(generated, 1)
+        XCTAssertEqual(journals.count, beforeJournals.count + 1)
+        XCTAssertTrue(journals.contains(where: { $0.entryType == .recurring }))
+        XCTAssertNotNil(updated.lastGeneratedDate)
+        XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, recurring.amount)
+    }
+
     private func makeRecurring() -> PPRecurringTransaction {
         let project = mutations(dataStore).addProject(name: "Recurring PJ", description: "desc")
         let categoryId = try! XCTUnwrap(dataStore.activeCategories.first(where: { $0.type == .expense })?.id)

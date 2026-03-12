@@ -237,6 +237,7 @@
 		7749C3DD6D14C282592B3315 /* WithholdingTaxCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49F48835E910015878F8B4FA /* WithholdingTaxCode.swift */; };
 		77BEC49DFEA946A1D5AA5313 /* CurrencyText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1C14778366293F8680F00 /* CurrencyText.swift */; };
 		782E7A50AA9B82ECF6E97179 /* ModelContainerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96DF0816EAB51DF83F12E24B /* ModelContainerFactory.swift */; };
+		78610A9B6D0906E8F5214FD8 /* CanonicalPostingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23B8E5B00046523F9E1D887 /* CanonicalPostingSupport.swift */; };
 		78A242ABB1E30EF85820B85D /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5B687F55BE7167FE6A6C0C /* ReceiptScannerView.swift */; };
 		7920C7F507F5437779BB9840 /* EtaxExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BD6BCFF65CF564F7B34EBF /* EtaxExportView.swift */; };
 		7928E3314AA1E481FF209308 /* LineItemsEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65CACC3B06EAC1F6470A1CD0 /* LineItemsEditView.swift */; };
@@ -266,6 +267,7 @@
 		84E0B9E2A91C10E02713BA9B /* EvidenceSourceType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EEEA96AEB1B1EB449111302 /* EvidenceSourceType.swift */; };
 		84FEF4ECA71AFA417A439C73 /* RecurringRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B40DA1029948DB3B5614F74 /* RecurringRepository.swift */; };
 		86BF5905C6D4CA88D9ADA1CC /* TransactionHistoryRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7710C91414D760FE3A25FF /* TransactionHistoryRepository.swift */; };
+		87ABA3C1D3ED9600D85038B3 /* CanonicalPostingSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422AA85733757BFB5DB1E5F0 /* CanonicalPostingSupportTests.swift */; };
 		87DEC34F3581C2CEF58AE217 /* CounterpartyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1F165D36FF323CAAAA98CA3 /* CounterpartyRepository.swift */; };
 		88462BE92D29684B75B2D4F0 /* LedgerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BCE949E82A5C728126DA116 /* LedgerModels.swift */; };
 		89887E306FE6194C569BB20A /* CanonicalBookServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE65EC631D5C777279EE176 /* CanonicalBookServiceTests.swift */; };
@@ -363,6 +365,7 @@
 		BA7698BF37A871A9AF4879DD /* DistributionTemplateListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17646CEBFC698A9F1C28450D /* DistributionTemplateListView.swift */; };
 		BAFBBDF1A6EC13EF80A937BA /* LedgerCSVImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F24DBB73E1130EB57DB8A190 /* LedgerCSVImportService.swift */; };
 		BB07EB3B607981D53DEB764C /* AccountPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12EF8C4694C912049032BA0D /* AccountPickerView.swift */; };
+		BB2AF935CD67AD490F1E9AE9 /* CanonicalPostingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0EAFB66A379C02DC0B0E153 /* CanonicalPostingEngine.swift */; };
 		BB67AE9920CAFC20A4C83855 /* DataRevisionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E18B2D60F91A947E999719 /* DataRevisionRepository.swift */; };
 		BC467E6FAA99381375E374E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6F1EE749033BC542E74BF32E /* Assets.xcassets */; };
 		BCB95787C84EFDD02ABAFCD3 /* RecurringPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FBBED0AE5A894547FCCC23 /* RecurringPreviewView.swift */; };
@@ -495,6 +498,8 @@
 		FBED8245431078562EF82E74 /* WorkflowPersistenceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 376A61D1DC648A9C5C6244DA /* WorkflowPersistenceSupport.swift */; };
 		FC4EE14412F418899492E115 /* AllocationCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 923A3CF8346431F5DEECF6E9 /* AllocationCalculator.swift */; };
 		FC510C2377B9CF857CD6246D /* AccountingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49F981391FCA44E6C8AB6D5 /* AccountingEngine.swift */; };
+		FD36BEAA113587E7FF25CEF4 /* ProjectAllocationReprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C203BFB22EB2DF5C37706E7 /* ProjectAllocationReprocessor.swift */; };
+		FDB2957A6A22744FB9820592 /* RecurringPostingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD53EDD93B719AD388279761 /* RecurringPostingCoordinator.swift */; };
 		FE06E8087FF7BFF3A1731665 /* ProjectWorkflowUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4E4A1EE0B3A3AAA6D03094 /* ProjectWorkflowUseCaseTests.swift */; };
 		FEA7603492BC3947AA6142A5 /* Counterparty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A2D258C14F7F17061A13BD /* Counterparty.swift */; };
 		FF2599B004C65ACD2567EADF /* ReceiptStoreNameExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA7DAC6D4DF4B24C0C7FDDA /* ReceiptStoreNameExtractionTests.swift */; };
@@ -685,6 +690,7 @@
 		41276502E84FDEFB027EEFFC /* ProjectRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRepository.swift; sourceTree = "<group>"; };
 		41FB3628F6F4770A83286D01 /* CanonicalCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalCategory.swift; sourceTree = "<group>"; };
 		42039D8715E69297CAB8D284 /* CategoryManageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryManageView.swift; sourceTree = "<group>"; };
+		422AA85733757BFB5DB1E5F0 /* CanonicalPostingSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalPostingSupportTests.swift; sourceTree = "<group>"; };
 		4275873D15C8244C70E82D77 /* accounts_payable_book.csv */ = {isa = PBXFileReference; path = accounts_payable_book.csv; sourceTree = "<group>"; };
 		42B036D59EB3893B15E6B07E /* EtaxCharacterValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtaxCharacterValidatorTests.swift; sourceTree = "<group>"; };
 		42EDA334780C0A1193D42E7A /* CounterpartyListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CounterpartyListView.swift; sourceTree = "<group>"; };
@@ -749,6 +755,7 @@
 		5B40DA1029948DB3B5614F74 /* RecurringRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringRepository.swift; sourceTree = "<group>"; };
 		5B79566931736DC31D70A9A0 /* SwiftDataDistributionTemplateRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataDistributionTemplateRepository.swift; sourceTree = "<group>"; };
 		5BBE5E15F4945C10180EC7F3 /* LegacyDataMigrationExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDataMigrationExecutor.swift; sourceTree = "<group>"; };
+		5C203BFB22EB2DF5C37706E7 /* ProjectAllocationReprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectAllocationReprocessor.swift; sourceTree = "<group>"; };
 		5C9A7162487DB4363CF1FF6D /* FormEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormEngine.swift; sourceTree = "<group>"; };
 		5D9BE92C85304143EB1297AC /* BackupRestoreServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRestoreServiceTests.swift; sourceTree = "<group>"; };
 		5D9F567E1A0B138CD767A40E /* BusinessProfileEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessProfileEntityMapper.swift; sourceTree = "<group>"; };
@@ -963,6 +970,7 @@
 		BB4A883A43EE4AEAF39CD780 /* FixedAssetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetDetailView.swift; sourceTree = "<group>"; };
 		BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilitiesTests.swift; sourceTree = "<group>"; };
 		BCDE9C330FB6748A69ADA6A3 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		BD53EDD93B719AD388279761 /* RecurringPostingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringPostingCoordinator.swift; sourceTree = "<group>"; };
 		BDC4155D8D0211525DE41300 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BE00FE6185C623A927B45642 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BE2B1A205EA580496A795F2B /* AccountFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFormView.swift; sourceTree = "<group>"; };
@@ -972,6 +980,7 @@
 		BF7615AE7918F66110C91385 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		BFFC4D7A453655B25DBAAF0A /* DistributionRuleEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionRuleEntity.swift; sourceTree = "<group>"; };
 		C04BF00A1BEA77B980681083 /* CategoryWorkflowUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryWorkflowUseCase.swift; sourceTree = "<group>"; };
+		C0EAFB66A379C02DC0B0E153 /* CanonicalPostingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalPostingEngine.swift; sourceTree = "<group>"; };
 		C1F165D36FF323CAAAA98CA3 /* CounterpartyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CounterpartyRepository.swift; sourceTree = "<group>"; };
 		C33F9891E1C0457C044301BE /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C385BF9C33115A84F860A971 /* EvidenceSearchIndexEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceSearchIndexEntity.swift; sourceTree = "<group>"; };
@@ -1002,6 +1011,7 @@
 		D1DE5D4ACB80AB72BCC7C309 /* FixedAssetScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetScheduleView.swift; sourceTree = "<group>"; };
 		D1DEE3EB8F773CD2BED2F0A6 /* PPAccountingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccountingProfile.swift; sourceTree = "<group>"; };
 		D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreCRUDTests.swift; sourceTree = "<group>"; };
+		D23B8E5B00046523F9E1D887 /* CanonicalPostingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalPostingSupport.swift; sourceTree = "<group>"; };
 		D2DC6E123C9D21A04E5C991F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		D2FB74A0CA5C604E4D9817FA /* ProjectsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsViewModel.swift; sourceTree = "<group>"; };
 		D3702AEAFB1A7BEF76A72248 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -1350,6 +1360,7 @@
 				8F208B4405DC3CBA3455862C /* CanonicalAccountingReportTests.swift */,
 				7DE65EC631D5C777279EE176 /* CanonicalBookServiceTests.swift */,
 				BEDBB16A0138BDB951BABB96 /* CanonicalFlowE2ETests.swift */,
+				422AA85733757BFB5DB1E5F0 /* CanonicalPostingSupportTests.swift */,
 				77A3D9F0AE61A1CED19D4E10 /* CanonicalRepositoriesTests.swift */,
 				A521EC8D56CFAAF669376199 /* CanonicalUseCasesTests.swift */,
 				3DC44BEB26F333FC4525347D /* CashBookTests.swift */,
@@ -1708,6 +1719,7 @@
 		3F657FA4D2B7A32928804E53 /* Projects */ = {
 			isa = PBXGroup;
 			children = (
+				5C203BFB22EB2DF5C37706E7 /* ProjectAllocationReprocessor.swift */,
 				2FB9BF8C120565457D44D5D8 /* ProjectQueryUseCase.swift */,
 				F029A6B6C484E3BBEF2611EE /* ProjectWorkflowStore.swift */,
 				B6720ECC768481BB3E7578FA /* ProjectWorkflowUseCase.swift */,
@@ -1861,6 +1873,7 @@
 			isa = PBXGroup;
 			children = (
 				7E544837C5314EA2ABC9994D /* .gitkeep */,
+				BD53EDD93B719AD388279761 /* RecurringPostingCoordinator.swift */,
 				AB2E4BD97DF6A427D8C4FC0A /* RecurringQueryUseCase.swift */,
 				D770A29541F8646727983433 /* RecurringWorkflowStore.swift */,
 				A7B532A26B6CF58E81E36431 /* RecurringWorkflowUseCase.swift */,
@@ -2405,6 +2418,8 @@
 			children = (
 				701DEF434171E127A0DFCB3D /* .gitkeep */,
 				7D02728749DA14E3ED1213E3 /* ApprovalQueueQueryUseCase.swift */,
+				C0EAFB66A379C02DC0B0E153 /* CanonicalPostingEngine.swift */,
+				D23B8E5B00046523F9E1D887 /* CanonicalPostingSupport.swift */,
 				CD673677F158A34CCA444159 /* PostingIntakeStore.swift */,
 				A2E0797A93AA7D88D036FFF7 /* PostingIntakeUseCase.swift */,
 				86C7455B1A2D7D81635DDE53 /* PostingWorkflowUseCase.swift */,
@@ -3240,6 +3255,8 @@
 				8F8EFD5A6F8D5987A2C68870 /* CanonicalCategory.swift in Sources */,
 				EDABC1713ED21044EDB7EB51 /* CanonicalJSONCoder.swift in Sources */,
 				C015AC7FAC62E21AE1FCCDDA /* CanonicalJournalEntryEntityMapper.swift in Sources */,
+				BB2AF935CD67AD490F1E9AE9 /* CanonicalPostingEngine.swift in Sources */,
+				78610A9B6D0906E8F5214FD8 /* CanonicalPostingSupport.swift in Sources */,
 				005A4AACA1B5CABA3888FF15 /* CanonicalRepositoryError.swift in Sources */,
 				3608CAAB9095AD601F6BA52A /* CashBasisReturnBuilder.swift in Sources */,
 				C3F1925BBB12C929C48B4FC6 /* CategoryAccountMappingView.swift in Sources */,
@@ -3419,6 +3436,7 @@
 				6218D58E4D5C8938D12F3589 /* ProfileSettingsWorkflowUseCase.swift in Sources */,
 				1617D74CAEE6D12F5D060246 /* ProfitLossView.swift in Sources */,
 				F0ECBF8F427EB8D6D81F7984 /* ProjectAllocation.swift in Sources */,
+				FD36BEAA113587E7FF25CEF4 /* ProjectAllocationReprocessor.swift in Sources */,
 				2B259B9648AE76FD3ADAC41D /* ProjectDetailView.swift in Sources */,
 				5587567D731B881DDA4792D2 /* ProjectDetailViewModel.swift in Sources */,
 				CA46C06F0745309F9C06F7E2 /* ProjectFormView.swift in Sources */,
@@ -3440,6 +3458,7 @@
 				45587545F87159D43F9FE91C /* RecurringFormSections.swift in Sources */,
 				5B1D744286736A44CD4F348B /* RecurringFormView.swift in Sources */,
 				39CC5ECB765D5675EA125728 /* RecurringHistoryView.swift in Sources */,
+				FDB2957A6A22744FB9820592 /* RecurringPostingCoordinator.swift in Sources */,
 				344E64351CD7AA35491A6F02 /* RecurringPreviewItem.swift in Sources */,
 				BCB95787C84EFDD02ABAFCD3 /* RecurringPreviewView.swift in Sources */,
 				3D5A3E2E61802A407FA63326 /* RecurringQueryUseCase.swift in Sources */,
@@ -3563,6 +3582,7 @@
 				89887E306FE6194C569BB20A /* CanonicalBookServiceTests.swift in Sources */,
 				A1699369DDA6255182DA0F1C /* CanonicalFlowE2ETests.swift in Sources */,
 				1F44CDD6A6C3C6A9553D9499 /* CanonicalJournalEntryTests.swift in Sources */,
+				87ABA3C1D3ED9600D85038B3 /* CanonicalPostingSupportTests.swift in Sources */,
 				358488D90D3D4A630A975E48 /* CanonicalRepositoriesTests.swift in Sources */,
 				61C2CEE34BCEE6CCC06AA0E9 /* CanonicalUseCasesTests.swift in Sources */,
 				5826054D25DB067B03B740F8 /* CashBookTests.swift in Sources */,

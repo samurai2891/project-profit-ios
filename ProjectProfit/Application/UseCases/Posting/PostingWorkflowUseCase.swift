@@ -78,6 +78,16 @@ struct PostingWorkflowUseCase {
         )
     }
 
+    private var postingEngine: CanonicalPostingEngine {
+        CanonicalPostingEngine(
+            postingCandidateRepository: postingCandidateRepository,
+            journalEntryRepository: journalEntryRepository,
+            chartOfAccountsRepository: chartOfAccountsRepository,
+            auditRepository: auditRepository,
+            journalSearchIndex: journalSearchIndex
+        )
+    }
+
     func candidate(_ id: UUID) async throws -> PostingCandidate? {
         try await postingCandidateRepository.findById(id)
     }
@@ -131,49 +141,12 @@ struct PostingWorkflowUseCase {
         guard let candidate = try await postingCandidateRepository.findById(candidateId) else {
             throw PostingWorkflowUseCaseError.candidateNotFound(candidateId)
         }
-        guard !candidate.proposedLines.isEmpty else {
-            throw PostingWorkflowUseCaseError.candidateHasNoLines(candidateId)
-        }
-        let approvedCandidate = candidate.updated(status: .approved)
-
-        let voucherMonth = Calendar.current.component(.month, from: candidate.candidateDate)
-        let voucherNumber = try await journalEntryRepository.nextVoucherNumber(
-            businessId: candidate.businessId,
-            taxYear: candidate.taxYear,
-            month: voucherMonth
-        )
-        let journalId = UUID()
-        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
-        let entry = CanonicalJournalEntry(
-            id: journalId,
-            businessId: candidate.businessId,
-            taxYear: candidate.taxYear,
-            journalDate: candidate.candidateDate,
-            voucherNo: voucherNumber.value,
-            sourceEvidenceId: candidate.evidenceId,
-            sourceCandidateId: candidate.id,
+        return try await postingEngine.persistApprovedCandidateAsync(
+            candidate,
             entryType: entryType,
-            description: description ?? approvedCandidate.memo ?? "",
-            lines: journalLines,
-            approvedAt: approvedAt,
-            createdAt: approvedAt,
-            updatedAt: approvedAt
+            description: description,
+            approvedAt: approvedAt
         )
-
-        guard entry.isBalanced else {
-            throw PostingWorkflowUseCaseError.journalNotBalanced(candidate.id)
-        }
-
-        try await journalEntryRepository.save(entry)
-        try await postingCandidateRepository.save(approvedCandidate)
-        try? rebuildJournalSearchIndex(businessId: entry.businessId, taxYear: entry.taxYear)
-        await saveApprovalAuditEvents(
-            originalCandidate: candidate,
-            approvedCandidate: approvedCandidate,
-            journal: entry,
-            reason: description
-        )
-        return entry
     }
 
     func syncApprovedCandidate(
@@ -183,60 +156,13 @@ struct PostingWorkflowUseCase {
         description: String? = nil,
         approvedAt: Date = Date()
     ) async throws -> CanonicalJournalEntry {
-        guard !candidate.proposedLines.isEmpty else {
-            throw PostingWorkflowUseCaseError.candidateHasNoLines(candidate.id)
-        }
-
-        let approvedCandidate = candidate.updated(status: .approved)
-        let existingJournal = try await journalEntryRepository.findById(journalId)
-        let voucherNo: String
-        if let existingJournal {
-            voucherNo = existingJournal.voucherNo
-        } else {
-            let voucherMonth = Calendar.current.component(.month, from: candidate.candidateDate)
-            voucherNo = try await journalEntryRepository.nextVoucherNumber(
-                businessId: candidate.businessId,
-                taxYear: candidate.taxYear,
-                month: voucherMonth
-            ).value
-        }
-
-        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
-        let entry = CanonicalJournalEntry(
-            id: journalId,
-            businessId: candidate.businessId,
-            taxYear: candidate.taxYear,
-            journalDate: candidate.candidateDate,
-            voucherNo: voucherNo,
-            sourceEvidenceId: candidate.evidenceId,
-            sourceCandidateId: candidate.id,
+        try await postingEngine.persistApprovedCandidateAsync(
+            candidate,
+            journalId: journalId,
             entryType: entryType,
-            description: description ?? candidate.memo ?? "",
-            lines: journalLines,
-            approvedAt: approvedAt,
-            createdAt: existingJournal?.createdAt ?? approvedAt,
-            updatedAt: approvedAt
+            description: description,
+            approvedAt: approvedAt
         )
-
-        guard entry.isBalanced else {
-            throw PostingWorkflowUseCaseError.journalNotBalanced(candidate.id)
-        }
-
-        try await postingCandidateRepository.save(approvedCandidate)
-        do {
-            try await journalEntryRepository.save(entry)
-            try? rebuildJournalSearchIndex(businessId: entry.businessId, taxYear: entry.taxYear)
-            await saveApprovalAuditEvents(
-                originalCandidate: candidate,
-                approvedCandidate: approvedCandidate,
-                journal: entry,
-                reason: description
-            )
-            return entry
-        } catch {
-            try? await postingCandidateRepository.save(candidate)
-            throw error
-        }
     }
 
     func rejectCandidate(_ id: UUID) async throws -> PostingCandidate {
@@ -498,124 +424,6 @@ struct PostingWorkflowUseCase {
             legacySnapshot: sourceCandidate.legacySnapshot,
             createdAt: reopenedAt,
             updatedAt: reopenedAt
-        )
-    }
-
-    private func makeJournalLines(from candidate: PostingCandidate, journalId: UUID) async throws -> [JournalLine] {
-        var journalLines: [JournalLine] = []
-        var sortOrder = 0
-
-        for line in candidate.proposedLines {
-            guard line.amount > 0 else {
-                throw PostingWorkflowUseCaseError.invalidAmount(line.id)
-            }
-            guard line.debitAccountId != nil || line.creditAccountId != nil else {
-                throw PostingWorkflowUseCaseError.missingAccount(line.id)
-            }
-
-            if let debitAccountId = line.debitAccountId {
-                let legalReportLineId = try await resolvedLegalReportLineId(
-                    accountId: debitAccountId,
-                    fallback: line.legalReportLineId
-                )
-                journalLines.append(
-                    JournalLine(
-                        journalId: journalId,
-                        accountId: debitAccountId,
-                        debitAmount: line.amount,
-                        creditAmount: 0,
-                        taxCodeId: line.taxCodeId,
-                        legalReportLineId: legalReportLineId,
-                        counterpartyId: candidate.counterpartyId,
-                        projectAllocationId: line.projectAllocationId,
-                        genreTagIds: [],
-                        evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
-                        sortOrder: sortOrder
-                    )
-                )
-                sortOrder += 1
-            }
-
-            if let creditAccountId = line.creditAccountId {
-                let legalReportLineId = try await resolvedLegalReportLineId(
-                    accountId: creditAccountId,
-                    fallback: line.legalReportLineId
-                )
-                journalLines.append(
-                    JournalLine(
-                        journalId: journalId,
-                        accountId: creditAccountId,
-                        debitAmount: 0,
-                        creditAmount: line.amount,
-                        taxCodeId: line.taxCodeId,
-                        legalReportLineId: legalReportLineId,
-                        counterpartyId: candidate.counterpartyId,
-                        projectAllocationId: line.projectAllocationId,
-                        genreTagIds: [],
-                        evidenceReferenceId: line.evidenceLineReferenceId ?? candidate.evidenceId,
-                        sortOrder: sortOrder
-                    )
-                )
-                sortOrder += 1
-            }
-        }
-
-        return journalLines
-    }
-
-    private func resolvedLegalReportLineId(
-        accountId: UUID,
-        fallback: String?
-    ) async throws -> String {
-        guard let account = try await chartOfAccountsRepository.findById(accountId) else {
-            throw PostingWorkflowUseCaseError.accountNotFound(accountId)
-        }
-
-        if let accountLineId = account.defaultLegalReportLineId,
-           LegalReportLine(rawValue: accountLineId) != nil {
-            return accountLineId
-        }
-
-        if let fallback, LegalReportLine(rawValue: fallback) != nil {
-            return fallback
-        }
-
-        throw PostingWorkflowUseCaseError.missingLegalReportLine(accountId)
-    }
-
-    private func saveApprovalAuditEvents(
-        originalCandidate: PostingCandidate,
-        approvedCandidate: PostingCandidate,
-        journal: CanonicalJournalEntry,
-        reason: String?
-    ) async {
-        await saveAuditEvent(
-            AuditEvent(
-                businessId: approvedCandidate.businessId,
-                eventType: .candidateApproved,
-                aggregateType: "PostingCandidate",
-                aggregateId: approvedCandidate.id,
-                beforeStateHash: stateHash(originalCandidate),
-                afterStateHash: stateHash(approvedCandidate),
-                actor: "user",
-                reason: reason ?? approvedCandidate.memo,
-                relatedEvidenceId: approvedCandidate.evidenceId,
-                relatedJournalId: journal.id
-            )
-        )
-        await saveAuditEvent(
-            AuditEvent(
-                businessId: journal.businessId,
-                eventType: .journalApproved,
-                aggregateType: "CanonicalJournalEntry",
-                aggregateId: journal.id,
-                beforeStateHash: nil,
-                afterStateHash: stateHash(journal),
-                actor: "user",
-                reason: reason ?? journal.description,
-                relatedEvidenceId: journal.sourceEvidenceId,
-                relatedJournalId: journal.id
-            )
         )
     }
 

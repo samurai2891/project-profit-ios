@@ -94,6 +94,10 @@ class DataStore {
         PostingIntakeUseCase(modelContext: modelContext)
     }
 
+    var canonicalPostingSupport: CanonicalPostingSupport {
+        CanonicalPostingSupport(modelContext: modelContext)
+    }
+
     private var projectWorkflowUseCase: ProjectWorkflowUseCase {
         ProjectWorkflowUseCase(modelContext: modelContext)
     }
@@ -824,24 +828,26 @@ class DataStore {
             counterpartyId = nil
         }
 
-        guard let businessId = businessProfile?.id else {
+        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
+        let posting: CanonicalTransactionPostingBridge.Posting
+        do {
+            posting = try buildCanonicalPosting(
+                for: transaction,
+                counterpartyId: counterpartyId,
+                source: source ?? .manual
+            )
+        } catch AppError.invalidInput(let message)
+            where message.contains("事業者プロフィールが未設定") {
             return CanonicalTransactionSyncResult(
                 counterpartyStatus: counterpartyStatus,
                 postingStatus: .skippedBusinessProfileUnavailable
             )
-        }
-
-        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
-        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(transaction: transaction)
-        guard let posting = bridge.buildApprovedPosting(
-            for: snapshot,
-            businessId: businessId,
-            counterpartyId: counterpartyId,
-            source: source,
-            categories: categories,
-            legacyAccounts: accounts
-        ) else {
+        } catch AppError.yearLocked {
+            return CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedBusinessProfileUnavailable
+            )
+        } catch {
             return CanonicalTransactionSyncResult(
                 counterpartyStatus: counterpartyStatus,
                 postingStatus: .skippedLegacyJournalUnavailable
@@ -849,11 +855,11 @@ class DataStore {
         }
 
         do {
-            let actor = source == .importFile ? "user" : "system"
-            let journal = try saveApprovedPostingSynchronously(
-                posting,
+            let journal = try canonicalPostingSupport.persistApprovedPosting(
+                posting: posting,
                 allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
-                actor: actor
+                actor: source == .importFile ? "user" : "system",
+                saveChanges: true
             )
             if transaction.journalEntryId != journal.id {
                 transaction.journalEntryId = journal.id
@@ -1006,80 +1012,47 @@ class DataStore {
         counterparty: String?,
         source: CandidateSource
     ) -> Result<CanonicalTransactionPostingBridge.Posting, AppError> {
-        guard !cannotPostNormalEntry(for: date) else {
-            return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
-        }
-        guard let businessId = businessProfile?.id else {
-            let error = AppError.invalidInput(message: "事業者プロフィールが未設定のため承認待ち候補を作成できません")
-            lastError = error
-            return .failure(error)
-        }
-
-        let safeCategoryId: String
-        switch type {
-        case .transfer:
-            safeCategoryId = categoryId
-        case .income, .expense:
-            safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        }
-
-        let explicitTaxCodeId = resolvedExplicitTaxCodeId(
-            explicitTaxCodeId: taxCodeId,
-            taxCategory: taxCategory,
-            taxRate: taxRate
-        )
-        let counterpartyStatus = syncCanonicalCounterpartyNow(
-            id: counterpartyId,
-            named: counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let resolvedCounterpartyId: UUID?
-        switch counterpartyStatus {
-        case .synced(let id):
-            resolvedCounterpartyId = id
-        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
-            resolvedCounterpartyId = nil
-        }
-
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
-        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
-            id: UUID(),
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: safeCategoryId,
-            memo: memo,
-            recurringId: recurringId,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxCodeId: explicitTaxCodeId,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyName: counterparty,
-            createdAt: Date(),
-            updatedAt: Date(),
-            journalEntryId: nil
-        )
 
-        guard let posting = bridge.buildApprovedPosting(
-            for: snapshot,
-            businessId: businessId,
-            counterpartyId: resolvedCounterpartyId,
-            source: source,
-            categories: categories,
-            legacyAccounts: accounts
-        ) else {
-            let error = AppError.invalidInput(message: "承認待ち候補の勘定科目または税区分を解決できません")
+        do {
+            let posting = try canonicalPostingSupport.buildApprovedPosting(
+                seed: CanonicalPostingSeed(
+                    id: UUID(),
+                    type: type,
+                    amount: amount,
+                    date: date,
+                    categoryId: categoryId,
+                    memo: memo,
+                    recurringId: recurringId,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: transferToAccountId,
+                    taxDeductibleRate: taxDeductibleRate,
+                    taxAmount: taxAmount,
+                    taxCodeId: taxCodeId,
+                    taxRate: taxRate,
+                    isTaxIncluded: isTaxIncluded,
+                    taxCategory: taxCategory,
+                    receiptImagePath: nil,
+                    lineItems: [],
+                    counterpartyId: counterpartyId,
+                    counterpartyName: counterparty,
+                    source: source,
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    journalEntryId: nil
+                ),
+                snapshot: try canonicalPostingSupport.snapshot()
+            )
+            lastError = nil
+            return .success(posting)
+        } catch let error as AppError {
             lastError = error
             return .failure(error)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
         }
-
-        lastError = nil
-        return .success(posting)
     }
 
     func saveApprovedPostingSync(
@@ -1291,122 +1264,6 @@ class DataStore {
         return (journal, approvedCandidate)
     }
 
-    private func resolvedExplicitTaxCodeId(
-        explicitTaxCodeId: String?,
-        taxCategory: TaxCategory?,
-        taxRate: Int?
-    ) -> String? {
-        if let explicitTaxCodeId {
-            return explicitTaxCodeId
-        }
-        return TaxCode.resolve(
-            legacyCategory: taxCategory,
-            taxRate: taxRate
-        )?.rawValue
-    }
-
-    func candidateWithProjectAllocations(
-        _ candidate: PostingCandidate,
-        allocations: [(projectId: UUID, ratio: Int)]
-    ) -> PostingCandidate {
-        guard !allocations.isEmpty else {
-            return candidate
-        }
-
-        let normalizedAllocations = allocations.filter { $0.ratio > 0 }
-        guard !normalizedAllocations.isEmpty else {
-            return candidate
-        }
-
-        let expandedLines = candidate.proposedLines.flatMap { line -> [PostingCandidateLine] in
-            if normalizedAllocations.count == 1, let allocation = normalizedAllocations.first {
-                return [line.updated(projectAllocationId: .some(allocation.projectId))]
-            }
-
-            let lineAmount = NSDecimalNumber(decimal: line.amount).intValue
-            let splitAllocations = calculateRatioAllocations(amount: lineAmount, allocations: normalizedAllocations)
-            return splitAllocations.compactMap { allocation in
-                guard allocation.amount > 0 else {
-                    return nil
-                }
-                return PostingCandidateLine(
-                    debitAccountId: line.debitAccountId,
-                    creditAccountId: line.creditAccountId,
-                    amount: Decimal(allocation.amount),
-                    taxCodeId: line.taxCodeId,
-                    legalReportLineId: line.legalReportLineId,
-                    projectAllocationId: allocation.projectId,
-                    memo: line.memo,
-                    evidenceLineReferenceId: line.evidenceLineReferenceId,
-                    withholdingTaxCodeId: line.withholdingTaxCodeId,
-                    withholdingTaxAmount: line.withholdingTaxAmount
-                )
-            }
-        }
-
-        guard !expandedLines.isEmpty else {
-            return candidate
-        }
-        return candidate.updated(proposedLines: expandedLines)
-    }
-
-    func candidateWithProjectAllocations(
-        _ candidate: PostingCandidate,
-        allocationAmounts: [Allocation]
-    ) -> PostingCandidate {
-        let normalizedAllocations = allocationAmounts.filter { $0.amount > 0 }
-        guard !normalizedAllocations.isEmpty else {
-            return candidate
-        }
-
-        let expandedLines = candidate.proposedLines.flatMap { line -> [PostingCandidateLine] in
-            if normalizedAllocations.count == 1, let allocation = normalizedAllocations.first {
-                return [line.updated(projectAllocationId: .some(allocation.projectId))]
-            }
-
-            let lineAmount = NSDecimalNumber(decimal: line.amount).intValue
-            let totalAllocationAmount = normalizedAllocations.reduce(0) { partialResult, allocation in
-                partialResult + allocation.amount
-            }
-            guard lineAmount > 0, totalAllocationAmount > 0 else {
-                return []
-            }
-
-            var distributedSoFar = 0
-            return normalizedAllocations.enumerated().compactMap { index, allocation in
-                let splitAmount: Int
-                if index == normalizedAllocations.count - 1 {
-                    splitAmount = lineAmount - distributedSoFar
-                } else {
-                    splitAmount = lineAmount * allocation.amount / totalAllocationAmount
-                    distributedSoFar += splitAmount
-                }
-
-                guard splitAmount > 0 else {
-                    return nil
-                }
-
-                return PostingCandidateLine(
-                    debitAccountId: line.debitAccountId,
-                    creditAccountId: line.creditAccountId,
-                    amount: Decimal(splitAmount),
-                    taxCodeId: line.taxCodeId,
-                    legalReportLineId: line.legalReportLineId,
-                    projectAllocationId: allocation.projectId,
-                    memo: line.memo,
-                    evidenceLineReferenceId: line.evidenceLineReferenceId,
-                    withholdingTaxCodeId: line.withholdingTaxCodeId,
-                    withholdingTaxAmount: line.withholdingTaxAmount
-                )
-            }
-        }
-
-        guard !expandedLines.isEmpty else {
-            return candidate
-        }
-        return candidate.updated(proposedLines: expandedLines)
-    }
-
     private func syncCanonicalCounterpartyNow(
         id explicitId: UUID?,
         named rawName: String?,
@@ -1467,30 +1324,28 @@ class DataStore {
         counterpartyId: UUID?,
         source: CandidateSource?
     ) async -> CanonicalPostingSyncStatus {
-        guard let businessId = businessProfile?.id else {
-            return .skippedBusinessProfileUnavailable
-        }
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
-        let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(transaction: transaction)
-        guard let posting = bridge.buildApprovedPosting(
-            for: snapshot,
-            businessId: businessId,
-            counterpartyId: counterpartyId,
-            source: source,
-            categories: categories,
-            legacyAccounts: accounts
-        ) else {
+        let posting: CanonicalTransactionPostingBridge.Posting
+        do {
+            posting = try buildCanonicalPosting(
+                for: transaction,
+                counterpartyId: counterpartyId,
+                source: source ?? .manual
+            )
+        } catch AppError.invalidInput(let message)
+            where message.contains("事業者プロフィールが未設定") {
+            return .skippedBusinessProfileUnavailable
+        } catch AppError.yearLocked {
+            return .skippedBusinessProfileUnavailable
+        } catch {
             return .skippedLegacyJournalUnavailable
         }
 
         do {
-            let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
-                posting.candidate,
-                journalId: posting.journalId,
-                entryType: posting.entryType,
-                description: posting.description,
-                approvedAt: posting.approvedAt
+            let journal = try await canonicalPostingSupport.syncApprovedCandidate(
+                posting: posting,
+                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
+                actor: source == .importFile ? "user" : "system"
             )
             if transaction.journalEntryId != journal.id {
                 transaction.journalEntryId = journal.id
@@ -1502,6 +1357,44 @@ class DataStore {
             AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
         }
+    }
+
+    private func buildCanonicalPosting(
+        for transaction: PPTransaction,
+        counterpartyId: UUID?,
+        source: CandidateSource
+    ) throws -> CanonicalTransactionPostingBridge.Posting {
+        try canonicalPostingSupport.buildApprovedPosting(
+            seed: CanonicalPostingSeed(
+                id: transaction.id,
+                type: transaction.type,
+                amount: transaction.amount,
+                date: transaction.date,
+                categoryId: transaction.categoryId,
+                memo: transaction.memo,
+                recurringId: transaction.recurringId,
+                paymentAccountId: transaction.paymentAccountId,
+                transferToAccountId: transaction.transferToAccountId,
+                taxDeductibleRate: transaction.taxDeductibleRate,
+                taxAmount: transaction.taxAmount,
+                taxCodeId: TaxCode.resolve(
+                    legacyCategory: transaction.taxCategory,
+                    taxRate: transaction.taxRate
+                )?.rawValue,
+                taxRate: transaction.taxRate,
+                isTaxIncluded: transaction.isTaxIncluded,
+                taxCategory: transaction.taxCategory,
+                receiptImagePath: transaction.receiptImagePath,
+                lineItems: transaction.lineItems,
+                counterpartyId: counterpartyId,
+                counterpartyName: transaction.counterparty,
+                source: source,
+                createdAt: transaction.createdAt,
+                updatedAt: transaction.updatedAt,
+                journalEntryId: transaction.journalEntryId
+            ),
+            snapshot: try canonicalPostingSupport.snapshot()
+        )
     }
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。

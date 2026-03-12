@@ -209,6 +209,62 @@ final class CanonicalUseCasesTests: XCTestCase {
         )
     }
 
+    func testPostingWorkflowUseCaseSyncApprovedCandidateReusesVoucherAndCreatedAt() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "503",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.consumables.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
+
+        let candidateDate = Date(timeIntervalSince1970: 1_741_478_400)
+        let originalCandidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: candidateDate,
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "2200")!,
+                    memo: "initial"
+                )
+            ],
+            status: .needsReview,
+            source: .manual,
+            memo: "initial"
+        )
+
+        try await useCase.saveCandidate(originalCandidate)
+        let originalEntry = try await useCase.approveCandidate(candidateId: originalCandidate.id)
+        let syncedEntry = try await useCase.syncApprovedCandidate(
+            originalCandidate.updated(memo: "updated"),
+            journalId: originalEntry.id,
+            description: "updated-entry"
+        )
+
+        XCTAssertEqual(syncedEntry.id, originalEntry.id)
+        XCTAssertEqual(syncedEntry.voucherNo, originalEntry.voucherNo)
+        XCTAssertEqual(syncedEntry.createdAt, originalEntry.createdAt)
+        XCTAssertEqual(syncedEntry.description, "updated-entry")
+    }
+
     func testPostingWorkflowUseCaseRejectCandidateStoresAuditEvent() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
