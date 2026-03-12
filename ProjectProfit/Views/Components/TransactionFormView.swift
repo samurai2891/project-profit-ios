@@ -8,6 +8,8 @@ struct TransactionFormView: View {
 
     let transaction: PPTransaction?
     let defaultProjectId: UUID?
+    let prefill: StatementLinePrefill?
+    let onCandidateSaved: ((PostingCandidate) -> Void)?
 
     @State private var type: TransactionType = .expense
     @State private var amountText: String = ""
@@ -81,9 +83,16 @@ struct TransactionFormView: View {
         )
     }
 
-    init(transaction: PPTransaction? = nil, defaultProjectId: UUID? = nil) {
+    init(
+        transaction: PPTransaction? = nil,
+        defaultProjectId: UUID? = nil,
+        prefill: StatementLinePrefill? = nil,
+        onCandidateSaved: ((PostingCandidate) -> Void)? = nil
+    ) {
         self.transaction = transaction
         self.defaultProjectId = defaultProjectId
+        self.prefill = prefill
+        self.onCandidateSaved = onCandidateSaved
     }
 
     private var categories: [PPCategory] {
@@ -1000,6 +1009,22 @@ struct TransactionFormView: View {
                 ?? ""
             isWithholdingEnabled = false
             selectedWithholdingTaxCode = nil
+        } else if let prefill {
+            type = prefill.type
+            amountText = String(prefill.amount)
+            date = prefill.date
+            memo = prefill.memo
+            counterparty = prefill.counterparty
+            paymentAccountId = prefill.paymentAccountId
+            selectedCounterpartyId = nil
+            if let defaultProjectId {
+                allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+            } else if let first = activeProjects.first {
+                allocations = [(id: UUID(), projectId: first.id, ratio: 100)]
+            }
+            autoSelectCategory()
+            isWithholdingEnabled = false
+            selectedWithholdingTaxCode = nil
         } else {
             if let defaultProjectId {
                 allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
@@ -1217,7 +1242,7 @@ struct TransactionFormView: View {
             saveError = nil
 
             do {
-                _ = try await postingIntakeUseCase.saveManualCandidate(
+                let candidate = try await postingIntakeUseCase.saveManualCandidate(
                     input: ManualPostingCandidateInput(
                         type: type,
                         amount: amount,
@@ -1242,6 +1267,7 @@ struct TransactionFormView: View {
                 if let imagePath {
                     ReceiptImageStore.deleteImage(fileName: imagePath)
                 }
+                onCandidateSaved?(candidate)
                 dismiss()
             } catch {
                 if let imagePath {

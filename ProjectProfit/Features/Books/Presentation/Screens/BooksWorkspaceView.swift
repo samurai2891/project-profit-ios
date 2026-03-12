@@ -4,6 +4,9 @@ import SwiftUI
 struct BooksWorkspaceView: View {
     @Environment(\.modelContext) private var modelContext
 
+    static let reconciliationTitle = BankCardReconciliationView.titleText
+    static let reconciliationSubtitle = "明細取込と未照合チェック"
+
     @State private var snapshot = AccountingHomeSnapshot(
         unpostedJournalCount: 0,
         suspenseBalance: 0,
@@ -101,6 +104,12 @@ struct BooksWorkspaceView: View {
                     title: "仕訳ブラウザ",
                     subtitle: "Canonical仕訳の検索・確認",
                     destination: AnyView(JournalBrowserView())
+                ),
+                WorkspaceRow(
+                    icon: "building.columns.circle",
+                    title: Self.reconciliationTitle,
+                    subtitle: Self.reconciliationSubtitle,
+                    destination: AnyView(BankCardReconciliationView())
                 ),
                 WorkspaceRow(
                     icon: "chart.bar.doc.horizontal",

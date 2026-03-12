@@ -9,6 +9,12 @@ final class BooksWorkspaceViewTests: XCTestCase {
         XCTAssertTrue(BooksWorkspaceView.descriptionText.contains("申告作業"))
     }
 
+    func testBooksWorkspaceIncludesReconciliationEntryCopy() {
+        XCTAssertEqual(BooksWorkspaceView.reconciliationTitle, "銀行/カード照合")
+        XCTAssertEqual(BooksWorkspaceView.reconciliationSubtitle, "明細取込と未照合チェック")
+        XCTAssertEqual(BankCardReconciliationView.titleText, "銀行/カード照合")
+    }
+
     func testFilingDashboardUsesBooksWorkspaceEntryCopy() {
         XCTAssertEqual(FilingDashboardView.booksWorkspaceTitle, "帳簿ワークスペース")
         XCTAssertEqual(FilingDashboardView.booksWorkspaceSubtitle, "レポート・帳簿・申告作業をまとめて確認")

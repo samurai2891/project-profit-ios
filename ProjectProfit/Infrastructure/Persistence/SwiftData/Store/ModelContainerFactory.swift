@@ -43,6 +43,8 @@ enum ModelContainerFactory {
             CanonicalAccountEntity.self,
             DistributionRuleEntity.self,
             AuditEventEntity.self,
+            StatementImportEntity.self,
+            StatementLineEntity.self,
         ]
     }
 
