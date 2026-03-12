@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct LedgerBookDetailView: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(LedgerDataStore.self) private var ledgerStore
 
     let bookId: UUID
@@ -14,6 +15,7 @@ struct LedgerBookDetailView: View {
     @State private var showShareSheet = false
     @State private var shareURL: URL?
     @State private var showCSVImport = false
+    @State private var errorMessage: String?
 
     private var book: SDLedgerBook? {
         ledgerStore.book(for: bookId)
@@ -29,6 +31,19 @@ struct LedgerBookDetailView: View {
 
     private var balanceMap: [UUID: Int] {
         Dictionary(uniqueKeysWithValues: balanceRows.map { ($0.id, $0.balance) })
+    }
+
+    private var legacyLedgerOptions: ExportCoordinator.LegacyLedgerExportOptions? {
+        guard let book, let ledgerType = book.ledgerType else {
+            return nil
+        }
+        return ExportCoordinator.LegacyLedgerExportOptions(
+            bookId: book.id,
+            bookTitle: book.title,
+            ledgerType: ledgerType,
+            metadataJSON: book.metadataJSON,
+            includeInvoice: book.includeInvoice
+        )
     }
 
     var body: some View {
@@ -83,6 +98,20 @@ struct LedgerBookDetailView: View {
             if let url = shareURL {
                 ShareSheetView(activityItems: [url])
             }
+        }
+        .alert("出力エラー", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    errorMessage = nil
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -336,42 +365,36 @@ struct LedgerBookDetailView: View {
     // MARK: - CSV Export
 
     private func exportCSV() {
-        guard let csv = ledgerStore.exportCSV(for: bookId) else { return }
-        let fileName = "\(book?.title ?? "帳簿")_\(Date().formatted(.dateTime.year().month().day())).csv"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        do {
-            try csv.data(using: .utf8)?.write(to: tempURL)
-            shareURL = tempURL
-            showShareSheet = true
-        } catch {
-            ledgerStore.lastError = .saveFailed(underlying: error)
-        }
+        exportAndShare(format: .csv)
     }
 
     // MARK: - Excel Export
 
     private func exportExcel() {
-        let fileName = "\(book?.title ?? "帳簿")_\(Date().formatted(.dateTime.year().month().day())).xlsx"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        let success = ledgerStore.exportExcel(for: bookId, to: tempURL.path)
-        if success {
-            shareURL = tempURL
-            showShareSheet = true
-        }
+        exportAndShare(format: .xlsx)
     }
 
     // MARK: - PDF Export
 
     private func exportPDF() {
-        guard let pdfData = ledgerStore.exportPDF(for: bookId) else { return }
-        let fileName = "\(book?.title ?? "帳簿")_\(Date().formatted(.dateTime.year().month().day())).pdf"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        exportAndShare(format: .pdf)
+    }
+
+    private func exportAndShare(format: ExportCoordinator.ExportFormat) {
+        guard let legacyLedgerOptions else {
+            return
+        }
         do {
-            try pdfData.write(to: tempURL)
-            shareURL = tempURL
+            shareURL = try ExportCoordinator.export(
+                format: format,
+                modelContext: modelContext,
+                legacyLedgerOptions: legacyLedgerOptions
+            )
             showShareSheet = true
         } catch {
-            ledgerStore.lastError = .saveFailed(underlying: error)
+            shareURL = nil
+            showShareSheet = false
+            errorMessage = error.localizedDescription
         }
     }
 }

@@ -11,12 +11,14 @@ enum ExportCoordinator {
         case csv
         case pdf
         case xtx
+        case xlsx
 
         var label: String {
             switch self {
             case .csv: "CSV"
             case .pdf: "PDF"
             case .xtx: "XTX"
+            case .xlsx: "Excel"
             }
         }
 
@@ -33,6 +35,7 @@ enum ExportCoordinator {
         case subLedger
         case etax
         case fixedAssets
+        case legacyLedgerBook
 
         var label: String {
             switch self {
@@ -45,6 +48,7 @@ enum ExportCoordinator {
             case .subLedger: "補助簿"
             case .etax: "e-Tax"
             case .fixedAssets: "固定資産台帳"
+            case .legacyLedgerBook: "旧台帳"
             }
         }
 
@@ -59,11 +63,12 @@ enum ExportCoordinator {
             case .subLedger: "sub_ledger"
             case .etax: "etax"
             case .fixedAssets: "fixed_assets"
+            case .legacyLedgerBook: "legacy_ledger"
             }
         }
 
         /// 現在のアプリ導線で許可する target/format 組み合わせ。
-        /// ExportMenuButton と EtaxExportViewModel の実使用範囲を正本として管理する。
+        /// ExportMenuButton / EtaxExportView / 旧台帳詳細画面の実使用範囲を正本として管理する。
         var supportedFormats: Set<ExportFormat> {
             switch self {
             case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets:
@@ -72,16 +77,18 @@ enum ExportCoordinator {
                 return [.csv]
             case .etax:
                 return [.csv, .xtx]
+            case .legacyLedgerBook:
+                return [.csv, .pdf, .xlsx]
             }
         }
 
         /// 申告前チェックが必要な出力だけ true。
-        /// 汎用CSV（取引履歴/補助簿）は日常運用で使うため preflight を要求しない。
+        /// 旧台帳/汎用CSV（取引履歴/補助簿）は日常運用で使うため preflight を要求しない。
         var requiresPreflight: Bool {
             switch self {
             case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax:
                 return true
-            case .transactions, .subLedger:
+            case .transactions, .subLedger, .legacyLedgerBook:
                 return false
             }
         }
@@ -128,6 +135,14 @@ enum ExportCoordinator {
         let accountCode: String
     }
 
+    struct LegacyLedgerExportOptions {
+        let bookId: UUID
+        let bookTitle: String
+        let ledgerType: LedgerType
+        let metadataJSON: String
+        let includeInvoice: Bool
+    }
+
     struct TransactionExportOptions {
         let transactions: [PPTransaction]
     }
@@ -156,17 +171,68 @@ enum ExportCoordinator {
         ledgerOptions: LedgerExportOptions? = nil,
         transactionOptions: TransactionExportOptions? = nil,
         subLedgerOptions: SubLedgerExportOptions? = nil,
-        etaxOptions: EtaxExportOptions? = nil
+        etaxOptions: EtaxExportOptions? = nil,
+        legacyLedgerOptions: LegacyLedgerExportOptions? = nil
     ) throws -> URL {
-        guard target.supportedFormats.contains(format) else {
+        try exportInternal(
+            target: target,
+            format: format,
+            fiscalYear: fiscalYear,
+            modelContext: modelContext,
+            skipPreflightValidation: skipPreflightValidation,
+            ledgerOptions: ledgerOptions,
+            transactionOptions: transactionOptions,
+            subLedgerOptions: subLedgerOptions,
+            etaxOptions: etaxOptions,
+            legacyLedgerOptions: legacyLedgerOptions
+        )
+    }
+
+    /// fiscalYear を持たない旧台帳出力用のコンビニエンス API。
+    static func export(
+        format: ExportFormat,
+        modelContext: ModelContext,
+        legacyLedgerOptions: LegacyLedgerExportOptions
+    ) throws -> URL {
+        try exportInternal(
+            target: .legacyLedgerBook,
+            format: format,
+            fiscalYear: nil,
+            modelContext: modelContext,
+            skipPreflightValidation: true,
+            ledgerOptions: nil,
+            transactionOptions: nil,
+            subLedgerOptions: nil,
+            etaxOptions: nil,
+            legacyLedgerOptions: legacyLedgerOptions
+        )
+    }
+
+    private static func exportInternal(
+        target: ExportTarget,
+        format: ExportFormat,
+        fiscalYear: Int?,
+        modelContext: ModelContext,
+        skipPreflightValidation: Bool,
+        ledgerOptions: LedgerExportOptions?,
+        transactionOptions: TransactionExportOptions?,
+        subLedgerOptions: SubLedgerExportOptions?,
+        etaxOptions: EtaxExportOptions?,
+        legacyLedgerOptions: LegacyLedgerExportOptions?
+    ) throws -> URL {
+        let supportedFormats = supportedFormats(for: target, legacyLedgerOptions: legacyLedgerOptions)
+        guard supportedFormats.contains(format) else {
             throw ExportError.unsupportedFormat(target, format)
         }
 
         if target.requiresPreflight && !skipPreflightValidation {
+            guard let fiscalYear else {
+                throw ExportError.dataUnavailable
+            }
             try validatePreflight(fiscalYear: fiscalYear, modelContext: modelContext)
         }
 
-        let content: ExportContent = try generateContent(
+        let content = try generateContent(
             target: target,
             format: format,
             fiscalYear: fiscalYear,
@@ -174,18 +240,38 @@ enum ExportCoordinator {
             ledgerOptions: ledgerOptions,
             transactionOptions: transactionOptions,
             subLedgerOptions: subLedgerOptions,
-            etaxOptions: etaxOptions
+            etaxOptions: etaxOptions,
+            legacyLedgerOptions: legacyLedgerOptions
         )
 
-        let fileName = makeFileName(target: target, fiscalYear: fiscalYear, format: format)
+        let fileName: String
+        if let legacyLedgerOptions {
+            fileName = makeLegacyLedgerFileName(options: legacyLedgerOptions, format: format)
+        } else if let fiscalYear {
+            fileName = makeFileName(target: target, fiscalYear: fiscalYear, format: format)
+        } else {
+            throw ExportError.dataUnavailable
+        }
         return try writeToTempFile(content: content, fileName: fileName)
+    }
+
+    private static func supportedFormats(
+        for target: ExportTarget,
+        legacyLedgerOptions: LegacyLedgerExportOptions?
+    ) -> Set<ExportFormat> {
+        guard target == .legacyLedgerBook, let legacyLedgerOptions else {
+            return target.supportedFormats
+        }
+        return legacySupportedFormats(for: legacyLedgerOptions.ledgerType)
     }
 
     private static func validatePreflight(
         fiscalYear: Int,
         modelContext: ModelContext
     ) throws {
-        let businessId = EtaxExportContextQueryUseCase(modelContext: modelContext).context(fiscalYear: fiscalYear).businessId
+        let businessId = EtaxExportContextQueryUseCase(modelContext: modelContext)
+            .context(fiscalYear: fiscalYear)
+            .businessId
         guard let businessId else {
             return
         }
@@ -207,6 +293,7 @@ enum ExportCoordinator {
     private enum ExportContent {
         case text(String)
         case data(Data)
+        case fileWriter((URL) throws -> Void)
     }
 
     private static func exportSubLedgerCSV(entries: [SubLedgerEntry]) -> String {
@@ -248,20 +335,35 @@ enum ExportCoordinator {
     private static func generateContent(
         target: ExportTarget,
         format: ExportFormat,
-        fiscalYear: Int,
+        fiscalYear: Int?,
         modelContext: ModelContext,
         ledgerOptions: LedgerExportOptions?,
         transactionOptions: TransactionExportOptions?,
         subLedgerOptions: SubLedgerExportOptions?,
-        etaxOptions: EtaxExportOptions?
+        etaxOptions: EtaxExportOptions?,
+        legacyLedgerOptions: LegacyLedgerExportOptions?
     ) throws -> ExportContent {
+        if target == .legacyLedgerBook {
+            guard let legacyLedgerOptions else {
+                throw ExportError.dataUnavailable
+            }
+            return try generateLegacyLedgerContent(
+                format: format,
+                modelContext: modelContext,
+                options: legacyLedgerOptions
+            )
+        }
+
+        guard let fiscalYear else {
+            throw ExportError.dataUnavailable
+        }
+
         let support = AccountingReadSupport(modelContext: modelContext)
         let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
         let accounts = support.fetchAccounts()
         let startMonth = FiscalYearSettings.startMonth
 
         switch (target, format) {
-        // MARK: Journal
         case (.journal, .csv):
             let csv = ReportCSVExportService.exportJournalCSV(
                 entries: projected.entries,
@@ -279,7 +381,6 @@ enum ExportCoordinator {
             )
             return .data(pdf)
 
-        // MARK: Profit & Loss
         case (.profitLoss, .csv):
             let report = AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
@@ -300,7 +401,6 @@ enum ExportCoordinator {
             )
             return .data(PDFExportService.exportProfitLossPDF(report: report))
 
-        // MARK: Balance Sheet
         case (.balanceSheet, .csv):
             let report = AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
@@ -321,7 +421,6 @@ enum ExportCoordinator {
             )
             return .data(PDFExportService.exportBalanceSheetPDF(report: report))
 
-        // MARK: Trial Balance
         case (.trialBalance, .csv):
             let report = AccountingReportService.generateTrialBalance(
                 fiscalYear: fiscalYear,
@@ -342,7 +441,6 @@ enum ExportCoordinator {
             )
             return .data(PDFExportService.exportTrialBalancePDF(report: report))
 
-        // MARK: Ledger
         case (.ledger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
             let entries = legacyLedgerEntries(
@@ -366,7 +464,6 @@ enum ExportCoordinator {
                 fiscalYear: fiscalYear
             ))
 
-        // MARK: Transactions
         case (.transactions, .csv):
             guard let opts = transactionOptions else {
                 throw ExportError.transactionsRequired
@@ -379,7 +476,6 @@ enum ExportCoordinator {
                 getProject: { projectsById[$0] }
             ))
 
-        // MARK: Sub Ledger
         case (.subLedger, .csv):
             guard let opts = subLedgerOptions else {
                 throw ExportError.subLedgerConfigurationRequired
@@ -393,7 +489,6 @@ enum ExportCoordinator {
             ).entries
             return .text(exportSubLedgerCSV(entries: entries))
 
-        // MARK: e-Tax
         case (.etax, .xtx):
             guard let opts = etaxOptions else {
                 throw ExportError.etaxFormRequired
@@ -416,19 +511,28 @@ enum ExportCoordinator {
                 throw ExportError.etaxGenerationFailed(error.description)
             }
 
-        // MARK: Fixed Assets
         case (.fixedAssets, .csv):
             let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
             return .text(ReportCSVExportService.exportFixedAssetsCSV(
                 assets: assets,
                 calculateAccumulated: { asset in
                     let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
-                    guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
+                    guard let calc = DepreciationEngine.calculate(
+                        asset: asset,
+                        fiscalYear: fiscalYear,
+                        priorAccumulatedDepreciation: prior
+                    ) else {
+                        return prior
+                    }
                     return calc.accumulatedDepreciation
                 },
                 calculateCurrentYear: { asset in
                     let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
-                    return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
+                    return DepreciationEngine.calculate(
+                        asset: asset,
+                        fiscalYear: fiscalYear,
+                        priorAccumulatedDepreciation: prior
+                    )?.annualAmount ?? 0
                 }
             ))
 
@@ -439,17 +543,260 @@ enum ExportCoordinator {
                 fiscalYear: fiscalYear,
                 calculateAccumulated: { asset in
                     let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
-                    guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
+                    guard let calc = DepreciationEngine.calculate(
+                        asset: asset,
+                        fiscalYear: fiscalYear,
+                        priorAccumulatedDepreciation: prior
+                    ) else {
+                        return prior
+                    }
                     return calc.accumulatedDepreciation
                 },
                 calculateCurrentYear: { asset in
                     let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
-                    return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
+                    return DepreciationEngine.calculate(
+                        asset: asset,
+                        fiscalYear: fiscalYear,
+                        priorAccumulatedDepreciation: prior
+                    )?.annualAmount ?? 0
                 }
             ))
 
         default:
             throw ExportError.unsupportedFormat(target, format)
+        }
+    }
+
+    private static func generateLegacyLedgerContent(
+        format: ExportFormat,
+        modelContext: ModelContext,
+        options: LegacyLedgerExportOptions
+    ) throws -> ExportContent {
+        let store = LedgerDataStore(modelContext: modelContext)
+
+        switch format {
+        case .csv:
+            return .text(try legacyLedgerCSV(store: store, options: options))
+        case .pdf:
+            return .data(try legacyLedgerPDF(store: store, options: options))
+        case .xlsx:
+            return .fileWriter { url in
+                try writeLegacyLedgerXLSX(store: store, options: options, to: url)
+            }
+        case .xtx:
+            throw ExportError.unsupportedFormat(.legacyLedgerBook, .xtx)
+        }
+    }
+
+    private static func legacySupportedFormats(for ledgerType: LedgerType) -> Set<ExportFormat> {
+        switch ledgerType {
+        case .cashBook, .cashBookInvoice,
+             .bankAccountBook, .bankAccountBookInvoice,
+             .accountsReceivable, .accountsPayable,
+             .generalLedger, .generalLedgerInvoice,
+             .journal:
+            return [.csv, .pdf, .xlsx]
+        case .expenseBook, .expenseBookInvoice,
+             .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+            return [.csv, .pdf]
+        case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
+            return [.pdf]
+        }
+    }
+
+    private static func legacyLedgerCSV(
+        store: LedgerDataStore,
+        options: LegacyLedgerExportOptions
+    ) throws -> String {
+        let service = CSVExportService.shared
+
+        switch options.ledgerType {
+        case .cashBook, .cashBookInvoice:
+            return service.exportCashBook(
+                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                entries: store.cashBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .bankAccountBook, .bankAccountBookInvoice:
+            return service.exportBankAccountBook(
+                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                entries: store.bankAccountBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .accountsReceivable:
+            return service.exportAccountsReceivable(
+                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                entries: store.accountsReceivableEntries(for: options.bookId)
+            )
+
+        case .accountsPayable:
+            return service.exportAccountsPayable(
+                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                entries: store.accountsPayableEntries(for: options.bookId)
+            )
+
+        case .expenseBook, .expenseBookInvoice:
+            return service.exportExpenseBook(
+                metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
+                entries: store.expenseBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .generalLedger, .generalLedgerInvoice:
+            return service.exportGeneralLedger(
+                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                entries: store.generalLedgerEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .journal:
+            return service.exportJournal(entries: store.journalEntries(for: options.bookId))
+
+        case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+            return service.exportWhiteTaxBookkeeping(
+                metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
+                entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
+            throw ExportError.unsupportedFormat(.legacyLedgerBook, .csv)
+        }
+    }
+
+    private static func legacyLedgerPDF(
+        store: LedgerDataStore,
+        options: LegacyLedgerExportOptions
+    ) throws -> Data {
+        let service = LedgerPDFExportService.shared
+
+        switch options.ledgerType {
+        case .cashBook, .cashBookInvoice:
+            return service.exportCashBook(
+                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                entries: store.cashBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .bankAccountBook, .bankAccountBookInvoice:
+            return service.exportBankAccountBook(
+                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                entries: store.bankAccountBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .accountsReceivable:
+            return service.exportAccountsReceivable(
+                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                entries: store.accountsReceivableEntries(for: options.bookId)
+            )
+
+        case .accountsPayable:
+            return service.exportAccountsPayable(
+                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                entries: store.accountsPayableEntries(for: options.bookId)
+            )
+
+        case .expenseBook, .expenseBookInvoice:
+            return service.exportExpenseBook(
+                metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
+                entries: store.expenseBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .generalLedger, .generalLedgerInvoice:
+            return service.exportGeneralLedger(
+                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                entries: store.generalLedgerEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .journal:
+            return service.exportJournal(entries: store.journalEntries(for: options.bookId))
+
+        case .transportationExpense:
+            return service.exportTransportationExpense(
+                metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: options.metadataJSON),
+                entries: store.transportationExpenseEntries(for: options.bookId)
+            )
+
+        case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+            return service.exportWhiteTaxBookkeeping(
+                metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
+                entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice
+            )
+
+        case .fixedAssetDepreciation:
+            return service.exportFixedAssetDepreciation(
+                entries: store.fixedAssetDepreciationEntries(for: options.bookId)
+            )
+
+        case .fixedAssetRegister:
+            return service.exportFixedAssetRegister(
+                metadata: LedgerBridge.decodeFixedAssetRegisterMetadata(from: options.metadataJSON),
+                entries: store.fixedAssetRegisterEntries(for: options.bookId)
+            )
+        }
+    }
+
+    private static func writeLegacyLedgerXLSX(
+        store: LedgerDataStore,
+        options: LegacyLedgerExportOptions,
+        to url: URL
+    ) throws {
+        let service = LedgerExcelExportService.shared
+        let path = url.path
+
+        switch options.ledgerType {
+        case .cashBook, .cashBookInvoice:
+            service.exportCashBook(
+                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                entries: store.cashBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice,
+                to: path
+            )
+
+        case .bankAccountBook, .bankAccountBookInvoice:
+            service.exportBankAccountBook(
+                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                entries: store.bankAccountBookEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice,
+                to: path
+            )
+
+        case .accountsReceivable:
+            service.exportAccountsReceivable(
+                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                entries: store.accountsReceivableEntries(for: options.bookId),
+                to: path
+            )
+
+        case .accountsPayable:
+            service.exportAccountsPayable(
+                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                entries: store.accountsPayableEntries(for: options.bookId),
+                to: path
+            )
+
+        case .generalLedger, .generalLedgerInvoice:
+            service.exportGeneralLedger(
+                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                entries: store.generalLedgerEntries(for: options.bookId),
+                includeInvoice: options.includeInvoice,
+                to: path
+            )
+
+        case .journal:
+            service.exportJournal(entries: store.journalEntries(for: options.bookId), to: path)
+
+        case .expenseBook, .expenseBookInvoice,
+             .fixedAssetDepreciation, .fixedAssetRegister,
+             .transportationExpense,
+             .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+            throw ExportError.unsupportedFormat(.legacyLedgerBook, .xlsx)
         }
     }
 
@@ -468,6 +815,14 @@ enum ExportCoordinator {
         return "\(target.filePrefix)_\(fiscalYear)_\(dateStr).\(format.fileExtension)"
     }
 
+    private static func makeLegacyLedgerFileName(
+        options: LegacyLedgerExportOptions,
+        format: ExportFormat
+    ) -> String {
+        let dateStr = dateFormatter.string(from: Date())
+        return "legacy_ledger_\(options.ledgerType.rawValue)_\(dateStr).\(format.fileExtension)"
+    }
+
     // MARK: - File I/O
 
     private static func writeToTempFile(content: ExportContent, fileName: String) throws -> URL {
@@ -482,6 +837,8 @@ enum ExportCoordinator {
             try data.write(to: fileURL, options: .atomic)
         case .data(let data):
             try data.write(to: fileURL, options: .atomic)
+        case .fileWriter(let writer):
+            try writer(fileURL)
         }
 
         return fileURL

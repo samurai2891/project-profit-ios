@@ -11,6 +11,7 @@ final class ExportCoordinatorTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -20,6 +21,7 @@ final class ExportCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         businessId = nil
         dataStore = nil
         context = nil
@@ -83,15 +85,18 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.label, "補助簿")
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.label, "e-Tax")
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.label, "固定資産台帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.label, "旧台帳")
     }
 
     func testExportFormatExtensions() {
         XCTAssertEqual(ExportCoordinator.ExportFormat.csv.fileExtension, "csv")
         XCTAssertEqual(ExportCoordinator.ExportFormat.pdf.fileExtension, "pdf")
         XCTAssertEqual(ExportCoordinator.ExportFormat.xtx.fileExtension, "xtx")
+        XCTAssertEqual(ExportCoordinator.ExportFormat.xlsx.fileExtension, "xlsx")
         XCTAssertEqual(ExportCoordinator.ExportFormat.csv.label, "CSV")
         XCTAssertEqual(ExportCoordinator.ExportFormat.pdf.label, "PDF")
         XCTAssertEqual(ExportCoordinator.ExportFormat.xtx.label, "XTX")
+        XCTAssertEqual(ExportCoordinator.ExportFormat.xlsx.label, "Excel")
     }
 
     func testSupportedFormatMatrixMatchesCurrentUIFlow() {
@@ -104,6 +109,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.supportedFormats, [.csv, .xtx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.supportedFormats, [.csv, .pdf, .xlsx])
     }
 
     func testRequiresPreflightBoundaries() {
@@ -116,6 +122,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(ExportCoordinator.ExportTarget.etax.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.transactions.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.subLedger.requiresPreflight)
+        XCTAssertFalse(ExportCoordinator.ExportTarget.legacyLedgerBook.requiresPreflight)
     }
 
     func testExportBlocksWhenPreflightFails() throws {
@@ -139,7 +146,6 @@ final class ExportCoordinatorTests: XCTestCase {
     }
 
     func testUnsupportedFormatReturnsUnsupportedEvenWhenPreflightWouldFail() throws {
-        // preflight が失敗する年度でも、未対応フォーマットは先に unsupported として扱う
         seedTaxYearProfile(year: 2025, state: .softClose)
         assertUnsupportedFormat(target: .trialBalance, format: .xtx, fiscalYear: 2025)
         assertUnsupportedFormat(target: .ledger, format: .xtx, fiscalYear: 2025)
@@ -246,6 +252,89 @@ final class ExportCoordinatorTests: XCTestCase {
         }
     }
 
+    func testLegacyLedgerCsvExportUsesCoordinator() throws {
+        let book = seedLegacyCashBook()
+
+        let url = try ExportCoordinator.export(
+            format: .csv,
+            modelContext: context,
+            legacyLedgerOptions: makeLegacyLedgerOptions(book: book)
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let data = try Data(contentsOf: url)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertEqual(Array(data.prefix(3)), [0xEF, 0xBB, 0xBF])
+        XCTAssertTrue(text.contains("月,日,摘要,勘定科目,入金,出金,残高"))
+        XCTAssertTrue(text.contains("売上"))
+    }
+
+    func testLegacyLedgerPdfExportUsesCoordinator() throws {
+        let book = seedLegacyCashBook()
+
+        let url = try ExportCoordinator.export(
+            format: .pdf,
+            modelContext: context,
+            legacyLedgerOptions: makeLegacyLedgerOptions(book: book)
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let data = try Data(contentsOf: url)
+        XCTAssertEqual(String(decoding: data.prefix(4), as: UTF8.self), "%PDF")
+    }
+
+    func testLegacyLedgerXlsxExportUsesCoordinator() throws {
+        let book = seedLegacyCashBook()
+
+        let url = try ExportCoordinator.export(
+            format: .xlsx,
+            modelContext: context,
+            legacyLedgerOptions: makeLegacyLedgerOptions(book: book)
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let data = try Data(contentsOf: url)
+        XCTAssertEqual(String(decoding: data.prefix(2), as: UTF8.self), "PK")
+    }
+
+    func testLegacyLedgerRejectsUnsupportedXlsxForExpenseBook() {
+        let book = seedLegacyExpenseBook()
+
+        XCTAssertThrowsError(
+            try ExportCoordinator.export(
+                format: .xlsx,
+                modelContext: context,
+                legacyLedgerOptions: makeLegacyLedgerOptions(book: book)
+            )
+        ) { error in
+            guard let exportError = error as? ExportCoordinator.ExportError,
+                  case .unsupportedFormat(let target, let format) = exportError else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertEqual(target, .legacyLedgerBook)
+            XCTAssertEqual(format, .xlsx)
+        }
+    }
+
+    func testLegacyLedgerRejectsUnsupportedCsvForTransportationExpense() {
+        let book = seedLegacyTransportationExpenseBook()
+
+        XCTAssertThrowsError(
+            try ExportCoordinator.export(
+                format: .csv,
+                modelContext: context,
+                legacyLedgerOptions: makeLegacyLedgerOptions(book: book)
+            )
+        ) { error in
+            guard let exportError = error as? ExportCoordinator.ExportError,
+                  case .unsupportedFormat(let target, let format) = exportError else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertEqual(target, .legacyLedgerBook)
+            XCTAssertEqual(format, .csv)
+        }
+    }
+
     private func seedTaxYearProfile(year: Int, state: YearLockState) {
         let profile = TaxYearProfile(
             businessId: businessId,
@@ -283,5 +372,89 @@ final class ExportCoordinatorTests: XCTestCase {
             XCTAssertEqual(actualTarget, target)
             XCTAssertEqual(actualFormat, format)
         }
+    }
+
+    private func seedLegacyCashBook() -> SDLedgerBook {
+        FeatureFlags.useLegacyLedger = true
+        let ledgerStore = LedgerDataStore(modelContext: context, accessMode: .readWrite)
+        let metadataJSON = LedgerBridge.encodeCashBookMetadata(CashBookMetadata(carryForward: 100_000))
+        let book = ledgerStore.createBook(
+            ledgerType: .cashBook,
+            title: "現金出納帳",
+            metadataJSON: metadataJSON
+        )!
+        ledgerStore.addEntry(
+            to: book.id,
+            entry: CashBookEntry(
+                month: 1,
+                day: 5,
+                description: "売上",
+                account: "売上高",
+                income: 50_000
+            )
+        )
+        return book
+    }
+
+    private func seedLegacyExpenseBook() -> SDLedgerBook {
+        FeatureFlags.useLegacyLedger = true
+        let ledgerStore = LedgerDataStore(modelContext: context, accessMode: .readWrite)
+        let metadataJSON = LedgerBridge.encodeExpenseBookMetadata(
+            ExpenseBookMetadata(accountName: "消耗品費")
+        )
+        let book = ledgerStore.createBook(
+            ledgerType: .expenseBook,
+            title: "経費帳",
+            metadataJSON: metadataJSON
+        )!
+        ledgerStore.addEntry(
+            to: book.id,
+            entry: ExpenseBookEntry(
+                month: 1,
+                day: 12,
+                counterAccount: "現金",
+                description: "インク",
+                amount: 3_000
+            )
+        )
+        return book
+    }
+
+    private func seedLegacyTransportationExpenseBook() -> SDLedgerBook {
+        FeatureFlags.useLegacyLedger = true
+        let ledgerStore = LedgerDataStore(modelContext: context, accessMode: .readWrite)
+        let metadataJSON = LedgerBridge.encodeTransportationExpenseMetadata(
+            TransportationExpenseMetadata(year: 2026)
+        )
+        let book = ledgerStore.createBook(
+            ledgerType: .transportationExpense,
+            title: "交通費精算書",
+            metadataJSON: metadataJSON
+        )!
+        ledgerStore.addEntry(
+            to: book.id,
+            entry: TransportationExpenseEntry(
+                id: UUID(),
+                date: "2026-03-01",
+                destination: "都内",
+                purpose: "打ち合わせ",
+                transportMethod: "電車",
+                routeFrom: "新宿",
+                routeTo: "渋谷",
+                tripType: .roundTrip,
+                amount: 880
+            )
+        )
+        return book
+    }
+
+    private func makeLegacyLedgerOptions(book: SDLedgerBook) -> ExportCoordinator.LegacyLedgerExportOptions {
+        ExportCoordinator.LegacyLedgerExportOptions(
+            bookId: book.id,
+            bookTitle: book.title,
+            ledgerType: book.ledgerType!,
+            metadataJSON: book.metadataJSON,
+            includeInvoice: book.includeInvoice
+        )
     }
 }

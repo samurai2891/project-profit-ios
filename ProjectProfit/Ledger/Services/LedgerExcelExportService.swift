@@ -14,7 +14,7 @@ import xlsxwriter  // libxlsxwriter
 
 // MARK: - 共通スタイル定義
 
-class ExcelStyles {
+final class ExcelStyles {
     let workbook: UnsafeMutablePointer<lxw_workbook>
     
     // フォーマット
@@ -99,7 +99,7 @@ class ExcelStyles {
 
 // MARK: - Excel Export Service
 
-class LedgerExcelExportService {
+final class LedgerExcelExportService {
     
     static let shared = LedgerExcelExportService()
     

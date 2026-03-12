@@ -24,8 +24,15 @@ struct LedgerCSVImportView: View {
         ledgerStore.book(for: bookId)
     }
 
-    private var postingIntakeUseCase: PostingIntakeUseCase {
-        PostingIntakeUseCase(modelContext: modelContext)
+    private var importCoordinator: LedgerImportCoordinator? {
+        guard let ledgerType = book?.ledgerType else {
+            return nil
+        }
+        return LedgerImportCoordinator(
+            modelContext: modelContext,
+            ledgerType: ledgerType,
+            metadataJSON: book?.metadataJSON
+        )
     }
 
     var body: some View {
@@ -177,8 +184,7 @@ struct LedgerCSVImportView: View {
 
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
-            let cleaned = content.replacingOccurrences(of: "\u{FEFF}", with: "")
-            previewRows = CSVImportService.shared.parseCSV(cleaned)
+            previewRows = importCoordinator?.preparePreview(content: content) ?? []
         } catch {
             errorMessage = "ファイル読み込みエラー: \(error.localizedDescription)"
         }
@@ -190,7 +196,7 @@ struct LedgerCSVImportView: View {
             return
         }
         guard let url = selectedURL,
-              let ledgerType = book?.ledgerType else { return }
+              let importCoordinator else { return }
 
         isImporting = true
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -204,20 +210,9 @@ struct LedgerCSVImportView: View {
 
         do {
             let fileData = try Data(contentsOf: url)
-            guard let content = String(data: fileData, encoding: .utf8) else {
-                throw AppError.invalidInput(message: "CSV の文字コードを UTF-8 として読み取れません")
-            }
-            let result = await postingIntakeUseCase.importTransactions(
-                request: CSVImportRequest(
-                    csvString: content,
-                    originalFileName: url.lastPathComponent,
-                    fileData: fileData,
-                    mimeType: "text/csv",
-                    channel: .ledgerBook(
-                        ledgerType: ledgerType,
-                        metadataJSON: book?.metadataJSON
-                    )
-                )
+            let result = try await importCoordinator.importFile(
+                fileData: fileData,
+                originalFileName: url.lastPathComponent
             )
             importResult = result
             errorMessage = nil

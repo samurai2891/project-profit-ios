@@ -1,6 +1,6 @@
 // ============================================================
 // LedgerExportService.swift
-// CSV書き出し・読み込み & PDF生成サービス
+// CSV書き出しサービス
 // Excel原本と完全同一フォーマットで出力
 // ============================================================
 
@@ -12,7 +12,7 @@ import PDFKit
 
 // MARK: - CSV Export Service
 
-class CSVExportService {
+final class CSVExportService {
     
     static let shared = CSVExportService()
     
@@ -373,42 +373,6 @@ class CSVExportService {
             }
             return val
         }.joined(separator: ",")
-    }
-}
-
-// MARK: - CSV Import Service
-
-class CSVImportService {
-    
-    static let shared = CSVImportService()
-    
-    func parseCSV(_ content: String) -> [[String]] {
-        var rows: [[String]] = []
-        let lines = content.components(separatedBy: .newlines)
-        for line in lines {
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            rows.append(parseCSVLine(line))
-        }
-        return rows
-    }
-    
-    private func parseCSVLine(_ line: String) -> [String] {
-        var fields: [String] = []
-        var current = ""
-        var inQuotes = false
-        
-        for char in line {
-            if char == "\"" {
-                inQuotes.toggle()
-            } else if char == "," && !inQuotes {
-                fields.append(current)
-                current = ""
-            } else {
-                current.append(char)
-            }
-        }
-        fields.append(current)
-        return fields
     }
 }
 
