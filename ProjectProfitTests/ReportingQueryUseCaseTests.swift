@@ -11,6 +11,7 @@ final class ReportingQueryUseCaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -19,6 +20,7 @@ final class ReportingQueryUseCaseTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         UserDefaults.standard.removeObject(forKey: FiscalYearSettings.userDefaultsKey)
         useCase = nil
         dataStore = nil
@@ -27,10 +29,10 @@ final class ReportingQueryUseCaseTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOverallCategoryAndProjectSummariesMatchDataStoreIncludingCanonicalSupplemental() async throws {
+    func testOverallCategoryAndProjectSummariesUseApprovedCanonicalJournals() async throws {
         FeatureFlags.useCanonicalPosting = true
         let project = mutations(dataStore).addProject(name: "Reporting Project", description: "")
-        _ = mutations(dataStore).addTransaction(
+        try await approveManualCandidate(
             type: .expense,
             amount: 4_000,
             date: makeDate(year: 2025, month: 5, day: 10),
@@ -38,8 +40,7 @@ final class ReportingQueryUseCaseTests: XCTestCase {
             memo: "legacy expense",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-
-        let candidateResult = await dataStore.saveManualPostingCandidate(
+        try await approveManualCandidate(
             type: .expense,
             amount: 12_000,
             date: makeDate(year: 2025, month: 6, day: 1),
@@ -47,15 +48,83 @@ final class ReportingQueryUseCaseTests: XCTestCase {
             memo: "canonical supplemental",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-cash",
-            taxDeductibleRate: 100,
-            taxAmount: 1_200,
-            taxCodeId: TaxCode.standard10.rawValue,
-            isTaxIncluded: false,
             candidateSource: .manual
         )
 
+        let startDate = makeDate(year: 2025, month: 1, day: 1)
+        let endDate = makeDate(year: 2025, month: 12, day: 31)
+
+        let actualOverall = useCase.overallSummary(startDate: startDate, endDate: endDate)
+        XCTAssertEqual(actualOverall.totalIncome, 0)
+        XCTAssertEqual(actualOverall.totalExpense, 16_000)
+        XCTAssertEqual(actualOverall.netProfit, -16_000)
+
+        let actualCategories = useCase.categorySummaries(type: .expense, startDate: startDate, endDate: endDate)
+        XCTAssertEqual(actualCategories.map(\.categoryId), ["cat-tools"])
+        XCTAssertEqual(actualCategories.map(\.total), [16_000])
+
+        let actualProjects = useCase.projectSummaries(startDate: startDate, endDate: endDate)
+        XCTAssertEqual(actualProjects.map(\.id), [project.id])
+        XCTAssertEqual(actualProjects.map(\.totalExpense), [16_000])
+        XCTAssertEqual(actualProjects.map(\.profit), [-16_000])
+    }
+
+    func testMonthlySummariesUseApprovedCanonicalJournalsForFiscalYearOrdering() async throws {
+        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
+        FeatureFlags.useCanonicalPosting = true
+
+        let project = mutations(dataStore).addProject(name: "FY Project", description: "")
+        try await approveManualCandidate(
+            type: .income,
+            amount: 10_000,
+            date: makeDate(year: 2025, month: 4, day: 10),
+            categoryId: "cat-sales",
+            memo: "april income",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+        try await approveManualCandidate(
+            type: .expense,
+            amount: 3_000,
+            date: makeDate(year: 2026, month: 3, day: 20),
+            categoryId: "cat-tools",
+            memo: "march expense",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        let actual = useCase.monthlySummaries(fiscalYear: 2025, startMonth: 4)
+
+        XCTAssertEqual(actual.map(\.month), [
+            "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09",
+            "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03",
+        ])
+        XCTAssertEqual(actual.map(\.income), [10_000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        XCTAssertEqual(actual.map(\.expense), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3_000])
+        XCTAssertEqual(actual.map(\.profit), [10_000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -3_000])
+    }
+
+    private func approveManualCandidate(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String = "acct-cash",
+        candidateSource: CandidateSource = .manual
+    ) async throws {
+        let result = await dataStore.saveManualPostingCandidate(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            paymentAccountId: paymentAccountId,
+            candidateSource: candidateSource
+        )
+
         let candidate: PostingCandidate
-        switch candidateResult {
+        switch result {
         case .success(let savedCandidate):
             candidate = savedCandidate
         case .failure(let error):
@@ -67,56 +136,6 @@ final class ReportingQueryUseCaseTests: XCTestCase {
             candidateId: candidate.id,
             description: "approved for reporting"
         )
-
-        let startDate = makeDate(year: 2025, month: 1, day: 1)
-        let endDate = makeDate(year: 2025, month: 12, day: 31)
-
-        let expectedOverall = dataStore.getOverallSummary(startDate: startDate, endDate: endDate)
-        let actualOverall = useCase.overallSummary(startDate: startDate, endDate: endDate)
-        XCTAssertEqual(actualOverall.totalIncome, expectedOverall.totalIncome)
-        XCTAssertEqual(actualOverall.totalExpense, expectedOverall.totalExpense)
-        XCTAssertEqual(actualOverall.netProfit, expectedOverall.netProfit)
-
-        let expectedCategories = dataStore.getCategorySummaries(type: .expense, startDate: startDate, endDate: endDate)
-        let actualCategories = useCase.categorySummaries(type: .expense, startDate: startDate, endDate: endDate)
-        XCTAssertEqual(actualCategories.map(\.categoryId), expectedCategories.map(\.categoryId))
-        XCTAssertEqual(actualCategories.map(\.total), expectedCategories.map(\.total))
-
-        let expectedProjects = dataStore.getAllProjectSummaries(startDate: startDate, endDate: endDate)
-        let actualProjects = useCase.projectSummaries(startDate: startDate, endDate: endDate)
-        XCTAssertEqual(actualProjects.map(\.id), expectedProjects.map(\.id))
-        XCTAssertEqual(actualProjects.map(\.totalExpense), expectedProjects.map(\.totalExpense))
-        XCTAssertEqual(actualProjects.map(\.profit), expectedProjects.map(\.profit))
-    }
-
-    func testMonthlySummariesMatchDataStoreForFiscalYearOrdering() {
-        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
-
-        let project = mutations(dataStore).addProject(name: "FY Project", description: "")
-        _ = mutations(dataStore).addTransaction(
-            type: .income,
-            amount: 10_000,
-            date: makeDate(year: 2025, month: 4, day: 10),
-            categoryId: "cat-sales",
-            memo: "april income",
-            allocations: [(projectId: project.id, ratio: 100)]
-        )
-        _ = mutations(dataStore).addTransaction(
-            type: .expense,
-            amount: 3_000,
-            date: makeDate(year: 2026, month: 3, day: 20),
-            categoryId: "cat-tools",
-            memo: "march expense",
-            allocations: [(projectId: project.id, ratio: 100)]
-        )
-
-        let expected = dataStore.getMonthlySummaries(fiscalYear: 2025, startMonth: 4)
-        let actual = useCase.monthlySummaries(fiscalYear: 2025, startMonth: 4)
-
-        XCTAssertEqual(actual.map(\.month), expected.map(\.month))
-        XCTAssertEqual(actual.map(\.income), expected.map(\.income))
-        XCTAssertEqual(actual.map(\.expense), expected.map(\.expense))
-        XCTAssertEqual(actual.map(\.profit), expected.map(\.profit))
     }
 
     private func makeDate(year: Int, month: Int, day: Int) -> Date {

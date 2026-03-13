@@ -3,7 +3,7 @@ import SwiftData
 
 @MainActor
 final class SwiftDataReportingRepository: ReportingRepository {
-    private struct CanonicalSupplementalSummaryRecord {
+    private struct CanonicalSummaryRecord {
         let date: Date
         let type: TransactionType
         let amount: Int
@@ -19,43 +19,16 @@ final class SwiftDataReportingRepository: ReportingRepository {
 
     func projectSummaries(startDate: Date?, endDate: Date?) throws -> [ProjectSummary] {
         let projects = try fetchProjects()
-        let transactions = try fetchTransactions()
-        let supplementalRecords = try canonicalSupplementalSummaryRecords(
-            transactions: transactions,
-            startDate: startDate,
-            endDate: endDate
-        )
+        let records = try canonicalSummaryRecords(startDate: startDate, endDate: endDate)
 
         return projects.map { project in
-            var totalIncome = 0
-            var totalExpense = 0
-
-            for transaction in transactions {
-                if let startDate, transaction.date < startDate { continue }
-                if let endDate, transaction.date > endDate { continue }
-                if let allocation = transaction.allocations.first(where: { $0.projectId == project.id }) {
-                    switch transaction.type {
-                    case .income:
-                        totalIncome += allocation.amount
-                    case .expense:
-                        totalExpense += allocation.amount
-                    case .transfer:
-                        break
-                    }
-                }
-            }
-
-            for record in supplementalRecords where record.projectId == project.id {
-                switch record.type {
-                case .income:
-                    totalIncome += record.amount
-                case .expense:
-                    totalExpense += record.amount
-                case .transfer:
-                    break
-                }
-            }
-
+            let projectRecords = records.filter { $0.projectId == project.id }
+            let totalIncome = projectRecords
+                .filter { $0.type == .income }
+                .reduce(0) { $0 + $1.amount }
+            let totalExpense = projectRecords
+                .filter { $0.type == .expense }
+                .reduce(0) { $0 + $1.amount }
             let profit = totalIncome - totalExpense
             let profitMargin = totalIncome > 0 ? Double(profit) / Double(totalIncome) * 100 : 0
 
@@ -72,42 +45,16 @@ final class SwiftDataReportingRepository: ReportingRepository {
     }
 
     func overallSummary(startDate: Date?, endDate: Date?) throws -> OverallSummary {
-        let transactions = try fetchTransactions()
-        let supplementalRecords = try canonicalSupplementalSummaryRecords(
-            transactions: transactions,
-            startDate: startDate,
-            endDate: endDate
-        )
-
-        var totalIncome = 0
-        var totalExpense = 0
-
-        for transaction in transactions {
-            if let startDate, transaction.date < startDate { continue }
-            if let endDate, transaction.date > endDate { continue }
-            switch transaction.type {
-            case .income:
-                totalIncome += transaction.amount
-            case .expense:
-                totalExpense += transaction.amount
-            case .transfer:
-                break
-            }
-        }
-
-        for record in supplementalRecords {
-            switch record.type {
-            case .income:
-                totalIncome += record.amount
-            case .expense:
-                totalExpense += record.amount
-            case .transfer:
-                break
-            }
-        }
-
+        let records = try canonicalSummaryRecords(startDate: startDate, endDate: endDate)
+        let totalIncome = records
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + $1.amount }
+        let totalExpense = records
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.amount }
         let netProfit = totalIncome - totalExpense
         let profitMargin = totalIncome > 0 ? Double(netProfit) / Double(totalIncome) * 100 : 0
+
         return OverallSummary(
             totalIncome: totalIncome,
             totalExpense: totalExpense,
@@ -121,27 +68,15 @@ final class SwiftDataReportingRepository: ReportingRepository {
             return []
         }
 
-        let transactions = try fetchTransactions()
         let categoriesById = try Dictionary(uniqueKeysWithValues: fetchCategories().map { ($0.id, $0) })
-        let supplementalRecords = try canonicalSupplementalSummaryRecords(
-            transactions: transactions,
-            startDate: startDate,
-            endDate: endDate
-        )
+        let records = try canonicalSummaryRecords(startDate: startDate, endDate: endDate)
 
         var totals: [String: Int] = [:]
         var grandTotal = 0
-
-        for transaction in transactions {
-            guard transaction.type == type else { continue }
-            if let startDate, transaction.date < startDate { continue }
-            if let endDate, transaction.date > endDate { continue }
-            totals[transaction.categoryId, default: 0] += transaction.amount
-            grandTotal += transaction.amount
-        }
-
-        for record in supplementalRecords {
-            guard record.type == type, let categoryId = record.categoryId else { continue }
+        for record in records where record.type == type {
+            guard let categoryId = record.categoryId else {
+                continue
+            }
             totals[categoryId, default: 0] += record.amount
             grandTotal += record.amount
         }
@@ -161,7 +96,8 @@ final class SwiftDataReportingRepository: ReportingRepository {
 
     func monthlySummaries(fiscalYear: Int, startMonth: Int) throws -> [MonthlySummary] {
         let calendarMonths = fiscalYearCalendarMonths(fiscalYear: fiscalYear, startMonth: startMonth)
-        let transactions = try fetchTransactions()
+        let range = fiscalYearDateBounds(fiscalYear: fiscalYear, startMonth: startMonth)
+        let records = try canonicalSummaryRecords(startDate: range.lowerBound, endDate: range.upperBound)
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
 
@@ -171,19 +107,19 @@ final class SwiftDataReportingRepository: ReportingRepository {
         }
         let keySet = Set(monthlyData.map(\.key))
 
-        for transaction in transactions {
-            let monthKey = formatter.string(from: transaction.date)
+        for record in records {
+            let monthKey = formatter.string(from: record.date)
             guard keySet.contains(monthKey),
                   let index = monthlyData.firstIndex(where: { $0.key == monthKey })
             else {
                 continue
             }
 
-            switch transaction.type {
+            switch record.type {
             case .income:
-                monthlyData[index].income += transaction.amount
+                monthlyData[index].income += record.amount
             case .expense:
-                monthlyData[index].expense += transaction.amount
+                monthlyData[index].expense += record.amount
             case .transfer:
                 break
             }
@@ -199,17 +135,13 @@ final class SwiftDataReportingRepository: ReportingRepository {
         }
     }
 
-    private func canonicalSupplementalSummaryRecords(
-        transactions: [PPTransaction],
+    private func canonicalSummaryRecords(
         startDate: Date?,
         endDate: Date?
-    ) throws -> [CanonicalSupplementalSummaryRecord] {
-        let legacyTransactionIds = Set(transactions.map(\.id))
+    ) throws -> [CanonicalSummaryRecord] {
+        let accountsById = try Dictionary(uniqueKeysWithValues: fetchCanonicalAccounts().map { ($0.id, $0) })
         let journals = try fetchJournalEntries().filter { journal in
-            guard let sourceCandidateId = journal.sourceCandidateId else {
-                return false
-            }
-            guard !legacyTransactionIds.contains(sourceCandidateId) else {
+            guard journal.approvedAt != nil, journal.entryType == .normal else {
                 return false
             }
             if let startDate, journal.journalDate < startDate {
@@ -220,42 +152,39 @@ final class SwiftDataReportingRepository: ReportingRepository {
             }
             return true
         }
-        guard !journals.isEmpty else {
-            return []
-        }
-
         let candidatesById = try fetchPostingCandidates(ids: Set(journals.compactMap(\.sourceCandidateId)))
 
-        return journals.flatMap { journal -> [CanonicalSupplementalSummaryRecord] in
-            guard let candidateId = journal.sourceCandidateId,
-                  let candidate = candidatesById[candidateId],
-                  let transactionType = candidate.legacySnapshot?.type
-            else {
-                return []
-            }
-
-            let relevantLines: [PostingCandidateLine]
-            switch transactionType {
-            case .income:
-                relevantLines = candidate.proposedLines.filter { $0.creditAccountId != nil }
-            case .expense:
-                relevantLines = candidate.proposedLines.filter { $0.debitAccountId != nil }
-            case .transfer:
-                relevantLines = []
-            }
-
-            let categoryId = candidate.legacySnapshot?.categoryId
-            return relevantLines.compactMap { line in
-                let amount = NSDecimalNumber(decimal: line.amount).intValue
-                guard amount != 0 else {
+        return journals.flatMap { journal in
+            let candidate = journal.sourceCandidateId.flatMap { candidatesById[$0] }
+            return journal.lines.compactMap { line -> CanonicalSummaryRecord? in
+                guard let account = accountsById[line.accountId] else {
                     return nil
                 }
-                return CanonicalSupplementalSummaryRecord(
+
+                let type: TransactionType?
+                let amount: Int
+                switch account.accountType {
+                case .revenue where line.creditAmount > 0:
+                    type = .income
+                    amount = NSDecimalNumber(decimal: line.creditAmount).intValue
+                case .expense where line.debitAmount > 0:
+                    type = .expense
+                    amount = NSDecimalNumber(decimal: line.debitAmount).intValue
+                default:
+                    type = nil
+                    amount = 0
+                }
+
+                guard let type, amount != 0 else {
+                    return nil
+                }
+
+                return CanonicalSummaryRecord(
                     date: journal.journalDate,
-                    type: transactionType,
+                    type: type,
                     amount: amount,
                     projectId: line.projectAllocationId,
-                    categoryId: categoryId
+                    categoryId: candidate?.legacySnapshot?.categoryId
                 )
             }
         }
@@ -266,14 +195,14 @@ final class SwiftDataReportingRepository: ReportingRepository {
         return try modelContext.fetch(descriptor)
     }
 
-    private func fetchTransactions() throws -> [PPTransaction] {
-        let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date)])
-        return try modelContext.fetch(descriptor)
-    }
-
     private func fetchCategories() throws -> [PPCategory] {
         let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\PPCategory.name)])
         return try modelContext.fetch(descriptor)
+    }
+
+    private func fetchCanonicalAccounts() throws -> [CanonicalAccount] {
+        let descriptor = FetchDescriptor<CanonicalAccountEntity>(sortBy: [SortDescriptor(\.displayOrder)])
+        return try modelContext.fetch(descriptor).map(CanonicalAccountEntityMapper.toDomain)
     }
 
     private func fetchJournalEntries() throws -> [CanonicalJournalEntry] {
@@ -294,5 +223,16 @@ final class SwiftDataReportingRepository: ReportingRepository {
             }
             result[entity.candidateId] = PostingCandidateEntityMapper.toDomain(entity)
         }
+    }
+
+    private func fiscalYearDateBounds(fiscalYear: Int, startMonth: Int) -> ClosedRange<Date> {
+        let calendar = Calendar(identifier: .gregorian)
+        let startYear = fiscalYear
+        let startDate = calendar.date(from: DateComponents(year: startYear, month: startMonth, day: 1)) ?? .distantPast
+        let endMonth = startMonth == 1 ? 12 : startMonth - 1
+        let endYear = startMonth == 1 ? fiscalYear : fiscalYear + 1
+        let endMonthStart = calendar.date(from: DateComponents(year: endYear, month: endMonth, day: 1)) ?? .distantFuture
+        let endDate = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: endMonthStart) ?? .distantFuture
+        return startDate...endDate
     }
 }

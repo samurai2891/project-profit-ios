@@ -52,57 +52,21 @@ struct ProjectedJournalReadModelQuery {
 @MainActor
 struct AccountingLedgerReadModelQuery {
     private let support: AccountingReadSupport
-    private let projectedJournalQuery: ProjectedJournalReadModelQuery
 
     init(modelContext: ModelContext) {
-        let support = AccountingReadSupport(modelContext: modelContext)
-        self.init(support: support)
+        self.init(support: AccountingReadSupport(modelContext: modelContext))
     }
 
     init(support: AccountingReadSupport) {
         self.support = support
-        self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
     }
 
     func accountBalance(accountId: String, upTo date: Date? = nil) -> GeneralLedgerBalance {
-        let requestedFiscalYear = date.map { fiscalYear(for: $0, startMonth: FiscalYearSettings.startMonth) }
-        let projected = projectedJournalQuery.snapshot(fiscalYear: requestedFiscalYear)
-        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
-
-        let relevantLines: [PPJournalLine]
-        if let date {
-            let postedEntryIds = Set(
-                projected.entries
-                    .filter { $0.isPosted && $0.date <= date }
-                    .map(\.id)
-            )
-            relevantLines = projected.lines.filter { line in
-                guard postedEntryIds.contains(line.entryId),
-                      line.accountId == accountId,
-                      let entry = entryMap[line.entryId]
-                else {
-                    return false
-                }
-                return entry.date <= date
-            }
-        } else {
-            let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
-            relevantLines = projected.lines.filter {
-                postedEntryIds.contains($0.entryId) && $0.accountId == accountId
-            }
-        }
-
-        let debitTotal = relevantLines.reduce(0) { $0 + $1.debit }
-        let creditTotal = relevantLines.reduce(0) { $0 + $1.credit }
-        let account = support.fetchAccounts().first { $0.id == accountId }
-        let balance = account?.normalBalance == .debit
-            ? debitTotal - creditTotal
-            : creditTotal - debitTotal
-
+        let entries = entries(accountId: accountId, startDate: nil, endDate: date)
         return GeneralLedgerBalance(
-            debit: debitTotal,
-            credit: creditTotal,
-            balance: balance
+            debit: entries.reduce(0) { $0 + $1.debit },
+            credit: entries.reduce(0) { $0 + $1.credit },
+            balance: entries.last?.runningBalance ?? 0
         )
     }
 
@@ -111,109 +75,48 @@ struct AccountingLedgerReadModelQuery {
         startDate: Date? = nil,
         endDate: Date? = nil
     ) -> [AccountingLedgerEntry] {
-        let requestedFiscalYear: Int?
-        if let startDate {
-            requestedFiscalYear = fiscalYear(for: startDate, startMonth: FiscalYearSettings.startMonth)
-        } else if let endDate {
-            requestedFiscalYear = fiscalYear(for: endDate, startMonth: FiscalYearSettings.startMonth)
-        } else {
-            requestedFiscalYear = nil
+        let requestedFiscalYear = requestedFiscalYear(startDate: startDate, endDate: endDate)
+        let context = support.canonicalReadContext(fiscalYear: requestedFiscalYear)
+        guard let canonicalAccount = context.canonicalAccountsByLegacyId[accountId] else {
+            return []
         }
 
-        let projected = projectedJournalQuery.snapshot(fiscalYear: requestedFiscalYear)
-        let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
-        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
-        let transactions = support.fetchTransactions()
-        let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
-        let transactionMapByJournalEntryId: [UUID: PPTransaction] = Dictionary(
-            uniqueKeysWithValues: transactions.compactMap { transaction in
-                guard let journalEntryId = transaction.journalEntryId else {
-                    return nil
-                }
-                return (journalEntryId, transaction)
-            }
-        )
-        let canonicalCounterpartyByEntryId = canonicalCounterpartyIds(
-            businessId: projected.businessId,
-            requestedFiscalYear: requestedFiscalYear
-        )
-
-        let relevantLines = projected.lines
-            .filter { $0.accountId == accountId && postedEntryIds.contains($0.entryId) }
-            .compactMap { line -> (PPJournalLine, PPJournalEntry)? in
-                guard let entry = entryMap[line.entryId] else { return nil }
-                if let startDate, entry.date < startDate { return nil }
-                if let endDate, entry.date > endDate { return nil }
-                return (line, entry)
-            }
-            .sorted { $0.1.date < $1.1.date }
-
-        let account = support.fetchAccounts().first { $0.id == accountId }
-        let isDebitNormal = account?.normalBalance == .debit
-        var runningBalance = 0
-
-        return relevantLines.map { line, entry in
-            if isDebitNormal {
-                runningBalance += line.debit - line.credit
-            } else {
-                runningBalance += line.credit - line.debit
-            }
-
-            let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
-                ?? transactionMapByJournalEntryId[entry.id]
-            let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
-                .flatMap { support.fetchCanonicalCounterparty(id: $0)?.displayName }
-                ?? transaction?.counterparty
-            let resolvedTaxCategory = transaction?.resolvedTaxCategory
-
-            return AccountingLedgerEntry(
-                id: line.id,
-                date: entry.date,
-                memo: entry.memo,
-                entryType: entry.entryType,
-                debit: line.debit,
-                credit: line.credit,
-                runningBalance: runningBalance,
-                counterparty: resolvedCounterparty,
-                taxCategory: resolvedTaxCategory
+        return CanonicalBookService.generateGeneralLedger(
+            journals: context.journals,
+            accountId: canonicalAccount.id,
+            accounts: context.accounts,
+            counterparties: context.counterpartiesById,
+            dateRange: effectiveDateRange(
+                fiscalYear: requestedFiscalYear,
+                startDate: startDate,
+                endDate: endDate
+            )
+        ).map { entry in
+            AccountingLedgerEntry(
+                id: entry.id,
+                date: entry.journalDate,
+                memo: entry.description,
+                entryType: ledgerEntryType(for: entry.entryType),
+                debit: decimalInt(entry.debitAmount),
+                credit: decimalInt(entry.creditAmount),
+                runningBalance: decimalInt(entry.runningBalance),
+                counterparty: entry.counterpartyName,
+                taxCategory: TaxCode.resolve(id: entry.taxCodeId)?.legacyCategory
             )
         }
-    }
-
-    private func canonicalCounterpartyIds(
-        businessId: UUID?,
-        requestedFiscalYear: Int?
-    ) -> [UUID: UUID] {
-        guard let businessId else {
-            return [:]
-        }
-        return Dictionary(
-            uniqueKeysWithValues: support.fetchCanonicalJournalEntries(
-                businessId: businessId,
-                taxYear: requestedFiscalYear
-            ).compactMap { journal in
-                guard let counterpartyId = journal.lines.compactMap(\.counterpartyId).first else {
-                    return nil
-                }
-                return (journal.id, counterpartyId)
-            }
-        )
     }
 }
 
 @MainActor
 struct SubLedgerReadModelQuery {
     private let support: AccountingReadSupport
-    private let projectedJournalQuery: ProjectedJournalReadModelQuery
 
     init(modelContext: ModelContext) {
-        let support = AccountingReadSupport(modelContext: modelContext)
-        self.init(support: support)
+        self.init(support: AccountingReadSupport(modelContext: modelContext))
     }
 
     init(support: AccountingReadSupport) {
         self.support = support
-        self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
     }
 
     func entries(
@@ -223,189 +126,116 @@ struct SubLedgerReadModelQuery {
         accountFilter: String? = nil,
         counterpartyFilter: String? = nil
     ) -> [SubLedgerEntry] {
-        let accounts = support.fetchAccounts()
-        let targetAccountIds: [String]
-        if let accountFilter {
-            targetAccountIds = [accountFilter]
-        } else {
-            targetAccountIds = subLedgerAccountIds(for: type, accounts: accounts)
-        }
-        guard !targetAccountIds.isEmpty else {
-            return []
-        }
+        let requestedFiscalYear = requestedFiscalYear(startDate: startDate, endDate: endDate)
+        let context = support.canonicalReadContext(fiscalYear: requestedFiscalYear)
 
-        let accountMap = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        let requestedFiscalYear: Int?
-        if let startDate {
-            requestedFiscalYear = fiscalYear(for: startDate, startMonth: FiscalYearSettings.startMonth)
-        } else if let endDate {
-            requestedFiscalYear = fiscalYear(for: endDate, startMonth: FiscalYearSettings.startMonth)
-        } else {
-            requestedFiscalYear = nil
-        }
-
-        let projected = projectedJournalQuery.snapshot(fiscalYear: requestedFiscalYear)
-        let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
-        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
-        let transactions = support.fetchTransactions()
-        let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
-        let transactionMapByJournalEntryId: [UUID: PPTransaction] = Dictionary(
-            uniqueKeysWithValues: transactions.compactMap { transaction in
-                guard let journalEntryId = transaction.journalEntryId else {
-                    return nil
-                }
-                return (journalEntryId, transaction)
-            }
+        return CanonicalBookService.generateSubsidiaryLedger(
+            journals: context.journals,
+            type: canonicalSubLedgerType(for: type),
+            accounts: context.accounts,
+            counterparties: context.counterpartiesById,
+            dateRange: effectiveDateRange(
+                fiscalYear: requestedFiscalYear,
+                startDate: startDate,
+                endDate: endDate
+            )
         )
-        let linesByEntry = Dictionary(grouping: projected.lines) { $0.entryId }
-        let targetAccountIdSet = Set(targetAccountIds)
-        let canonicalCounterpartyByEntryId = canonicalCounterpartyIds(
-            businessId: projected.businessId,
-            requestedFiscalYear: requestedFiscalYear
-        )
-
-        var enrichedLines: [(
-            lineId: UUID,
-            entryDate: Date,
-            accountId: String,
-            accountCode: String,
-            accountName: String,
-            memo: String,
-            debit: Int,
-            credit: Int,
-            counterAccountId: String?,
-            counterparty: String?,
-            taxCategory: TaxCategory?
-        )] = []
-
-        for journalLine in projected.lines {
-            guard targetAccountIdSet.contains(journalLine.accountId),
-                  postedEntryIds.contains(journalLine.entryId),
-                  let entry = entryMap[journalLine.entryId]
-            else {
-                continue
+        .filter { entry in
+            if let accountFilter, context.legacyAccountId(for: entry.accountId) != accountFilter {
+                return false
             }
-            if let startDate, entry.date < startDate { continue }
-            if let endDate, entry.date > endDate { continue }
-
-            let account = accountMap[journalLine.accountId]
-            let siblingLines = linesByEntry[entry.id]?.filter { $0.id != journalLine.id } ?? []
-            let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
-                ?? transactionMapByJournalEntryId[entry.id]
-            let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
-                .flatMap { support.fetchCanonicalCounterparty(id: $0)?.displayName }
-                ?? transaction?.counterparty
-            let resolvedTaxCategory = transaction?.resolvedTaxCategory
-
-            enrichedLines.append((
-                lineId: journalLine.id,
-                entryDate: entry.date,
-                accountId: journalLine.accountId,
-                accountCode: account?.code ?? journalLine.accountId,
-                accountName: account?.name ?? journalLine.accountId,
-                memo: entry.memo,
-                debit: journalLine.debit,
-                credit: journalLine.credit,
-                counterAccountId: siblingLines.max(by: { $0.amount < $1.amount })?.accountId,
-                counterparty: resolvedCounterparty,
-                taxCategory: resolvedTaxCategory
-            ))
-        }
-
-        enrichedLines.sort {
-            if $0.entryDate != $1.entryDate { return $0.entryDate < $1.entryDate }
-            if $0.accountCode != $1.accountCode { return $0.accountCode < $1.accountCode }
-            return $0.lineId.uuidString < $1.lineId.uuidString
-        }
-
-        if let counterpartyFilter {
-            enrichedLines = enrichedLines.filter { line in
-                let counterparty = line.counterparty ?? ""
+            if let counterpartyFilter {
+                let counterparty = entry.counterpartyName ?? ""
                 return counterpartyFilter.isEmpty ? counterparty.isEmpty : counterparty == counterpartyFilter
             }
+            return true
         }
-
-        var runningBalances: [String: Int] = [:]
-        return enrichedLines.map { line in
-            let account = accountMap[line.accountId]
-            let isDebitNormal = account?.normalBalance == .debit
-            let balanceKey: String
-            switch type {
-            case .accountsReceivableBook, .accountsPayableBook:
-                balanceKey = line.counterparty ?? ""
-            case .cashBook, .expenseBook:
-                balanceKey = line.accountId
-            }
-
-            let previousBalance = runningBalances[balanceKey, default: 0]
-            let newBalance = isDebitNormal
-                ? previousBalance + line.debit - line.credit
-                : previousBalance + line.credit - line.debit
-            runningBalances[balanceKey] = newBalance
-
+        .map { entry in
+            let legacyAccount = context.legacyAccount(for: entry.accountId)
             return SubLedgerEntry(
-                id: line.lineId,
-                date: line.entryDate,
-                accountId: line.accountId,
-                accountCode: line.accountCode,
-                accountName: line.accountName,
-                memo: line.memo,
-                debit: line.debit,
-                credit: line.credit,
-                runningBalance: newBalance,
-                counterAccountId: line.counterAccountId,
-                counterparty: line.counterparty,
-                taxCategory: line.taxCategory
+                id: entry.id,
+                date: entry.journalDate,
+                accountId: context.legacyAccountId(for: entry.accountId),
+                accountCode: legacyAccount?.code ?? entry.accountCode,
+                accountName: legacyAccount?.name ?? entry.accountName,
+                memo: entry.description,
+                debit: decimalInt(entry.debitAmount),
+                credit: decimalInt(entry.creditAmount),
+                runningBalance: decimalInt(entry.runningBalance),
+                counterAccountId: entry.counterAccountId.map { context.legacyAccountId(for: $0) },
+                counterparty: entry.counterpartyName,
+                taxCategory: TaxCode.resolve(id: entry.taxCodeId)?.legacyCategory
             )
         }
     }
+}
 
-    private func canonicalCounterpartyIds(
-        businessId: UUID?,
-        requestedFiscalYear: Int?
-    ) -> [UUID: UUID] {
-        guard let businessId else {
-            return [:]
-        }
-        return Dictionary(
-            uniqueKeysWithValues: support.fetchCanonicalJournalEntries(
-                businessId: businessId,
-                taxYear: requestedFiscalYear
-            ).compactMap { journal in
-                guard let counterpartyId = journal.lines.compactMap(\.counterpartyId).first else {
-                    return nil
-                }
-                return (journal.id, counterpartyId)
-            }
-        )
+private func requestedFiscalYear(startDate: Date?, endDate: Date?) -> Int? {
+    if let startDate {
+        return fiscalYear(for: startDate, startMonth: FiscalYearSettings.startMonth)
+    }
+    if let endDate {
+        return fiscalYear(for: endDate, startMonth: FiscalYearSettings.startMonth)
+    }
+    return nil
+}
+
+private func effectiveDateRange(
+    fiscalYear: Int?,
+    startDate: Date?,
+    endDate: Date?
+) -> ClosedRange<Date>? {
+    guard startDate != nil || endDate != nil || fiscalYear != nil else {
+        return nil
     }
 
-    private func subLedgerAccountIds(for type: SubLedgerType, accounts: [PPAccount]) -> [String] {
-        switch type {
-        case .cashBook:
-            return [AccountingConstants.cashAccountId]
-        case .accountsReceivableBook:
-            return [AccountingConstants.accountsReceivableAccountId]
-        case .accountsPayableBook:
-            return [AccountingConstants.accountsPayableAccountId]
-        case .expenseBook:
-            return accounts
-                .filter {
-                    $0.isActive
-                        && $0.accountType == .expense
-                        && !expenseBookExcludedAccountIds.contains($0.id)
-                }
-                .map(\.id)
-        }
+    let bounds = fiscalYear.map {
+        fiscalYearDateBounds(year: $0, startMonth: FiscalYearSettings.startMonth)
     }
+    let lowerBound = startDate ?? bounds?.lowerBound ?? .distantPast
+    let upperBound = endDate ?? bounds?.upperBound ?? .distantFuture
+    return lowerBound...upperBound
+}
 
-    private var expenseBookExcludedAccountIds: Set<String> {
-        [
-            AccountingConstants.purchasesAccountId,
-            AccountingConstants.openingInventoryAccountId,
-            AccountingConstants.cogsAccountId,
-        ]
+private func fiscalYearDateBounds(year: Int, startMonth: Int) -> ClosedRange<Date> {
+    let calendar = Calendar(identifier: .gregorian)
+    let startYear = startMonth == 1 ? year : year - 1
+    let startDate = calendar.date(from: DateComponents(year: startYear, month: startMonth, day: 1)) ?? .distantPast
+    let endMonth = startMonth == 1 ? 12 : startMonth - 1
+    let endYear = startMonth == 1 ? year : year
+    let monthStart = calendar.date(from: DateComponents(year: endYear, month: endMonth, day: 1)) ?? .distantFuture
+    let endDate = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthStart) ?? .distantFuture
+    return startDate...endDate
+}
+
+private func canonicalSubLedgerType(for type: SubLedgerType) -> CanonicalSubLedgerType {
+    switch type {
+    case .cashBook:
+        return .cash
+    case .accountsReceivableBook:
+        return .accountsReceivable
+    case .accountsPayableBook:
+        return .accountsPayable
+    case .expenseBook:
+        return .expense
     }
+}
+
+private func ledgerEntryType(for entryType: CanonicalJournalEntryType) -> JournalEntryType {
+    switch entryType {
+    case .normal:
+        return .auto
+    case .opening:
+        return .opening
+    case .closing:
+        return .closing
+    case .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+        return .auto
+    }
+}
+
+private func decimalInt(_ value: Decimal) -> Int {
+    NSDecimalNumber(decimal: value).intValue
 }
 
 @MainActor

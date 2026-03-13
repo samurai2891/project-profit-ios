@@ -351,6 +351,132 @@ enum ExportCoordinator {
         }
     }
 
+    private static func legacyAccounts(for context: CanonicalReadContext) -> [PPAccount] {
+        context.accounts.compactMap { account in
+            if let legacyAccountId = account.legacyAccountId,
+               let legacyAccount = context.legacyAccountsById[legacyAccountId] {
+                return legacyAccount
+            }
+
+            return PPAccount(
+                id: account.legacyAccountId ?? account.id.uuidString,
+                code: account.code,
+                name: account.name,
+                accountType: legacyAccountType(for: account.accountType),
+                normalBalance: account.normalBalance,
+                subtype: nil,
+                parentAccountId: nil,
+                isSystem: false,
+                isActive: account.archivedAt == nil,
+                displayOrder: account.displayOrder
+            )
+        }
+    }
+
+    private static func legacyJournalProjection(
+        from context: CanonicalReadContext
+    ) -> (entries: [PPJournalEntry], lines: [PPJournalLine]) {
+        let books = CanonicalBookService.generateJournalBook(
+            journals: context.journals,
+            accounts: context.accounts,
+            counterparties: context.counterpartiesById
+        )
+        let journalsById = Dictionary(uniqueKeysWithValues: context.journals.map { ($0.id, $0) })
+        let entries = books.compactMap { book -> PPJournalEntry? in
+            guard let journal = journalsById[book.id] else {
+                return nil
+            }
+            return PPJournalEntry(
+                id: journal.id,
+                sourceKey: journalSourceKey(journal),
+                date: journal.journalDate,
+                entryType: exportJournalEntryType(for: journal.entryType),
+                memo: journal.description,
+                isPosted: journal.approvedAt != nil,
+                createdAt: journal.createdAt,
+                updatedAt: journal.updatedAt
+            )
+        }
+        let lines = books.flatMap { book in
+            book.lines.enumerated().map { index, line in
+                PPJournalLine(
+                    id: line.id,
+                    entryId: book.id,
+                    accountId: context.legacyAccountId(for: line.accountId),
+                    debit: decimalInt(line.debitAmount),
+                    credit: decimalInt(line.creditAmount),
+                    memo: "",
+                    displayOrder: index,
+                    createdAt: journalsById[book.id]?.createdAt ?? Date(),
+                    updatedAt: journalsById[book.id]?.updatedAt ?? Date()
+                )
+            }
+        }
+        return (entries, lines)
+    }
+
+    private static func legacyTrialBalanceReport(from report: CanonicalTrialBalanceReport) -> TrialBalanceReport {
+        TrialBalanceReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            rows: report.rows.map { row in
+                TrialBalanceRow(
+                    id: row.id.uuidString,
+                    code: row.code,
+                    name: row.name,
+                    accountType: legacyAccountType(for: row.accountType),
+                    debit: decimalInt(row.debit),
+                    credit: decimalInt(row.credit),
+                    balance: decimalInt(row.balance)
+                )
+            }
+        )
+    }
+
+    private static func legacyProfitLossReport(from report: CanonicalProfitLossReport) -> ProfitLossReport {
+        ProfitLossReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            revenueItems: report.revenueItems.map { item in
+                ProfitLossItem(
+                    id: item.id.uuidString,
+                    code: item.code,
+                    name: item.name,
+                    amount: decimalInt(item.amount),
+                    deductibleAmount: decimalInt(item.amount)
+                )
+            },
+            expenseItems: report.expenseItems.map { item in
+                ProfitLossItem(
+                    id: item.id.uuidString,
+                    code: item.code,
+                    name: item.name,
+                    amount: decimalInt(item.amount),
+                    deductibleAmount: decimalInt(item.amount)
+                )
+            }
+        )
+    }
+
+    private static func legacyBalanceSheetReport(from report: CanonicalBalanceSheetReport) -> BalanceSheetReport {
+        BalanceSheetReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            assetItems: report.assetItems.map(legacyBalanceSheetItem),
+            liabilityItems: report.liabilityItems.map(legacyBalanceSheetItem),
+            equityItems: report.equityItems.map(legacyBalanceSheetItem)
+        )
+    }
+
+    private static func legacyBalanceSheetItem(_ item: CanonicalBalanceSheetItem) -> BalanceSheetItem {
+        BalanceSheetItem(
+            id: item.id.uuidString,
+            code: item.code,
+            name: item.name,
+            balance: decimalInt(item.balance)
+        )
+    }
+
     private static func generateContent(
         target: ExportTarget,
         format: ExportFormat,
@@ -379,24 +505,25 @@ enum ExportCoordinator {
         }
 
         let support = AccountingReadSupport(modelContext: modelContext)
-        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let accounts = support.fetchAccounts()
+        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
         let startMonth = FiscalYearSettings.startMonth
 
         switch (target, format) {
         case (.journal, .csv):
+            let projected = legacyJournalProjection(from: context)
             let csv = ReportCSVExportService.exportJournalCSV(
                 entries: projected.entries,
                 lines: projected.lines,
-                accounts: accounts
+                accounts: legacyAccounts(for: context)
             )
             return .text(csv)
 
         case (.journal, .pdf):
+            let projected = legacyJournalProjection(from: context)
             let pdf = PDFExportService.exportJournalPDF(
                 entries: projected.entries,
                 lines: projected.lines,
-                accounts: accounts,
+                accounts: legacyAccounts(for: context),
                 fiscalYear: fiscalYear
             )
             return .data(pdf)
@@ -404,62 +531,56 @@ enum ExportCoordinator {
         case (.profitLoss, .csv):
             let report = AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .text(ReportCSVExportService.exportProfitLossCSV(report: report))
+            return .text(ReportCSVExportService.exportProfitLossCSV(report: legacyProfitLossReport(from: report)))
 
         case (.profitLoss, .pdf):
             let report = AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .data(PDFExportService.exportProfitLossPDF(report: report))
+            return .data(PDFExportService.exportProfitLossPDF(report: legacyProfitLossReport(from: report)))
 
         case (.balanceSheet, .csv):
             let report = AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .text(ReportCSVExportService.exportBalanceSheetCSV(report: report))
+            return .text(ReportCSVExportService.exportBalanceSheetCSV(report: legacyBalanceSheetReport(from: report)))
 
         case (.balanceSheet, .pdf):
             let report = AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .data(PDFExportService.exportBalanceSheetPDF(report: report))
+            return .data(PDFExportService.exportBalanceSheetPDF(report: legacyBalanceSheetReport(from: report)))
 
         case (.trialBalance, .csv):
             let report = AccountingReportService.generateTrialBalance(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .text(ReportCSVExportService.exportTrialBalanceCSV(rows: report.rows))
+            return .text(ReportCSVExportService.exportTrialBalanceCSV(rows: legacyTrialBalanceReport(from: report).rows))
 
         case (.trialBalance, .pdf):
             let report = AccountingReportService.generateTrialBalance(
                 fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
+                accounts: context.accounts,
+                journals: context.journals,
                 startMonth: startMonth
             )
-            return .data(PDFExportService.exportTrialBalancePDF(report: report))
+            return .data(PDFExportService.exportTrialBalancePDF(report: legacyTrialBalanceReport(from: report)))
 
         case (.ledger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
@@ -890,5 +1011,51 @@ enum ExportCoordinator {
         }
 
         return fileURL
+    }
+
+    private static func legacyAccountType(for canonicalType: CanonicalAccountType) -> AccountType {
+        switch canonicalType {
+        case .asset:
+            return .asset
+        case .liability:
+            return .liability
+        case .equity:
+            return .equity
+        case .revenue:
+            return .revenue
+        case .expense:
+            return .expense
+        }
+    }
+
+    private static func exportJournalEntryType(for entryType: CanonicalJournalEntryType) -> JournalEntryType {
+        switch entryType {
+        case .normal:
+            return .auto
+        case .opening:
+            return .opening
+        case .closing:
+            return .closing
+        case .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+            return .auto
+        }
+    }
+
+    private static func journalSourceKey(_ journal: CanonicalJournalEntry) -> String {
+        switch journal.entryType {
+        case .opening:
+            return "opening:\(journal.id.uuidString)"
+        case .closing:
+            return "closing:\(journal.id.uuidString)"
+        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+            if journal.sourceCandidateId != nil && journal.sourceEvidenceId == nil {
+                return "manual:\(journal.id.uuidString)"
+            }
+            return "canonical:\(journal.id.uuidString)"
+        }
+    }
+
+    private static func decimalInt(_ value: Decimal) -> Int {
+        NSDecimalNumber(decimal: value).intValue
     }
 }

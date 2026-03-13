@@ -15,6 +15,27 @@ struct AccountingReportBundle {
     let balanceSheet: BalanceSheetReport
 }
 
+struct CanonicalReadContext {
+    let businessId: UUID?
+    let accounts: [CanonicalAccount]
+    let journals: [CanonicalJournalEntry]
+    let counterpartiesById: [UUID: String]
+    let legacyAccountsById: [String: PPAccount]
+    let canonicalAccountsById: [UUID: CanonicalAccount]
+    let canonicalAccountsByLegacyId: [String: CanonicalAccount]
+
+    func legacyAccountId(for canonicalAccountId: UUID) -> String {
+        canonicalAccountsById[canonicalAccountId]?.legacyAccountId ?? canonicalAccountId.uuidString
+    }
+
+    func legacyAccount(for canonicalAccountId: UUID) -> PPAccount? {
+        guard let legacyAccountId = canonicalAccountsById[canonicalAccountId]?.legacyAccountId else {
+            return nil
+        }
+        return legacyAccountsById[legacyAccountId]
+    }
+}
+
 struct ProjectedJournalSnapshot {
     let businessId: UUID?
     let entries: [PPJournalEntry]
@@ -363,6 +384,45 @@ struct AccountingReadSupport {
         return fetch(descriptor).first.map(CounterpartyEntityMapper.toDomain)
     }
 
+    func fetchCanonicalCounterparties() -> [Counterparty] {
+        fetch(FetchDescriptor<CounterpartyEntity>()).map(CounterpartyEntityMapper.toDomain)
+    }
+
+    func canonicalReadContext(fiscalYear requestedFiscalYear: Int? = nil) -> CanonicalReadContext {
+        let legacyAccounts = fetchAccounts()
+        guard let businessId = fetchBusinessProfile()?.id else {
+            return CanonicalReadContext(
+                businessId: nil,
+                accounts: [],
+                journals: [],
+                counterpartiesById: [:],
+                legacyAccountsById: Dictionary(uniqueKeysWithValues: legacyAccounts.map { ($0.id, $0) }),
+                canonicalAccountsById: [:],
+                canonicalAccountsByLegacyId: [:]
+            )
+        }
+
+        let accounts = fetchCanonicalAccounts(businessId: businessId)
+        return CanonicalReadContext(
+            businessId: businessId,
+            accounts: accounts,
+            journals: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear),
+            counterpartiesById: Dictionary(
+                uniqueKeysWithValues: fetchCanonicalCounterparties().map { ($0.id, $0.displayName) }
+            ),
+            legacyAccountsById: Dictionary(uniqueKeysWithValues: legacyAccounts.map { ($0.id, $0) }),
+            canonicalAccountsById: Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }),
+            canonicalAccountsByLegacyId: Dictionary(
+                uniqueKeysWithValues: accounts.compactMap { account in
+                    guard let legacyAccountId = account.legacyAccountId else {
+                        return nil
+                    }
+                    return (legacyAccountId, account)
+                }
+            )
+        )
+    }
+
     func projectedCanonicalJournals(fiscalYear requestedFiscalYear: Int? = nil) -> ProjectedJournalSnapshot {
         ProjectedJournalReadModelQuery(support: self).snapshot(fiscalYear: requestedFiscalYear)
     }
@@ -505,41 +565,36 @@ struct AccountingHomeQueryUseCase {
 @MainActor
 struct AccountingReportQueryUseCase {
     private let support: AccountingReadSupport
-    private let projectedJournalQuery: ProjectedJournalReadModelQuery
 
     init(modelContext: ModelContext) {
-        let support = AccountingReadSupport(modelContext: modelContext)
-        self.support = support
-        self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
+        self.support = AccountingReadSupport(modelContext: modelContext)
     }
 
     func reportBundle(fiscalYear: Int) -> AccountingReportBundle {
-        let projected = projectedJournalQuery.snapshot(fiscalYear: fiscalYear)
-        let accounts = support.fetchAccounts()
-        let startMonth = FiscalYearSettings.startMonth
+        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let trialBalance = AccountingReportService.generateTrialBalance(
+            fiscalYear: fiscalYear,
+            accounts: context.accounts,
+            journals: context.journals,
+            startMonth: FiscalYearSettings.startMonth
+        )
+        let profitLoss = AccountingReportService.generateProfitLoss(
+            fiscalYear: fiscalYear,
+            accounts: context.accounts,
+            journals: context.journals,
+            startMonth: FiscalYearSettings.startMonth
+        )
+        let balanceSheet = AccountingReportService.generateBalanceSheet(
+            fiscalYear: fiscalYear,
+            accounts: context.accounts,
+            journals: context.journals,
+            startMonth: FiscalYearSettings.startMonth
+        )
 
         return AccountingReportBundle(
-            trialBalance: AccountingReportService.generateTrialBalance(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            ),
-            profitLoss: AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            ),
-            balanceSheet: AccountingReportService.generateBalanceSheet(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            )
+            trialBalance: LegacyAccountingReportAdapter.trialBalance(trialBalance),
+            profitLoss: LegacyAccountingReportAdapter.profitLoss(profitLoss),
+            balanceSheet: LegacyAccountingReportAdapter.balanceSheet(balanceSheet)
         )
     }
 }
@@ -547,57 +602,55 @@ struct AccountingReportQueryUseCase {
 @MainActor
 struct JournalReadQueryUseCase {
     private let support: AccountingReadSupport
-    private let projectedJournalQuery: ProjectedJournalReadModelQuery
 
     init(modelContext: ModelContext) {
-        let support = AccountingReadSupport(modelContext: modelContext)
-        self.support = support
-        self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
+        self.support = AccountingReadSupport(modelContext: modelContext)
     }
 
     func listSnapshot(fiscalYear: Int? = nil) -> JournalListSnapshot {
-        let projected = projectedJournalQuery.snapshot(fiscalYear: fiscalYear)
-        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0.name) })
-        let linesByEntryId = Dictionary(grouping: projected.lines, by: \.entryId)
+        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let journalsById = Dictionary(uniqueKeysWithValues: context.journals.map { ($0.id, $0) })
+        let entries = CanonicalBookService.generateJournalBook(
+            journals: context.journals,
+            accounts: context.accounts,
+            counterparties: context.counterpartiesById
+        )
         return JournalListSnapshot(
-            businessId: projected.businessId,
+            businessId: context.businessId,
             projects: support.fetchProjects(),
-            entries: projected.entries.map { entry in
-                listItem(
-                    entry: entry,
-                    lines: linesByEntryId[entry.id] ?? [],
-                    accountNamesById: accountsById
-                )
+            entries: entries.compactMap { entry in
+                guard let journal = journalsById[entry.id] else {
+                    return nil
+                }
+                return listItem(journal: journal, bookEntry: entry)
             },
             canCreateManualJournals: !FeatureFlags.useCanonicalPosting
         )
     }
 
     func detailSnapshot(entryId: UUID, fiscalYear: Int? = nil) -> JournalDetailSnapshot {
-        let projected = projectedJournalQuery.snapshot(fiscalYear: fiscalYear)
-        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0.name) })
-        let lines = projected.lines
-            .filter { $0.entryId == entryId }
-            .sorted { $0.displayOrder < $1.displayOrder }
-        let entry = projected.entries.first { $0.id == entryId }.map {
-            listItem(
-                entry: $0,
-                lines: lines,
-                accountNamesById: accountsById
-            )
+        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let journal = context.journals.first { $0.id == entryId }
+        let bookEntry = CanonicalBookService.generateJournalBook(
+            journals: context.journals,
+            accounts: context.accounts,
+            counterparties: context.counterpartiesById
+        ).first { $0.id == entryId }
+        let entry = journal.flatMap { journal in
+            bookEntry.map { listItem(journal: journal, bookEntry: $0) }
         }
         return JournalDetailSnapshot(
             entry: entry,
-            lines: lines.map { line in
+            lines: (bookEntry?.lines ?? []).enumerated().map { index, line in
                 JournalLineItem(
                     id: line.id,
-                    entryId: line.entryId,
-                    accountId: line.accountId,
-                    accountName: accountsById[line.accountId] ?? line.accountId,
-                    debit: line.debit,
-                    credit: line.credit,
-                    memo: line.memo,
-                    displayOrder: line.displayOrder
+                    entryId: entryId,
+                    accountId: context.legacyAccountId(for: line.accountId),
+                    accountName: line.accountName,
+                    debit: decimalInt(line.debitAmount),
+                    credit: decimalInt(line.creditAmount),
+                    memo: "",
+                    displayOrder: index
                 )
             }
         )
@@ -639,27 +692,25 @@ struct JournalReadQueryUseCase {
     }
 
     private func listItem(
-        entry: PPJournalEntry,
-        lines: [PPJournalLine],
-        accountNamesById: [String: String]
+        journal: CanonicalJournalEntry,
+        bookEntry: CanonicalJournalBookEntry
     ) -> JournalListItem {
-        let orderedLines = lines.sorted { $0.displayOrder < $1.displayOrder }
         let searchableText = SearchIndexNormalizer.normalizeText(
-            ([entry.memo] + orderedLines.flatMap { line in
-                [line.memo, accountNamesById[line.accountId] ?? line.accountId]
+            ([journal.description] + bookEntry.lines.flatMap { line in
+                [line.accountName, line.counterpartyName ?? ""]
             }).joined(separator: " ")
         )
         return JournalListItem(
-            id: entry.id,
-            sourceKey: entry.sourceKey,
-            date: entry.date,
-            entryType: entry.entryType,
-            memo: entry.memo,
-            isPosted: entry.isPosted,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
-            debitTotal: orderedLines.reduce(0) { $0 + $1.debit },
-            creditTotal: orderedLines.reduce(0) { $0 + $1.credit },
+            id: journal.id,
+            sourceKey: journalSourceKey(journal),
+            date: journal.journalDate,
+            entryType: legacyEntryType(for: journal.entryType),
+            memo: journal.description,
+            isPosted: journal.approvedAt != nil,
+            createdAt: journal.createdAt,
+            updatedAt: journal.updatedAt,
+            debitTotal: bookEntry.lines.reduce(0) { $0 + decimalInt($1.debitAmount) },
+            creditTotal: bookEntry.lines.reduce(0) { $0 + decimalInt($1.creditAmount) },
             searchableText: searchableText
         )
     }
@@ -853,6 +904,116 @@ struct InventoryQueryUseCase {
                 ?? support.fetchInventoryRecord(fiscalYear: fiscalYear)
         )
     }
+}
+
+private enum LegacyAccountingReportAdapter {
+    static func trialBalance(_ report: CanonicalTrialBalanceReport) -> TrialBalanceReport {
+        TrialBalanceReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            rows: report.rows.map { row in
+                TrialBalanceRow(
+                    id: row.id.uuidString,
+                    code: row.code,
+                    name: row.name,
+                    accountType: legacyAccountType(for: row.accountType),
+                    debit: decimalInt(row.debit),
+                    credit: decimalInt(row.credit),
+                    balance: decimalInt(row.balance)
+                )
+            }
+        )
+    }
+
+    static func profitLoss(_ report: CanonicalProfitLossReport) -> ProfitLossReport {
+        ProfitLossReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            revenueItems: report.revenueItems.map { item in
+                ProfitLossItem(
+                    id: item.id.uuidString,
+                    code: item.code,
+                    name: item.name,
+                    amount: decimalInt(item.amount),
+                    deductibleAmount: decimalInt(item.amount)
+                )
+            },
+            expenseItems: report.expenseItems.map { item in
+                ProfitLossItem(
+                    id: item.id.uuidString,
+                    code: item.code,
+                    name: item.name,
+                    amount: decimalInt(item.amount),
+                    deductibleAmount: decimalInt(item.amount)
+                )
+            }
+        )
+    }
+
+    static func balanceSheet(_ report: CanonicalBalanceSheetReport) -> BalanceSheetReport {
+        BalanceSheetReport(
+            fiscalYear: report.fiscalYear,
+            generatedAt: report.generatedAt,
+            assetItems: report.assetItems.map(legacyBalanceSheetItem),
+            liabilityItems: report.liabilityItems.map(legacyBalanceSheetItem),
+            equityItems: report.equityItems.map(legacyBalanceSheetItem)
+        )
+    }
+
+    private static func legacyBalanceSheetItem(_ item: CanonicalBalanceSheetItem) -> BalanceSheetItem {
+        BalanceSheetItem(
+            id: item.id.uuidString,
+            code: item.code,
+            name: item.name,
+            balance: decimalInt(item.balance)
+        )
+    }
+}
+
+private func legacyAccountType(for canonicalType: CanonicalAccountType) -> AccountType {
+    switch canonicalType {
+    case .asset:
+        return .asset
+    case .liability:
+        return .liability
+    case .equity:
+        return .equity
+    case .revenue:
+        return .revenue
+    case .expense:
+        return .expense
+    }
+}
+
+private func legacyEntryType(for entryType: CanonicalJournalEntryType) -> JournalEntryType {
+    switch entryType {
+    case .normal:
+        return .auto
+    case .opening:
+        return .opening
+    case .closing:
+        return .closing
+    case .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+        return .auto
+    }
+}
+
+private func journalSourceKey(_ journal: CanonicalJournalEntry) -> String {
+    switch journal.entryType {
+    case .opening:
+        return "opening:\(journal.id.uuidString)"
+    case .closing:
+        return "closing:\(journal.id.uuidString)"
+    case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+        if journal.sourceCandidateId != nil && journal.sourceEvidenceId == nil {
+            return "manual:\(journal.id.uuidString)"
+        }
+        return "canonical:\(journal.id.uuidString)"
+    }
+}
+
+private func decimalInt(_ value: Decimal) -> Int {
+    NSDecimalNumber(decimal: value).intValue
 }
 
 @MainActor
