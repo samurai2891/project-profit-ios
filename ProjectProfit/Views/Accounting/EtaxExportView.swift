@@ -2,7 +2,6 @@ import SwiftUI
 
 struct EtaxExportView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(DataStore.self) private var dataStore
     @State private var viewModel: EtaxExportViewModel?
     @State private var showShareSheet = false
     @State private var shareURL: URL?
@@ -19,6 +18,7 @@ struct EtaxExportView: View {
         .task {
             if viewModel == nil {
                 let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: modelContext)
+                let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: modelContext)
                 viewModel = EtaxExportViewModel(
                     modelContext: modelContext,
                     contextProvider: { fiscalYear in
@@ -27,8 +27,9 @@ struct EtaxExportView: View {
                     formBuilder: { filingStyle, fiscalYear in
                         try FormEngine.build(
                             filingStyle: filingStyle,
-                            dataStore: dataStore,
-                            fiscalYear: fiscalYear
+                            input: FormEngine.BuildInput(
+                                snapshot: formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                            )
                         )
                     },
                     exporter: { format, form in

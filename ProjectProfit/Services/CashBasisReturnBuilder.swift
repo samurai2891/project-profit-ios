@@ -41,10 +41,6 @@ enum CashBasisReturnBuilder {
     private static func buildCoreFields(
         input: FormEngine.BuildInput
     ) throws -> [EtaxField] {
-        let categoryMap = Dictionary(
-            uniqueKeysWithValues: input.categories.map { ($0.id, $0.name) }
-        )
-
         var totalIncome = 0
         var totalExpense = 0
         var expenseByCategory: [String: Int] = [:]
@@ -102,7 +98,7 @@ enum CashBasisReturnBuilder {
         // 必要経費
         var expenseIndex = 1
         for (categoryId, amount) in expenseByCategory.sorted(by: { $0.value > $1.value }) {
-            let categoryName = categoryMap[categoryId] ?? categoryId
+            let categoryName = input.categoryNamesById[categoryId] ?? categoryId
             let label = "\(expenseFieldLabel(index: expenseIndex)) \(categoryName)"
             fields.append(EtaxField(
                 id: "cash_basis_expense_\(expenseIndex)",

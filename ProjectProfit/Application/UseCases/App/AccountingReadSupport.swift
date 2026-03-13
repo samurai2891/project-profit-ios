@@ -166,6 +166,23 @@ struct EtaxExportContext {
     let fallbackTaxYearProfile: TaxYearProfile?
 }
 
+struct EtaxFormBuildSnapshot {
+    let fiscalYear: Int
+    let startMonth: Int
+    let canonicalAccounts: [CanonicalAccount]
+    let legacyAccountsById: [String: PPAccount]
+    let categoryNamesById: [String: String]
+    let fixedAssets: [PPFixedAsset]
+    let inventoryRecord: PPInventoryRecord?
+    let businessProfile: BusinessProfile?
+    let taxYearProfile: TaxYearProfile?
+    let sensitivePayload: ProfileSensitivePayload?
+    let canonicalProfitLoss: CanonicalProfitLossReport
+    let canonicalBalanceSheet: CanonicalBalanceSheetReport
+    let canonicalJournals: [CanonicalJournalEntry]
+    let postingCandidatesById: [UUID: PostingCandidate]
+}
+
 @MainActor
 struct AccountingReadSupport {
     private let modelContext: ModelContext
@@ -238,6 +255,17 @@ struct AccountingReadSupport {
             predicate: #Predicate { $0.fiscalYear == fiscalYear }
         )
         return fetch(descriptor).first
+    }
+
+    func fetchFixedAssets() -> [PPFixedAsset] {
+        fetch(
+            FetchDescriptor<PPFixedAsset>(
+                sortBy: [
+                    SortDescriptor(\.acquisitionDate, order: .reverse),
+                    SortDescriptor(\.name)
+                ]
+            )
+        )
     }
 
     func fetchBusinessProfile() -> BusinessProfile? {
@@ -375,6 +403,20 @@ struct AccountingReadSupport {
             )
         }
         return fetch(descriptor).map(CanonicalJournalEntryEntityMapper.toDomain)
+    }
+
+    func fetchPostingCandidates(ids: Set<UUID>) -> [UUID: PostingCandidate] {
+        guard !ids.isEmpty else {
+            return [:]
+        }
+
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        return fetch(descriptor).reduce(into: [UUID: PostingCandidate]()) { result, entity in
+            guard ids.contains(entity.candidateId) else {
+                return
+            }
+            result[entity.candidateId] = PostingCandidateEntityMapper.toDomain(entity)
+        }
     }
 
     func fetchCanonicalCounterparty(id: UUID) -> Counterparty? {
@@ -1057,6 +1099,54 @@ struct EtaxExportContextQueryUseCase {
         return EtaxExportContext(
             businessId: businessId,
             fallbackTaxYearProfile: fallbackTaxYearProfile
+        )
+    }
+}
+
+@MainActor
+struct EtaxFormBuildQueryUseCase {
+    private let support: AccountingReadSupport
+
+    init(modelContext: ModelContext) {
+        self.support = AccountingReadSupport(modelContext: modelContext)
+    }
+
+    func snapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
+        let readContext = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let startMonth = FiscalYearSettings.startMonth
+        let businessProfile = support.fetchBusinessProfile()
+        let taxYearProfile = readContext.businessId.flatMap {
+            support.fetchTaxYearProfile(businessId: $0, taxYear: fiscalYear)
+        }
+        let candidateIds = Set(readContext.journals.compactMap(\.sourceCandidateId))
+
+        return EtaxFormBuildSnapshot(
+            fiscalYear: fiscalYear,
+            startMonth: startMonth,
+            canonicalAccounts: readContext.accounts,
+            legacyAccountsById: readContext.legacyAccountsById,
+            categoryNamesById: Dictionary(
+                uniqueKeysWithValues: support.fetchCategories().map { ($0.id, $0.name) }
+            ),
+            fixedAssets: support.fetchFixedAssets(),
+            inventoryRecord: support.fetchInventoryRecord(fiscalYear: fiscalYear),
+            businessProfile: businessProfile,
+            taxYearProfile: taxYearProfile,
+            sensitivePayload: businessProfile.flatMap { ProfileSecureStore.load(profileId: $0.id.uuidString) },
+            canonicalProfitLoss: AccountingReportService.generateProfitLoss(
+                fiscalYear: fiscalYear,
+                accounts: readContext.accounts,
+                journals: readContext.journals,
+                startMonth: startMonth
+            ),
+            canonicalBalanceSheet: AccountingReportService.generateBalanceSheet(
+                fiscalYear: fiscalYear,
+                accounts: readContext.accounts,
+                journals: readContext.journals,
+                startMonth: startMonth
+            ),
+            canonicalJournals: readContext.journals,
+            postingCandidatesById: support.fetchPostingCandidates(ids: candidateIds)
         )
     }
 }

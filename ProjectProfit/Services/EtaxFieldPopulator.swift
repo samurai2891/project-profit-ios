@@ -110,6 +110,114 @@ enum EtaxFieldPopulator {
         )
     }
 
+    static func populate(
+        fiscalYear: Int,
+        canonicalProfitLoss: CanonicalProfitLossReport,
+        canonicalBalanceSheet: CanonicalBalanceSheetReport?,
+        formType: EtaxFormType = .blueReturn,
+        canonicalAccounts: [CanonicalAccount],
+        legacyAccountsById: [String: PPAccount],
+        businessProfile: BusinessProfile? = nil,
+        taxYearProfile: TaxYearProfile? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil,
+        inventoryRecord: PPInventoryRecord? = nil
+    ) -> EtaxForm {
+        var fields: [EtaxField] = []
+        let canonicalAccountsById = Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) })
+
+        var revenueByTaxLine: [TaxLine: Int] = [:]
+        for item in canonicalProfitLoss.revenueItems {
+            if let taxLine = taxLineForCanonicalAccountId(
+                item.id,
+                canonicalAccountsById: canonicalAccountsById,
+                legacyAccountsById: legacyAccountsById
+            ) {
+                revenueByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
+            }
+        }
+        for (taxLine, amount) in revenueByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            fields.append(EtaxField(
+                id: "revenue_\(taxLine.rawValue)",
+                fieldLabel: TaxYearDefinitionLoader.fieldLabel(
+                    for: taxLine,
+                    formType: .blueReturn,
+                    fiscalYear: fiscalYear
+                ),
+                taxLine: taxLine,
+                value: amount,
+                section: .revenue
+            ))
+        }
+
+        var expenseByTaxLine: [TaxLine: Int] = [:]
+        for item in canonicalProfitLoss.expenseItems {
+            if let taxLine = taxLineForCanonicalAccountId(
+                item.id,
+                canonicalAccountsById: canonicalAccountsById,
+                legacyAccountsById: legacyAccountsById
+            ) {
+                expenseByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
+            }
+        }
+        for (taxLine, amount) in expenseByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            fields.append(EtaxField(
+                id: "expense_\(taxLine.rawValue)",
+                fieldLabel: TaxYearDefinitionLoader.fieldLabel(
+                    for: taxLine,
+                    formType: .blueReturn,
+                    fiscalYear: fiscalYear
+                ),
+                taxLine: taxLine,
+                value: amount,
+                section: .expenses
+            ))
+        }
+
+        fields.append(EtaxField(
+            id: "income_total_revenue",
+            fieldLabel: "収入金額合計",
+            taxLine: nil,
+            value: decimalInt(canonicalProfitLoss.totalRevenue),
+            section: .income
+        ))
+        fields.append(EtaxField(
+            id: "income_total_expenses",
+            fieldLabel: "必要経費合計",
+            taxLine: nil,
+            value: decimalInt(canonicalProfitLoss.totalExpenses),
+            section: .income
+        ))
+        fields.append(EtaxField(
+            id: "income_net",
+            fieldLabel: "所得金額",
+            taxLine: nil,
+            value: decimalInt(canonicalProfitLoss.netIncome),
+            section: .income
+        ))
+
+        if let businessProfile {
+            fields.append(contentsOf: populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: sensitivePayload
+            ))
+        }
+
+        if let inventoryRecord {
+            fields.append(contentsOf: populateInventory(record: inventoryRecord))
+        }
+
+        if let canonicalBalanceSheet {
+            fields.append(contentsOf: populateBalanceSheet(balanceSheet: canonicalBalanceSheet))
+        }
+
+        return EtaxForm(
+            fiscalYear: fiscalYear,
+            formType: formType,
+            fields: fields,
+            generatedAt: Date()
+        )
+    }
+
     // MARK: - Declarant Info (Canonical)
 
     /// 申告者情報セクションのフィールドを生成（canonical BusinessProfile ベース）
@@ -262,6 +370,63 @@ enum EtaxFieldPopulator {
         return fields
     }
 
+    static func populateBalanceSheet(balanceSheet: CanonicalBalanceSheetReport) -> [EtaxField] {
+        var fields: [EtaxField] = []
+
+        for item in balanceSheet.assetItems {
+            fields.append(EtaxField(
+                id: "bs_asset_\(item.id.uuidString)",
+                fieldLabel: item.name,
+                taxLine: nil,
+                value: decimalInt(item.balance),
+                section: .balanceSheet
+            ))
+        }
+        fields.append(EtaxField(
+            id: "bs_total_assets",
+            fieldLabel: "資産合計",
+            taxLine: nil,
+            value: decimalInt(balanceSheet.totalAssets),
+            section: .balanceSheet
+        ))
+
+        for item in balanceSheet.liabilityItems {
+            fields.append(EtaxField(
+                id: "bs_liability_\(item.id.uuidString)",
+                fieldLabel: item.name,
+                taxLine: nil,
+                value: decimalInt(item.balance),
+                section: .balanceSheet
+            ))
+        }
+        fields.append(EtaxField(
+            id: "bs_total_liabilities",
+            fieldLabel: "負債合計",
+            taxLine: nil,
+            value: decimalInt(balanceSheet.totalLiabilities),
+            section: .balanceSheet
+        ))
+
+        for item in balanceSheet.equityItems {
+            fields.append(EtaxField(
+                id: "bs_equity_\(item.id.uuidString)",
+                fieldLabel: item.name,
+                taxLine: nil,
+                value: decimalInt(item.balance),
+                section: .balanceSheet
+            ))
+        }
+        fields.append(EtaxField(
+            id: "bs_total_equity",
+            fieldLabel: "資本合計",
+            taxLine: nil,
+            value: decimalInt(balanceSheet.totalEquity),
+            section: .balanceSheet
+        ))
+
+        return fields
+    }
+
     // MARK: - Helpers
 
     private static func taxLineForAccountId(_ accountId: String, accounts: [PPAccount]) -> TaxLine? {
@@ -270,6 +435,25 @@ enum EtaxFieldPopulator {
         else { return nil }
 
         return TaxLine.allCases.first { $0.accountSubtype == subtype }
+    }
+
+    private static func taxLineForCanonicalAccountId(
+        _ accountId: UUID,
+        canonicalAccountsById: [UUID: CanonicalAccount],
+        legacyAccountsById: [String: PPAccount]
+    ) -> TaxLine? {
+        guard let canonicalAccount = canonicalAccountsById[accountId],
+              let legacyAccountId = canonicalAccount.legacyAccountId,
+              let subtype = legacyAccountsById[legacyAccountId]?.subtype
+        else {
+            return nil
+        }
+
+        return TaxLine.allCases.first { $0.accountSubtype == subtype }
+    }
+
+    private static func decimalInt(_ value: Decimal) -> Int {
+        NSDecimalNumber(decimal: value).intValue
     }
 
     private static func birthDateEtaxString(from date: Date) -> String {

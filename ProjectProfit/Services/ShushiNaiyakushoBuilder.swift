@@ -6,11 +6,11 @@ import Foundation
 enum ShushiNaiyakushoBuilder {
     /// 白色申告 収支内訳書用のEtaxFormを生成（canonical profile ベース）
     static func build(
-        profitLoss: ProfitLossReport,
+        canonicalProfitLoss: CanonicalProfitLossReport,
         input: FormEngine.BuildInput
     ) -> EtaxForm {
         let fields = buildFields(
-            profitLoss: profitLoss,
+            canonicalProfitLoss: canonicalProfitLoss,
             input: input
         )
 
@@ -34,13 +34,14 @@ enum ShushiNaiyakushoBuilder {
 
     /// 共通のフィールド生成ロジック（申告者情報を除く）
     private static func buildFields(
-        profitLoss: ProfitLossReport,
+        canonicalProfitLoss: CanonicalProfitLossReport,
         input: FormEngine.BuildInput
     ) -> [EtaxField] {
         var fields: [EtaxField] = []
+        let canonicalAccountsById = Dictionary(uniqueKeysWithValues: input.canonicalAccounts.map { ($0.id, $0) })
 
         // 収入 — 売上のみ（白色は簡易）
-        let totalRevenue = profitLoss.totalRevenue
+        let totalRevenue = decimalInt(canonicalProfitLoss.totalRevenue)
         fields.append(EtaxField(
             id: "shushi_revenue_total",
             fieldLabel: "収入金額",
@@ -51,12 +52,14 @@ enum ShushiNaiyakushoBuilder {
 
         // 経費 — e-Tax 12区分でマッピング（同じTaxLineは合算）
         var expenseByTaxLine: [TaxLine: Int] = [:]
-        for item in profitLoss.expenseItems {
-            if let account = input.accounts.first(where: { $0.id == item.id }),
-               let subtype = account.subtype,
-               let taxLine = TaxLine.allCases.first(where: { $0.accountSubtype == subtype })
+        for item in canonicalProfitLoss.expenseItems {
+            if let taxLine = taxLine(
+                for: item.id,
+                canonicalAccountsById: canonicalAccountsById,
+                legacyAccountsById: input.legacyAccountsById
+            )
             {
-                expenseByTaxLine[taxLine, default: 0] += item.amount
+                expenseByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
             }
         }
         for (taxLine, amount) in expenseByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
@@ -74,7 +77,7 @@ enum ShushiNaiyakushoBuilder {
         }
 
         // 経費合計
-        let totalExpenses = profitLoss.totalExpenses
+        let totalExpenses = decimalInt(canonicalProfitLoss.totalExpenses)
         fields.append(EtaxField(
             id: "shushi_expense_total",
             fieldLabel: "経費合計",
@@ -125,23 +128,43 @@ enum ShushiNaiyakushoBuilder {
     }
 
     private static func postedRentTotal(input: FormEngine.BuildInput) -> Int {
-        let rentAccountIds = Set(
-            input.accounts
-                .filter { $0.subtype == .rentExpense }
-                .map(\.id)
+        let rentAccountIds = Set<UUID>(
+            input.canonicalAccounts.compactMap { account in
+                guard let legacyAccountId = account.legacyAccountId,
+                      input.legacyAccountsById[legacyAccountId]?.subtype == .rentExpense
+                else {
+                    return nil
+                }
+                return account.id
+            }
         )
-        let resolvedRentAccountIds = rentAccountIds.isEmpty
-            ? [AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"]
-            : Array(rentAccountIds)
-        let postedEntryIds = Set(input.projectedEntries.lazy.filter(\.isPosted).map(\.id))
 
-        return input.projectedLines.reduce(into: 0) { partialResult, line in
-            guard resolvedRentAccountIds.contains(line.accountId),
-                  postedEntryIds.contains(line.entryId)
-            else {
+        return input.canonicalJournals.reduce(into: 0) { partialResult, journal in
+            guard journal.approvedAt != nil else {
                 return
             }
-            partialResult += line.debit - line.credit
+            for line in journal.lines where rentAccountIds.contains(line.accountId) {
+                partialResult += decimalInt(line.debitAmount - line.creditAmount)
+            }
         }
+    }
+
+    private static func taxLine(
+        for accountId: UUID,
+        canonicalAccountsById: [UUID: CanonicalAccount],
+        legacyAccountsById: [String: PPAccount]
+    ) -> TaxLine? {
+        guard let canonicalAccount = canonicalAccountsById[accountId],
+              let legacyAccountId = canonicalAccount.legacyAccountId,
+              let subtype = legacyAccountsById[legacyAccountId]?.subtype
+        else {
+            return nil
+        }
+
+        return TaxLine.allCases.first { $0.accountSubtype == subtype }
+    }
+
+    private static func decimalInt(_ value: Decimal) -> Int {
+        NSDecimalNumber(decimal: value).intValue
     }
 }

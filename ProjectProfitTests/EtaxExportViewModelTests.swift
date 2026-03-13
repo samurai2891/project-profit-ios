@@ -132,21 +132,19 @@ final class EtaxExportViewModelTests: XCTestCase {
         UserDefaults.standard.set(4, forKey: key)
         defer { UserDefaults.standard.set(previousStartMonth, forKey: key) }
 
-        _ = mutations(dataStore).addManualJournalEntry(
+        seedCanonicalJournal(
+            businessId: businessId,
             date: makeDate(year: 2025, month: 3, day: 31),
-            memo: "before",
-            lines: [
-                (accountId: AccountingConstants.cashAccountId, debit: 100_000, credit: 0, memo: ""),
-                (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 100_000, memo: ""),
-            ]
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 100_000
         )
-        _ = mutations(dataStore).addManualJournalEntry(
+        seedCanonicalJournal(
+            businessId: businessId,
             date: makeDate(year: 2025, month: 4, day: 1),
-            memo: "in-range",
-            lines: [
-                (accountId: AccountingConstants.cashAccountId, debit: 200_000, credit: 0, memo: ""),
-                (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 200_000, memo: ""),
-            ]
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 200_000
         )
         seedTaxYearProfile(
             TaxYearProfile(
@@ -167,21 +165,12 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testGeneratePreviewUsesCanonicalProfileInsteadOfLegacyProfile() {
-        let businessId = UUID()
-        // Legacy profile is no longer accessible via DataStore;
-        // canonical profile is the sole source of truth.
-        dataStore.businessProfile = BusinessProfile(
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedBusinessProfile(BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
             businessName: "Canonical商店"
-        )
-        dataStore.currentTaxYearProfile = TaxYearProfile(
-            businessId: businessId,
-            taxYear: 2025,
-            filingStyle: .blueGeneral,
-            yearLockState: .taxClose,
-            taxPackVersion: "2025-v1"
-        )
+        ))
         seedTaxYearProfile(
             TaxYearProfile(
                 businessId: businessId,
@@ -300,20 +289,22 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testGeneratePreviewBlocksWhenCanonicalTaxProfileHasValidationErrors() {
-        let businessId = UUID()
-        dataStore.businessProfile = BusinessProfile(
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedBusinessProfile(BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
             businessName: "Canonical商店"
-        )
-        dataStore.currentTaxYearProfile = TaxYearProfile(
-            businessId: businessId,
-            taxYear: 2025,
-            filingStyle: .blueGeneral,
-            vatStatus: .taxable,
-            vatMethod: .simplified,
-            simplifiedBusinessCategory: nil,
-            taxPackVersion: "2025-v1"
+        ))
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                filingStyle: .blueGeneral,
+                vatStatus: .taxable,
+                vatMethod: .simplified,
+                simplifiedBusinessCategory: nil,
+                taxPackVersion: "2025-v1"
+            )
         )
 
         let viewModel = makeViewModel()
@@ -331,20 +322,22 @@ final class EtaxExportViewModelTests: XCTestCase {
     }
 
     func testExportXtxFailsWhenCanonicalTaxProfilePreflightFails() {
-        let businessId = UUID()
-        dataStore.businessProfile = BusinessProfile(
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedBusinessProfile(BusinessProfile(
             id: businessId,
             ownerName: "Canonical Owner",
             businessName: "Canonical商店"
-        )
-        dataStore.currentTaxYearProfile = TaxYearProfile(
-            businessId: businessId,
-            taxYear: 2025,
-            filingStyle: .blueGeneral,
-            vatStatus: .taxable,
-            vatMethod: .simplified,
-            simplifiedBusinessCategory: nil,
-            taxPackVersion: "2025-v1"
+        ))
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                filingStyle: .blueGeneral,
+                vatStatus: .taxable,
+                vatMethod: .simplified,
+                simplifiedBusinessCategory: nil,
+                taxPackVersion: "2025-v1"
+            )
         )
 
         let viewModel = makeViewModel()
@@ -380,21 +373,18 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     private func makeViewModel() -> EtaxExportViewModel {
         let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
             modelContext: context,
             contextProvider: { fiscalYear in
-                EtaxExportContext(
-                    businessId: self.dataStore.businessProfile?.id,
-                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
-                        ? self.dataStore.currentTaxYearProfile
-                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
-                )
+                contextQueryUseCase.context(fiscalYear: fiscalYear)
             },
             formBuilder: { filingStyle, fiscalYear in
                 try FormEngine.build(
                     filingStyle: filingStyle,
-                    dataStore: self.dataStore,
-                    fiscalYear: fiscalYear
+                    input: FormEngine.BuildInput(
+                        snapshot: formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                    )
                 )
             },
             exporter: { format, form in
@@ -412,6 +402,40 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {
         context.insert(TaxYearProfileEntityMapper.toEntity(profile))
+        try! context.save()
+    }
+
+    private func seedBusinessProfile(_ profile: BusinessProfile) {
+        let existing = try! context.fetch(FetchDescriptor<BusinessProfileEntity>())
+        existing.forEach(context.delete)
+        context.insert(BusinessProfileEntityMapper.toEntity(profile))
+        try! context.save()
+    }
+
+    private func seedCanonicalJournal(
+        businessId: UUID,
+        date: Date,
+        debitLegacyAccountId: String,
+        creditLegacyAccountId: String,
+        amount: Int
+    ) {
+        let journalId = UUID()
+        let debitAccountId = try! XCTUnwrap(dataStore.canonicalAccountId(for: debitLegacyAccountId))
+        let creditAccountId = try! XCTUnwrap(dataStore.canonicalAccountId(for: creditLegacyAccountId))
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(
+            CanonicalJournalEntry(
+                id: journalId,
+                businessId: businessId,
+                taxYear: 2025,
+                journalDate: date,
+                voucherNo: "1",
+                lines: [
+                    JournalLine(journalId: journalId, accountId: debitAccountId, debitAmount: Decimal(amount), sortOrder: 0),
+                    JournalLine(journalId: journalId, accountId: creditAccountId, creditAmount: Decimal(amount), sortOrder: 1),
+                ],
+                approvedAt: date
+            )
+        ))
         try! context.save()
     }
 }

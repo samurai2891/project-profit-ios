@@ -468,15 +468,27 @@ final class FormEngineTests: XCTestCase {
         FormEngine.BuildInput(
             fiscalYear: fiscalYear,
             startMonth: FiscalYearSettings.startMonth,
-            accounts: dataStore.accounts,
-            categories: dataStore.categories,
+            canonicalAccounts: dataStore.canonicalAccounts(),
+            legacyAccountsById: Dictionary(uniqueKeysWithValues: dataStore.accounts.map { ($0.id, $0) }),
+            categoryNamesById: Dictionary(uniqueKeysWithValues: dataStore.categories.map { ($0.id, $0.name) }),
             fixedAssets: dataStore.fixedAssets,
             inventoryRecord: nil,
             businessProfile: businessProfile,
             taxYearProfile: nil,
             sensitivePayload: nil,
-            projectedEntries: [],
-            projectedLines: [],
+            canonicalProfitLoss: CanonicalProfitLossReport(
+                fiscalYear: fiscalYear,
+                generatedAt: Date(),
+                revenueItems: [],
+                expenseItems: []
+            ),
+            canonicalBalanceSheet: CanonicalBalanceSheetReport(
+                fiscalYear: fiscalYear,
+                generatedAt: Date(),
+                assetItems: [],
+                liabilityItems: [],
+                equityItems: []
+            ),
             canonicalJournals: canonicalJournals,
             postingCandidatesById: postingCandidatesById
         )
