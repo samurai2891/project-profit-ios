@@ -148,36 +148,43 @@ struct PostingWorkflowUseCase {
         candidateId: UUID,
         entryType: CanonicalJournalEntryType = .normal,
         description: String? = nil,
-        approvedAt: Date = Date()
+        approvedAt: Date = Date(),
+        actor: String = "user"
     ) async throws -> CanonicalJournalEntry {
         guard let candidate = try await postingCandidateRepository.findById(candidateId) else {
             throw PostingWorkflowUseCaseError.candidateNotFound(candidateId)
         }
-        let journal = try await postingEngine.persistApprovedCandidateAsync(
+        let journal = try await approveCandidate(
             candidate,
+            journalId: nil,
             entryType: entryType,
             description: description,
-            approvedAt: approvedAt
+            approvedAt: approvedAt,
+            actor: actor
         )
         learnFromApprovedCandidateIfPossible(candidate)
         return journal
     }
 
+#if DEBUG
     func syncApprovedCandidate(
         _ candidate: PostingCandidate,
         journalId: UUID,
         entryType: CanonicalJournalEntryType = .normal,
         description: String? = nil,
-        approvedAt: Date = Date()
+        approvedAt: Date = Date(),
+        actor: String = "user"
     ) async throws -> CanonicalJournalEntry {
-        try await postingEngine.persistApprovedCandidateAsync(
+        try await approveCandidate(
             candidate,
             journalId: journalId,
             entryType: entryType,
             description: description,
-            approvedAt: approvedAt
+            approvedAt: approvedAt,
+            actor: actor
         )
     }
+#endif
 
     func rejectCandidate(_ id: UUID) async throws -> PostingCandidate {
         guard let candidate = try await postingCandidateRepository.findById(id) else {
@@ -387,6 +394,24 @@ struct PostingWorkflowUseCase {
             throw PostingWorkflowUseCaseError.journalAlreadyCancelled(journalId)
         }
         return journal
+    }
+
+    private func approveCandidate(
+        _ candidate: PostingCandidate,
+        journalId: UUID?,
+        entryType: CanonicalJournalEntryType,
+        description: String?,
+        approvedAt: Date,
+        actor: String
+    ) async throws -> CanonicalJournalEntry {
+        try await postingEngine.persistApprovedCandidateAsync(
+            candidate,
+            journalId: journalId,
+            entryType: entryType,
+            description: description,
+            approvedAt: approvedAt,
+            actor: actor
+        )
     }
 
     private func makeReversalJournal(

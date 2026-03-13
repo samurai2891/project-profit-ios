@@ -45,55 +45,19 @@ struct CanonicalPostingEngine {
         approvedAt: Date = Date(),
         actor: String = "user"
     ) async throws -> CanonicalJournalEntry {
-        guard !candidate.proposedLines.isEmpty else {
-            throw PostingWorkflowUseCaseError.candidateHasNoLines(candidate.id)
-        }
-
-        let approvedCandidate = candidate.updated(status: .approved)
-        let journalId = UUID()
-        let voucherMonth = Calendar.current.component(.month, from: candidate.candidateDate)
-        let voucherNumber = try await journalEntryRepository.nextVoucherNumber(
-            businessId: candidate.businessId,
-            taxYear: candidate.taxYear,
-            month: voucherMonth
-        )
-        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
-        let entry = CanonicalJournalEntry(
-            id: journalId,
-            businessId: candidate.businessId,
-            taxYear: candidate.taxYear,
-            journalDate: candidate.candidateDate,
-            voucherNo: voucherNumber.value,
-            sourceEvidenceId: candidate.evidenceId,
-            sourceCandidateId: candidate.id,
+        try await persistApprovedCandidateAsync(
+            candidate,
+            journalId: nil,
             entryType: entryType,
-            description: description ?? approvedCandidate.memo ?? "",
-            lines: journalLines,
+            description: description,
             approvedAt: approvedAt,
-            createdAt: approvedAt,
-            updatedAt: approvedAt
-        )
-
-        guard entry.isBalanced else {
-            throw PostingWorkflowUseCaseError.journalNotBalanced(candidate.id)
-        }
-
-        try await journalEntryRepository.save(entry)
-        try await postingCandidateRepository.save(approvedCandidate)
-        try? rebuildJournalSearchIndex(businessId: entry.businessId, taxYear: entry.taxYear)
-        await saveApprovalAuditEvents(
-            originalCandidate: candidate,
-            approvedCandidate: approvedCandidate,
-            journal: entry,
-            reason: description,
             actor: actor
         )
-        return entry
     }
 
     func persistApprovedCandidateAsync(
         _ candidate: PostingCandidate,
-        journalId: UUID,
+        journalId: UUID?,
         entryType: CanonicalJournalEntryType = .normal,
         description: String? = nil,
         approvedAt: Date = Date(),
@@ -104,7 +68,12 @@ struct CanonicalPostingEngine {
         }
 
         let approvedCandidate = candidate.updated(status: .approved)
-        let existingJournal = try await journalEntryRepository.findById(journalId)
+        let existingJournal: CanonicalJournalEntry?
+        if let journalId {
+            existingJournal = try await journalEntryRepository.findById(journalId)
+        } else {
+            existingJournal = nil
+        }
         let voucherNo: String
         if let existingJournal {
             voucherNo = existingJournal.voucherNo
@@ -117,9 +86,10 @@ struct CanonicalPostingEngine {
             ).value
         }
 
-        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: journalId)
+        let resolvedJournalId = existingJournal?.id ?? journalId ?? UUID()
+        let journalLines = try await makeJournalLines(from: approvedCandidate, journalId: resolvedJournalId)
         let entry = CanonicalJournalEntry(
-            id: journalId,
+            id: resolvedJournalId,
             businessId: candidate.businessId,
             taxYear: candidate.taxYear,
             journalDate: candidate.candidateDate,

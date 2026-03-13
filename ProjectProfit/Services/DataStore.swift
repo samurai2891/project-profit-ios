@@ -3,11 +3,6 @@ import os
 import SwiftData
 import SwiftUI
 
-enum LegacyTransactionMutationSource: Sendable, Equatable {
-    case systemGenerated
-    case userInitiated
-}
-
 @MainActor
 @Observable
 class DataStore {
@@ -92,6 +87,13 @@ class DataStore {
 
     private var postingIntakeUseCase: PostingIntakeUseCase {
         PostingIntakeUseCase(modelContext: modelContext)
+    }
+
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(
+            modelContext: modelContext,
+            onRecurringScheduleChanged: onRecurringScheduleChanged
+        )
     }
 
     var canonicalPostingSupport: CanonicalPostingSupport {
@@ -778,181 +780,6 @@ class DataStore {
         }
     }
 
-    #if DEBUG
-    /// Legacy transaction から canonical artifact を明示同期する互換ヘルパー。
-    /// テスト / fixture 互換専用で、production surface からは除外する。
-    func syncCanonicalArtifacts(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) async -> CanonicalTransactionSyncResult {
-        guard let transaction = allTransactions.first(where: { $0.id == transactionId }) else {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: .skippedSourceNotFound,
-                postingStatus: .skippedSourceNotFound
-            )
-        }
-
-        let explicitTaxCodeId = compatibilityTaxCodeId(
-            explicitTaxCodeId: transaction.taxCodeId,
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )
-        let counterpartyStatus = await syncCanonicalCounterparty(
-            id: transaction.counterpartyId,
-            named: transaction.counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let counterpartyId: UUID?
-        switch counterpartyStatus {
-        case .synced(let id):
-            counterpartyId = id
-        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
-            counterpartyId = nil
-        }
-        let postingStatus = await syncCanonicalPosting(
-            for: transaction,
-            counterpartyId: counterpartyId,
-            source: source
-        )
-
-        return CanonicalTransactionSyncResult(
-            counterpartyStatus: counterpartyStatus,
-            postingStatus: postingStatus
-        )
-    }
-
-    /// Legacy transaction から canonical artifact を同期的に再生成する互換ヘルパー。
-    /// テスト / fixture 互換専用で、production surface からは除外する。
-    func syncCanonicalArtifactsSynchronously(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) -> CanonicalTransactionSyncResult {
-        guard let transaction = allTransactions.first(where: { $0.id == transactionId }) else {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: .skippedSourceNotFound,
-                postingStatus: .skippedSourceNotFound
-            )
-        }
-
-        let explicitTaxCodeId = compatibilityTaxCodeId(
-            explicitTaxCodeId: transaction.taxCodeId,
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )
-        let counterpartyStatus = syncCanonicalCounterpartyNow(
-            id: transaction.counterpartyId,
-            named: transaction.counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let counterpartyId: UUID?
-        switch counterpartyStatus {
-        case .synced(let id):
-            counterpartyId = id
-        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
-            counterpartyId = nil
-        }
-
-        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        let posting: CanonicalTransactionPostingBridge.Posting
-        do {
-            posting = try buildCanonicalPosting(
-                for: transaction,
-                counterpartyId: counterpartyId,
-                source: source ?? .manual
-            )
-        } catch AppError.invalidInput(let message)
-            where message.contains("事業者プロフィールが未設定") {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedBusinessProfileUnavailable
-            )
-        } catch AppError.yearLocked {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedBusinessProfileUnavailable
-            )
-        } catch {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedLegacyJournalUnavailable
-            )
-        }
-
-        do {
-            let journal = try canonicalPostingSupport.persistApprovedPosting(
-                posting: posting,
-                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
-                actor: source == .importFile ? "user" : "system",
-                saveChanges: true
-            )
-            if transaction.journalEntryId != journal.id {
-                transaction.journalEntryId = journal.id
-                save()
-                refreshTransactions()
-            }
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .synced(candidateId: posting.candidate.id, journalId: journal.id)
-            )
-        } catch {
-            AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .failed(error.localizedDescription)
-            )
-        }
-    }
-
-    /// Legacy transaction に紐づく canonical artifact を同期的に削除する互換ヘルパー。
-    /// テスト / fixture 互換専用で、production surface からは除外する。
-    @discardableResult
-    func removeCanonicalArtifactsSynchronously(forTransactionId transactionId: UUID) -> Bool {
-        guard let transaction = allTransactions.first(where: { $0.id == transactionId }),
-              let journalId = transaction.journalEntryId else {
-            return true
-        }
-
-        do {
-            let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
-                predicate: #Predicate { $0.journalId == journalId }
-            )
-            guard let journalEntity = try modelContext.fetch(journalDescriptor).first else {
-                transaction.journalEntryId = nil
-                save()
-                refreshTransactions()
-                return true
-            }
-
-            let businessId = journalEntity.businessId
-            let taxYear = journalEntity.taxYear
-            let sourceCandidateId = journalEntity.sourceCandidateId
-
-            modelContext.delete(journalEntity)
-
-            if let sourceCandidateId {
-                let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
-                    predicate: #Predicate { $0.candidateId == sourceCandidateId }
-                )
-                try modelContext.fetch(candidateDescriptor).forEach(modelContext.delete)
-            }
-
-            transaction.journalEntryId = nil
-            try modelContext.save()
-            try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
-                businessId: businessId,
-                taxYear: taxYear
-            )
-            refreshTransactions()
-            refreshJournalEntries()
-            refreshJournalLines()
-            return true
-        } catch {
-            AppLogger.dataStore.warning("Canonical artifact removal failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-    #endif
-
     func syncCanonicalCounterparty(forRecurringId recurringId: UUID) async -> CanonicalCounterpartySyncStatus {
         guard let recurring = recurringTransactions.first(where: { $0.id == recurringId }) else {
             return .skippedSourceNotFound
@@ -1328,6 +1155,7 @@ class DataStore {
         return UUID(uuid: uuid)
     }
 
+    #if DEBUG
     private func syncCanonicalPosting(
         for transaction: PPTransaction,
         counterpartyId: UUID?,
@@ -1400,6 +1228,7 @@ class DataStore {
             snapshot: try canonicalPostingSupport.snapshot()
         )
     }
+    #endif
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
     /// 冪等性を担保するため、同一 transactionId + originalFileName の既存レコードがあれば再作成しない。
@@ -2687,90 +2516,24 @@ class DataStore {
 
     /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
     func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        let approvedItems = items.filter { approvedIds.contains($0.id) }
-        var generatedCount = 0
-        var didMutateRecurringState = pruneRecurringGeneratedMonthsForCurrentYear(on: todayDate())
-
-        for occurrence in dueRecurringOccurrences().filter(\.isSkipped) {
-            guard let recurring = recurringTransactions.first(where: { $0.id == occurrence.recurringId }) else { continue }
-            didMutateRecurringState = consumeRecurringSkipOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
-        }
-
-        for item in approvedItems {
-            guard let recurring = recurringTransactions.first(where: { $0.id == item.recurringId }) else { continue }
-            if isYearLocked(for: item.scheduledDate) { continue }
-            guard let allocations = recurringAllocations(
-                for: recurring,
-                amount: item.amount,
-                txDate: item.scheduledDate,
-                treatAsYearly: recurring.frequency == .yearly && !item.isMonthlySpread
-            ) else {
-                continue
-            }
-
-            let occurrence = RecurringDueOccurrence(
-                recurringId: recurring.id,
-                scheduledDate: item.scheduledDate,
-                amount: item.amount,
-                previewMemo: item.memo,
-                postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: item.isMonthlySpread),
-                categoryId: recurring.categoryId,
-                isMonthlySpread: item.isMonthlySpread,
-                monthKey: item.isMonthlySpread
-                    ? String(
-                        format: "%d-%02d",
-                        Calendar.current.component(.year, from: item.scheduledDate),
-                        Calendar.current.component(.month, from: item.scheduledDate)
-                    )
-                    : nil,
-                projectName: item.projectName,
-                allocationMode: recurring.allocationMode,
-                isSkipped: false,
-                isYearLocked: false
-            )
-            let result = saveApprovedPostingSync(
-                type: recurring.type,
-                amount: item.amount,
-                date: item.scheduledDate,
-                categoryId: recurring.categoryId,
-                memo: occurrence.postingMemo,
-                allocationAmounts: allocations,
-                recurringId: recurring.id,
-                paymentAccountId: recurring.paymentAccountId,
-                transferToAccountId: recurring.transferToAccountId,
-                taxDeductibleRate: recurring.taxDeductibleRate,
-                counterpartyId: recurring.counterpartyId,
-                counterparty: recurring.counterparty,
-                candidateSource: .recurring
-            )
-            if case .success = result {
-                didMutateRecurringState = applyRecurringProcessedOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
-                generatedCount += 1
+        let generatedCount = await recurringWorkflowUseCase.approveRecurringItems(approvedIds, from: items)
+        refreshRecurring()
+        if generatedCount > 0 {
+            refreshTransactions()
+            refreshJournalEntries()
+            refreshJournalLines()
+            if let businessId = businessProfile?.id {
+                let auditEvent = AuditEvent(
+                    businessId: businessId,
+                    eventType: .recurringApproved,
+                    aggregateType: "RecurringTransaction",
+                    aggregateId: UUID(),
+                    actor: "system",
+                    reason: "\(generatedCount)件の定期取引を承認"
+                )
+                appendAuditEvent(auditEvent)
             }
         }
-
-        if didMutateRecurringState || generatedCount > 0 {
-            _ = save()
-            refreshRecurring()
-            if generatedCount > 0 {
-                refreshTransactions()
-                refreshJournalEntries()
-                refreshJournalLines()
-
-                if let businessId = businessProfile?.id {
-                    let auditEvent = AuditEvent(
-                        businessId: businessId,
-                        eventType: .recurringApproved,
-                        aggregateType: "RecurringTransaction",
-                        aggregateId: UUID(),
-                        actor: "system",
-                        reason: "\(generatedCount)件の定期取引を承認"
-                    )
-                    appendAuditEvent(auditEvent)
-                }
-            }
-        }
-
         return generatedCount
     }
 

@@ -95,7 +95,7 @@ final class DataStoreAccountingTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             candidateSource: .manual
         )
-        let syncResult = await dataStore.syncCanonicalArtifacts(forTransactionId: tx.id, source: .manual)
+        let syncResult = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: tx.id, source: .manual)
         guard case let .synced(_, journalId) = syncResult.postingStatus else {
             XCTFail("Transaction should be synced to canonical journal before deletion test")
             return
@@ -118,7 +118,7 @@ final class DataStoreAccountingTests: XCTestCase {
             paymentAccountId: "acct-cash",
             candidateSource: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: transaction.id,
             source: .manual
         )
@@ -148,11 +148,11 @@ final class DataStoreAccountingTests: XCTestCase {
             paymentAccountId: "acct-cash",
             candidateSource: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: income.id,
             source: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: expense.id,
             source: .manual
         )
@@ -186,11 +186,11 @@ final class DataStoreAccountingTests: XCTestCase {
             paymentAccountId: "acct-cash",
             candidateSource: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: income.id,
             source: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: expense.id,
             source: .manual
         )
@@ -429,7 +429,7 @@ final class DataStoreAccountingTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-cash"
         )
-        _ = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        _ = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         let after = dataStore.legacyLedgerDiagnostics()
 
         XCTAssertEqual(after.legacyBookCount, before.legacyBookCount)
@@ -533,7 +533,7 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertNil(transaction.journalEntryId)
         XCTAssertEqual(journalsAfterUpdate.count, beforeJournals.count)
 
-        let syncResult = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let syncResult = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(candidateId, journalId) = syncResult.postingStatus else {
             return XCTFail("explicit sync should still create canonical artifacts")
         }
@@ -824,7 +824,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let result = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(counterpartyId) = result.counterpartyStatus else {
             return XCTFail("取引先は canonical master に保存される前提")
         }
@@ -884,7 +884,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let firstSync = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let firstSync = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(counterpartyId) = firstSync.counterpartyStatus else {
             return XCTFail("取引先は同期される前提")
         }
@@ -914,7 +914,7 @@ final class DataStoreAccountingTests: XCTestCase {
             counterparty: "合同会社テスト",
             candidateSource: .manual
         )
-        let secondSync = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let secondSync = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(updatedCandidateId, updatedJournalId) = secondSync.postingStatus else {
             return XCTFail("更新後も posting sync できる前提")
         }
@@ -1036,7 +1036,7 @@ final class DataStoreAccountingTests: XCTestCase {
             counterparty: "旧表示名",
             candidateSource: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(
+        _ = await mutations(dataStore).syncCanonicalArtifacts(
             forTransactionId: transaction.id,
             source: .manual
         )
@@ -1067,7 +1067,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let result = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(candidateId, _) = result.postingStatus else {
             return XCTFail("canonical posting が作成される前提")
         }
@@ -1129,7 +1129,7 @@ final class DataStoreAccountingTests: XCTestCase {
             counterparty: "軽減取引先",
             candidateSource: .manual
         )
-        _ = await dataStore.syncCanonicalArtifacts(forTransactionId: firstTransaction.id, source: .manual)
+        _ = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: firstTransaction.id, source: .manual)
 
         let secondTransaction = mutations(dataStore).addTransaction(
             type: .expense,
@@ -1142,7 +1142,7 @@ final class DataStoreAccountingTests: XCTestCase {
             counterparty: "軽減取引先",
             candidateSource: .manual
         )
-        let secondResult = await dataStore.syncCanonicalArtifacts(forTransactionId: secondTransaction.id, source: .manual)
+        let secondResult = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: secondTransaction.id, source: .manual)
         guard case let .synced(candidateId, _) = secondResult.postingStatus else {
             return XCTFail("counterparty default tax code で posting sync できる前提")
         }
@@ -1177,7 +1177,7 @@ final class DataStoreAccountingTests: XCTestCase {
             candidateSource: .manual
         )
 
-        let result = await dataStore.syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
+        let result = await mutations(dataStore).syncCanonicalArtifacts(forTransactionId: transaction.id, source: .manual)
         guard case let .synced(candidateId, _) = result.postingStatus else {
             return XCTFail("勘定科目既定税コードで posting sync できる前提")
         }

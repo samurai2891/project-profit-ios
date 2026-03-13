@@ -92,12 +92,14 @@ struct LegacyTransactionCompatibilityUseCase {
             return .failure(currentError())
         }
         let result: Result<PPTransaction, AppError> = .success(transaction)
+        #if DEBUG
         if enqueueCanonicalSync, case .success(let transaction) = result {
-            _ = store.syncCanonicalArtifactsSynchronously(
+            _ = LegacyTransactionTestSupport(store: store).syncCanonicalArtifactsSynchronously(
                 forTransactionId: transaction.id,
                 source: candidateSource
             )
         }
+        #endif
         return result
     }
 
@@ -309,12 +311,14 @@ struct LegacyTransactionCompatibilityUseCase {
             return false
         }
         let updated = true
+        #if DEBUG
         if updated && enqueueCanonicalSync {
-            _ = store.syncCanonicalArtifactsSynchronously(
+            _ = LegacyTransactionTestSupport(store: store).syncCanonicalArtifactsSynchronously(
                 forTransactionId: id,
                 source: candidateSource
             )
         }
+        #endif
         return updated
     }
 
@@ -343,7 +347,7 @@ struct LegacyTransactionCompatibilityUseCase {
         guard saveAndRefreshTransactions(refreshRecurring: true) else {
             return
         }
-        _ = store.removeCanonicalArtifactsSynchronously(forTransactionId: id)
+        _ = LegacyTransactionTestSupport(store: store).removeCanonicalArtifactsSynchronously(forTransactionId: id)
     }
 
     @discardableResult

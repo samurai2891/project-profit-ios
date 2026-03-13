@@ -62,6 +62,7 @@ struct RecurringWorkflowUseCase {
             modelContext: modelContext,
             recurringRepository: recurringRepository,
             transactionFormQueryUseCase: transactionFormQueryUseCase,
+            postingWorkflowUseCase: postingWorkflowUseCase,
             postingSupport: postingSupport,
             onRecurringScheduleChanged: { [onRecurringScheduleChanged] in
                 guard let onRecurringScheduleChanged else {

@@ -2,14 +2,242 @@ import Foundation
 import SwiftData
 @testable import ProjectProfit
 
+enum LegacyTransactionMutationSource: Sendable, Equatable {
+    case systemGenerated
+    case userInitiated
+}
+
 @MainActor
-struct TestMutationDriver {
+struct LegacyTransactionTestSupport {
     private let store: ProjectProfit.DataStore
     private let modelContext: ModelContext
+    private let postingSupport: CanonicalPostingSupport
 
     init(store: ProjectProfit.DataStore) {
         self.store = store
         self.modelContext = store.modelContext
+        self.postingSupport = CanonicalPostingSupport(modelContext: store.modelContext)
+    }
+
+    func syncCanonicalArtifacts(
+        forTransactionId transactionId: UUID,
+        source: CandidateSource? = nil
+    ) async -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
+        syncCanonicalArtifactsSynchronously(
+            forTransactionId: transactionId,
+            source: source
+        )
+    }
+
+    func syncCanonicalArtifactsSynchronously(
+        forTransactionId transactionId: UUID,
+        source: CandidateSource? = nil
+    ) -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
+        store.loadData()
+        guard let transaction = store.allTransactions.first(where: { $0.id == transactionId }) else {
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: .skippedSourceNotFound,
+                postingStatus: .skippedSourceNotFound
+            )
+        }
+
+        let explicitTaxCodeId = compatibilityTaxCodeId(
+            explicitTaxCodeId: transaction.taxCodeId,
+            legacyCategory: transaction.taxCategory,
+            taxRate: transaction.taxRate
+        )
+        let counterpartyStatus = syncCanonicalCounterpartyNow(
+            explicitId: transaction.counterpartyId,
+            rawName: transaction.counterparty,
+            defaultTaxCodeId: explicitTaxCodeId
+        )
+        let counterpartyId: UUID?
+        switch counterpartyStatus {
+        case .synced(let id):
+            counterpartyId = id
+        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
+            counterpartyId = nil
+        }
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        do {
+            posting = try buildCanonicalPosting(
+                for: transaction,
+                counterpartyId: counterpartyId,
+                source: source ?? .manual
+            )
+        } catch AppError.invalidInput(let message)
+            where message.contains("事業者プロフィールが未設定") {
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedBusinessProfileUnavailable
+            )
+        } catch AppError.yearLocked {
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedBusinessProfileUnavailable
+            )
+        } catch {
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .skippedLegacyJournalUnavailable
+            )
+        }
+
+        do {
+            let journal = try postingSupport.persistApprovedPosting(
+                posting: posting,
+                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
+                actor: source == .importFile ? "user" : "system",
+                saveChanges: true
+            )
+            if transaction.journalEntryId != journal.id {
+                transaction.journalEntryId = journal.id
+                _ = store.save()
+                store.refreshTransactions()
+            }
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .synced(candidateId: posting.candidate.id, journalId: journal.id)
+            )
+        } catch {
+            AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
+            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
+                counterpartyStatus: counterpartyStatus,
+                postingStatus: .failed(error.localizedDescription)
+            )
+        }
+    }
+
+    @discardableResult
+    func removeCanonicalArtifactsSynchronously(forTransactionId transactionId: UUID) -> Bool {
+        store.loadData()
+        guard let transaction = store.allTransactions.first(where: { $0.id == transactionId }),
+              let journalId = transaction.journalEntryId else {
+            return true
+        }
+
+        do {
+            let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.journalId == journalId }
+            )
+            guard let journalEntity = try modelContext.fetch(journalDescriptor).first else {
+                transaction.journalEntryId = nil
+                _ = store.save()
+                store.refreshTransactions()
+                return true
+            }
+
+            let businessId = journalEntity.businessId
+            let taxYear = journalEntity.taxYear
+            let sourceCandidateId = journalEntity.sourceCandidateId
+
+            modelContext.delete(journalEntity)
+
+            if let sourceCandidateId {
+                let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
+                    predicate: #Predicate { $0.candidateId == sourceCandidateId }
+                )
+                try modelContext.fetch(candidateDescriptor).forEach(modelContext.delete)
+            }
+
+            transaction.journalEntryId = nil
+            try modelContext.save()
+            try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+                businessId: businessId,
+                taxYear: taxYear
+            )
+            store.refreshTransactions()
+            store.refreshJournalEntries()
+            store.refreshJournalLines()
+            return true
+        } catch {
+            AppLogger.dataStore.warning("Canonical artifact removal failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func compatibilityTaxCodeId(
+        explicitTaxCodeId: String?,
+        legacyCategory: TaxCategory?,
+        taxRate: Int?
+    ) -> String? {
+        if let taxCodeId = TaxCode.resolve(id: explicitTaxCodeId)?.rawValue {
+            return taxCodeId
+        }
+        return TaxCode.resolve(legacyCategory: legacyCategory, taxRate: taxRate)?.rawValue
+    }
+
+    private func syncCanonicalCounterpartyNow(
+        explicitId: UUID?,
+        rawName: String?,
+        defaultTaxCodeId: String?
+    ) -> ProjectProfit.DataStore.CanonicalCounterpartySyncStatus {
+        do {
+            let resolved = try postingSupport.resolveCounterpartyReference(
+                explicitId: explicitId,
+                rawName: rawName,
+                defaultTaxCodeId: defaultTaxCodeId,
+                businessId: store.businessProfile?.id
+            )
+            guard let counterpartyId = resolved.id else {
+                if explicitId != nil || store.businessProfile == nil {
+                    return .skippedBusinessProfileUnavailable
+                }
+                return .skippedBlankName
+            }
+            try modelContext.save()
+            return .synced(counterpartyId)
+        } catch {
+            AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func buildCanonicalPosting(
+        for transaction: PPTransaction,
+        counterpartyId: UUID?,
+        source: CandidateSource
+    ) throws -> CanonicalTransactionPostingBridge.Posting {
+        try postingSupport.buildApprovedPosting(
+            seed: CanonicalPostingSeed(
+                id: transaction.id,
+                type: transaction.type,
+                amount: transaction.amount,
+                date: transaction.date,
+                categoryId: transaction.categoryId,
+                memo: transaction.memo,
+                recurringId: transaction.recurringId,
+                paymentAccountId: transaction.paymentAccountId,
+                transferToAccountId: transaction.transferToAccountId,
+                taxDeductibleRate: transaction.taxDeductibleRate,
+                taxAmount: transaction.taxAmount,
+                taxCodeId: transaction.taxCodeId,
+                isTaxIncluded: transaction.isTaxIncluded,
+                receiptImagePath: transaction.receiptImagePath,
+                lineItems: transaction.lineItems,
+                counterpartyId: counterpartyId,
+                counterpartyName: transaction.counterparty,
+                source: source,
+                createdAt: transaction.createdAt,
+                updatedAt: transaction.updatedAt,
+                journalEntryId: transaction.journalEntryId
+            ),
+            snapshot: try postingSupport.snapshot()
+        )
+    }
+}
+
+@MainActor
+struct TestMutationDriver {
+    private let store: ProjectProfit.DataStore
+    private let modelContext: ModelContext
+    private let legacySupport: LegacyTransactionTestSupport
+
+    init(store: ProjectProfit.DataStore) {
+        self.store = store
+        self.modelContext = store.modelContext
+        self.legacySupport = LegacyTransactionTestSupport(store: store)
     }
 
     @discardableResult
@@ -257,6 +485,18 @@ struct TestMutationDriver {
         )
         store.loadData()
         store.lastError = useCase.lastError
+    }
+
+    func syncCanonicalArtifacts(
+        forTransactionId transactionId: UUID,
+        source: CandidateSource? = nil
+    ) async -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
+        let result = await legacySupport.syncCanonicalArtifacts(
+            forTransactionId: transactionId,
+            source: source
+        )
+        store.loadData()
+        return result
     }
 
     @discardableResult

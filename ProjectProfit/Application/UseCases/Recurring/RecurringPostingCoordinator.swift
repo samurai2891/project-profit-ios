@@ -6,6 +6,7 @@ struct RecurringPostingCoordinator {
     private let modelContext: ModelContext
     private let recurringRepository: any RecurringRepository
     private let transactionFormQueryUseCase: TransactionFormQueryUseCase
+    private let postingWorkflowUseCase: PostingWorkflowUseCase
     private let postingSupport: CanonicalPostingSupport
     private let onRecurringScheduleChanged: (() -> Void)?
     private let calendar: Calendar
@@ -14,6 +15,7 @@ struct RecurringPostingCoordinator {
         modelContext: ModelContext,
         recurringRepository: any RecurringRepository,
         transactionFormQueryUseCase: TransactionFormQueryUseCase,
+        postingWorkflowUseCase: PostingWorkflowUseCase,
         postingSupport: CanonicalPostingSupport,
         onRecurringScheduleChanged: (() -> Void)? = nil,
         calendar: Calendar = .current
@@ -21,6 +23,7 @@ struct RecurringPostingCoordinator {
         self.modelContext = modelContext
         self.recurringRepository = recurringRepository
         self.transactionFormQueryUseCase = transactionFormQueryUseCase
+        self.postingWorkflowUseCase = postingWorkflowUseCase
         self.postingSupport = postingSupport
         self.onRecurringScheduleChanged = onRecurringScheduleChanged
         self.calendar = calendar
@@ -176,9 +179,15 @@ struct RecurringPostingCoordinator {
                     memo: occurrence.postingMemo,
                     snapshot: snapshot
                 )
-                _ = try await postingSupport.syncApprovedCandidate(
+                let candidate = try await postingSupport.saveDraftCandidate(
                     posting: posting,
                     allocationAmounts: allocations,
+                )
+                _ = try await postingWorkflowUseCase.approveCandidate(
+                    candidateId: candidate.id,
+                    entryType: posting.entryType,
+                    description: posting.description,
+                    approvedAt: posting.approvedAt,
                     actor: "system"
                 )
                 didMutateRecurringState = applyRecurringProcessedOccurrence(occurrence, recurring: recurring) || didMutateRecurringState

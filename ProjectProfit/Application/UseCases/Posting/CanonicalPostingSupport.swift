@@ -293,6 +293,18 @@ struct CanonicalPostingSupport {
         return candidate
     }
 
+    func saveDraftCandidate(
+        posting: CanonicalTransactionPostingBridge.Posting,
+        allocationAmounts: [Allocation]
+    ) async throws -> PostingCandidate {
+        let candidate = candidateWithProjectAllocations(
+            posting.candidate.updated(status: .draft),
+            allocationAmounts: allocationAmounts
+        )
+        try await postingWorkflowUseCase.saveCandidate(candidate)
+        return candidate
+    }
+
     func syncApprovedCandidate(
         posting: CanonicalTransactionPostingBridge.Posting,
         allocations: [(projectId: UUID, ratio: Int)],

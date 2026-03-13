@@ -14,7 +14,12 @@ enum FeatureFlags {
 
     /// 新正本系統 (Evidence → Candidate → PostedJournal) を使用
     static var useCanonicalPosting: Bool {
-        get { UserDefaults.standard.bool(forKey: Keys.useCanonicalPosting) }
+        get {
+            if UserDefaults.standard.object(forKey: Keys.useCanonicalPosting) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Keys.useCanonicalPosting)
+        }
         set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalPosting) }
     }
 

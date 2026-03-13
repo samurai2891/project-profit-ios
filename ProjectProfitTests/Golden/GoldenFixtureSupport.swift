@@ -195,7 +195,7 @@ struct GoldenFixtureLoader {
                 candidateSource: .manual,
                 enqueueCanonicalSync: false
             )
-            _ = await dataStore.syncCanonicalArtifacts(
+            _ = await mutations(dataStore).syncCanonicalArtifacts(
                 forTransactionId: transaction.id,
                 source: .manual
             )
