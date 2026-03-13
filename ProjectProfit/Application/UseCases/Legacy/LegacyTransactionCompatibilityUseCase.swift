@@ -1,15 +1,16 @@
 #if DEBUG
 import Foundation
 import SwiftData
+@testable import ProjectProfit
 
 @MainActor
 struct LegacyTransactionCompatibilityUseCase {
     private let modelContext: ModelContext
-    private let store: DataStore
+    private let store: ProjectProfit.DataStore
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
-        self.store = DataStore(modelContext: modelContext)
+        self.store = ProjectProfit.DataStore(modelContext: modelContext)
         self.store.loadData()
     }
 
