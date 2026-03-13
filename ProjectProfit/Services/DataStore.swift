@@ -3136,81 +3136,16 @@ class DataStore {
         guard let businessId = businessProfile?.id else {
             return ([], [])
         }
-
-        let canonicalAccounts = fetchCanonicalAccounts(businessId: businessId)
-        let accountsById = Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) })
-        let journals = fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear)
-
-        let projectedEntries = journals.map { entry in
-            PPJournalEntry(
-                id: entry.id,
-                sourceKey: "canonical:\(entry.id.uuidString)",
-                date: entry.journalDate,
-                entryType: projectedLegacyEntryType(for: entry),
-                memo: entry.description,
-                isPosted: entry.approvedAt != nil,
-                createdAt: entry.createdAt,
-                updatedAt: entry.updatedAt
-            )
-        }
-
-        let projectedLines = journals.flatMap { entry in
-            entry.lines.sorted { $0.sortOrder < $1.sortOrder }.map { line in
-                let legacyAccountId = accountsById[line.accountId]?.legacyAccountId ?? line.accountId.uuidString
-                return PPJournalLine(
-                    id: line.id,
-                    entryId: entry.id,
-                    accountId: legacyAccountId,
-                    debit: NSDecimalNumber(decimal: line.debitAmount).intValue,
-                    credit: NSDecimalNumber(decimal: line.creditAmount).intValue,
-                    memo: "",
-                    displayOrder: line.sortOrder,
-                    createdAt: entry.createdAt,
-                    updatedAt: entry.updatedAt
-                )
-            }
-        }
-
-        let legacySupplementalEntries = journalEntries.filter { entry in
-            guard !projectedEntries.contains(where: { $0.id == entry.id }) else {
-                return false
-            }
-            let isSupplemental = entry.sourceKey.hasPrefix("manual:")
-                || entry.sourceKey.hasPrefix("opening:")
-                || entry.sourceKey.hasPrefix("closing:")
-                || entry.sourceKey.hasPrefix("depreciation:")
-            guard isSupplemental else {
-                return false
-            }
-            guard let requestedFiscalYear else {
-                return true
-            }
-            return fiscalYear(for: entry.date, startMonth: FiscalYearSettings.startMonth) == requestedFiscalYear
-        }
-        let legacySupplementalLines = journalLines.filter { line in
-            legacySupplementalEntries.contains { $0.id == line.entryId }
-        }
-
-        let mergedEntries = (projectedEntries + legacySupplementalEntries)
-            .sorted { lhs, rhs in
-                if lhs.date == rhs.date {
-                    return lhs.createdAt > rhs.createdAt
-                }
-                return lhs.date > rhs.date
-            }
-        let mergedLines = projectedLines + legacySupplementalLines
-        return (mergedEntries, mergedLines)
-    }
-
-    private func projectedLegacyEntryType(for entry: CanonicalJournalEntry) -> JournalEntryType {
-        switch entry.entryType {
-        case .opening:
-            return .opening
-        case .closing:
-            return .closing
-        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
-            return .auto
-        }
+        let projected = LegacyProjectedJournalAssembler.assemble(
+            businessId: businessId,
+            fiscalYear: requestedFiscalYear,
+            canonicalAccounts: fetchCanonicalAccounts(businessId: businessId),
+            canonicalJournals: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear),
+            legacyEntries: journalEntries,
+            legacyLines: journalLines,
+            supplementalSourcePrefixes: ["manual:", "opening:", "closing:", "depreciation:"]
+        )
+        return (projected.entries, projected.lines)
     }
 
     func getJournalEntry(id: UUID) -> PPJournalEntry? {

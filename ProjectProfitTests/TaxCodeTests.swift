@@ -16,6 +16,18 @@ final class TaxCodeTests: XCTestCase {
         XCTAssertEqual(TaxCode.resolve(legacyCategory: .nonTaxable, taxRate: nil), .nonTaxable)
     }
 
+    func testResolveCompatibilityFallsBackToTaxRateWhenCategoryIsMissing() {
+        XCTAssertEqual(
+            TaxCode.resolveCompatibility(legacyCategory: nil, taxRate: 10),
+            .standard10
+        )
+        XCTAssertEqual(
+            TaxCode.resolveCompatibility(legacyCategory: nil, taxRate: 8),
+            .reduced8
+        )
+        XCTAssertNil(TaxCode.resolveCompatibility(legacyCategory: nil, taxRate: 5))
+    }
+
     func testRateBreakdownUsesTaxYearPackRates() {
         let pack = TaxYearPack(
             taxYear: 2025,

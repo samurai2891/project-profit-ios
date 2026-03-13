@@ -141,6 +141,16 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
         XCTAssertNil(dataStore.lastError)
     }
 
+    func testLoadProfileCreatesCanonicalStateWithoutLegacyProfile() async throws {
+        let didLoad = await useCase.loadProfile(defaultTaxYear: 2033)
+
+        XCTAssertTrue(didLoad)
+        XCTAssertEqual(dataStore.currentTaxYearProfile?.taxYear, 2033)
+        XCTAssertNotNil(dataStore.businessProfile)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPAccountingProfile>()).isEmpty)
+        XCTAssertNil(dataStore.lastError)
+    }
+
     private static func makeDate(year: Int, month: Int, day: Int) -> Date {
         let components = DateComponents(
             calendar: Calendar(identifier: .gregorian),

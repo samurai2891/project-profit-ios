@@ -76,15 +76,15 @@ final class PPAccountingProfile {
 // MARK: - Computed Properties
 
 extension PPAccountingProfile {
-    /// 年度がロック済みかどうか（レガシー互換: 単年度 lockedAt 基盤）
+    /// レガシー互換の単年度 lockedAt 読み替え。runtime year lock の正本ではない。
     var isLocked: Bool { lockedAt != nil }
 
-    /// 指定年度がロック済みかどうか
+    /// 旧データ読取用の互換判定。現行の年度状態は TaxYearProfile.yearLockState を参照する。
     func isYearLocked(_ year: Int) -> Bool {
         fiscalYear == year && lockedAt != nil
     }
 
-    /// 年度をロックする
+    /// 旧プロフィール互換のための補助 API。production の年度ロック更新には使わない。
     func lockYear(_ year: Int) {
         guard !isYearLocked(year) else { return }
         guard fiscalYear == year else { return }
@@ -92,7 +92,7 @@ extension PPAccountingProfile {
         updatedAt = Date()
     }
 
-    /// 年度のロックを解除する
+    /// 旧プロフィール互換のための補助 API。production の年度ロック更新には使わない。
     func unlockYear(_ year: Int) {
         guard fiscalYear == year else { return }
         lockedAt = nil

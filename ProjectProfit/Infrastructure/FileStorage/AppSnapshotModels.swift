@@ -91,6 +91,7 @@ struct LegacySnapshotSection: Codable, Equatable, Sendable {
     var accounts: [LegacyAccountSnapshot]
     var journalEntries: [LegacyJournalEntrySnapshot]
     var journalLines: [LegacyJournalLineSnapshot]
+    /// Decode/restore compatibility only. New backups must keep this empty and use canonical profiles instead.
     var accountingProfiles: [LegacyAccountingProfileSnapshot]
     var userRules: [LegacyUserRuleSnapshot]
     var fixedAssets: [LegacyFixedAssetSnapshot]
@@ -295,8 +296,11 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     let journalEntryId: UUID?
     let taxAmount: Int?
     let taxCodeId: String?
+    /// Restore compatibility only. Canonical tax input is `taxCodeId`.
     let taxRate: Int?
+    /// Restore compatibility only. Canonical tax identity is still `taxCodeId`.
     let isTaxIncluded: Bool?
+    /// Restore compatibility only. Canonical tax input is `taxCodeId`.
     let taxCategory: TaxCategory?
     let counterpartyId: UUID?
     let counterparty: String?
@@ -334,7 +338,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     }
 
     func toModel() -> PPTransaction {
-        PPTransaction(
+        PPTransaction.makeCompatibilityTransaction(
             id: id,
             type: type,
             amount: amount,
@@ -485,6 +489,7 @@ struct LegacyJournalLineSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+@available(*, deprecated, message: "Legacy profile snapshots are restore-compat only. New backups must use canonical profiles.")
 struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
     let id: String
     let fiscalYear: Int
@@ -495,6 +500,7 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
     let isBlueReturn: Bool
     let defaultPaymentAccountId: String
     let openingDate: Date?
+    /// Old archive compatibility only. Current-format snapshots must use canonical taxYearProfiles.
     let lockedAt: Date?
     let ownerNameKana: String?
     let postalCode: String?
@@ -528,6 +534,7 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         self.updatedAt = profile.updatedAt
     }
 
+    /// Restore compatibility only. New snapshots should persist BusinessProfile instead.
     func toBusinessProfile(
         existingId: UUID? = nil,
         sensitivePayload: ProfileSensitivePayload? = nil
@@ -551,6 +558,7 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         )
     }
 
+    /// Restore compatibility only. New snapshots should persist TaxYearProfile instead.
     func toTaxYearProfile(
         businessId: UUID,
         taxPackVersion: String = "legacy-restored",

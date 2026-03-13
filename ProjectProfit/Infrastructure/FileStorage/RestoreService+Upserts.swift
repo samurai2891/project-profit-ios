@@ -333,6 +333,7 @@ extension RestoreService {
             return [:]
         }
 
+        // Old archives may only contain legacy profile snapshots. Reconstruct canonical profiles once, then normalize secure IDs.
         let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
             sortBy: [SortDescriptor(\.createdAt)]
         )

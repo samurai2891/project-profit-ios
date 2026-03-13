@@ -237,6 +237,19 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         XCTAssertTrue(legacyProfiles.isEmpty)
     }
+
+    func testLoadCreatesCanonicalProfilesWithoutLegacyProfile() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let useCase = ProfileSettingsUseCase(modelContext: context)
+
+        let state = try await useCase.load(defaultTaxYear: 2030)
+
+        XCTAssertEqual(state.taxYearProfile.taxYear, 2030)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<BusinessProfileEntity>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<TaxYearProfileEntity>()).count, 1)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPAccountingProfile>()).isEmpty)
+    }
 }
 
 private func XCTAssertThrowsErrorAsync(

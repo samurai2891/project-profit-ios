@@ -163,6 +163,7 @@
 		4A8176EC1107629E75501179 /* cash_book.csv in Resources */ = {isa = PBXBuildFile; fileRef = 456E7EDD1C484834E5D2E2DC /* cash_book.csv */; };
 		4B00EB6CD0A678CD72B720C8 /* FilterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492371A3D955705C4D79A8B3 /* FilterView.swift */; };
 		4B0B94C609AD494A83D64242 /* DataRevisionQueryUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5385C50CB8D37AE08EA5C90C /* DataRevisionQueryUseCase.swift */; };
+		4BAC8E1F4556B556E9CC42F3 /* AccountingBookReadModelQueries.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36B81FBB88749E08E86FEC2 /* AccountingBookReadModelQueries.swift */; };
 		4DBF9C4ECD2A5C5B37E991F4 /* FiscalYearSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E492A94505D146E7B87B871D /* FiscalYearSettings.swift */; };
 		4DE958204F531AF8CCFC4723 /* PDFPageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE295C9DB8D76C5FF54A126 /* PDFPageRenderer.swift */; };
 		4DEC4D862821D94FC7E7DD1B /* AccountingBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BF6EC77336C24CB1D402ADB /* AccountingBootstrapTests.swift */; };
@@ -498,6 +499,7 @@
 		EDABC1713ED21044EDB7EB51 /* CanonicalJSONCoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA7C80B23BC7D19CC1E1D2C /* CanonicalJSONCoder.swift */; };
 		EEB36AFEAB4D3F5C03FB5EE5 /* CanonicalAccountType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F2DCA61E3D82E037F1A8A07 /* CanonicalAccountType.swift */; };
 		EEC1FC38DB87E3EBB8C565CF /* ClassificationDictionaryLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF904D8494972942BD98EA7 /* ClassificationDictionaryLoaderTests.swift */; };
+		EF9A5F02D4A3275707381DCA /* LegacyProjectedJournalAssembler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D19E84202FA08C60D5B11B20 /* LegacyProjectedJournalAssembler.swift */; };
 		F0B54A8C2186A3713A6D456C /* ClosingEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CF5153DAA9F3380CBA50A7 /* ClosingEntryTests.swift */; };
 		F0ECBF8F427EB8D6D81F7984 /* ProjectAllocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4782C1F31F32802247A80831 /* ProjectAllocation.swift */; };
 		F10F1A98AFE788D6F5FB9FB5 /* DistributionTemplateUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 314812D63AEB9475C04754DB /* DistributionTemplateUseCase.swift */; };
@@ -1024,6 +1026,7 @@
 		C0EAFB66A379C02DC0B0E153 /* CanonicalPostingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalPostingEngine.swift; sourceTree = "<group>"; };
 		C1F165D36FF323CAAAA98CA3 /* CounterpartyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CounterpartyRepository.swift; sourceTree = "<group>"; };
 		C33F9891E1C0457C044301BE /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		C36B81FBB88749E08E86FEC2 /* AccountingBookReadModelQueries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountingBookReadModelQueries.swift; sourceTree = "<group>"; };
 		C385BF9C33115A84F860A971 /* EvidenceSearchIndexEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceSearchIndexEntity.swift; sourceTree = "<group>"; };
 		C3CA5E68C859EB119A4C0195 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C55E7EE122B1C21C79A38E45 /* LedgerImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerImportCoordinator.swift; sourceTree = "<group>"; };
@@ -1051,6 +1054,7 @@
 		CF7FA0C9D6A9F7E86DBD6DEE /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		D184AD0D6B42E9393B29E04D /* ChartOfAccountsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartOfAccountsRepository.swift; sourceTree = "<group>"; };
 		D19566F3481844AB59CF331F /* AppSnapshotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSnapshotModels.swift; sourceTree = "<group>"; };
+		D19E84202FA08C60D5B11B20 /* LegacyProjectedJournalAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyProjectedJournalAssembler.swift; sourceTree = "<group>"; };
 		D1DE5D4ACB80AB72BCC7C309 /* FixedAssetScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetScheduleView.swift; sourceTree = "<group>"; };
 		D1DEE3EB8F773CD2BED2F0A6 /* PPAccountingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccountingProfile.swift; sourceTree = "<group>"; };
 		D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreCRUDTests.swift; sourceTree = "<group>"; };
@@ -2473,6 +2477,7 @@
 				5C9A7162487DB4363CF1FF6D /* FormEngine.swift */,
 				CBD99BA5BD156A24FBFB28A3 /* InventoryService.swift */,
 				939B4BB233225EA40BDF5E4F /* JournalValidationService.swift */,
+				D19E84202FA08C60D5B11B20 /* LegacyProjectedJournalAssembler.swift */,
 				44EE0CC65692704E599F3253 /* Logger.swift */,
 				12D2CDA98F6E670075284410 /* NotificationService.swift */,
 				04493FAF2AE1E915BA477853 /* PDFExportService.swift */,
@@ -3134,6 +3139,7 @@
 		FA4D83DC16E329FDAF799F7B /* App */ = {
 			isa = PBXGroup;
 			children = (
+				C36B81FBB88749E08E86FEC2 /* AccountingBookReadModelQueries.swift */,
 				813005EAF4C6E4EDA9401813 /* AccountingReadSupport.swift */,
 				6E493F6AD36FAE3C10489E82 /* AppBootstrapWorkflowUseCase.swift */,
 				06FE69CD19366B8A9F4B49EB /* AppShellWorkflowUseCase.swift */,
@@ -3332,6 +3338,7 @@
 			files = (
 				181014E7B6F229A16BC8A9C8 /* AccountFormView.swift in Sources */,
 				BB07EB3B607981D53DEB764C /* AccountPickerView.swift in Sources */,
+				4BAC8E1F4556B556E9CC42F3 /* AccountingBookReadModelQueries.swift in Sources */,
 				2F6713F8F73AC21C5C621B84 /* AccountingBootstrapService.swift in Sources */,
 				AC725EBA7F360D35CD05F958 /* AccountingConstants.swift in Sources */,
 				FC510C2377B9CF857CD6246D /* AccountingEngine.swift in Sources */,
@@ -3520,6 +3527,7 @@
 				A13FDCD201529AA6AFD45D5E /* LegacyAccountingProfileCanonicalMapper.swift in Sources */,
 				535C6E1B48D1A78CA4067AFA /* LegacyDataMigrationExecutor.swift in Sources */,
 				9853A42B1886D2F806728FBA /* LegacyProfileMigrationRunner.swift in Sources */,
+				EF9A5F02D4A3275707381DCA /* LegacyProjectedJournalAssembler.swift in Sources */,
 				F690CC63A87B7FADF49791D8 /* LegalDocumentLedgerView.swift in Sources */,
 				9C502A1443BF1F6DFE230B4D /* LegalReportLine.swift in Sources */,
 				7928E3314AA1E481FF209308 /* LineItemsEditView.swift in Sources */,

@@ -91,6 +91,7 @@ final class LegacyProfileMigrationRunner {
 
             guard let legacy = legacyProfiles.first else {
                 if existingBusiness != nil || !taxYearEntities.isEmpty {
+                    // Canonical profiles already persisted; no legacy fallback should run from this point.
                     return LegacyProfileMigrationReport(
                         outcome: .alreadyMigrated,
                         legacyProfileId: nil,
@@ -218,6 +219,7 @@ final class LegacyProfileMigrationRunner {
             invoiceIssuerStatusAtYearRaw: InvoiceIssuerStatus.unknown.rawValue,
             electronicBookLevelRaw: ElectronicBookLevel.none.rawValue,
             etaxSubmissionPlanned: false,
+            // Legacy `lockedAt` is migration input only. Runtime year-lock reads canonical tax-year profiles.
             yearLockStateRaw: legacy.isYearLocked(legacy.fiscalYear) ? YearLockState.finalLock.rawValue : YearLockState.open.rawValue,
             taxPackVersion: "legacy-migrated",
             createdAt: legacy.createdAt,

@@ -43,6 +43,6 @@ struct ReportingQueryUseCase {
         guard let modelContext else {
             return []
         }
-        return AccountingReadSupport(modelContext: modelContext).monthlySummaryRows(year: year)
+        return MonthlySummaryRowReadModelQuery(modelContext: modelContext).rows(year: year)
     }
 }

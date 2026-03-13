@@ -5,6 +5,8 @@ enum ConsumptionTaxReportService {
 
     // MARK: - Canonical Worksheet
 
+    /// production path 用。canonical `JournalLine.taxCodeId` を唯一の税区分入力として扱う。
+
     static func generateWorksheet(
         fiscalYear: Int,
         taxYearProfile: TaxYearProfile,
@@ -135,6 +137,7 @@ enum ConsumptionTaxReportService {
     // MARK: - Legacy Compatibility
 
     /// 旧 `PPJournalEntry` / `PPJournalLine` ベースの集計を維持する互換 API。
+    /// canonical tax aggregation の正本ではない。
     static func generateSummary(
         fiscalYear: Int,
         journalEntries: [PPJournalEntry],

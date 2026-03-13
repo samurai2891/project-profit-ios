@@ -66,6 +66,8 @@ struct ProfileSettingsUseCase {
         defaultTaxYear: Int,
         sensitivePayload: ProfileSensitivePayload? = nil
     ) async throws -> ProfileSettingsState {
+        // Kept for workflow compatibility; canonical profile loading no longer depends on legacy payloads.
+        _ = sensitivePayload
         if let businessProfile = try await businessProfileRepository.findDefault() {
             let taxYearProfile = try await existingOrDefaultTaxYearProfile(
                 businessProfile: businessProfile,

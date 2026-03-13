@@ -158,6 +158,66 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         XCTAssertTrue(legacyProfiles.isEmpty)
     }
 
+    func testExecuteIfNeededAlreadyMigratedDoesNotMoveLegacySecurePayload() throws {
+        let container = try makeCanonicalContainer()
+        let context = container.mainContext
+        let businessId = UUID()
+        let legacyProfileId = "legacy-secure-only"
+        let canonicalPayload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "カノニカル",
+            postalCode: "1000001",
+            address: "東京都千代田区1-1-1",
+            phoneNumber: "0311111111",
+            dateOfBirth: nil,
+            businessCategory: "IT",
+            myNumberFlag: true
+        )
+        let legacyPayload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "レガシー",
+            postalCode: "5300001",
+            address: "大阪府大阪市",
+            phoneNumber: "0611111111",
+            dateOfBirth: nil,
+            businessCategory: "Legacy",
+            myNumberFlag: false
+        )
+        defer {
+            _ = ProfileSecureStore.delete(profileId: businessId.uuidString)
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        }
+
+        context.insert(BusinessProfileEntity(
+            businessId: businessId,
+            ownerName: "Canonical Owner",
+            ownerNameKana: "カノニカル",
+            businessName: "Canonical商店",
+            businessAddress: "東京都港区1-1-1",
+            postalCode: "1070001",
+            phoneNumber: "0311111111",
+            taxOfficeCode: "9999"
+        ))
+        context.insert(TaxYearProfileEntity(
+            businessId: businessId,
+            taxYear: 2026,
+            filingStyleRaw: FilingStyle.blueGeneral.rawValue,
+            blueDeductionLevelRaw: BlueDeductionLevel.sixtyFive.rawValue,
+            bookkeepingBasisRaw: BookkeepingBasis.doubleEntry.rawValue,
+            yearLockStateRaw: YearLockState.softClose.rawValue,
+            taxPackVersion: "2026-v1"
+        ))
+        try context.save()
+
+        XCTAssertTrue(ProfileSecureStore.save(canonicalPayload, profileId: businessId.uuidString))
+        XCTAssertTrue(ProfileSecureStore.save(legacyPayload, profileId: legacyProfileId))
+
+        let runner = LegacyProfileMigrationRunner(modelContext: context)
+        let report = runner.executeIfNeeded()
+
+        XCTAssertEqual(report.outcome, .alreadyMigrated)
+        XCTAssertEqual(ProfileSecureStore.load(profileId: businessId.uuidString), canonicalPayload)
+        XCTAssertEqual(ProfileSecureStore.load(profileId: legacyProfileId), legacyPayload)
+    }
+
     func testExecuteMapsLegacyLockToCanonicalStateAndDeletesLegacyProfile() throws {
         let container = try makeCanonicalContainer()
         let context = container.mainContext

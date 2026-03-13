@@ -246,18 +246,78 @@ final class PPTransaction {
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
         self.bookkeepingMode = bookkeepingMode
         self.journalEntryId = journalEntryId
-        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
-            ?? TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
         self.taxAmount = taxAmount
-        self.taxCodeId = resolvedTaxCode?.rawValue
-        self.taxRate = resolvedTaxCode?.taxRatePercent ?? taxRate
+        self.taxCodeId = TaxCode.resolve(id: taxCodeId)?.rawValue
+        self.taxRate = taxRate
         self.isTaxIncluded = isTaxIncluded
-        self.taxCategory = resolvedTaxCode?.legacyCategory ?? taxCategory
+        self.taxCategory = taxCategory
         self.counterpartyId = counterpartyId
         self.counterparty = counterparty
         self.deletedAt = deletedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    /// Restore / migration / legacy test support 用の compat 生成経路。
+    static func makeCompatibilityTransaction(
+        id: UUID = UUID(),
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String = "",
+        allocations: [Allocation] = [],
+        recurringId: UUID? = nil,
+        receiptImagePath: String? = nil,
+        lineItems: [ReceiptLineItem] = [],
+        isManuallyEdited: Bool? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        bookkeepingMode: BookkeepingMode? = nil,
+        journalEntryId: UUID? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        deletedAt: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) -> PPTransaction {
+        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
+            ?? TaxCode.resolveCompatibility(legacyCategory: taxCategory, taxRate: taxRate)
+
+        return PPTransaction(
+            id: id,
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            isManuallyEdited: isManuallyEdited,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            bookkeepingMode: bookkeepingMode,
+            journalEntryId: journalEntryId,
+            taxAmount: taxAmount,
+            taxCodeId: resolvedTaxCode?.rawValue,
+            taxRate: resolvedTaxCode?.taxRatePercent ?? taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: resolvedTaxCode?.legacyCategory ?? taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            deletedAt: deletedAt,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
     }
 }
 

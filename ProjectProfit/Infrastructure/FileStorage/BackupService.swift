@@ -179,6 +179,7 @@ struct BackupService {
                 accounts: allAccounts.map(LegacyAccountSnapshot.init),
                 journalEntries: journalEntries.map(LegacyJournalEntrySnapshot.init),
                 journalLines: journalLines.map(LegacyJournalLineSnapshot.init),
+                // Legacy profile snapshots are restore-compat only. New backups use canonical profiles as the single source of truth.
                 accountingProfiles: [],
                 userRules: allUserRules.map(LegacyUserRuleSnapshot.init),
                 fixedAssets: allFixedAssets.map(LegacyFixedAssetSnapshot.init),
@@ -204,6 +205,7 @@ struct BackupService {
     }
 
     private func loadSecureProfiles(payload: AppSnapshotPayload) -> [SnapshotSecureProfile] {
+        // Secure profile payloads are exported only for canonical business profiles.
         return payload.canonical.businessProfiles.compactMap { profile in
             let canonicalProfileId = profile.id.uuidString
             guard let payload = ProfileSecureStore.load(profileId: canonicalProfileId) else {

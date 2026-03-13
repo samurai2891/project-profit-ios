@@ -69,6 +69,9 @@ struct RestoreService {
             }
         }
 
+        let profileIntegrity = profileSnapshotIntegrity(payload: payload)
+        issues.append(contentsOf: profileIntegrity.issues)
+        warnings.append(contentsOf: profileIntegrity.warnings)
         issues.append(contentsOf: payloadIntegrityIssues(payload: payload, fileRecordByPath: fileRecordByPath))
 
         let conflicts = try existingConflicts(for: payload, scope: manifest.scope)
@@ -269,6 +272,45 @@ struct RestoreService {
         return issues
     }
 
+    private func profileSnapshotIntegrity(
+        payload: AppSnapshotPayload
+    ) -> (issues: [String], warnings: [String]) {
+        let hasCanonicalBusinessProfiles = !payload.canonical.businessProfiles.isEmpty
+        let hasCanonicalTaxYearProfiles = !payload.canonical.taxYearProfiles.isEmpty
+
+        var issues: [String] = []
+        var warnings: [String] = []
+
+        if hasCanonicalBusinessProfiles != hasCanonicalTaxYearProfiles {
+            issues.append("canonical profile snapshot is incomplete")
+        }
+
+        let canonicalBusinessIds = Set(payload.canonical.businessProfiles.map(\.id))
+        for profile in payload.canonical.taxYearProfiles where !canonicalBusinessIds.contains(profile.businessId) {
+            issues.append("canonical tax year profile business missing: \(profile.taxYear)")
+        }
+
+        if hasCanonicalTaxYearProfiles && !payload.legacy.accountingProfiles.isEmpty {
+            let canonicalStatesByYear = Dictionary(
+                grouping: payload.canonical.taxYearProfiles,
+                by: \.taxYear
+            ).mapValues { Set($0.map(\.yearLockState)) }
+
+            for legacyProfile in payload.legacy.accountingProfiles {
+                let legacyState: YearLockState = legacyProfile.lockedAt == nil ? .open : .finalLock
+                guard let canonicalStates = canonicalStatesByYear[legacyProfile.fiscalYear],
+                      !canonicalStates.contains(legacyState) else {
+                    continue
+                }
+                warnings.append(
+                    "legacy accountingProfiles.lockedAt is ignored for taxYear \(legacyProfile.fiscalYear); canonical taxYearProfiles.yearLockState is authoritative"
+                )
+            }
+        }
+
+        return (issues, warnings)
+    }
+
     private func existingConflicts(
         for payload: AppSnapshotPayload,
         scope: BackupScope
@@ -428,13 +470,12 @@ struct RestoreService {
         try upsertDistributionRules(payload.canonical.distributionRules)
         try upsertAuditEvents(payload.canonical.auditEvents)
 
-        if payload.canonical.businessProfiles.isEmpty,
-           payload.canonical.taxYearProfiles.isEmpty,
-           !payload.legacy.accountingProfiles.isEmpty {
+        if shouldRestoreCanonicalProfilesFromLegacySnapshots(payload) {
             let secureIdMapping = try restoreCanonicalProfilesFromLegacySnapshots(payload.legacy.accountingProfiles)
             try normalizeSecureProfiles(profileIdMapping: secureIdMapping)
         } else if !payload.legacy.accountingProfiles.isEmpty,
                   let canonicalBusinessId = try defaultBusinessProfileId()?.uuidString {
+            // Mixed snapshots can still carry legacy secure payload IDs. Normalize them without restoring legacy profile entities.
             let secureIdMapping = Dictionary(
                 uniqueKeysWithValues: payload.legacy.accountingProfiles.map { ($0.id, canonicalBusinessId) }
             )
@@ -487,6 +528,12 @@ struct RestoreService {
             sortBy: [SortDescriptor(\.createdAt)]
         )
         return try modelContext.fetch(descriptor).first?.businessId
+    }
+
+    private func shouldRestoreCanonicalProfilesFromLegacySnapshots(_ payload: AppSnapshotPayload) -> Bool {
+        payload.canonical.businessProfiles.isEmpty &&
+            payload.canonical.taxYearProfiles.isEmpty &&
+            !payload.legacy.accountingProfiles.isEmpty
     }
 
     private func collectExistingSecureProfileIds() throws -> Set<String> {
