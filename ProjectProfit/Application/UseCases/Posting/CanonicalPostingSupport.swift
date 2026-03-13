@@ -43,9 +43,7 @@ struct CanonicalPostingSeed: Sendable {
         taxDeductibleRate: Int?,
         taxAmount: Int?,
         taxCodeId: String?,
-        taxRate: Int? = nil,
         isTaxIncluded: Bool?,
-        taxCategory: TaxCategory? = nil,
         receiptImagePath: String?,
         lineItems: [ReceiptLineItem],
         counterpartyId: UUID?,
@@ -58,9 +56,117 @@ struct CanonicalPostingSeed: Sendable {
         updatedAt: Date,
         journalEntryId: UUID?
     ) {
-        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
-            ?? TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)
+        self.init(
+            id: id,
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            resolvedTaxCode: TaxCode.resolve(id: taxCodeId),
+            isTaxIncluded: isTaxIncluded,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            counterpartyId: counterpartyId,
+            counterpartyName: counterpartyName,
+            source: source,
+            isWithholdingEnabled: isWithholdingEnabled,
+            withholdingTaxCodeId: withholdingTaxCodeId,
+            withholdingTaxAmount: withholdingTaxAmount,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            journalEntryId: journalEntryId
+        )
+    }
 
+    init(
+        compatibility id: UUID,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        recurringId: UUID?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxCodeId: String?,
+        legacyTaxRate: Int?,
+        isTaxIncluded: Bool?,
+        legacyTaxCategory: TaxCategory?,
+        receiptImagePath: String?,
+        lineItems: [ReceiptLineItem],
+        counterpartyId: UUID?,
+        counterpartyName: String?,
+        source: CandidateSource,
+        isWithholdingEnabled: Bool = false,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
+        createdAt: Date,
+        updatedAt: Date,
+        journalEntryId: UUID?
+    ) {
+        self.init(
+            id: id,
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            resolvedTaxCode: TaxCode.resolve(id: taxCodeId)
+                ?? TaxCode.resolve(legacyCategory: legacyTaxCategory, taxRate: legacyTaxRate),
+            isTaxIncluded: isTaxIncluded,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            counterpartyId: counterpartyId,
+            counterpartyName: counterpartyName,
+            source: source,
+            isWithholdingEnabled: isWithholdingEnabled,
+            withholdingTaxCodeId: withholdingTaxCodeId,
+            withholdingTaxAmount: withholdingTaxAmount,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            journalEntryId: journalEntryId
+        )
+    }
+
+    private init(
+        id: UUID,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        recurringId: UUID?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        resolvedTaxCode: TaxCode?,
+        isTaxIncluded: Bool?,
+        receiptImagePath: String?,
+        lineItems: [ReceiptLineItem],
+        counterpartyId: UUID?,
+        counterpartyName: String?,
+        source: CandidateSource,
+        isWithholdingEnabled: Bool,
+        withholdingTaxCodeId: String?,
+        withholdingTaxAmount: Decimal?,
+        createdAt: Date,
+        updatedAt: Date,
+        journalEntryId: UUID?
+    ) {
         self.id = id
         self.type = type
         self.amount = amount

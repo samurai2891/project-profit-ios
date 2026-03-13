@@ -3,8 +3,8 @@ import Foundation
 @MainActor
 struct AppShellWorkflowUseCase {
     struct Ports {
-        let reloadStoreState: @MainActor () -> Void
-        let refreshRecurringPreview: @MainActor () -> [RecurringPreviewItem]
+        let refreshAppState: @MainActor () -> Void
+        let loadRecurringPreview: @MainActor () -> [RecurringPreviewItem]
         let readCurrentError: @MainActor () -> AppError?
         let writeCurrentError: @MainActor (AppError?) -> Void
     }
@@ -15,12 +15,12 @@ struct AppShellWorkflowUseCase {
         self.ports = ports
     }
 
-    func reloadStoreState() {
-        ports.reloadStoreState()
+    func refreshAppState() {
+        ports.refreshAppState()
     }
 
-    func refreshRecurringPreview() -> [RecurringPreviewItem] {
-        ports.refreshRecurringPreview()
+    func loadRecurringPreview() -> [RecurringPreviewItem] {
+        ports.loadRecurringPreview()
     }
 
     func currentError() -> AppError? {

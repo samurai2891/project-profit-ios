@@ -318,6 +318,9 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
             result.candidate.proposedLines.compactMap(\.taxCodeId),
             [TaxCode.standard10.rawValue]
         )
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxCodeId, TaxCode.standard10.rawValue)
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxRate, 10)
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxCategory, .standardRate)
         XCTAssertEqual(result.evidence.structuredFields?.taxStandardRate, Decimal(100))
         XCTAssertNil(result.evidence.structuredFields?.taxReducedRate)
     }
@@ -394,6 +397,9 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
 
         XCTAssertEqual(result.candidate.proposedLines.compactMap(\.taxCodeId), [TaxCode.reduced8.rawValue])
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxCodeId, TaxCode.reduced8.rawValue)
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxRate, 8)
+        XCTAssertEqual(result.candidate.legacySnapshot?.taxCategory, .reducedRate)
         XCTAssertEqual(result.evidence.structuredFields?.taxReducedRate, Decimal(80))
         XCTAssertNil(result.evidence.structuredFields?.taxStandardRate)
     }

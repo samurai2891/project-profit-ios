@@ -206,9 +206,7 @@ struct ProjectAllocationReprocessor {
                         taxDeductibleRate: recurring.taxDeductibleRate,
                         taxAmount: nil,
                         taxCodeId: nil,
-                        taxRate: nil,
                         isTaxIncluded: nil,
-                        taxCategory: nil,
                         receiptImagePath: nil,
                         lineItems: [],
                         counterpartyId: latestPosting.candidate.counterpartyId,
@@ -307,7 +305,7 @@ struct ProjectAllocationReprocessor {
             do {
                 let posting = try postingSupport.buildApprovedPosting(
                     seed: CanonicalPostingSeed(
-                        id: candidate.id,
+                        compatibility: candidate.id,
                         type: legacySnapshot.type,
                         amount: candidateAmount,
                         date: recurringJournal.journalDate,
@@ -319,9 +317,9 @@ struct ProjectAllocationReprocessor {
                         taxDeductibleRate: legacySnapshot.taxDeductibleRate,
                         taxAmount: legacySnapshot.taxAmount,
                         taxCodeId: legacySnapshot.taxCodeId,
-                        taxRate: legacySnapshot.taxRate,
+                        legacyTaxRate: legacySnapshot.taxRate,
                         isTaxIncluded: legacySnapshot.isTaxIncluded,
-                        taxCategory: legacySnapshot.taxCategory,
+                        legacyTaxCategory: legacySnapshot.taxCategory,
                         receiptImagePath: legacySnapshot.receiptImagePath,
                         lineItems: legacySnapshot.lineItems,
                         counterpartyId: candidate.counterpartyId,

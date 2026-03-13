@@ -31,15 +31,45 @@ struct RecurringUpsertInput: Equatable, Sendable {
 @MainActor
 struct RecurringWorkflowUseCase {
     private let store: RecurringWorkflowStore
+    private let postingCoordinator: RecurringPostingCoordinator
 
     init(
         modelContext: ModelContext,
+        recurringRepository: (any RecurringRepository)? = nil,
+        transactionFormQueryUseCase: TransactionFormQueryUseCase? = nil,
+        postingWorkflowUseCase: PostingWorkflowUseCase? = nil,
+        postingSupport: CanonicalPostingSupport? = nil,
         onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)? = nil,
         calendar: Calendar = .current
     ) {
+        let recurringRepository = recurringRepository ?? SwiftDataRecurringRepository(modelContext: modelContext)
+        let transactionFormQueryUseCase = transactionFormQueryUseCase ?? TransactionFormQueryUseCase(modelContext: modelContext)
+        let postingWorkflowUseCase = postingWorkflowUseCase ?? PostingWorkflowUseCase(modelContext: modelContext)
+        let postingSupport = postingSupport ?? CanonicalPostingSupport(
+            modelContext: modelContext,
+            transactionFormQueryUseCase: transactionFormQueryUseCase,
+            postingWorkflowUseCase: postingWorkflowUseCase
+        )
         self.store = RecurringWorkflowStore(
             modelContext: modelContext,
+            recurringRepository: recurringRepository,
+            transactionFormQueryUseCase: transactionFormQueryUseCase,
+            postingSupport: postingSupport,
             onRecurringScheduleChanged: onRecurringScheduleChanged,
+            calendar: calendar
+        )
+        self.postingCoordinator = RecurringPostingCoordinator(
+            modelContext: modelContext,
+            recurringRepository: recurringRepository,
+            transactionFormQueryUseCase: transactionFormQueryUseCase,
+            postingSupport: postingSupport,
+            onRecurringScheduleChanged: { [onRecurringScheduleChanged] in
+                guard let onRecurringScheduleChanged else {
+                    return
+                }
+                let recurrings = (try? recurringRepository.allRecurringTransactions()) ?? []
+                onRecurringScheduleChanged(recurrings)
+            },
             calendar: calendar
         )
     }
@@ -70,14 +100,14 @@ struct RecurringWorkflowUseCase {
     }
 
     func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        store.previewRecurringTransactions()
+        postingCoordinator.previewRecurringTransactions()
     }
 
     func processDueRecurringTransactions() -> Int {
-        store.processDueRecurringTransactions()
+        postingCoordinator.processDueRecurringTransactions()
     }
 
     func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        await store.approveRecurringItems(approvedIds, from: items)
+        await postingCoordinator.approveRecurringItems(approvedIds, from: items)
     }
 }

@@ -171,7 +171,7 @@ final class CanonicalPostingSupportTests: XCTestCase {
         journalEntryId: UUID? = nil
     ) -> CanonicalPostingSeed {
         CanonicalPostingSeed(
-            id: id,
+            compatibility: id,
             type: .expense,
             amount: amount,
             date: makeDate(year: 2026, month: 1, day: 10),
@@ -183,9 +183,9 @@ final class CanonicalPostingSupportTests: XCTestCase {
             taxDeductibleRate: 100,
             taxAmount: nil,
             taxCodeId: taxCodeId,
-            taxRate: taxRate,
+            legacyTaxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
+            legacyTaxCategory: taxCategory,
             receiptImagePath: nil,
             lineItems: [],
             counterpartyId: nil,

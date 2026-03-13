@@ -50,9 +50,7 @@ final class ReportingQueryUseCaseTests: XCTestCase {
             taxDeductibleRate: 100,
             taxAmount: 1_200,
             taxCodeId: TaxCode.standard10.rawValue,
-            taxRate: 10,
             isTaxIncluded: false,
-            taxCategory: .standardRate,
             candidateSource: .manual
         )
 

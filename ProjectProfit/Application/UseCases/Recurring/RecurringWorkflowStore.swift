@@ -7,7 +7,6 @@ struct RecurringWorkflowStore {
     private let recurringRepository: any RecurringRepository
     private let transactionFormQueryUseCase: TransactionFormQueryUseCase
     private let postingSupport: CanonicalPostingSupport
-    private let postingCoordinator: RecurringPostingCoordinator
     private let onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)?
     private let calendar: Calendar
 
@@ -15,40 +14,22 @@ struct RecurringWorkflowStore {
         modelContext: ModelContext,
         recurringRepository: (any RecurringRepository)? = nil,
         transactionFormQueryUseCase: TransactionFormQueryUseCase? = nil,
-        postingWorkflowUseCase: PostingWorkflowUseCase? = nil,
         postingSupport: CanonicalPostingSupport? = nil,
-        postingCoordinator: RecurringPostingCoordinator? = nil,
         onRecurringScheduleChanged: (([PPRecurringTransaction]) -> Void)? = nil,
         calendar: Calendar = .current
     ) {
         self.modelContext = modelContext
         let recurringRepository = recurringRepository ?? SwiftDataRecurringRepository(modelContext: modelContext)
         let transactionFormQueryUseCase = transactionFormQueryUseCase ?? TransactionFormQueryUseCase(modelContext: modelContext)
-        let postingWorkflowUseCase = postingWorkflowUseCase ?? PostingWorkflowUseCase(modelContext: modelContext)
         let postingSupport = postingSupport ?? CanonicalPostingSupport(
             modelContext: modelContext,
-            transactionFormQueryUseCase: transactionFormQueryUseCase,
-            postingWorkflowUseCase: postingWorkflowUseCase
+            transactionFormQueryUseCase: transactionFormQueryUseCase
         )
         self.recurringRepository = recurringRepository
         self.transactionFormQueryUseCase = transactionFormQueryUseCase
         self.postingSupport = postingSupport
         self.onRecurringScheduleChanged = onRecurringScheduleChanged
         self.calendar = calendar
-        self.postingCoordinator = postingCoordinator ?? RecurringPostingCoordinator(
-            modelContext: modelContext,
-            recurringRepository: recurringRepository,
-            transactionFormQueryUseCase: transactionFormQueryUseCase,
-            postingSupport: postingSupport,
-            onRecurringScheduleChanged: { [onRecurringScheduleChanged] in
-                guard let onRecurringScheduleChanged else {
-                    return
-                }
-                let recurrings = (try? recurringRepository.allRecurringTransactions()) ?? []
-                onRecurringScheduleChanged(recurrings)
-            },
-            calendar: calendar
-        )
     }
 
     @discardableResult
@@ -182,19 +163,6 @@ struct RecurringWorkflowStore {
 
     func setNotificationTiming(id: UUID, timing: NotificationTiming) {
         updateRecurring(id: id, notificationTiming: timing)
-    }
-
-    func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        postingCoordinator.previewRecurringTransactions()
-    }
-
-    @discardableResult
-    func processDueRecurringTransactions() -> Int {
-        postingCoordinator.processDueRecurringTransactions()
-    }
-
-    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        await postingCoordinator.approveRecurringItems(approvedIds, from: items)
     }
 
     private func updateRecurring(

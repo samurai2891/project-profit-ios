@@ -255,6 +255,7 @@ struct ReceiptEvidenceIntakeUseCase {
         categoryId: String
     ) async throws -> PostingCandidate {
         let candidateDate = request.reviewedDate
+        let resolvedTaxCode = resolvedTaxCode(for: request)
         var lines = try await makePostingCandidateLines(
             request: request,
             businessId: businessId,
@@ -302,10 +303,10 @@ struct ReceiptEvidenceIntakeUseCase {
                 transferToAccountId: request.transferToAccountId,
                 taxDeductibleRate: request.transactionType == .expense ? request.taxDeductibleRate : nil,
                 taxAmount: resolvedTaxAmount(for: request),
-                taxCodeId: resolvedTaxCode(for: request)?.rawValue,
-                taxRate: resolvedTaxCode(for: request)?.taxRatePercent,
+                taxCodeId: resolvedTaxCode?.rawValue,
+                taxRate: resolvedTaxCode?.taxRatePercent,
                 isTaxIncluded: request.isTaxIncluded,
-                taxCategory: resolvedTaxCode(for: request)?.legacyCategory,
+                taxCategory: resolvedTaxCode?.legacyCategory,
                 receiptImagePath: nil,
                 lineItems: request.lineItems.map {
                     ReceiptLineItem(

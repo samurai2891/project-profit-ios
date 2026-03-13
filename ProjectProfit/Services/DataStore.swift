@@ -134,18 +134,19 @@ class DataStore {
         AppError.legacyTransactionMutationDisabled.errorDescription ?? "この操作は現在利用できません"
     }
 
-    private func canonicalTaxCodeId(
+    private func canonicalTaxCodeId(explicitTaxCodeId: String?) -> String? {
+        TaxCode.resolve(id: explicitTaxCodeId)?.rawValue
+    }
+
+    private func compatibilityTaxCodeId(
         explicitTaxCodeId: String?,
-        legacyCategory: TaxCategory? = nil,
-        taxRate: Int? = nil
+        legacyCategory: TaxCategory?,
+        taxRate: Int?
     ) -> String? {
-        if let resolved = TaxCode.resolve(id: explicitTaxCodeId) {
-            return resolved.rawValue
+        if let taxCodeId = canonicalTaxCodeId(explicitTaxCodeId: explicitTaxCodeId) {
+            return taxCodeId
         }
-        return TaxCode.resolve(
-            legacyCategory: legacyCategory,
-            taxRate: taxRate
-        )?.rawValue
+        return TaxCode.resolve(legacyCategory: legacyCategory, taxRate: taxRate)?.rawValue
     }
 
     private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
@@ -582,7 +583,7 @@ class DataStore {
     private func migrateNilOptionalFields() {
         var changed = false
         for transaction in allTransactions where transaction.taxCodeId == nil {
-            guard let taxCodeId = canonicalTaxCodeId(
+            guard let taxCodeId = compatibilityTaxCodeId(
                 explicitTaxCodeId: nil,
                 legacyCategory: transaction.taxCategory,
                 taxRate: transaction.taxRate
@@ -791,7 +792,7 @@ class DataStore {
             )
         }
 
-        let explicitTaxCodeId = canonicalTaxCodeId(
+        let explicitTaxCodeId = compatibilityTaxCodeId(
             explicitTaxCodeId: transaction.taxCodeId,
             legacyCategory: transaction.taxCategory,
             taxRate: transaction.taxRate
@@ -833,7 +834,7 @@ class DataStore {
             )
         }
 
-        let explicitTaxCodeId = canonicalTaxCodeId(
+        let explicitTaxCodeId = compatibilityTaxCodeId(
             explicitTaxCodeId: transaction.taxCodeId,
             legacyCategory: transaction.taxCategory,
             taxRate: transaction.taxRate
@@ -975,18 +976,12 @@ class DataStore {
         taxDeductibleRate: Int? = nil,
         taxAmount: Int? = nil,
         taxCodeId: String? = nil,
-        taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil
     ) async -> Result<PostingCandidate, AppError> {
-        let resolvedTaxCodeId = canonicalTaxCodeId(
-            explicitTaxCodeId: taxCodeId,
-            legacyCategory: taxCategory,
-            taxRate: taxRate
-        )
+        let resolvedTaxCodeId = canonicalTaxCodeId(explicitTaxCodeId: taxCodeId)
         do {
             return .success(
                 try await postingIntakeUseCase.saveManualCandidate(
@@ -1034,9 +1029,7 @@ class DataStore {
         taxDeductibleRate: Int?,
         taxAmount: Int?,
         taxCodeId: String?,
-        taxRate: Int?,
         isTaxIncluded: Bool?,
-        taxCategory: TaxCategory?,
         counterpartyId: UUID?,
         counterparty: String?,
         source: CandidateSource
@@ -1044,11 +1037,7 @@ class DataStore {
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
 
         do {
-            let resolvedTaxCodeId = canonicalTaxCodeId(
-                explicitTaxCodeId: taxCodeId,
-                legacyCategory: taxCategory,
-                taxRate: taxRate
-            )
+            let resolvedTaxCodeId = canonicalTaxCodeId(explicitTaxCodeId: taxCodeId)
             let posting = try canonicalPostingSupport.buildApprovedPosting(
                 seed: CanonicalPostingSeed(
                     id: UUID(),
@@ -1063,9 +1052,7 @@ class DataStore {
                     taxDeductibleRate: taxDeductibleRate,
                     taxAmount: taxAmount,
                     taxCodeId: resolvedTaxCodeId,
-                    taxRate: taxRate,
                     isTaxIncluded: isTaxIncluded,
-                    taxCategory: taxCategory,
                     receiptImagePath: nil,
                     lineItems: [],
                     counterpartyId: counterpartyId,
@@ -1102,9 +1089,7 @@ class DataStore {
         taxDeductibleRate: Int? = nil,
         taxAmount: Int? = nil,
         taxCodeId: String? = nil,
-        taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource
@@ -1122,9 +1107,7 @@ class DataStore {
             taxDeductibleRate: taxDeductibleRate,
             taxAmount: taxAmount,
             taxCodeId: taxCodeId,
-            taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
             counterpartyId: counterpartyId,
             counterparty: counterparty,
             source: candidateSource
@@ -1172,9 +1155,7 @@ class DataStore {
         taxDeductibleRate: Int? = nil,
         taxAmount: Int? = nil,
         taxCodeId: String? = nil,
-        taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource
@@ -1195,9 +1176,7 @@ class DataStore {
             taxDeductibleRate: taxDeductibleRate,
             taxAmount: taxAmount,
             taxCodeId: taxCodeId,
-            taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
             counterpartyId: counterpartyId,
             counterparty: counterparty,
             source: candidateSource
@@ -1242,9 +1221,7 @@ class DataStore {
         taxDeductibleRate: Int? = nil,
         taxAmount: Int? = nil,
         taxCodeId: String? = nil,
-        taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource
@@ -1262,9 +1239,7 @@ class DataStore {
             taxDeductibleRate: taxDeductibleRate,
             taxAmount: taxAmount,
             taxCodeId: taxCodeId,
-            taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
             counterpartyId: counterpartyId,
             counterparty: counterparty,
             candidateSource: candidateSource
@@ -1412,9 +1387,7 @@ class DataStore {
                 taxDeductibleRate: transaction.taxDeductibleRate,
                 taxAmount: transaction.taxAmount,
                 taxCodeId: transaction.taxCodeId,
-                taxRate: transaction.taxRate,
                 isTaxIncluded: transaction.isTaxIncluded,
-                taxCategory: transaction.taxCategory,
                 receiptImagePath: transaction.receiptImagePath,
                 lineItems: transaction.lineItems,
                 counterpartyId: counterpartyId,

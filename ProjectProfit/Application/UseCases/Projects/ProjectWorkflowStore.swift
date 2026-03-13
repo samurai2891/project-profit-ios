@@ -1,14 +1,31 @@
 import Foundation
 import SwiftData
 
+struct ProjectWorkflowCreateResult {
+    let project: PPProject
+    let didPersist: Bool
+}
+
+struct ProjectWorkflowUpdateResult {
+    let didPersist: Bool
+    let projectId: UUID
+    let requiresProjectAllocationRecalculation: Bool
+    let requiresReverseCompletionAllocations: Bool
+    let requiresFullPartialPeriodRecalculation: Bool
+}
+
+struct ProjectWorkflowDeleteResult {
+    let didPersist: Bool
+    let affectedProjectIds: Set<UUID>
+    let reprocessesCurrentEqualAllTransactions: Bool
+}
+
 @MainActor
 struct ProjectWorkflowStore {
     private let modelContext: ModelContext
     private let projectRepository: any ProjectRepository
     private let recurringRepository: any RecurringRepository
     private let transactionHistoryRepository: any TransactionHistoryRepository
-    private let transactionFormQueryUseCase: TransactionFormQueryUseCase
-    private let allocationReprocessor: ProjectAllocationReprocessor
     private let calendar: Calendar
 
     init(
@@ -16,35 +33,17 @@ struct ProjectWorkflowStore {
         projectRepository: any ProjectRepository,
         recurringRepository: (any RecurringRepository)? = nil,
         transactionHistoryRepository: (any TransactionHistoryRepository)? = nil,
-        transactionFormQueryUseCase: TransactionFormQueryUseCase? = nil,
-        allocationReprocessor: ProjectAllocationReprocessor? = nil,
         calendar: Calendar = .current
     ) {
         self.modelContext = modelContext
         self.projectRepository = projectRepository
-        let recurringRepository = recurringRepository ?? SwiftDataRecurringRepository(modelContext: modelContext)
-        let transactionHistoryRepository = transactionHistoryRepository ?? SwiftDataTransactionHistoryRepository(modelContext: modelContext)
-        let transactionFormQueryUseCase = transactionFormQueryUseCase ?? TransactionFormQueryUseCase(modelContext: modelContext)
-        self.recurringRepository = recurringRepository
-        self.transactionHistoryRepository = transactionHistoryRepository
-        self.transactionFormQueryUseCase = transactionFormQueryUseCase
+        self.recurringRepository = recurringRepository ?? SwiftDataRecurringRepository(modelContext: modelContext)
+        self.transactionHistoryRepository = transactionHistoryRepository ?? SwiftDataTransactionHistoryRepository(modelContext: modelContext)
         self.calendar = calendar
-        self.allocationReprocessor = allocationReprocessor ?? ProjectAllocationReprocessor(
-            modelContext: modelContext,
-            projectRepository: projectRepository,
-            recurringRepository: recurringRepository,
-            transactionHistoryRepository: transactionHistoryRepository,
-            transactionFormQueryUseCase: transactionFormQueryUseCase,
-            postingSupport: CanonicalPostingSupport(
-                modelContext: modelContext,
-                transactionFormQueryUseCase: transactionFormQueryUseCase
-            ),
-            calendar: calendar
-        )
     }
 
     @discardableResult
-    func createProject(input: ProjectUpsertInput) -> PPProject {
+    func createProject(input: ProjectUpsertInput) -> ProjectWorkflowCreateResult {
         let project = PPProject(
             name: input.name,
             projectDescription: input.description,
@@ -64,23 +63,34 @@ struct ProjectWorkflowStore {
 
         do {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            allocationReprocessor.reprocessEqualAllCurrentPeriodTransactions()
+            return ProjectWorkflowCreateResult(project: project, didPersist: true)
         } catch {
             modelContext.rollback()
+            return ProjectWorkflowCreateResult(project: project, didPersist: false)
         }
-
-        return project
     }
 
-    func updateProject(id: UUID, input: ProjectUpsertInput) {
+    func updateProject(id: UUID, input: ProjectUpsertInput) -> ProjectWorkflowUpdateResult {
         let project: PPProject
         do {
             guard let fetched = try projectRepository.project(id: id) else {
-                return
+                return ProjectWorkflowUpdateResult(
+                    didPersist: false,
+                    projectId: id,
+                    requiresProjectAllocationRecalculation: false,
+                    requiresReverseCompletionAllocations: false,
+                    requiresFullPartialPeriodRecalculation: false
+                )
             }
             project = fetched
         } catch {
-            return
+            return ProjectWorkflowUpdateResult(
+                didPersist: false,
+                projectId: id,
+                requiresProjectAllocationRecalculation: false,
+                requiresReverseCompletionAllocations: false,
+                requiresFullPartialPeriodRecalculation: false
+            )
         }
 
         let previousStatus = project.status
@@ -107,42 +117,64 @@ struct ProjectWorkflowStore {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
         } catch {
             modelContext.rollback()
-            return
+            return ProjectWorkflowUpdateResult(
+                didPersist: false,
+                projectId: id,
+                requiresProjectAllocationRecalculation: false,
+                requiresReverseCompletionAllocations: false,
+                requiresFullPartialPeriodRecalculation: false
+            )
         }
 
         let completedAtChanged = project.completedAt != previousCompletedAt
         let startDateChanged = project.startDate != previousStartDate
         let plannedEndDateChanged = project.plannedEndDate != previousPlannedEndDate
         let statusChangedAwayFromCompleted = previousStatus == .completed && project.status != .completed
+        let requiresDateDrivenRecalculation = completedAtChanged || startDateChanged || plannedEndDateChanged
 
-        if completedAtChanged || startDateChanged || plannedEndDateChanged {
-            if project.startDate != nil || project.effectiveEndDate != nil {
-                allocationReprocessor.recalculateAllocationsForProject(projectId: id)
-            } else if statusChangedAwayFromCompleted {
-                allocationReprocessor.reverseCompletionAllocations(projectId: id)
-                allocationReprocessor.recalculateAllPartialPeriodProjects()
-            } else if previousStartDate != nil || previousCompletedAt != nil || previousPlannedEndDate != nil {
-                allocationReprocessor.reverseCompletionAllocations(projectId: id)
-                allocationReprocessor.recalculateAllPartialPeriodProjects()
-            }
-        }
+        return ProjectWorkflowUpdateResult(
+            didPersist: true,
+            projectId: id,
+            requiresProjectAllocationRecalculation: requiresDateDrivenRecalculation
+                && (project.startDate != nil || project.effectiveEndDate != nil),
+            requiresReverseCompletionAllocations: requiresDateDrivenRecalculation
+                && !(project.startDate != nil || project.effectiveEndDate != nil)
+                && (statusChangedAwayFromCompleted
+                    || previousStartDate != nil
+                    || previousCompletedAt != nil
+                    || previousPlannedEndDate != nil),
+            requiresFullPartialPeriodRecalculation: requiresDateDrivenRecalculation
+                && !(project.startDate != nil || project.effectiveEndDate != nil)
+                && (statusChangedAwayFromCompleted
+                    || previousStartDate != nil
+                    || previousCompletedAt != nil
+                    || previousPlannedEndDate != nil)
+        )
     }
 
-    func deleteProject(id: UUID) {
+    func deleteProject(id: UUID) -> ProjectWorkflowDeleteResult {
         guard (try? projectRepository.project(id: id)) != nil else {
-            return
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
 
         if projectHasHistoricalReferences(id) {
-            archiveProjects(ids: [id])
+            return archiveProjects(ids: [id])
         } else {
-            hardDeleteProjects(ids: [id])
+            return hardDeleteProjects(ids: [id])
         }
     }
 
-    func deleteProjects(ids: Set<UUID>) {
+    func deleteProjects(ids: Set<UUID>) -> ProjectWorkflowDeleteResult {
         guard !ids.isEmpty else {
-            return
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
 
         var idsToArchive = Set<UUID>()
@@ -156,17 +188,34 @@ struct ProjectWorkflowStore {
             }
         }
 
+        var didPersist = false
+        var affectedProjectIds = Set<UUID>()
+
         if !idsToArchive.isEmpty {
-            archiveProjects(ids: idsToArchive)
+            let result = archiveProjects(ids: idsToArchive)
+            didPersist = didPersist || result.didPersist
+            affectedProjectIds.formUnion(result.affectedProjectIds)
         }
         if !idsToHardDelete.isEmpty {
-            hardDeleteProjects(ids: idsToHardDelete)
+            let result = hardDeleteProjects(ids: idsToHardDelete)
+            didPersist = didPersist || result.didPersist
+            affectedProjectIds.formUnion(result.affectedProjectIds)
         }
+
+        return ProjectWorkflowDeleteResult(
+            didPersist: didPersist,
+            affectedProjectIds: affectedProjectIds,
+            reprocessesCurrentEqualAllTransactions: didPersist
+        )
     }
 
-    private func archiveProjects(ids: Set<UUID>) {
+    private func archiveProjects(ids: Set<UUID>) -> ProjectWorkflowDeleteResult {
         guard !ids.isEmpty else {
-            return
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
 
         let now = Date()
@@ -212,15 +261,28 @@ struct ProjectWorkflowStore {
 
         do {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
-            allocationReprocessor.reprocessEqualAllCurrentPeriodTransactions()
+            return ProjectWorkflowDeleteResult(
+                didPersist: true,
+                affectedProjectIds: ids,
+                reprocessesCurrentEqualAllTransactions: true
+            )
         } catch {
             modelContext.rollback()
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
     }
 
-    private func hardDeleteProjects(ids: Set<UUID>) {
+    private func hardDeleteProjects(ids: Set<UUID>) -> ProjectWorkflowDeleteResult {
         guard !ids.isEmpty else {
-            return
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
 
         var imagesToDelete: [String] = []
@@ -253,9 +315,18 @@ struct ProjectWorkflowStore {
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
             }
-            allocationReprocessor.reprocessEqualAllCurrentPeriodTransactions()
+            return ProjectWorkflowDeleteResult(
+                didPersist: true,
+                affectedProjectIds: ids,
+                reprocessesCurrentEqualAllTransactions: true
+            )
         } catch {
             modelContext.rollback()
+            return ProjectWorkflowDeleteResult(
+                didPersist: false,
+                affectedProjectIds: [],
+                reprocessesCurrentEqualAllTransactions: false
+            )
         }
     }
 

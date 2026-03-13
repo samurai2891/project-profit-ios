@@ -629,6 +629,9 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(candidate.legacySnapshot?.categoryId, "cat-tools")
         XCTAssertEqual(candidate.legacySnapshot?.paymentAccountId, "acct-cash")
         XCTAssertEqual(candidate.legacySnapshot?.taxAmount, 1_200)
+        XCTAssertEqual(candidate.legacySnapshot?.taxCodeId, TaxCode.standard10.rawValue)
+        XCTAssertEqual(candidate.legacySnapshot?.taxRate, 10)
+        XCTAssertEqual(candidate.legacySnapshot?.taxCategory, .standardRate)
         XCTAssertEqual(dataStore.transactions.count, beforeTransactionCount)
 
         let pendingCandidates = try await workflow.pendingCandidates(businessId: businessId)
@@ -696,9 +699,7 @@ final class DataStoreAccountingTests: XCTestCase {
             taxDeductibleRate: 100,
             taxAmount: 1_200,
             taxCodeId: TaxCode.standard10.rawValue,
-            taxRate: 10,
             isTaxIncluded: false,
-            taxCategory: .standardRate,
             candidateSource: .manual
         )
 

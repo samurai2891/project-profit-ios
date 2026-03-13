@@ -46,7 +46,7 @@ struct ContentView: View {
 
     @MainActor
     private func refreshRecurringPreviewState(for store: DataStore) {
-        let pendingItems = appShellWorkflowUseCase(for: store).refreshRecurringPreview()
+        let pendingItems = appShellWorkflowUseCase(for: store).loadRecurringPreview()
         pendingRecurringCount = pendingItems.count
         if pendingRecurringCount > 0 {
             showRecurringPreview = true
@@ -57,12 +57,11 @@ struct ContentView: View {
     private func appBootstrapWorkflowUseCase(for store: DataStore) -> AppBootstrapWorkflowUseCase {
         AppBootstrapWorkflowUseCase(
             ports: .init(
-                reloadStoreState: {
-                    store.loadData()
-                    store.recalculateAllPartialPeriodProjects()
+                refreshAppState: {
+                    appStateRefreshWorkflowUseCase(for: store).refreshAppState()
                 },
-                loadProfile: { defaultTaxYear in
-                    await loadCanonicalProfile(for: store, defaultTaxYear: defaultTaxYear)
+                prepareCanonicalProfile: { defaultTaxYear in
+                    await profileSettingsWorkflowUseCase(for: store).loadProfile(defaultTaxYear: defaultTaxYear)
                 }
             )
         )
@@ -72,11 +71,10 @@ struct ContentView: View {
     private func appShellWorkflowUseCase(for store: DataStore) -> AppShellWorkflowUseCase {
         AppShellWorkflowUseCase(
             ports: .init(
-                reloadStoreState: {
-                    store.loadData()
-                    store.recalculateAllPartialPeriodProjects()
+                refreshAppState: {
+                    appStateRefreshWorkflowUseCase(for: store).refreshAppState()
                 },
-                refreshRecurringPreview: {
+                loadRecurringPreview: {
                     RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
                 },
                 readCurrentError: { store.lastError },
@@ -86,24 +84,33 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func loadCanonicalProfile(for store: DataStore, defaultTaxYear: Int?) async -> Bool {
-        WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: store.modelContext)
-
-        let resolvedTaxYear = defaultTaxYear
-            ?? store.currentTaxYearProfile?.taxYear
-            ?? Calendar.current.component(.year, from: Date())
-
-        do {
-            _ = try await ProfileSettingsUseCase(modelContext: store.modelContext).load(
-                defaultTaxYear: resolvedTaxYear
+    private func appStateRefreshWorkflowUseCase(for store: DataStore) -> AppStateRefreshWorkflowUseCase {
+        AppStateRefreshWorkflowUseCase(
+            ports: .init(
+                loadAppState: {
+                    store.loadData()
+                },
+                recalculatePartialPeriodProjects: {
+                    store.recalculateAllPartialPeriodProjects()
+                }
             )
-            store.lastError = nil
-            return true
-        } catch {
-            AppLogger.dataStore.error("Failed to prepare canonical profile during bootstrap: \(error.localizedDescription)")
-            store.lastError = .dataLoadFailed(underlying: error)
-            return false
-        }
+        )
+    }
+
+    @MainActor
+    private func profileSettingsWorkflowUseCase(for store: DataStore) -> ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(
+            modelContext: store.modelContext,
+            ports: .init(
+                readSensitivePayload: { store.profileSensitivePayload },
+                readCurrentTaxYear: { store.currentTaxYearProfile?.taxYear },
+                applyState: { store.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    store.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { store.lastError = $0 }
+            )
+        )
     }
 }
 
@@ -157,7 +164,7 @@ struct MainTabView: View {
 
             NavigationStack {
                 SettingsMainView(reloadStoreState: {
-                    appShellWorkflowUseCase.reloadStoreState()
+                    appShellWorkflowUseCase.refreshAppState()
                 })
             }
             .tabItem {

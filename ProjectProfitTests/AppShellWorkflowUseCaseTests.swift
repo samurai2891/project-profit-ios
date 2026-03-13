@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class AppShellWorkflowUseCaseTests: XCTestCase {
-    func testReloadStoreStateMatchesDirectReloadSequence() throws {
+    func testRefreshAppStateMatchesDirectReloadSequence() throws {
         let container = try TestModelContainer.create()
         let context = ModelContext(container)
         let setupStore = ProjectProfit.DataStore(modelContext: context)
@@ -33,7 +33,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         let directStore = ProjectProfit.DataStore(modelContext: context)
         let useCase = makeUseCase(store: workflowStore)
 
-        useCase.reloadStoreState()
+        useCase.refreshAppState()
         directStore.loadData()
         directStore.recalculateAllPartialPeriodProjects()
 
@@ -46,7 +46,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(workflowTransaction.allocations, directTransaction.allocations)
     }
 
-    func testRefreshRecurringPreviewMatchesRecurringWorkflowUseCase() throws {
+    func testLoadRecurringPreviewMatchesRecurringWorkflowUseCase() throws {
         let container = try TestModelContainer.create()
         let context = ModelContext(container)
         let store = ProjectProfit.DataStore(modelContext: context)
@@ -69,7 +69,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         store.loadData()
 
         let useCase = makeUseCase(store: store)
-        let workflowItems = useCase.refreshRecurringPreview()
+        let workflowItems = useCase.loadRecurringPreview()
         let directItems = RecurringWorkflowUseCase(modelContext: context).previewRecurringTransactions()
 
         XCTAssertEqual(workflowItems.map(\.recurringId), directItems.map(\.recurringId))
@@ -104,11 +104,19 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
     private func makeUseCase(store: ProjectProfit.DataStore) -> AppShellWorkflowUseCase {
         AppShellWorkflowUseCase(
             ports: .init(
-                reloadStoreState: {
-                    store.loadData()
-                    store.recalculateAllPartialPeriodProjects()
+                refreshAppState: {
+                    AppStateRefreshWorkflowUseCase(
+                        ports: .init(
+                            loadAppState: {
+                                store.loadData()
+                            },
+                            recalculatePartialPeriodProjects: {
+                                store.recalculateAllPartialPeriodProjects()
+                            }
+                        )
+                    ).refreshAppState()
                 },
-                refreshRecurringPreview: {
+                loadRecurringPreview: {
                     RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
                 },
                 readCurrentError: { store.lastError },

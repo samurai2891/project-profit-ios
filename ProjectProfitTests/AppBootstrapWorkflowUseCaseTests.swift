@@ -64,11 +64,19 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
 
         let useCase = AppBootstrapWorkflowUseCase(
             ports: .init(
-                reloadStoreState: {
-                    store.loadData()
-                    store.recalculateAllPartialPeriodProjects()
+                refreshAppState: {
+                    AppStateRefreshWorkflowUseCase(
+                        ports: .init(
+                            loadAppState: {
+                                store.loadData()
+                            },
+                            recalculatePartialPeriodProjects: {
+                                store.recalculateAllPartialPeriodProjects()
+                            }
+                        )
+                    ).refreshAppState()
                 },
-                loadProfile: { defaultTaxYear in
+                prepareCanonicalProfile: { defaultTaxYear in
                     WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: context)
                     do {
                         let state = try await ProfileSettingsUseCase(modelContext: context).load(
@@ -142,11 +150,19 @@ final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
     private func makeBootstrapUseCase(store: ProjectProfit.DataStore) -> AppBootstrapWorkflowUseCase {
         AppBootstrapWorkflowUseCase(
             ports: .init(
-                reloadStoreState: {
-                    store.loadData()
-                    store.recalculateAllPartialPeriodProjects()
+                refreshAppState: {
+                    AppStateRefreshWorkflowUseCase(
+                        ports: .init(
+                            loadAppState: {
+                                store.loadData()
+                            },
+                            recalculatePartialPeriodProjects: {
+                                store.recalculateAllPartialPeriodProjects()
+                            }
+                        )
+                    ).refreshAppState()
                 },
-                loadProfile: { defaultTaxYear in
+                prepareCanonicalProfile: { defaultTaxYear in
                     await self.makeProfileWorkflowUseCase(store: store).loadProfile(defaultTaxYear: defaultTaxYear)
                 }
             )
