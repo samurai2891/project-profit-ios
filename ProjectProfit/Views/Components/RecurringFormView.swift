@@ -47,7 +47,7 @@ struct RecurringFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
-    @State private var pendingDistributionApproval: DistributionTemplateApplicationUseCase.ApprovalPreview?
+    @State private var activeDistributionRequest: ApprovalRequest?
     @State private var formSnapshot: RecurringFormSnapshot = .empty
 
     private var isEditMode: Bool { recurring != nil }
@@ -118,7 +118,14 @@ struct RecurringFormView: View {
     }
 
     private var hasPendingDistributionApproval: Bool {
-        pendingDistributionApproval != nil
+        activeDistributionRequest?.status == .pending
+    }
+
+    private var recurringDraftKey: String {
+        if let recurring {
+            return "recurring:\(recurring.id.uuidString)"
+        }
+        return "recurring:new"
     }
 
     private var templateReferenceDate: Date {
@@ -135,12 +142,26 @@ struct RecurringFormView: View {
         return "\(businessId)-\(referenceDay)"
     }
 
+    private var allocationRevisionKey: String {
+        allocations
+            .map { "\($0.projectId.uuidString):\($0.ratio)" }
+            .joined(separator: ",")
+    }
+
     private var distributionTemplateAllocationPeriod: DistributionTemplateApplicationUseCase.AllocationPeriod {
         frequency == .yearly ? .year : .month
     }
 
     private var recurringQueryUseCase: RecurringQueryUseCase {
         RecurringQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueWorkflowUseCase: ApprovalQueueWorkflowUseCase {
+        ApprovalQueueWorkflowUseCase(modelContext: modelContext)
     }
 
     private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
@@ -166,53 +187,7 @@ struct RecurringFormView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppColors.surface
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        nameField
-                        typeToggle
-                        amountField
-                        frequencySection
-                        dayOfMonthSection
-                        if frequency == .yearly {
-                            yearlyAmortizationSection
-                        }
-                        categorySection
-                        accountingSection
-                        distributionTemplateSection
-                        allocationModeSection
-                        if allocationMode == .manual {
-                            RecurringProjectAllocationSection(
-                                projects: activeProjects,
-                                allocations: $allocations
-                            )
-                        } else {
-                            equalAllInfoSection
-                        }
-                        counterpartyField
-                        memoField
-                        RecurringReceiptImageSection(
-                            recurring: recurring,
-                            selectedImage: $selectedImage,
-                            photoPickerItem: $photoPickerItem,
-                            showCamera: $showCamera,
-                            showReceiptPreview: $showReceiptPreview,
-                            showRemoveImageAlert: $showRemoveImageAlert,
-                            imageRemoved: imageRemoved
-                        )
-                        endDateSection
-
-                        if isEditMode {
-                            activeToggle
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-            }
+            contentView
             .navigationTitle(isEditMode ? "定期取引を編集" : "定期取引を追加")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -246,13 +221,15 @@ struct RecurringFormView: View {
                 loadPhoto(from: newItem)
             }
             .task {
-                loadFormSnapshot()
+                await loadFormSnapshot()
             }
-            .onChange(of: amountText) { _, _ in invalidatePendingDistributionApproval() }
-            .onChange(of: frequency) { _, _ in invalidatePendingDistributionApproval() }
-            .onChange(of: dayOfMonth) { _, _ in invalidatePendingDistributionApproval() }
-            .onChange(of: monthOfYear) { _, _ in invalidatePendingDistributionApproval() }
-            .onChange(of: selectedDistributionTemplateId) { _, _ in invalidatePendingDistributionApproval() }
+            .onChange(of: amountText) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: frequency) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: dayOfMonth) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: monthOfYear) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: allocationMode) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: allocationRevisionKey) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: selectedDistributionTemplateId) { _, _ in Task { await invalidatePendingDistributionApproval() } }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
             }
@@ -267,6 +244,65 @@ struct RecurringFormView: View {
                 Text("添付画像を削除しますか？")
             }
         }
+    }
+
+    private var contentView: some View {
+        ZStack {
+            AppColors.surface
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    nameField
+                    typeToggle
+                    amountField
+                    frequencySection
+                    dayOfMonthSection
+                    if frequency == .yearly {
+                        yearlyAmortizationSection
+                    }
+                    categorySection
+                    accountingSection
+                    distributionTemplateSection
+                    allocationModeSection
+                    allocationSection
+                    counterpartyField
+                    memoField
+                    receiptSection
+                    endDateSection
+
+                    if isEditMode {
+                        activeToggle
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var allocationSection: some View {
+        if allocationMode == .manual {
+            RecurringProjectAllocationSection(
+                projects: activeProjects,
+                allocations: $allocations
+            )
+        } else {
+            equalAllInfoSection
+        }
+    }
+
+    private var receiptSection: some View {
+        RecurringReceiptImageSection(
+            recurring: recurring,
+            selectedImage: $selectedImage,
+            photoPickerItem: $photoPickerItem,
+            showCamera: $showCamera,
+            showReceiptPreview: $showReceiptPreview,
+            showRemoveImageAlert: $showRemoveImageAlert,
+            imageRemoved: imageRemoved
+        )
     }
 
     // MARK: - Name Field
@@ -305,6 +341,7 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onChange(of: type) { _, _ in
             selectedCategoryId = nil
+            Task { await invalidatePendingDistributionApproval() }
         }
     }
 
@@ -517,7 +554,7 @@ struct RecurringFormView: View {
             || !distributionTemplates.isEmpty
             || distributionTemplateErrorMessage != nil
             || unavailableDistributionTemplateCount > 0
-            || pendingDistributionApproval != nil
+            || activeDistributionRequest != nil
         {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -541,7 +578,7 @@ struct RecurringFormView: View {
                     .pickerStyle(.menu)
 
                     Button("テンプレートをプレビュー") {
-                        previewSelectedDistributionTemplate()
+                        Task { await previewSelectedDistributionTemplate() }
                     }
                     .disabled(selectedDistributionTemplateId == nil)
                 } else if !isLoadingDistributionTemplates {
@@ -562,8 +599,8 @@ struct RecurringFormView: View {
                         .foregroundStyle(AppColors.error)
                 }
 
-                if let pendingDistributionApproval {
-                    distributionApprovalCard(preview: pendingDistributionApproval)
+                if let activeDistributionRequest {
+                    distributionApprovalCard(request: activeDistributionRequest)
                 }
             }
             .padding(16)
@@ -573,25 +610,26 @@ struct RecurringFormView: View {
     }
 
     private func distributionApprovalCard(
-        preview: DistributionTemplateApplicationUseCase.ApprovalPreview
+        request: ApprovalRequest
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("承認待ちプレビュー")
+        let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(request.status.displayName)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppColors.primary)
+                .foregroundStyle(request.status == .approved ? AppColors.success : AppColors.primary)
 
-            Text(preview.ruleName)
+            Text(request.title)
                 .font(.subheadline.weight(.semibold))
 
-            distributionApprovalStateView(title: "変更前", state: preview.currentState)
+            if let payload {
+                distributionApprovalStateView(title: "変更前", state: payload.currentState)
 
-            if let proposedState = preview.proposedState {
-                distributionApprovalStateView(title: "変更後", state: proposedState)
+                distributionApprovalStateView(title: "変更後", state: payload.proposedState)
             }
 
-            if !preview.warnings.isEmpty {
+            if let payload, !payload.warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(preview.warnings, id: \.self) { warning in
+                    ForEach(payload.warnings, id: \.self) { warning in
                         Label(warning, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(AppColors.warning)
@@ -600,15 +638,10 @@ struct RecurringFormView: View {
             }
 
             HStack {
-                Button("破棄", role: .destructive) {
-                    discardPendingDistributionApproval()
-                }
-                .buttonStyle(.bordered)
-
                 Spacer()
 
-                Button("承認して反映") {
-                    applyPendingDistributionApproval()
+                NavigationLink("Approval Queue を開く") {
+                    ApprovalQueueView()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -791,10 +824,21 @@ struct RecurringFormView: View {
         }
     }
 
-    private func loadFormSnapshot() {
+    private func loadFormSnapshot() async {
         formSnapshot = recurringQueryUseCase.formSnapshot()
-        if counterparty.isEmpty, let selectedCounterparty {
-            counterparty = selectedCounterparty.displayName
+        if let draft = try? await approvalQueueWorkflowUseCase.formDraft(draftKey: recurringDraftKey),
+           let snapshot = draft.recurringSnapshot() {
+            applyRecurringDraftSnapshot(snapshot)
+            if let requestId = draft.activeApprovalRequestId {
+                activeDistributionRequest = try? await approvalQueueQueryUseCase.request(requestId)
+            } else {
+                activeDistributionRequest = nil
+            }
+        } else {
+            if counterparty.isEmpty, let selectedCounterparty {
+                counterparty = selectedCounterparty.displayName
+            }
+            activeDistributionRequest = nil
         }
     }
 
@@ -832,14 +876,18 @@ struct RecurringFormView: View {
         }
     }
 
-    private func previewSelectedDistributionTemplate() {
+    private func previewSelectedDistributionTemplate() async {
         guard let selectedDistributionTemplateId,
-              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
+              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId }),
+              let businessId = formSnapshot.businessId
         else {
             return
         }
 
-        let preview = distributionTemplateApplicationUseCase.makeApprovalPreview(
+        let buildResult = distributionTemplateApplicationUseCase.makeApprovalRequestDraft(
+            businessId: businessId,
+            draftKey: recurringDraftKey,
+            draftKind: .recurring,
             rule: rule,
             currentState: distributionTemplateApplicationUseCase.currentApprovalState(
                 allocationMode: allocationMode,
@@ -853,38 +901,42 @@ struct RecurringFormView: View {
             supportsEqualAllMode: true
         )
 
-        guard preview.isApprovable else {
-            pendingDistributionApproval = nil
-            distributionTemplateErrorMessage = preview.warnings.first ?? "配賦プレビューを生成できませんでした。"
+        guard buildResult.isApprovable, let requestDraft = buildResult.requestDraft else {
+            activeDistributionRequest = nil
+            distributionTemplateErrorMessage = buildResult.warnings.first ?? "配賦プレビューを生成できませんでした。"
             return
         }
 
-        pendingDistributionApproval = preview
-        distributionTemplateErrorMessage = nil
-    }
-
-    private func applyPendingDistributionApproval() {
-        guard let pendingDistributionApproval else { return }
         do {
-            let approved = try distributionTemplateApplicationUseCase.approve(pendingDistributionApproval)
-            allocationMode = approved.allocationMode
-            allocations = approved.allocations.map { allocation in
-                (id: UUID(), projectId: allocation.projectId, ratio: allocation.ratio)
-            }
-            self.pendingDistributionApproval = nil
+            let request = try await approvalQueueWorkflowUseCase.queueDistributionRequest(
+                businessId: businessId,
+                draftKey: recurringDraftKey,
+                draftKind: .recurring,
+                snapshotJSON: recurringDraftSnapshotJSON(),
+                requestDraft: requestDraft
+            )
+            activeDistributionRequest = request
             distributionTemplateErrorMessage = nil
         } catch {
             distributionTemplateErrorMessage = error.localizedDescription
         }
     }
 
-    private func discardPendingDistributionApproval() {
-        pendingDistributionApproval = nil
-    }
-
-    private func invalidatePendingDistributionApproval() {
-        guard pendingDistributionApproval != nil else { return }
-        pendingDistributionApproval = nil
+    private func invalidatePendingDistributionApproval() async {
+        guard let activeDistributionRequest,
+              activeDistributionRequest.kind == .distribution,
+              activeDistributionRequest.status == .pending else {
+            return
+        }
+        do {
+            try await approvalQueueWorkflowUseCase.invalidatePendingDistributionRequest(
+                draftKey: recurringDraftKey,
+                snapshotJSON: recurringDraftSnapshotJSON()
+            )
+            self.activeDistributionRequest = try await approvalQueueQueryUseCase.request(activeDistributionRequest.id)
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
+        }
     }
 
     private func applySelectedCounterpartyDefaults() {
@@ -949,7 +1001,7 @@ struct RecurringFormView: View {
             return
         }
         guard !hasPendingDistributionApproval else {
-            validationMessage = "配賦テンプレートのプレビューを承認または破棄してください"
+            validationMessage = "配賦承認が完了するまで保存できません"
             showValidationError = true
             return
         }
@@ -1015,7 +1067,62 @@ struct RecurringFormView: View {
             recurringWorkflowUseCase.createRecurring(input: input)
         }
 
-        dismiss()
+        Task {
+            try? await approvalQueueWorkflowUseCase.clearFormDraft(draftKey: recurringDraftKey)
+            dismiss()
+        }
+    }
+
+    private func recurringDraftSnapshotJSON() -> String {
+        CanonicalJSONCoder.encode(
+            RecurringFormDraftSnapshot(
+                recurringId: recurring?.id,
+                name: name,
+                type: type,
+                amountText: amountText,
+                frequency: frequency,
+                dayOfMonth: dayOfMonth,
+                monthOfYear: monthOfYear,
+                selectedCategoryId: selectedCategoryId,
+                allocationMode: allocationMode,
+                allocations: allocations.map { DraftAllocationInput(projectId: $0.projectId, ratio: $0.ratio) },
+                memo: memo,
+                isActive: isActive,
+                hasEndDate: hasEndDate,
+                endDate: endDate,
+                yearlyAmortizationMode: yearlyAmortizationMode,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: transferToAccountId,
+                taxDeductibleRate: taxDeductibleRate,
+                selectedCounterpartyId: selectedCounterpartyId,
+                counterparty: counterparty,
+                selectedDistributionTemplateId: selectedDistributionTemplateId
+            ),
+            fallback: "{}"
+        )
+    }
+
+    private func applyRecurringDraftSnapshot(_ snapshot: RecurringFormDraftSnapshot) {
+        name = snapshot.name
+        type = snapshot.type
+        amountText = snapshot.amountText
+        frequency = snapshot.frequency
+        dayOfMonth = snapshot.dayOfMonth
+        monthOfYear = snapshot.monthOfYear
+        selectedCategoryId = snapshot.selectedCategoryId
+        allocationMode = snapshot.allocationMode
+        allocations = snapshot.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+        memo = snapshot.memo
+        isActive = snapshot.isActive
+        hasEndDate = snapshot.hasEndDate
+        endDate = snapshot.endDate
+        yearlyAmortizationMode = snapshot.yearlyAmortizationMode
+        paymentAccountId = snapshot.paymentAccountId
+        transferToAccountId = snapshot.transferToAccountId
+        taxDeductibleRate = snapshot.taxDeductibleRate
+        selectedCounterpartyId = snapshot.selectedCounterpartyId
+        counterparty = snapshot.counterparty
+        selectedDistributionTemplateId = snapshot.selectedDistributionTemplateId
     }
 }
 

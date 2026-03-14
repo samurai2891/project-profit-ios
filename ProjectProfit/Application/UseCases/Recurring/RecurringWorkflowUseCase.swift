@@ -36,6 +36,7 @@ struct RecurringWorkflowUseCase {
     init(
         modelContext: ModelContext,
         recurringRepository: (any RecurringRepository)? = nil,
+        approvalRequestRepository: (any ApprovalRequestRepository)? = nil,
         transactionFormQueryUseCase: TransactionFormQueryUseCase? = nil,
         postingWorkflowUseCase: PostingWorkflowUseCase? = nil,
         postingSupport: CanonicalPostingSupport? = nil,
@@ -43,6 +44,7 @@ struct RecurringWorkflowUseCase {
         calendar: Calendar = .current
     ) {
         let recurringRepository = recurringRepository ?? SwiftDataRecurringRepository(modelContext: modelContext)
+        let approvalRequestRepository = approvalRequestRepository ?? SwiftDataApprovalRequestRepository(modelContext: modelContext)
         let transactionFormQueryUseCase = transactionFormQueryUseCase ?? TransactionFormQueryUseCase(modelContext: modelContext)
         let postingWorkflowUseCase = postingWorkflowUseCase ?? PostingWorkflowUseCase(modelContext: modelContext)
         let postingSupport = postingSupport ?? CanonicalPostingSupport(
@@ -61,6 +63,7 @@ struct RecurringWorkflowUseCase {
         self.postingCoordinator = RecurringPostingCoordinator(
             modelContext: modelContext,
             recurringRepository: recurringRepository,
+            approvalRequestRepository: approvalRequestRepository,
             transactionFormQueryUseCase: transactionFormQueryUseCase,
             postingWorkflowUseCase: postingWorkflowUseCase,
             postingSupport: postingSupport,
@@ -100,15 +103,19 @@ struct RecurringWorkflowUseCase {
         store.setNotificationTiming(id: id, timing: timing)
     }
 
-    func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        postingCoordinator.previewRecurringTransactions()
+    func previewRecurringTransactions() async -> [RecurringPreviewItem] {
+        await postingCoordinator.previewRecurringTransactions()
     }
 
     func processDueRecurringTransactions() -> Int {
         postingCoordinator.processDueRecurringTransactions()
     }
 
-    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        await postingCoordinator.approveRecurringItems(approvedIds, from: items)
+    func approveRecurringItems(_ approvedIds: Set<UUID>) async -> Int {
+        await postingCoordinator.approveRecurringItems(approvedIds)
+    }
+
+    func approveRecurringRequest(id: UUID) async throws {
+        try await postingCoordinator.approveRecurringRequest(id: id)
     }
 }

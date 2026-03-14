@@ -39,6 +39,8 @@ enum ModelContainerFactory {
             JournalLineEntity.self,
             JournalSearchIndexEntity.self,
             PostingCandidateEntity.self,
+            ApprovalRequestEntity.self,
+            FormDraftEntity.self,
             CounterpartyEntity.self,
             CanonicalAccountEntity.self,
             DistributionRuleEntity.self,

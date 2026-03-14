@@ -24,20 +24,30 @@ private enum ApprovalQueueFilter: String, CaseIterable, Identifiable {
 struct ApprovalQueueView: View {
     @Environment(\.modelContext) private var modelContext
 
-    @State private var candidates: [PostingCandidate] = []
+    @State private var queueItems: [ApprovalQueueItem] = []
     @State private var counterpartiesById: [UUID: Counterparty] = [:]
     @State private var selectedFilter: ApprovalQueueFilter = .pending
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private var filteredCandidates: [PostingCandidate] {
+    private var filteredItems: [ApprovalQueueItem] {
         switch selectedFilter {
         case .pending:
-            return candidates
+            return queueItems
         case .draft:
-            return candidates.filter { $0.status == .draft }
+            return queueItems.filter {
+                if case .candidate(let candidate) = $0 {
+                    return candidate.status == .draft
+                }
+                return false
+            }
         case .needsReview:
-            return candidates.filter { $0.status == .needsReview }
+            return queueItems.filter {
+                if case .candidate(let candidate) = $0 {
+                    return candidate.status == .needsReview
+                }
+                return false
+            }
         }
     }
 
@@ -56,24 +66,22 @@ struct ApprovalQueueView: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("承認待ち (\(filteredCandidates.count))") {
+            Section("承認待ち (\(filteredItems.count))") {
                 if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, alignment: .center)
-                } else if filteredCandidates.isEmpty {
+                } else if filteredItems.isEmpty {
                     ContentUnavailableView(
                         "承認待ち候補はありません",
                         systemImage: "checkmark.seal",
                         description: Text("Evidence から作成された候補がここに表示されます")
                     )
                 } else {
-                    ForEach(filteredCandidates, id: \.id) { candidate in
+                    ForEach(filteredItems, id: \.id) { item in
                         NavigationLink {
-                            ApprovalCandidateDetailView(candidateId: candidate.id) {
-                                Task { await loadCandidates() }
-                            }
+                            destinationView(for: item)
                         } label: {
-                            candidateRow(candidate)
+                            queueItemRow(item)
                         }
                     }
                 }
@@ -82,10 +90,10 @@ struct ApprovalQueueView: View {
         .navigationTitle("Approval Queue")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: reloadKey) {
-            await loadCandidates()
+            await loadQueueItems()
         }
         .refreshable {
-            await loadCandidates()
+            await loadQueueItems()
         }
         .alert("読み込みエラー", isPresented: Binding(
             get: { errorMessage != nil },
@@ -102,6 +110,29 @@ struct ApprovalQueueView: View {
     }
 
     @ViewBuilder
+    private func destinationView(for item: ApprovalQueueItem) -> some View {
+        switch item {
+        case .candidate(let candidate):
+            ApprovalCandidateDetailView(candidateId: candidate.id) {
+                Task { await loadQueueItems() }
+            }
+        case .request(let request):
+            ApprovalRequestDetailView(requestId: request.id) {
+                Task { await loadQueueItems() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func queueItemRow(_ item: ApprovalQueueItem) -> some View {
+        switch item {
+        case .candidate(let candidate):
+            candidateRow(candidate)
+        case .request(let request):
+            requestRow(request)
+        }
+    }
+
     private func candidateRow(_ candidate: PostingCandidate) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
@@ -136,9 +167,48 @@ struct ApprovalQueueView: View {
         .padding(.vertical, 4)
     }
 
-    private func loadCandidates() async {
+    @ViewBuilder
+    private func requestRow(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(request.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    if let subtitle = request.subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text(request.status.displayName)
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppColors.primary.opacity(0.12))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 12) {
+                Label(request.kind.displayName, systemImage: "checklist")
+                if let recurringPayload = request.payload(RecurringApprovalPayload.self) {
+                    Label(formatDate(recurringPayload.scheduledDate), systemImage: "calendar")
+                    Label(formatAmount(Decimal(recurringPayload.amount)), systemImage: "yensign")
+                } else {
+                    Label(formatDate(request.updatedAt), systemImage: "clock")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func loadQueueItems() async {
         guard let businessId = approvalQueueQueryUseCase.currentBusinessId() else {
-            candidates = []
+            queueItems = []
             counterpartiesById = [:]
             return
         }
@@ -147,9 +217,7 @@ struct ApprovalQueueView: View {
         defer { isLoading = false }
 
         do {
-            let workflow = PostingWorkflowUseCase(modelContext: modelContext)
-            candidates = try await workflow
-                .pendingCandidates(businessId: businessId)
+            queueItems = try await approvalQueueQueryUseCase.pendingItems()
             let counterparties = try await CounterpartyMasterUseCase(modelContext: modelContext)
                 .loadCounterparties(businessId: businessId)
             counterpartiesById = Dictionary(uniqueKeysWithValues: counterparties.map { ($0.id, $0) })
@@ -888,6 +956,296 @@ struct ApprovalCandidateDetailView: View {
         case .rejected:
             return AppColors.error
         }
+    }
+}
+
+struct ApprovalRequestDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let requestId: UUID
+    var onStatusChanged: (() -> Void)?
+
+    @State private var request: ApprovalRequest?
+    @State private var formDraft: FormDraft?
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueWorkflowUseCase: ApprovalQueueWorkflowUseCase {
+        ApprovalQueueWorkflowUseCase(modelContext: modelContext)
+    }
+
+    var body: some View {
+        Group {
+            if let request {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection(request)
+                        detailSection(request)
+                    }
+                    .padding(16)
+                }
+                .navigationTitle("承認依頼")
+                .navigationBarTitleDisplayMode(.inline)
+                .safeAreaInset(edge: .bottom) {
+                    actionBar(request)
+                }
+            } else if isLoading {
+                ProgressView()
+            } else {
+                ContentUnavailableView("承認依頼が見つかりません", systemImage: "exclamationmark.triangle")
+            }
+        }
+        .task(id: requestId) {
+            await load()
+        }
+        .alert("処理エラー", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func headerSection(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(request.kind.displayName)
+                    .font(.headline)
+                Spacer()
+                Text(request.status.displayName)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(AppColors.primary.opacity(0.12))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+
+            Text(request.title)
+                .font(.subheadline.weight(.semibold))
+
+            if let subtitle = request.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func detailSection(_ request: ApprovalRequest) -> some View {
+        switch request.kind {
+        case .distribution:
+            distributionRequestSection(request)
+        case .recurring:
+            recurringRequestSection(request)
+        }
+    }
+
+    @ViewBuilder
+    private func distributionRequestSection(_ request: ApprovalRequest) -> some View {
+        if let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("配賦内容")
+                    .font(.subheadline.weight(.medium))
+
+                distributionStateSection(title: "変更前", state: payload.currentState)
+                distributionStateSection(title: "変更後", state: payload.proposedState)
+
+                if !payload.warnings.isEmpty {
+                    ForEach(payload.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+
+                if let formDraft {
+                    Text("対象草案: \(formDraft.draftKey)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            Text("配賦承認データを読み込めませんでした。")
+                .font(.caption)
+                .foregroundStyle(AppColors.error)
+        }
+    }
+
+    @ViewBuilder
+    private func recurringRequestSection(_ request: ApprovalRequest) -> some View {
+        if let payload = request.payload(RecurringApprovalPayload.self) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("定期取引内容")
+                    .font(.subheadline.weight(.medium))
+
+                HStack {
+                    Text("予定日")
+                    Spacer()
+                    Text(formatDate(payload.scheduledDate))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                HStack {
+                    Text("金額")
+                    Spacer()
+                    Text(formatAmount(Decimal(payload.amount)))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                if let projectName = payload.projectName {
+                    HStack {
+                        Text("プロジェクト")
+                        Spacer()
+                        Text(projectName)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+
+                HStack {
+                    Text("配分方式")
+                    Spacer()
+                    Text(payload.allocationMode.label)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+            .padding(16)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            Text("定期取引承認データを読み込めませんでした。")
+                .font(.caption)
+                .foregroundStyle(AppColors.error)
+        }
+    }
+
+    private func distributionStateSection(
+        title: String,
+        state: DistributionTemplateApplicationUseCase.ApprovalState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            switch state {
+            case .equalAll:
+                Text(AllocationMode.equalAll.label)
+                    .font(.subheadline)
+            case .manual(let allocations):
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(allocations, id: \.projectId) { allocation in
+                        HStack {
+                            Text(approvalQueueQueryUseCase.projectName(id: allocation.projectId) ?? "不明なプロジェクト")
+                            Spacer()
+                            Text("\(allocation.ratio)%")
+                                .foregroundStyle(.secondary)
+                            Text(formatAmount(Decimal(allocation.amount)))
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionBar(_ request: ApprovalRequest) -> some View {
+        if request.status == .pending {
+            HStack(spacing: 12) {
+                Button("却下", role: .destructive) {
+                    Task { await rejectRequest() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSaving)
+
+                Button("承認") {
+                    Task { await approveRequest() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaving)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            .background(.ultraThinMaterial)
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            request = try await approvalQueueQueryUseCase.request(requestId)
+            if let request,
+               request.kind == .distribution,
+               let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self) {
+                formDraft = try await approvalQueueQueryUseCase.formDraft(draftKey: payload.draftKey)
+            } else {
+                formDraft = nil
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func approveRequest() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            request = try await approvalQueueWorkflowUseCase.approveRequest(requestId)
+            onStatusChanged?()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func rejectRequest() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            request = try await approvalQueueWorkflowUseCase.rejectRequest(requestId)
+            onStatusChanged?()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func formatAmount(_ amount: Decimal) -> String {
+        let number = NSDecimalNumber(decimal: amount)
+        return NumberFormatter.currency.string(from: number) ?? number.stringValue
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter.string(from: date)
     }
 }
 

@@ -42,9 +42,11 @@ struct RecurringPreviewView: View {
             )) {
                 Button("OK") {
                     processedCount = nil
-                    loadPreview()
-                    if previewItems.isEmpty {
-                        dismiss()
+                    Task {
+                        await loadPreview()
+                        if previewItems.isEmpty {
+                            dismiss()
+                        }
                     }
                 }
             } message: {
@@ -52,7 +54,7 @@ struct RecurringPreviewView: View {
             }
         }
         .task {
-            loadPreview()
+            await loadPreview()
         }
     }
 
@@ -208,8 +210,8 @@ struct RecurringPreviewView: View {
 
     // MARK: - Actions
 
-    private func loadPreview() {
-        previewItems = recurringWorkflowUseCase.previewRecurringTransactions()
+    private func loadPreview() async {
+        previewItems = await recurringWorkflowUseCase.previewRecurringTransactions()
         selectedIds = Set(previewItems.map(\.id))
     }
 
@@ -217,7 +219,7 @@ struct RecurringPreviewView: View {
         guard !isProcessing else { return }
         isProcessing = true
         Task {
-            let count = await recurringWorkflowUseCase.approveRecurringItems(selectedIds, from: previewItems)
+            let count = await recurringWorkflowUseCase.approveRecurringItems(selectedIds)
             isProcessing = false
             processedCount = count
         }

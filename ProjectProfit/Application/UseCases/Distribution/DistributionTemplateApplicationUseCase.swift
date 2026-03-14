@@ -195,12 +195,101 @@ struct DistributionTemplateApplicationUseCase {
         allocationPeriod: AllocationPeriod = .month,
         supportsEqualAllMode: Bool = true
     ) -> ApprovalPreview {
+        let buildResult = makeApprovalRequestDraft(
+            businessId: rule.businessId,
+            draftKey: "preview:\(rule.id.uuidString)",
+            draftKind: .transaction,
+            rule: rule,
+            currentState: currentState,
+            projects: projects,
+            referenceDate: referenceDate,
+            totalAmount: totalAmount,
+            allocationPeriod: allocationPeriod,
+            supportsEqualAllMode: supportsEqualAllMode
+        )
+        let payload = buildResult.payload
         if supportsEqualAllMode && shouldUseDynamicEqualAll(for: rule) {
             let warnings = currentState == .equalAll ? ["現在の配分と同じ内容です。"] : []
             return ApprovalPreview(
                 ruleName: rule.name,
                 currentState: currentState,
                 proposedState: .equalAll,
+                warnings: warnings,
+                isApprovable: true
+            )
+        }
+
+        guard buildResult.isApprovable, let payload else {
+            return ApprovalPreview(
+                ruleName: rule.name,
+                currentState: currentState,
+                proposedState: nil,
+                warnings: buildResult.warnings,
+                isApprovable: false
+            )
+        }
+
+        return ApprovalPreview(
+            ruleName: rule.name,
+            currentState: payload.currentState,
+            proposedState: payload.proposedState,
+            warnings: buildResult.warnings,
+            isApprovable: buildResult.isApprovable
+        )
+    }
+
+    func approve(_ preview: ApprovalPreview) throws -> ApprovedApplication {
+        guard preview.isApprovable, let proposedState = preview.proposedState else {
+            throw ApplicationError.approvalPreviewNotApplicable
+        }
+
+        switch proposedState {
+        case .equalAll:
+            return ApprovedApplication(allocationMode: .equalAll, allocations: [])
+        case let .manual(allocations):
+            return ApprovedApplication(
+                allocationMode: .manual,
+                allocations: allocations.map {
+                    ApprovedApplication.Allocation(projectId: $0.projectId, ratio: $0.ratio, amount: $0.amount)
+                }
+            )
+        }
+    }
+
+    func makeApprovalRequestDraft(
+        businessId: UUID,
+        draftKey: String,
+        draftKind: FormDraftKind,
+        rule: DistributionRule,
+        currentState: ApprovalState,
+        projects: [PPProject],
+        referenceDate: Date,
+        totalAmount: Int,
+        allocationPeriod: AllocationPeriod = .month,
+        supportsEqualAllMode: Bool = true
+    ) -> ApprovalRequestBuildResult {
+        if supportsEqualAllMode && shouldUseDynamicEqualAll(for: rule) {
+            let warnings = currentState == .equalAll ? ["現在の配分と同じ内容です。"] : []
+            let payload = DistributionApprovalPayload(
+                draftKey: draftKey,
+                draftKind: draftKind,
+                ruleId: rule.id,
+                ruleName: rule.name,
+                currentState: currentState,
+                proposedState: .equalAll,
+                warnings: warnings
+            )
+            return ApprovalRequestBuildResult(
+                requestDraft: ApprovalRequestDraft(
+                    businessId: businessId,
+                    kind: .distribution,
+                    targetKind: draftKind == .transaction ? .transactionDraft : .recurringDraft,
+                    targetKey: draftKey,
+                    title: rule.name,
+                    subtitle: "配賦テンプレート",
+                    payloadJSON: CanonicalJSONCoder.encode(payload, fallback: "{}")
+                ),
+                payload: payload,
                 warnings: warnings,
                 isApprovable: true
             )
@@ -215,10 +304,9 @@ struct DistributionTemplateApplicationUseCase {
         )
 
         guard !preview.allocations.isEmpty else {
-            return ApprovalPreview(
-                ruleName: rule.name,
-                currentState: currentState,
-                proposedState: nil,
+            return ApprovalRequestBuildResult(
+                requestDraft: nil,
+                payload: nil,
                 warnings: preview.warnings,
                 isApprovable: false
             )
@@ -234,24 +322,36 @@ struct DistributionTemplateApplicationUseCase {
             warnings.append("現在の配分と同じ内容です。")
         }
 
-        return ApprovalPreview(
+        let payload = DistributionApprovalPayload(
+            draftKey: draftKey,
+            draftKind: draftKind,
+            ruleId: rule.id,
             ruleName: rule.name,
             currentState: currentState,
             proposedState: proposedState,
+            warnings: warnings
+        )
+        return ApprovalRequestBuildResult(
+            requestDraft: ApprovalRequestDraft(
+                businessId: businessId,
+                kind: .distribution,
+                targetKind: draftKind == .transaction ? .transactionDraft : .recurringDraft,
+                targetKey: draftKey,
+                title: rule.name,
+                subtitle: "配賦テンプレート",
+                payloadJSON: CanonicalJSONCoder.encode(payload, fallback: "{}")
+            ),
+            payload: payload,
             warnings: warnings,
             isApprovable: true
         )
     }
 
-    func approve(_ preview: ApprovalPreview) throws -> ApprovedApplication {
-        guard preview.isApprovable, let proposedState = preview.proposedState else {
-            throw ApplicationError.approvalPreviewNotApplicable
-        }
-
-        switch proposedState {
+    func approve(_ payload: DistributionApprovalPayload) throws -> ApprovedApplication {
+        switch payload.proposedState {
         case .equalAll:
             return ApprovedApplication(allocationMode: .equalAll, allocations: [])
-        case let .manual(allocations):
+        case .manual(let allocations):
             return ApprovedApplication(
                 allocationMode: .manual,
                 allocations: allocations.map {
@@ -380,6 +480,13 @@ struct DistributionTemplateApplicationUseCase {
 }
 
 extension DistributionTemplateApplicationUseCase {
+    struct ApprovalRequestBuildResult: Sendable, Equatable {
+        let requestDraft: ApprovalRequestDraft?
+        let payload: DistributionApprovalPayload?
+        let warnings: [String]
+        let isApprovable: Bool
+    }
+
     struct ApprovalPreview: Sendable, Equatable {
         let ruleName: String
         let currentState: ApprovalState
@@ -388,8 +495,8 @@ extension DistributionTemplateApplicationUseCase {
         let isApprovable: Bool
     }
 
-    enum ApprovalState: Sendable, Equatable {
-        struct Allocation: Sendable, Equatable {
+    enum ApprovalState: Codable, Sendable, Equatable {
+        struct Allocation: Codable, Sendable, Equatable {
             let projectId: UUID
             let ratio: Int
             let amount: Int
@@ -397,6 +504,16 @@ extension DistributionTemplateApplicationUseCase {
 
         case equalAll
         case manual([Allocation])
+    }
+
+    struct DistributionApprovalPayload: Codable, Sendable, Equatable {
+        let draftKey: String
+        let draftKind: FormDraftKind
+        let ruleId: UUID
+        let ruleName: String
+        let currentState: ApprovalState
+        let proposedState: ApprovalState
+        let warnings: [String]
     }
 
     struct ApprovedApplication: Sendable, Equatable {

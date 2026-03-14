@@ -46,7 +46,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(workflowTransaction.allocations, directTransaction.allocations)
     }
 
-    func testLoadRecurringPreviewMatchesRecurringWorkflowUseCase() throws {
+    func testLoadRecurringPreviewMatchesRecurringWorkflowUseCase() async throws {
         let container = try TestModelContainer.create()
         let context = ModelContext(container)
         let store = ProjectProfit.DataStore(modelContext: context)
@@ -69,8 +69,8 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
         store.loadData()
 
         let useCase = makeUseCase(store: store)
-        let workflowItems = useCase.loadRecurringPreview()
-        let directItems = RecurringWorkflowUseCase(modelContext: context).previewRecurringTransactions()
+        let workflowItems = await useCase.loadRecurringPreview()
+        let directItems = await RecurringWorkflowUseCase(modelContext: context).previewRecurringTransactions()
 
         XCTAssertEqual(workflowItems.map(\.recurringId), directItems.map(\.recurringId))
         XCTAssertEqual(workflowItems.map(\.scheduledDate), directItems.map(\.scheduledDate))
@@ -117,7 +117,7 @@ final class AppShellWorkflowUseCaseTests: XCTestCase {
                     ).refreshAppState()
                 },
                 loadRecurringPreview: {
-                    RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
+                    await RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
                 },
                 readCurrentError: { store.lastError },
                 writeCurrentError: { store.lastError = $0 }

@@ -743,14 +743,14 @@ final class DataStoreAccountingTests: XCTestCase {
             counterparty: "定期先株式会社"
         )
 
-        let previewItems = dataStore.previewRecurringTransactions()
+        let previewItems = await dataStore.previewRecurringTransactions()
         let approvedIds = Set(previewItems.map(\.id))
         let beforeTransactions = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
 
-        let generated = await dataStore.approveRecurringItems(approvedIds, from: previewItems)
+        let generated = await dataStore.approveRecurringItems(approvedIds)
 
         let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
         XCTAssertEqual(generated, 1)

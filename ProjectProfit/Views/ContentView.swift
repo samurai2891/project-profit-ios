@@ -46,10 +46,12 @@ struct ContentView: View {
 
     @MainActor
     private func refreshRecurringPreviewState(for store: DataStore) {
-        let pendingItems = appShellWorkflowUseCase(for: store).loadRecurringPreview()
-        pendingRecurringCount = pendingItems.count
-        if pendingRecurringCount > 0 {
-            showRecurringPreview = true
+        Task { @MainActor in
+            let pendingItems = await appShellWorkflowUseCase(for: store).loadRecurringPreview()
+            pendingRecurringCount = pendingItems.count
+            if pendingRecurringCount > 0 {
+                showRecurringPreview = true
+            }
         }
     }
 
@@ -75,7 +77,7 @@ struct ContentView: View {
                     appStateRefreshWorkflowUseCase(for: store).refreshAppState()
                 },
                 loadRecurringPreview: {
-                    RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
+                    await RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
                 },
                 readCurrentError: { store.lastError },
                 writeCurrentError: { store.lastError = $0 }

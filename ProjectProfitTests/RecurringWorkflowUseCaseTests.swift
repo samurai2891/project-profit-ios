@@ -168,7 +168,7 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .dayBefore)
     }
 
-    func testPreviewRecurringTransactionsReturnsDueItems() {
+    func testPreviewRecurringTransactionsReturnsDueItems() async throws {
         let project = mutations(dataStore).addProject(name: "Preview PJ", description: "desc")
         let recurring = insertRecurringDirectly(
             name: "定期サブスク",
@@ -179,12 +179,18 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        let previewItems = useCase.previewRecurringTransactions()
+        let previewItems = await useCase.previewRecurringTransactions()
+        let approvalRequestRepository = SwiftDataApprovalRequestRepository(modelContext: context)
 
         let matching = previewItems.filter { $0.recurringId == recurring.id }
         XCTAssertEqual(matching.count, 1)
         XCTAssertEqual(matching.first?.recurringName, "定期サブスク")
         XCTAssertEqual(matching.first?.amount, 3_000)
+        let requestValue = try await approvalRequestRepository.findById(matching[0].id)
+        let request = try XCTUnwrap(requestValue)
+        XCTAssertEqual(request.kind, .recurring)
+        XCTAssertEqual(request.status, .pending)
+        XCTAssertEqual(request.targetKind, .recurringOccurrence)
     }
 
     func testApproveRecurringItemsCreatesCanonicalJournalAndUpdatesBookkeeping() async throws {
@@ -205,13 +211,14 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         )
         let beforeGeneratedMonthsCount = recurring.lastGeneratedMonths.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
+        let approvalRequestRepository = SwiftDataApprovalRequestRepository(modelContext: context)
         let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
         let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
 
-        let previewItems = useCase.previewRecurringTransactions()
+        let previewItems = await useCase.previewRecurringTransactions()
         let approvedIds = Set(previewItems.map(\.id))
 
-        let generated = await useCase.approveRecurringItems(approvedIds, from: previewItems)
+        let generated = await useCase.approveRecurringItems(approvedIds)
         dataStore.loadData()
 
         let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
@@ -223,6 +230,8 @@ final class RecurringWorkflowUseCaseTests: XCTestCase {
         XCTAssertNotNil(updated.lastGeneratedDate)
         XCTAssertEqual(updated.lastGeneratedMonths.count, beforeGeneratedMonthsCount)
         XCTAssertEqual(dataStore.getProjectSummary(projectId: project.id)?.totalExpense, 6_000)
+        let requests = try await approvalRequestRepository.findByIds(approvedIds)
+        XCTAssertEqual(requests.map(\.status), [.approved])
     }
 
     func testProcessDueRecurringTransactionsCreatesCanonicalJournalAndUpdatesBookkeeping() async throws {

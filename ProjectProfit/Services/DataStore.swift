@@ -2494,29 +2494,14 @@ class DataStore {
         return mutated
     }
 
-    /// 定期取引の生成プレビュー（dry-run）。実際の取引は生成しない。
-    func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        dueRecurringOccurrences()
-            .filter { !$0.isSkipped && !$0.isYearLocked }
-            .map { occurrence in
-                RecurringPreviewItem(
-                    recurringId: occurrence.recurringId,
-                    recurringName: recurringTransactions.first(where: { $0.id == occurrence.recurringId })?.name ?? "",
-                    type: recurringTransactions.first(where: { $0.id == occurrence.recurringId })?.type ?? .expense,
-                    amount: occurrence.amount,
-                    scheduledDate: occurrence.scheduledDate,
-                    categoryId: occurrence.categoryId,
-                    memo: occurrence.previewMemo,
-                    isMonthlySpread: occurrence.isMonthlySpread,
-                    projectName: occurrence.projectName,
-                    allocationMode: occurrence.allocationMode
-                )
-            }
+    /// 定期取引の承認待ちプレビュー。Approval Request と同期された内容を返す。
+    func previewRecurringTransactions() async -> [RecurringPreviewItem] {
+        await recurringWorkflowUseCase.previewRecurringTransactions()
     }
 
-    /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
-    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) async -> Int {
-        let generatedCount = await recurringWorkflowUseCase.approveRecurringItems(approvedIds, from: items)
+    /// 指定された承認依頼のみを実際に処理する。
+    func approveRecurringItems(_ approvedIds: Set<UUID>) async -> Int {
+        let generatedCount = await recurringWorkflowUseCase.approveRecurringItems(approvedIds)
         refreshRecurring()
         if generatedCount > 0 {
             refreshTransactions()
