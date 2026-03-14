@@ -18,6 +18,7 @@
 		04AEBE7F9A78ACF3D5590FF2 /* LedgerDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECBFAF27D23D8B7159E0C21 /* LedgerDataStore.swift */; };
 		058AB4BEC47177E78A830525 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34972547443B4D43E57421DF /* NotificationSettingsView.swift */; };
 		05EA82DD76C37A3A50E41038 /* StatementReconciliationQueryUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD2855A3ACF4EF70BD2010 /* StatementReconciliationQueryUseCase.swift */; };
+		062F3D28A4D586B5A8D5C224 /* UITestBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34F649F30B96E7B3CE0682 /* UITestBootstrapTests.swift */; };
 		07804CED0633576194A2E16A /* CounterpartyEntityMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33E11B3513D9FC632FCFDF4 /* CounterpartyEntityMapper.swift */; };
 		07C7C7AB2AAE14E5042C0861 /* BusinessProfileEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B78D7DEEA8EE6A9A2DC1627 /* BusinessProfileEntity.swift */; };
 		0854DAFC0FED5D4D01E0C9CA /* AccountingReportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D85A7C833F25E01DEEF74A6A /* AccountingReportServiceTests.swift */; };
@@ -621,6 +622,7 @@
 		0B78D7DEEA8EE6A9A2DC1627 /* BusinessProfileEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessProfileEntity.swift; sourceTree = "<group>"; };
 		0BAB48A687634DC5CB54B9E3 /* bank_account_book.csv */ = {isa = PBXFileReference; path = bank_account_book.csv; sourceTree = "<group>"; };
 		0BFEC7E0D7F496375B31D649 /* CanonicalAccountEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalAccountEntityMapper.swift; sourceTree = "<group>"; };
+		0D34F649F30B96E7B3CE0682 /* UITestBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestBootstrapTests.swift; sourceTree = "<group>"; };
 		0DB6C0212CAA8A0763630E56 /* FixedAssetFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetFormView.swift; sourceTree = "<group>"; };
 		0DE66FB205E3A16F13BC0EF7 /* AuditEventType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditEventType.swift; sourceTree = "<group>"; };
 		0E00231725E1D3A746430A2E /* RecurringView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringView.swift; sourceTree = "<group>"; };
@@ -1568,6 +1570,7 @@
 				C73E1EBBC0B07E7B917AA16E /* TransactionHistoryUseCaseTests.swift */,
 				4D05B7E92B75996C158B82C2 /* TransactionLogTests.swift */,
 				75764716F068DE86C44F0E0C /* TransactionsViewModelTests.swift */,
+				0D34F649F30B96E7B3CE0682 /* UITestBootstrapTests.swift */,
 				BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */,
 				161E5635DA847B395BC6F0E0 /* WithholdingFlowE2ETests.swift */,
 				0B17BFC4F1F199C20B082798 /* WithholdingStatementQueryUseCaseTests.swift */,
@@ -3960,6 +3963,7 @@
 				28893F181908EB5EB782118A /* TransactionHistoryUseCaseTests.swift in Sources */,
 				41B5AEF94EAF00EB409161D6 /* TransactionLogTests.swift in Sources */,
 				EB7EDD9DC15BEC76E1A026A8 /* TransactionsViewModelTests.swift in Sources */,
+				062F3D28A4D586B5A8D5C224 /* UITestBootstrapTests.swift in Sources */,
 				9A8E241A275149284C5BEA43 /* UtilitiesTests.swift in Sources */,
 				62F256B1D88D3249CB64026D /* WithholdingFlowE2ETests.swift in Sources */,
 				5E3D5F2CBD773640E1FE2B1F /* WithholdingStatementQueryUseCaseTests.swift in Sources */,

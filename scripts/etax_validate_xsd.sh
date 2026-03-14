@@ -3,11 +3,33 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+resolve_etax_reference_root() {
+  local candidates=()
+  if [[ -n "${ETAX_REFERENCE_ROOT:-}" ]]; then
+    candidates+=("${ETAX_REFERENCE_ROOT}")
+  fi
+  candidates+=(
+    "$REPO_ROOT/e-taxall"
+    "$REPO_ROOT/../project-profit-ios-local/e-taxall"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -d "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$REPO_ROOT/e-taxall"
+}
+
 xml_path=""
 schema_path=""
 form_key=""
 taxyear_json="$REPO_ROOT/ProjectProfit/Resources/TaxYear2025.json"
-default_schema_dir="$REPO_ROOT/e-taxall/19XMLスキーマ/shotoku"
+ETAX_REFERENCE_ROOT_RESOLVED="$(resolve_etax_reference_root)"
+default_schema_dir="$ETAX_REFERENCE_ROOT_RESOLVED/19XMLスキーマ/shotoku"
 if [[ ! -d "$default_schema_dir" ]]; then
   default_schema_dir="$REPO_ROOT/tools/etax/xsd/shotoku"
 fi
@@ -23,7 +45,7 @@ Options:
   --form-key <name>       forms key in TaxYear json (required when --schema is not used)
   --schema <path>         explicit XSD path (optional)
   --taxyear-json <path>   TaxYear*.json path
-  --schema-dir <path>     shotoku XSD directory (default: auto-detect e-taxall -> tools/etax/xsd/shotoku)
+  --schema-dir <path>     shotoku XSD directory (default: auto-detect ETAX_REFERENCE_ROOT -> tools/etax/xsd/shotoku)
 EOF
 }
 

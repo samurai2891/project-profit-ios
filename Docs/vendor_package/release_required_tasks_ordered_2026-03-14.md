@@ -87,12 +87,12 @@
 - 目的:
   - curated artifact と現HEADの不一致を解消する。
 - 背景事実:
-  - `Docs/release_quality/latest.md` は 2026-03-07 / `86b7b08...` を指す。
+  - `Docs/release/quality/latest.md` は 2026-03-07 / `86b7b08...` を指す。
   - 現HEAD は `fe19501`。
-  - `Docs/release_quality/books.md` と `Docs/release_quality/forms.md` には 2026-03-14 の個票がある。
+  - `Docs/release/quality/books.md` と `Docs/release/quality/forms.md` には 2026-03-14 の個票がある。
 - 主対象:
-  - `Docs/release_quality/latest.md`
-  - `Docs/release_quality/latest-lane.md`
+  - `Docs/release/quality/latest.md`
+  - `Docs/release/quality/latest-lane.md`
   - checklist 対象 lane の個票
 - 完了条件:
   - current HEAD に対する fully-green snapshot が repo 内で追える。
@@ -102,10 +102,10 @@
 - 目的:
   - `release 可否` を checklist 基準で判断できる状態にする。
 - 背景事実:
-  - `Docs/release_checklist.md` は curated snapshot と lane 個票を正本としている。
+  - `Docs/release/checklist.md` は curated snapshot と lane 個票を正本としている。
 - 主対象:
-  - `Docs/release_checklist.md`
-  - `Docs/release_quality/latest.md`
+  - `Docs/release/checklist.md`
+  - `Docs/release/quality/latest.md`
   - lane 個票
 - 完了条件:
   - checklist 対象の green 根拠が current HEAD と一致する。
@@ -156,7 +156,7 @@
 - 目的:
   - 修正後の状態を最終成果物として残す。
 - 主対象:
-  - `完全版/release_fact_audit_2026-03-14.md`
+  - `Docs/vendor_package/release_fact_audit_2026-03-14.md`
 - 完了条件:
   - blocker 解消状況
   - current HEAD 向け test / artifact 結果

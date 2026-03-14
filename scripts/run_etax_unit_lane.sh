@@ -4,14 +4,37 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+resolve_etax_reference_root() {
+  local candidates=()
+  if [[ -n "${ETAX_REFERENCE_ROOT:-}" ]]; then
+    candidates+=("${ETAX_REFERENCE_ROOT}")
+  fi
+  candidates+=(
+    "$REPO_ROOT/e-taxall"
+    "$REPO_ROOT/../project-profit-ios-local/e-taxall"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -d "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$REPO_ROOT/e-taxall"
+}
+
+ETAX_REFERENCE_ROOT_RESOLVED="$(resolve_etax_reference_root)"
+
 artifact_dir="${ETAX_ARTIFACTS_DIR:-/tmp/etax-unit-lane}"
 extract_input_dir="${ETAX_TAG_INPUT_DIR:-tools/etax/fixtures}"
 overlay_json="${ETAX_CAB_OVERLAY_JSON:-tools/etax/fixtures/cab_overlay_2025.json}"
-cab_blue_spec_xlsx="${ETAX_CAB_BLUE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx}"
+cab_blue_spec_xlsx="${ETAX_CAB_BLUE_FIELD_SPEC_XLSX:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx}"
 cab_blue_spec_sheet="${ETAX_CAB_BLUE_FIELD_SPEC_SHEET:-KOA210}"
-cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
+cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
 cab_white_spec_sheet="${ETAX_CAB_WHITE_FIELD_SPEC_SHEET:-KOA110}"
-cab_spec_dir="${ETAX_CAB_SPEC_DIR:-e-taxall/09XML構造設計書等【所得税】}"
+cab_spec_dir="${ETAX_CAB_SPEC_DIR:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】}"
 xsd_require_generated_mode="${ETAX_XSD_REQUIRE_GENERATED_XML:-auto}"
 
 tag_dict_json="$artifact_dir/TagDictionary_2025.json"
@@ -49,10 +72,10 @@ resolve_spec_path() {
     fi
   fi
 
-  if [[ -d "e-taxall" ]]; then
+  if [[ -d "$ETAX_REFERENCE_ROOT_RESOLVED" ]]; then
     local broad_candidate
     broad_candidate="$(
-      find "e-taxall" -type f -name "*Ver${version_hint}.xlsx" \
+      find "$ETAX_REFERENCE_ROOT_RESOLVED" -type f -name "*Ver${version_hint}.xlsx" \
         | grep '所得-申告' \
         | grep '帳票' \
         | sort \
@@ -89,7 +112,7 @@ python3 scripts/etax_validate_tags.py \
 
 overlay_to_apply="$overlay_json"
 
-echo "[4/8] Generate CAB overlay from e-taxall specs (optional)"
+echo "[4/8] Generate CAB overlay from e-Tax reference specs (optional)"
 if [[ -f "$cab_blue_spec_xlsx_resolved" ]] && [[ -f "$cab_white_spec_xlsx_resolved" ]]; then
   echo "info: resolved blue spec xlsx: $cab_blue_spec_xlsx_resolved"
   echo "info: resolved white spec xlsx: $cab_white_spec_xlsx_resolved"

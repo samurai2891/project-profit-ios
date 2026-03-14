@@ -83,7 +83,7 @@
 
 15. `REL-P0-12`
     - release gate の repo 内証跡はまだプレースホルダのため、最新 green 根拠を追跡可能な形に固定する。
-    - 確認: `Docs/release_quality/latest.md`
+    - 確認: `Docs/release/quality/latest.md`
 
 16. `REL-P2-02`
     - user rule engine は `PPTransaction` ベースで、candidate / evidence 承認フローには未接続のため、main workflow へ統合する。
@@ -98,8 +98,8 @@
     - 確認: `ProjectProfit/` 配下の対応コードを確認できず
 
 ### この着手順の補足
-- `REL-P2-05` は既存本文に「release checklist 管理ファイル未確認」とあるが、現リポジトリには `Docs/release_checklist.md` が存在するため、未完了としては **support URL の repo 管理物を明示すること**だけを残す。
-- 確認: `Docs/release_checklist.md`
+- `REL-P2-05` は既存本文に「release checklist 管理ファイル未確認」とあるが、現リポジトリには `Docs/release/checklist.md` が存在するため、未完了としては **support URL の repo 管理物を明示すること**だけを残す。
+- 確認: `Docs/release/checklist.md`
 
 ---
 
@@ -843,7 +843,7 @@
 - privacy manifest を Xcode project に組み込む
   - 確認: `ProjectProfit.xcodeproj/project.pbxproj`
 - privacy policy 文書ファイルが repo 内に存在する
-  - 確認: `Docs/privacy_policy.md`
+  - 確認: `Docs/legal/privacy_policy.md`
 
 #### 部分実装
 - support URL の repo 管理物は今回の走査では確認できない
@@ -903,5 +903,5 @@
 - `ProjectProfit/Core/Domain/Counterparties/PayeeInfo.swift`
 
 ## 付録: この改定で補正した点
-- 元資料のうち `REL-P2-05` の「privacy policy を repo 管理している証拠が確認できない」は、今回の zip 再確認では **`Docs/privacy_policy.md` が存在**したため、その点だけ事実に合わせて補正した。
+- 元資料のうち `REL-P2-05` の「privacy policy を repo 管理している証拠が確認できない」は、今回の zip 再確認では **`Docs/legal/privacy_policy.md` が存在**したため、その点だけ事実に合わせて補正した。
 - それ以外のチケットは、元のチケット内容を変えず、確認単位を細かくした。

@@ -1,6 +1,6 @@
 # ProjectProfit リリース事実監査レポート
 作成日: 2026-03-14  
-対象 HEAD: `fe19501`  
+対象 HEAD: `a32682c`  
 固定資産/棚卸 再検証追記 HEAD: `8b525b6811f90a99610eb4b713972478ee60fbc1`  
 対象リポジトリ: `/Users/yutaro/project-profit-ios`
 
@@ -10,13 +10,13 @@
 - 推測は含めない。
 - repo 外の法令適合証明、e-Tax 受理保証、App Store / GitHub 外設定は「未確認/未証明」と扱う。
 - 参照した主資料:
-  - `完全版/release_remaining_work_breakdown_2026-03-13.md`
-  - `完全版/release_ticket_list.md`
-  - `完全版/revised_release_ticket_list.md`
-  - `Docs/release_checklist.md`
-  - `Docs/release_quality/latest.md`
-  - `Docs/release_quality/books.md`
-  - `Docs/release_quality/forms.md`
+  - `Docs/vendor_package/release_remaining_work_breakdown_2026-03-13.md`
+  - `Docs/vendor_package/release_ticket_list.md`
+  - `Docs/vendor_package/revised_release_ticket_list.md`
+  - `Docs/release/checklist.md`
+  - `Docs/release/quality/latest.md`
+  - `Docs/release/quality/books.md`
+  - `Docs/release/quality/forms.md`
 
 ## 2. 再実行した代表テスト
 
@@ -48,6 +48,38 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 結論:
 
 - `仮勘定残高があると申告出力を止める` 挙動は、現HEADでは再現テストが落ちており、release blocker と扱うのが妥当。
+
+### 2-1. 定期取引専用の再実行
+
+実行コマンド:
+
+```bash
+xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:ProjectProfitTests/RecurringWorkflowUseCaseTests \
+  -only-testing:ProjectProfitTests/RecurringPreviewTests \
+  -only-testing:ProjectProfitTests/RecurringProcessingTests \
+  -only-testing:ProjectProfitTests/RecurringQueryUseCaseTests \
+  test
+```
+
+結果:
+
+- 実行テスト数: 56
+- 失敗: 0
+- skip: 1
+- 成功テスト群:
+  - `RecurringPreviewTests` 7件
+  - `RecurringProcessingTests` 37件実行 / 1件 skip / 0件失敗
+  - `RecurringQueryUseCaseTests` 3件
+  - `RecurringWorkflowUseCaseTests` 9件
+- xcresult:
+  - `/Users/yutaro/Library/Developer/Xcode/DerivedData/ProjectProfit-gjethbtnkdvawmdbwjveldxkexsm/Logs/Test/Test-ProjectProfit-2026.03.14_20-46-18-+0900.xcresult`
+
+補足:
+
+- `RecurringProcessingTests/testDeleteMonthlyRecurringTransaction_allowsRegeneration` は skip。
+- skip 理由は `processRecurringTransactions()` が canonical recurring journal のみを生成し、`deleteTransaction(id:)` が legacy `PPTransaction` 前提のため、旧前提テストが current 実装に追随していないため。
+- この skip は current recurring main path の失敗ではなく、legacy bridge 残存に関する注記として扱う。
 
 ## 3. REL軸の判定
 
@@ -92,7 +124,47 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - `ProjectProfitTests/DistributionApprovalIntegrationTests.swift`
   - 2026-03-14 再実行で 3件通過
 
+#### `REL-P1-03` Recurring preview / approve workflow（recurring 単体）
+
+- 2026-03-14 時点の結論: `実装済み`
+- 根拠ファイル:
+  - `ProjectProfit/Views/ContentView.swift`
+  - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`
+  - `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`
+  - `ProjectProfit/Application/UseCases/Recurring/RecurringPostingCoordinator.swift`
+- 根拠テストまたは実行結果:
+  - `ProjectProfitTests/RecurringPreviewTests.swift`
+  - `ProjectProfitTests/RecurringProcessingTests.swift`
+  - `ProjectProfitTests/RecurringQueryUseCaseTests.swift`
+  - `ProjectProfitTests/RecurringWorkflowUseCaseTests.swift`
+  - 2026-03-14 / current HEAD `a32682c` で 56件実行、0 failures、1 skip
+- 事実:
+  - 起動時に `ContentView` が `loadRecurringPreview()` を呼び、pending があれば `RecurringPreviewView` sheet を表示する。
+  - `RecurringPreviewView` は `approveRecurringItems(...)` を呼び、選択済み recurring を一括承認する。
+  - `RecurringPostingCoordinator` は承認時に canonical posting を永続化し、approval request を更新する。
+  - `RecurringWorkflowUseCaseTests/testPreviewRecurringTransactionsReturnsDueItems`、
+    `testApproveRecurringItemsCreatesCanonicalJournalAndUpdatesBookkeeping`、
+    `testProcessDueRecurringTransactionsCreatesCanonicalJournalAndUpdatesBookkeeping`
+    で main path の代表挙動を再確認した。
+
 ### 3-2. 部分実装
+
+#### `REL-P1-03` Recurring / Distribution を preview → approve 方式へ再設計する（チケット全体）
+
+- 2026-03-14 時点の結論: `部分実装`
+- 根拠ファイル:
+  - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`
+  - `ProjectProfit/Application/UseCases/Distribution/DistributionTemplateApplicationUseCase.swift`
+  - `ProjectProfit/Views/Components/RecurringFormView.swift`
+  - `ProjectProfit/Views/Components/TransactionFormView.swift`
+- 根拠テストまたは実行結果:
+  - `ProjectProfitTests/RecurringWorkflowUseCaseTests.swift`
+  - `ProjectProfitTests/RecurringPreviewTests.swift`
+  - `ProjectProfitTests/DistributionApprovalIntegrationTests.swift`
+- 事実:
+  - recurring 側の preview → approve 本線は current HEAD で再実行して green を確認した。
+  - 一方で distribution 側はフォーム内で `DistributionTemplateApplicationUseCase` を直接適用する経路が残る。
+  - したがって recurring 単体は release 観点で再確認できたが、既存チケット `REL-P1-03` 全体は完了とは言えない。
 
 #### `REL-P1-05` FormEngine の canonical 一本化
 
@@ -116,16 +188,16 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 
 - 2026-03-14 時点の結論: `部分実装`
 - 根拠ファイル:
-  - `Docs/release_quality/latest.md`
-  - `Docs/release_quality/books.md`
-  - `Docs/release_quality/forms.md`
-  - `Docs/release_checklist.md`
+  - `Docs/release/quality/latest.md`
+  - `Docs/release/quality/books.md`
+  - `Docs/release/quality/forms.md`
+  - `Docs/release/checklist.md`
 - 根拠テストまたは実行結果:
-  - `git rev-parse --short HEAD` -> `fe19501`
+  - `git rev-parse --short HEAD` -> `a32682c`
 - 事実:
   - `latest.md` の curated fully-green snapshot は `86b7b08...` / 2026-03-07 を指している。
   - `books.md` と `forms.md` には 2026-03-14 の green 証跡がある。
-  - 現HEAD `fe19501` に対して、checklist 対象 4 lane fully-green の curated 更新は repo 内で確認できない。
+  - 現HEAD `a32682c` に対して、checklist 対象 4 lane fully-green の curated 更新は repo 内で確認できない。
 
 ### 3-3. 不具合再現
 
@@ -165,7 +237,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 | 証憑取込 | 実装済み | receipt / share extension / statement import / evidence inbox を repo 内で確認 |
 | 承認 | 実装済み | approval queue, candidate approve/reject, distribution approval を確認 |
 | プロジェクト配賦/按分 | 実装済み | project workflow と pro-rata 再計算系テストが通過 |
-| 定期取引 | 部分実装 | recurring 本線は存在するが、この監査では release 全面保証までは未証明 |
+| 定期取引 | 実装済み | recurring 単体の preview / approve main path と代表テストを current HEAD で再確認 |
 | 銀行/カード照合 | 実装済み | 導線・import・match・Books 入口を確認 |
 | 帳簿/帳票 | 部分実装 | books lane は green だが申告 builder に legacy 依存が残る |
 | 固定資産/棚卸 | representative tests 再確認済み | workflow use case の 2 スイートを current HEAD で再実行し、11件 green を確認 |
@@ -208,7 +280,29 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - `ProjectProfitTests/ProRataDataStoreTests.swift`
   - 2026-03-14 再実行で両方通過
 
-### 4-4. 銀行/カード照合
+### 4-4. 定期取引
+
+- 2026-03-14 時点の結論: `実装済み（recurring 単体） / 部分実装（REL-P1-03 全体）`
+- 根拠ファイル:
+  - `ProjectProfit/Views/ContentView.swift`
+  - `ProjectProfit/Features/Recurring/RecurringPreviewView.swift`
+  - `ProjectProfit/Application/UseCases/Recurring/RecurringWorkflowUseCase.swift`
+  - `ProjectProfit/Application/UseCases/Recurring/RecurringPostingCoordinator.swift`
+  - `ProjectProfit/Views/Components/RecurringFormView.swift`
+  - `ProjectProfit/Views/Components/TransactionFormView.swift`
+- 根拠テストまたは実行結果:
+  - `ProjectProfitTests/RecurringPreviewTests.swift`
+  - `ProjectProfitTests/RecurringProcessingTests.swift`
+  - `ProjectProfitTests/RecurringQueryUseCaseTests.swift`
+  - `ProjectProfitTests/RecurringWorkflowUseCaseTests.swift`
+  - 2026-03-14 / current HEAD `a32682c` で 56件実行、0 failures、1 skip
+- 事実:
+  - 起動時 preview 読込、pending recurring の sheet 表示、一括承認、canonical journal 作成までの recurring main path は repo 内コードと current HEAD の再実行結果で確認できた。
+  - `RecurringWorkflowUseCaseTests` の代表テストで preview 生成、approve 後の canonical journal 作成、bookkeeping 更新を確認した。
+  - skip 1件は legacy `PPTransaction` 削除前提テストであり、current recurring main path の失敗ではない。
+  - ただし distribution preview → approve はフォーム内直接適用経路が残るため、`REL-P1-03` チケット全体では `部分実装` のままである。
+
+### 4-5. 銀行/カード照合
 
 - 2026-03-14 時点の結論: `実装済み`
 - 根拠ファイル:
@@ -219,7 +313,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - `ProjectProfitTests/StatementImportUseCaseTests.swift`
   - `ProjectProfitTests/BooksWorkspaceViewTests.swift`
 
-### 4-5. 帳簿/帳票
+### 4-6. 帳簿/帳票
 
 - 2026-03-14 時点の結論: `部分実装`
 - 根拠ファイル:
@@ -229,13 +323,13 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
   - `ProjectProfit/Services/CashBasisReturnBuilder.swift`
 - 根拠テストまたは実行結果:
-  - `Docs/release_quality/books.md`
+  - `Docs/release/quality/books.md`
   - `ProjectProfitTests/BooksWorkspaceViewTests.swift`
 - 事実:
   - Books ワークスペース、仕訳ブラウザ、分析導線はある。
   - 一方で申告帳票生成の builder 側には legacy 依存が残る。
 
-### 4-6. 固定資産/棚卸
+### 4-7. 固定資産/棚卸
 
 - 2026-03-14 時点の結論: `representative tests 再確認済み`
 - 根拠ファイル:
@@ -266,7 +360,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - create / update / locked year create block / locked year update block を再確認した。
   - 今回確認したのは workflow use case レベルであり、固定資産帳票や棚卸の決算書反映までを全面保証する証跡ではない。
 
-### 4-7. 源泉徴収
+### 4-8. 源泉徴収
 
 - 2026-03-14 時点の結論: `実装済み`
 - 根拠ファイル:
@@ -278,7 +372,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - `ProjectProfitUITests/WithholdingApprovalUITests.swift`
   - 2026-03-14 再実行で E2E 通過
 
-### 4-8. e-Tax / 申告前チェック
+### 4-9. e-Tax / 申告前チェック
 
 - 2026-03-14 時点の結論: `不具合再現 + 部分実装`
 - 根拠ファイル:
@@ -295,26 +389,27 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - 申告前チェックの仮勘定検知は現HEADで失敗している。
   - 現金主義は ViewModel / FormEngine に存在するが、UI picker では選択肢が見えない。
 
-### 4-9. release artifact
+### 4-10. release artifact
 
 - 2026-03-14 時点の結論: `部分実装`
 - 根拠ファイル:
-  - `Docs/release_checklist.md`
-  - `Docs/release_quality/latest.md`
-  - `Docs/release_quality/books.md`
-  - `Docs/release_quality/forms.md`
+  - `Docs/release/checklist.md`
+  - `Docs/release/quality/latest.md`
+  - `Docs/release/quality/books.md`
+  - `Docs/release/quality/forms.md`
 - 根拠テストまたは実行結果:
-  - `git rev-parse --short HEAD` -> `fe19501`
+  - `git rev-parse --short HEAD` -> `a32682c`
 - 事実:
   - curated fully-green snapshot は current HEAD を指していない。
   - lane 個票は一部更新されている。
 
 ## 5. 追加で確認できたリポジトリ整合性の問題
 
-### 5-1. 外部依存なしという説明と現コードが一致しない
+### 5-1. 外部依存の説明は `AGENTS.md` 修正で整合した
 
-- 2026-03-14 時点の結論: `説明不整合`
+- 2026-03-14 時点の結論: `解消済み`
 - 根拠ファイル:
+  - `AGENTS.md`
   - `project.yml`
   - `ProjectProfit/Ledger/Services/LedgerExcelExportService.swift`
 - 根拠テストまたは実行結果:
@@ -322,7 +417,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 - 事実:
   - `project.yml` に `libxlsxwriter` の SwiftPM package がある。
   - `LedgerExcelExportService.swift` も `xlsxwriter` を import している。
-  - 少なくとも現HEADは「外部 package なし」ではない。
+  - `AGENTS.md` を `libxlsxwriter` 利用前提の説明へ更新した。
 
 ## 6. 最重要 blocker
 
@@ -343,6 +438,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
   - 申告データ生成機能はある。
   - e-Tax preview / `.xtx` / `.csv` 出力機能はある。
   - 源泉徴収の年次一覧 / 支払先別出力機能はある。
+  - recurring 単体の preview / approve main path は current HEAD の代表再実行で green を確認した。
 - repo 内で確認できなかった、または阻害要因がある事実:
   - 仮勘定残高 blocker の担保は現HEADで失敗している。
   - 現金主義の UI 到達性は未証明。

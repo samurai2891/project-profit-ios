@@ -6,7 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ProjectProfit is a native iOS app (Swift/SwiftUI, iOS 17+) for tracking income and expenses across multiple projects. Features include receipt scanning (Vision OCR), recurring transactions, pro-rata allocation, and notification scheduling. All UI strings are in Japanese.
 
-No external package dependencies — purely Apple frameworks (SwiftUI, SwiftData, Vision, PhotosUI, UserNotifications). iOS 26+ optionally uses FoundationModels for AI-powered receipt extraction.
+Primarily built on Apple frameworks (SwiftUI, SwiftData, Vision, PhotosUI, UserNotifications), with `libxlsxwriter` included via SwiftPM for Excel export. iOS 26+ optionally uses FoundationModels for AI-powered receipt extraction.
 
 ## Build & Test Commands
 

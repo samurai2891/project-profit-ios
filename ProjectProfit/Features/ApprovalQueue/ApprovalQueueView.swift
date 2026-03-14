@@ -108,6 +108,7 @@ struct ApprovalQueueView: View {
                         } label: {
                             queueItemRow(item)
                         }
+                        .accessibilityIdentifier(navigationIdentifier(for: item))
                     }
                 }
             }
@@ -161,6 +162,15 @@ struct ApprovalQueueView: View {
         }
     }
 
+    private func navigationIdentifier(for item: ApprovalQueueItem) -> String {
+        switch item {
+        case .candidate(let candidate):
+            return "approval.candidate.row.\(candidate.id.uuidString)"
+        case .request(let request):
+            return "approval.request.row.\(request.id.uuidString)"
+        }
+    }
+
     private func candidateRow(_ candidate: PostingCandidate) -> some View {
         let withholding = withholdingSummary(for: candidate)
         return VStack(alignment: .leading, spacing: 8) {
@@ -190,11 +200,8 @@ struct ApprovalQueueView: View {
                     Label("配賦あり", systemImage: "square.split.2x2")
                 }
                 if let withholding {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                        Text("源泉あり \(withholding.code.displayName)")
-                    }
-                    .accessibilityElement(children: .combine)
+                    Label("源泉あり \(withholding.code.displayName)", systemImage: "doc.text.magnifyingglass")
+                    .accessibilityLabel("源泉あり \(withholding.code.displayName)")
                     .accessibilityIdentifier("approval.candidate.withholdingBadge")
                 }
             }
@@ -202,7 +209,6 @@ struct ApprovalQueueView: View {
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
-        .accessibilityIdentifier("approval.candidate.row.\(candidate.id.uuidString)")
     }
 
     @ViewBuilder
@@ -607,6 +613,7 @@ struct ApprovalCandidateDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                 }
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("approval.candidate.withholdingSummary")
             }
         }

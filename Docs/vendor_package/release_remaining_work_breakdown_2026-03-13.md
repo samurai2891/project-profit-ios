@@ -89,8 +89,8 @@
 
 - `REL-P2-01` は未実装ではない。銀行/カード照合 UI、取込、照合ロジック、導線、テストが存在する。
 - `REL-P2-03` は UI/出力フロー未確認ではない。`WithholdingStatementView`、`WithholdingStatementQueryUseCase`、`ExportCoordinator`、テストが存在する。
-- `REL-P2-05` は release checklist 未確認ではない。`Docs/release_checklist.md` が存在する。
-- `REL-P0-12` は latest green 根拠が repo にない状態ではない。`Docs/release_quality/latest.md` が存在する。
+- `REL-P2-05` は release checklist 未確認ではない。`Docs/release/checklist.md` が存在する。
+- `REL-P0-12` は latest green 根拠が repo にない状態ではない。`Docs/release/quality/latest.md` が存在する。
 - `REL-P1-07` の旧導線は `AccountingHomeView` ではない。現 repo で確認できる残存旧導線は `BooksWorkspaceView -> ReportView()` および `BooksWorkspaceView -> JournalListView()` である。
 - `REL-P2-02` は approval 時学習が未接続ではない。`PostingWorkflowUseCase.learnFromApprovedCandidateIfPossible(...)` が接続済みである。
 
@@ -958,18 +958,18 @@
 - `REL`: `REL-P0-12`
 - `目的`: checklist が参照する lane 別 md を repo 内に揃える
 - `実装内容`:
-  - `Docs/release_checklist.md` が参照する `golden-baseline.md`, `canonical-e2e.md`, `migration-rehearsal.md`, `performance-gate.md`, `books.md`, `forms.md` を管理対象に追加する
+  - `Docs/release/checklist.md` が参照する `golden-baseline.md`, `canonical-e2e.md`, `migration-rehearsal.md`, `performance-gate.md`, `books.md`, `forms.md` を管理対象に追加する
   - `latest.md` と同じ固定フォーマットで更新されるように整える
   - `latest-lane.md` をテンプレートのまま放置しない
 - `主対象`:
-  - `Docs/release_checklist.md`
-  - `Docs/release_quality/`
+  - `Docs/release/checklist.md`
+  - `Docs/release/quality/`
 - `依存`: なし
 - `完了条件`:
   - checklist 参照先のファイルがすべて repo に存在する
   - latest / latest-lane / lane別 md の役割が一致する
 - `検証`:
-  - `Docs/release_checklist.md` の参照先 existence check
+  - `Docs/release/checklist.md` の参照先 existence check
 
 ### `WBS-P0-12-02`
 
@@ -977,19 +977,19 @@
 - `REL`: `REL-P0-12`
 - `目的`: release gate の最新 green 根拠を追跡可能に保つ
 - `実装内容`:
-  - evidence 更新手順を `Docs/release_quality/README.md` に合わせて固定する
+  - evidence 更新手順を `Docs/release/quality/README.md` に合わせて固定する
   - lane 実行後に commit される artifact の最小セットを定義する
   - placeholder 値が残る場合は release 不可と明記する
 - `主対象`:
-  - `Docs/release_quality/README.md`
-  - `Docs/release_quality/latest.md`
-  - `Docs/release_quality/latest-lane.md`
+  - `Docs/release/quality/README.md`
+  - `Docs/release/quality/latest.md`
+  - `Docs/release/quality/latest-lane.md`
 - `依存`: `WBS-P0-12-01`
 - `完了条件`:
   - latest green snapshot が repo で追跡できる
   - placeholder artifact が release gate から排除される
 - `検証`:
-  - `Docs/release_quality/latest.md`
+  - `Docs/release/quality/latest.md`
   - lane 別 md 全件存在確認
 
 ## REL-P2-02 classification の canonical 化
@@ -1111,8 +1111,8 @@
   - `support URL` は repo 内で実値を持てない外部設定として明文化する
   - release 判定に必要なファイルの最小セットを文書化する
 - `主対象`:
-  - `Docs/release_checklist.md`
-  - `Docs/release_quality/README.md`
+  - `Docs/release/checklist.md`
+  - `Docs/release/quality/README.md`
 - `依存`: `WBS-P0-12-01`
 - `完了条件`:
   - 補助ファイルの source of truth が曖昧でない
@@ -1180,9 +1180,9 @@
 
 ## 4-7. release artifact 系確認
 
-- `Docs/release_checklist.md`
-- `Docs/release_quality/latest.md`
-- `Docs/release_quality/latest-lane.md`
+- `Docs/release/checklist.md`
+- `Docs/release/quality/latest.md`
+- `Docs/release/quality/latest-lane.md`
 - lane 別 md:
   - `golden-baseline.md`
   - `canonical-e2e.md`
@@ -1206,7 +1206,7 @@
 
 - `fresh status` が `部分実装` の 16 REL がすべて `完了` になる
 - `revised_release_ticket_list.md` の誤判定が実装計画へ混入していない
-- `Docs/release_checklist.md` の参照先がすべて存在し、placeholder が残らない
+- `Docs/release/checklist.md` の参照先がすべて存在し、placeholder が残らない
 - canonical profile / posting / tax / books / forms / import / export の正本が 1 系統になる
 
 ## 5-3. 実装時の固定前提
