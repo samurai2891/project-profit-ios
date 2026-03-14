@@ -259,7 +259,7 @@ struct PostingIntakeUseCase {
 
         let draftBatch: LedgerCSVImportDraftBatch
         do {
-            draftBatch = try await LedgerCSVImportService(modelContext: modelContext).prepareImport(
+            draftBatch = try await LedgerCSVCanonicalImporter(modelContext: modelContext).prepareImport(
                 content: request.csvString,
                 ledgerType: ledgerType,
                 metadataJSON: metadataJSON,

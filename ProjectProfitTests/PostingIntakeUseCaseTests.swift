@@ -41,6 +41,21 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         )
     }
 
+    private func makeLedgerCSVRequest(
+        _ csv: String,
+        ledgerType: LedgerType = .cashBook,
+        metadataJSON: String? = nil,
+        fileName: String = "ledger-import.csv"
+    ) -> CSVImportRequest {
+        CSVImportRequest(
+            csvString: csv,
+            originalFileName: fileName,
+            fileData: Data(csv.utf8),
+            mimeType: "text/csv",
+            channel: .ledgerBook(ledgerType: ledgerType, metadataJSON: metadataJSON)
+        )
+    }
+
     func testSaveManualCandidateCreatesDraftWithoutLegacyTransaction() async throws {
         FeatureFlags.useCanonicalPosting = true
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
@@ -254,5 +269,33 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(result.successCount, 0)
         XCTAssertEqual(result.errorCount, 1)
         XCTAssertTrue(result.errors.first?.contains("同一の CSV ファイル") == true)
+    }
+
+    func testImportTransactionsCreatesNeedsReviewCandidateForLedgerBookChannel() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let evidenceRepository = SwiftDataEvidenceRepository(modelContext: context)
+        let taxYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let beforePending = try await workflow.pendingCandidates(businessId: businessId)
+        let beforeEvidence = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: taxYear)
+        let csv = """
+        月,日,摘要,勘定科目,入金,出金
+        1,10,売上入金,売上高,5000,
+        """
+
+        let result = await useCase.importTransactions(
+            request: makeLedgerCSVRequest(csv)
+        )
+
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
+        let evidence = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: taxYear)
+
+        XCTAssertEqual(result.successCount, 1)
+        XCTAssertEqual(result.errorCount, 0)
+        XCTAssertEqual(result.candidateCount, 1)
+        XCTAssertEqual(result.evidenceCount, 1)
+        XCTAssertEqual(pending.count, beforePending.count + 1)
+        XCTAssertEqual(evidence.count, beforeEvidence.count + 1)
+        XCTAssertTrue(pending.contains { $0.memo == "売上入金" && $0.status == .needsReview && $0.source == .importFile })
     }
 }

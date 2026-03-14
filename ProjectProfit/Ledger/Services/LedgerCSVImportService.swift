@@ -23,7 +23,7 @@ struct LedgerCSVImportDraftBatch: Sendable, Equatable {
 }
 
 @MainActor
-final class LedgerCSVImportService {
+struct LedgerCSVCanonicalImporter {
     private let modelContext: ModelContext
     private let chartOfAccountsRepository: any ChartOfAccountsRepository
     private let calendar: Calendar
@@ -1055,7 +1055,7 @@ final class LedgerCSVImportService {
         func fullDate(_ key: String, calendar: Calendar, fallbackYear: Int?) throws -> Date {
             let rawValue = try required(key, label: "日付")
             if rawValue.contains("-") || rawValue.contains("/") || rawValue.contains("年") || rawValue.contains(".") {
-                return try LedgerCSVImportService.parseDateStatic(rawValue)
+                return try LedgerCSVCanonicalImporter.parseDateStatic(rawValue)
             }
 
             let parts = rawValue.split(separator: "/", omittingEmptySubsequences: true)
@@ -1066,7 +1066,7 @@ final class LedgerCSVImportService {
                let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) {
                 return date
             }
-            return try LedgerCSVImportService.parseDateStatic(rawValue)
+            return try LedgerCSVCanonicalImporter.parseDateStatic(rawValue)
         }
 
         private func normalizedText(_ value: String) -> String? {
@@ -1212,5 +1212,36 @@ final class LedgerCSVImportService {
             }
         }
         throw ImportError.invalidDate(trimmed)
+    }
+}
+
+@MainActor
+final class LedgerCSVImportService {
+    private let importer: LedgerCSVCanonicalImporter
+
+    init(
+        modelContext: ModelContext,
+        chartOfAccountsRepository: (any ChartOfAccountsRepository)? = nil,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) {
+        self.importer = LedgerCSVCanonicalImporter(
+            modelContext: modelContext,
+            chartOfAccountsRepository: chartOfAccountsRepository,
+            calendar: calendar
+        )
+    }
+
+    func prepareImport(
+        content: String,
+        ledgerType: LedgerType,
+        metadataJSON: String?,
+        snapshot: TransactionFormSnapshot
+    ) async throws -> LedgerCSVImportDraftBatch {
+        try await importer.prepareImport(
+            content: content,
+            ledgerType: ledgerType,
+            metadataJSON: metadataJSON,
+            snapshot: snapshot
+        )
     }
 }

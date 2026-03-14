@@ -6,6 +6,8 @@ struct StatementImportUseCase {
     private let modelContext: ModelContext
     private let statementRepository: any StatementRepository
     private let evidenceRepository: any EvidenceRepository
+    private let chartOfAccountsRepository: any ChartOfAccountsRepository
+    private let postingWorkflowUseCase: PostingWorkflowUseCase
     private let transactionFormQueryUseCase: TransactionFormQueryUseCase
     private let matchService: StatementMatchService
     private let pdfParser: StatementPDFParser
@@ -21,6 +23,8 @@ struct StatementImportUseCase {
         self.modelContext = modelContext
         self.statementRepository = statementRepository ?? SwiftDataStatementRepository(modelContext: modelContext)
         self.evidenceRepository = evidenceRepository ?? SwiftDataEvidenceRepository(modelContext: modelContext)
+        self.chartOfAccountsRepository = SwiftDataChartOfAccountsRepository(modelContext: modelContext)
+        self.postingWorkflowUseCase = PostingWorkflowUseCase(modelContext: modelContext)
         let queryUseCase = transactionFormQueryUseCase ?? TransactionFormQueryUseCase(modelContext: modelContext)
         self.transactionFormQueryUseCase = queryUseCase
         self.matchService = matchService ?? StatementMatchService(modelContext: modelContext)
@@ -126,6 +130,14 @@ struct StatementImportUseCase {
             )
         }
         try await statementRepository.saveLines(lineRecords)
+        let candidates = try await makeCandidates(
+            from: lineRecords,
+            businessId: businessId,
+            evidenceId: evidence.id
+        )
+        for candidate in candidates {
+            try await postingWorkflowUseCase.saveCandidate(candidate)
+        }
         let suggestedLines = try await matchService.refreshSuggestions(for: lineRecords)
 
         return StatementImportResult(
@@ -206,6 +218,62 @@ struct StatementImportUseCase {
             draft.description,
             amount,
         ].joined(separator: " ")
+    }
+
+    private func makeCandidates(
+        from lines: [StatementLineRecord],
+        businessId: UUID,
+        evidenceId: UUID
+    ) async throws -> [PostingCandidate] {
+        let paymentAccount = try await chartOfAccountsRepository.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: lines.first?.paymentAccountId ?? ""
+        )
+        let suspenseAccount = try await chartOfAccountsRepository.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.suspenseAccountId
+        )
+        guard let paymentAccount, let suspenseAccount else {
+            throw AppError.invalidInput(message: "statement import に必要な canonical account を解決できません")
+        }
+
+        return lines.map { line in
+            let candidateLine: PostingCandidateLine
+            switch line.direction {
+            case .inflow:
+                candidateLine = PostingCandidateLine(
+                    debitAccountId: paymentAccount.id,
+                    creditAccountId: suspenseAccount.id,
+                    amount: line.amount,
+                    legalReportLineId: paymentAccount.defaultLegalReportLineId ?? suspenseAccount.defaultLegalReportLineId,
+                    memo: line.memo ?? line.description,
+                    evidenceLineReferenceId: line.id
+                )
+            case .outflow:
+                candidateLine = PostingCandidateLine(
+                    debitAccountId: suspenseAccount.id,
+                    creditAccountId: paymentAccount.id,
+                    amount: line.amount,
+                    legalReportLineId: suspenseAccount.defaultLegalReportLineId ?? paymentAccount.defaultLegalReportLineId,
+                    memo: line.memo ?? line.description,
+                    evidenceLineReferenceId: line.id
+                )
+            }
+
+            return PostingCandidate(
+                evidenceId: evidenceId,
+                businessId: businessId,
+                taxYear: fiscalYear(for: line.date, startMonth: FiscalYearSettings.startMonth),
+                candidateDate: line.date,
+                counterpartyId: nil,
+                proposedLines: [candidateLine],
+                confidenceScore: 0,
+                status: .needsReview,
+                source: .importFile,
+                memo: line.memo ?? line.description,
+                legacySnapshot: nil
+            )
+        }
     }
 
     private func decodeUTF8(_ data: Data) throws -> String {

@@ -54,6 +54,9 @@ final class StatementImportUseCaseTests: XCTestCase {
 
     func testImportStatementCreatesEvidenceImportAndLinesWhenDirectionIsOmitted() async throws {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let approvalQueue = ApprovalQueueQueryUseCase(modelContext: context)
+        let chart = SwiftDataChartOfAccountsRepository(modelContext: context)
         let request = StatementImportRequest(
             fileData: Data("""
             日付,摘要,金額,取引先,参照番号,メモ
@@ -74,6 +77,18 @@ final class StatementImportUseCaseTests: XCTestCase {
         )
         let lines = try await repository.findLines(importId: result.importRecord.id)
         let evidences = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2026)
+        let candidates = try await workflow.candidates(evidenceId: result.evidenceId)
+        let pendingItems = try await approvalQueue.pendingItems()
+        let bankAccount = try await chart.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.bankAccountId
+        )
+        let suspenseAccount = try await chart.findByLegacyId(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.suspenseAccountId
+        )
+        let bankAccountId = try XCTUnwrap(bankAccount?.id)
+        let suspenseAccountId = try XCTUnwrap(suspenseAccount?.id)
 
         XCTAssertEqual(result.lineCount, 2)
         XCTAssertTrue(result.lineErrors.isEmpty)
@@ -87,5 +102,27 @@ final class StatementImportUseCaseTests: XCTestCase {
                 && $0.legalDocumentType == .statement
                 && $0.sourceType == .importedCSV
         })
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertTrue(candidates.allSatisfy { $0.status == .needsReview })
+        XCTAssertTrue(candidates.allSatisfy { $0.source == .importFile })
+        XCTAssertEqual(
+            Set(candidates.compactMap(\.proposedLines.first?.evidenceLineReferenceId)),
+            Set(lines.map(\.id))
+        )
+        let inflowCandidate = try XCTUnwrap(candidates.first { $0.memo == "1月分" })
+        XCTAssertEqual(inflowCandidate.proposedLines.first?.debitAccountId, bankAccountId)
+        XCTAssertEqual(inflowCandidate.proposedLines.first?.creditAccountId, suspenseAccountId)
+        let outflowCandidate = try XCTUnwrap(candidates.first { $0.memo == "会食" })
+        XCTAssertEqual(outflowCandidate.proposedLines.first?.debitAccountId, suspenseAccountId)
+        XCTAssertEqual(outflowCandidate.proposedLines.first?.creditAccountId, bankAccountId)
+        XCTAssertTrue(lines.allSatisfy { $0.suggestedCandidateId != nil })
+        XCTAssertTrue(
+            pendingItems.contains { item in
+                if case let .candidate(candidate) = item {
+                    return candidates.contains(where: { $0.id == candidate.id })
+                }
+                return false
+            }
+        )
     }
 }
