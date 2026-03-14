@@ -69,7 +69,10 @@ struct RecurringWorkflowStore {
             transferToAccountId: input.transferToAccountId,
             taxDeductibleRate: input.taxDeductibleRate,
             counterpartyId: resolvedCounterparty.id,
-            counterparty: resolvedCounterparty.displayName
+            counterparty: resolvedCounterparty.displayName,
+            isWithholdingEnabled: input.isWithholdingEnabled,
+            withholdingTaxCodeId: input.withholdingTaxCodeId,
+            withholdingTaxAmount: input.withholdingTaxAmount
         )
         recurringRepository.insert(recurring)
         do {
@@ -109,7 +112,10 @@ struct RecurringWorkflowStore {
             transferToAccountId: .some(input.transferToAccountId),
             taxDeductibleRate: .some(input.taxDeductibleRate),
             counterpartyId: .some(input.counterpartyId),
-            counterparty: .some(input.counterparty)
+            counterparty: .some(input.counterparty),
+            isWithholdingEnabled: .some(input.isWithholdingEnabled),
+            withholdingTaxCodeId: .some(input.withholdingTaxCodeId),
+            withholdingTaxAmount: .some(input.withholdingTaxAmount)
         )
     }
 
@@ -187,7 +193,10 @@ struct RecurringWorkflowStore {
         transferToAccountId: String?? = nil,
         taxDeductibleRate: Int?? = nil,
         counterpartyId: UUID?? = nil,
-        counterparty: String?? = nil
+        counterparty: String?? = nil,
+        isWithholdingEnabled: Bool? = nil,
+        withholdingTaxCodeId: String?? = nil,
+        withholdingTaxAmount: Decimal?? = nil
     ) {
         guard let recurring = try? recurringRepository.findById(id) else {
             return
@@ -240,6 +249,9 @@ struct RecurringWorkflowStore {
         if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
         if let counterpartyId { recurring.counterpartyId = counterpartyId }
         if let counterparty { recurring.counterparty = counterparty }
+        if let isWithholdingEnabled { recurring.isWithholdingEnabled = isWithholdingEnabled }
+        if let withholdingTaxCodeId { recurring.withholdingTaxCodeId = withholdingTaxCodeId }
+        if let withholdingTaxAmount { recurring.withholdingTaxAmount = withholdingTaxAmount }
         if counterpartyId != nil || counterparty != nil {
             let snapshot = (try? transactionFormQueryUseCase.snapshot()) ?? .empty
             if let resolvedCounterparty = try? postingSupport.resolveCounterpartyReference(

@@ -415,6 +415,9 @@ final class PPRecurringTransaction {
     var taxDeductibleRate: Int?
     var counterpartyId: UUID?
     var counterparty: String?
+    var isWithholdingEnabled: Bool
+    var withholdingTaxCodeId: String?
+    var withholdingTaxAmount: Decimal?
     var createdAt: Date
     var updatedAt: Date
 
@@ -443,6 +446,9 @@ final class PPRecurringTransaction {
         taxDeductibleRate: Int? = nil,
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
+        isWithholdingEnabled: Bool = false,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -470,6 +476,9 @@ final class PPRecurringTransaction {
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
         self.counterpartyId = counterpartyId
         self.counterparty = counterparty
+        self.isWithholdingEnabled = isWithholdingEnabled
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

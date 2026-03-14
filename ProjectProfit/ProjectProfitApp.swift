@@ -10,6 +10,7 @@ struct ProjectProfitApp: App {
     private static let isRunningTests =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
         NSClassFromString("XCTestCase") != nil
+    private static let isShowingUIForTests = UITestBootstrap.isUITesting
 
     init() {
         UNUserNotificationCenter.current().delegate = notificationDelegate
@@ -19,7 +20,9 @@ struct ProjectProfitApp: App {
         AppLogger.general.info("Canonical cutover active: \(FeatureFlags.debugDescription)")
 
         do {
-            sharedModelContainer = try ModelContainerFactory.makeAppContainer()
+            sharedModelContainer = try ModelContainerFactory.makeAppContainer(
+                inMemory: Self.isShowingUIForTests
+            )
         } catch {
             fatalError("Failed to create model container: \(error)")
         }
@@ -27,7 +30,7 @@ struct ProjectProfitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if Self.isRunningTests {
+            if Self.isRunningTests && !Self.isShowingUIForTests {
                 EmptyView()
             } else {
                 ContentView()

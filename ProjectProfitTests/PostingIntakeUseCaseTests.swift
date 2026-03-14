@@ -243,6 +243,36 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(result.evidenceCount, 1)
     }
 
+    func testImportTransactionsUsesCounterpartyPayeeInfoForWithholdingCandidate() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "CSV税理士",
+            payeeInfo: PayeeInfo(isWithholdingSubject: true, withholdingCategory: .professionalFee)
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,取引先
+        2026-01-10,経費,100000,ツール,ImportProject(100%),CSV源泉,acct-cash,CSV税理士
+        """
+
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv, fileName: "withholding-import.csv"))
+        let pending = try await PostingWorkflowUseCase(modelContext: context).pendingCandidates(businessId: businessId)
+        let imported = try XCTUnwrap(pending.first { $0.memo == "CSV源泉" })
+        let annotatedLine = try XCTUnwrap(imported.proposedLines.first { $0.withholdingTaxAmount != nil })
+
+        XCTAssertEqual(result.successCount, 1)
+        XCTAssertEqual(annotatedLine.withholdingTaxCodeId, WithholdingTaxCode.professionalFee.rawValue)
+        XCTAssertEqual(
+            annotatedLine.withholdingTaxAmount,
+            WithholdingTaxCalculator.calculate(
+                grossAmount: Decimal(100_000),
+                code: .professionalFee
+            ).withholdingAmount
+        )
+    }
+
     func testImportTransactionsReportsUnknownCategory() async {
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ

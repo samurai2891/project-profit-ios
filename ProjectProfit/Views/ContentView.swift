@@ -38,6 +38,8 @@ struct ContentView: View {
                 }
             }
             await appBootstrapWorkflowUseCase(for: store).initialize()
+            await UITestBootstrap.seedIfNeeded(modelContext: modelContext, store: store)
+            appStateRefreshWorkflowUseCase(for: store).refreshAppState()
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
             self.appStore = store
             refreshRecurringPreviewState(for: store)

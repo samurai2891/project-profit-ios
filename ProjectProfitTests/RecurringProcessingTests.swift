@@ -1386,4 +1386,54 @@ final class RecurringProcessingTests: XCTestCase {
         XCTAssertEqual(updated?.paymentAccountId, "acct-cash")
         XCTAssertEqual(updated?.taxDeductibleRate, 70)
     }
+
+    func testRecurringWithholdingFlowsIntoGeneratedJournal() async throws {
+        let project = makeProject(name: "WithholdingRecurringProject")
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "定期税理士",
+            payeeInfo: PayeeInfo(isWithholdingSubject: true, withholdingCategory: .professionalFee)
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let recurring = PPRecurringTransaction(
+            name: "源泉定期支払",
+            type: .expense,
+            amount: 100_000,
+            categoryId: "cat-tools",
+            memo: "定期顧問料",
+            allocationMode: .manual,
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 100_000)],
+            frequency: .monthly,
+            dayOfMonth: pastDayOfMonth,
+            paymentAccountId: AccountingConstants.cashAccountId,
+            counterpartyId: counterparty.id,
+            counterparty: counterparty.displayName,
+            isWithholdingEnabled: true,
+            withholdingTaxCodeId: WithholdingTaxCode.professionalFee.rawValue
+        )
+        context.insert(recurring)
+        try context.save()
+        dataStore.loadData()
+
+        let generated = mutations(dataStore).processRecurringTransactions()
+        let fiscalYear = fiscalYear(for: todayDate(), startMonth: FiscalYearSettings.startMonth)
+        let journals = try await PostingWorkflowUseCase(modelContext: context).journals(
+            businessId: businessId,
+            taxYear: fiscalYear
+        )
+        let journal = try XCTUnwrap(journals.last)
+        let annotatedLine = try XCTUnwrap(journal.lines.first { $0.withholdingTaxAmount != nil })
+
+        XCTAssertEqual(generated, 1)
+        XCTAssertEqual(annotatedLine.withholdingTaxCodeId, WithholdingTaxCode.professionalFee.rawValue)
+        XCTAssertEqual(
+            annotatedLine.withholdingTaxAmount,
+            WithholdingTaxCalculator.calculate(
+                grossAmount: Decimal(100_000),
+                code: .professionalFee
+            ).withholdingAmount
+        )
+    }
 }

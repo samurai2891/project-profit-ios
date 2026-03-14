@@ -91,3 +91,19 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/ProjectProfit/Ledger/Bridge/xlsxwriter"
         HEADER_SEARCH_PATHS: "$(BUILD_DIR)/../../SourcePackages/checkouts/libxlsxwriter/include"
+
+  ProjectProfitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ProjectProfitUITests
+    dependencies:
+      - target: ProjectProfit
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 52PPJXD67Z
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: ProjectProfit
+        PRODUCT_BUNDLE_IDENTIFIER: com.projectprofit.ProjectProfitUITests

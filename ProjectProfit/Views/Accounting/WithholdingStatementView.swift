@@ -30,6 +30,7 @@ struct WithholdingStatementView: View {
         }
         .navigationTitle("支払調書")
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("withholding.statement.screen")
         .task {
             if viewModel == nil {
                 let createdViewModel = WithholdingStatementViewModel(
@@ -150,11 +151,13 @@ struct WithholdingStatementView: View {
                 viewModel.exportAnnual(format: .csv)
             }
             .buttonStyle(.bordered)
+            .accessibilityIdentifier("withholding.statement.export.annual.csv")
 
             Button("年次一覧をPDF出力") {
                 viewModel.exportAnnual(format: .pdf)
             }
             .buttonStyle(.bordered)
+            .accessibilityIdentifier("withholding.statement.export.annual.pdf")
         }
     }
 
@@ -193,6 +196,7 @@ struct WithholdingStatementView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("withholding.statement.document.\(document.counterpartyId.uuidString)")
             }
         }
     }

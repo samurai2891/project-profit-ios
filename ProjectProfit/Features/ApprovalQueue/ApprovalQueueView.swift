@@ -21,6 +21,31 @@ private enum ApprovalQueueFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct WithholdingCandidateSummary {
+    let code: WithholdingTaxCode
+    let totalAmount: Decimal
+    let lineCount: Int
+}
+
+private func withholdingSummary(for candidate: PostingCandidate) -> WithholdingCandidateSummary? {
+    let lines = candidate.proposedLines.filter {
+        $0.withholdingTaxAmount != nil && $0.withholdingTaxCodeId != nil
+    }
+    guard let first = lines.first,
+          let codeId = first.withholdingTaxCodeId,
+          let code = WithholdingTaxCode.resolve(id: codeId) else {
+        return nil
+    }
+    let totalAmount = lines.reduce(Decimal.zero) { partialResult, line in
+        partialResult + (line.withholdingTaxAmount ?? .zero)
+    }
+    return WithholdingCandidateSummary(
+        code: code,
+        totalAmount: totalAmount,
+        lineCount: lines.count
+    )
+}
+
 struct ApprovalQueueView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -92,6 +117,9 @@ struct ApprovalQueueView: View {
         .task(id: reloadKey) {
             await loadQueueItems()
         }
+        .onAppear {
+            Task { await loadQueueItems() }
+        }
         .refreshable {
             await loadQueueItems()
         }
@@ -134,7 +162,8 @@ struct ApprovalQueueView: View {
     }
 
     private func candidateRow(_ candidate: PostingCandidate) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let withholding = withholdingSummary(for: candidate)
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(candidate.counterpartyId.flatMap { counterpartiesById[$0]?.displayName } ?? candidate.memo ?? "摘要なし")
@@ -160,11 +189,20 @@ struct ApprovalQueueView: View {
                 if candidate.proposedLines.contains(where: { $0.projectAllocationId != nil }) {
                     Label("配賦あり", systemImage: "square.split.2x2")
                 }
+                if let withholding {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                        Text("源泉あり \(withholding.code.displayName)")
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("approval.candidate.withholdingBadge")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+        .accessibilityIdentifier("approval.candidate.row.\(candidate.id.uuidString)")
     }
 
     @ViewBuilder
@@ -518,7 +556,8 @@ struct ApprovalCandidateDetailView: View {
     }
 
     private func candidateMetaSection(_ candidate: PostingCandidate) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let withholding = withholdingSummary(for: candidate)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("候補情報")
                 .font(.subheadline.weight(.medium))
 
@@ -557,6 +596,18 @@ struct ApprovalCandidateDetailView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+
+            if let withholding {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("源泉徴収")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(withholding.code.displayName) / \(formatAmount(withholding.totalAmount)) / 対象\(withholding.lineCount)行")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityIdentifier("approval.candidate.withholdingSummary")
             }
         }
         .padding(16)

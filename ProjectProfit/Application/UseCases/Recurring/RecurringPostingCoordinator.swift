@@ -192,6 +192,9 @@ struct RecurringPostingCoordinator {
                 counterpartyId: recurring.counterpartyId,
                 counterpartyName: recurring.counterparty,
                 source: .recurring,
+                isWithholdingEnabled: recurring.isWithholdingEnabled,
+                withholdingTaxCodeId: recurring.withholdingTaxCodeId,
+                withholdingTaxAmount: recurring.withholdingTaxAmount,
                 createdAt: Date(),
                 updatedAt: Date(),
                 journalEntryId: nil

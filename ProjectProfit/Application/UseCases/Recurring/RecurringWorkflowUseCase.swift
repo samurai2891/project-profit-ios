@@ -26,6 +26,57 @@ struct RecurringUpsertInput: Equatable, Sendable {
     let taxDeductibleRate: Int?
     let counterpartyId: UUID?
     let counterparty: String?
+    let isWithholdingEnabled: Bool
+    let withholdingTaxCodeId: String?
+    let withholdingTaxAmount: Decimal?
+
+    init(
+        name: String,
+        type: TransactionType,
+        amount: Int,
+        categoryId: String,
+        memo: String,
+        allocationMode: AllocationMode,
+        allocations: [RecurringAllocationInput],
+        frequency: RecurringFrequency,
+        dayOfMonth: Int,
+        monthOfYear: Int?,
+        isActive: Bool,
+        endDate: Date?,
+        yearlyAmortizationMode: YearlyAmortizationMode,
+        receiptImagePath: String?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        counterpartyId: UUID?,
+        counterparty: String?,
+        isWithholdingEnabled: Bool = false,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil
+    ) {
+        self.name = name
+        self.type = type
+        self.amount = amount
+        self.categoryId = categoryId
+        self.memo = memo
+        self.allocationMode = allocationMode
+        self.allocations = allocations
+        self.frequency = frequency
+        self.dayOfMonth = dayOfMonth
+        self.monthOfYear = monthOfYear
+        self.isActive = isActive
+        self.endDate = endDate
+        self.yearlyAmortizationMode = yearlyAmortizationMode
+        self.receiptImagePath = receiptImagePath
+        self.paymentAccountId = paymentAccountId
+        self.transferToAccountId = transferToAccountId
+        self.taxDeductibleRate = taxDeductibleRate
+        self.counterpartyId = counterpartyId
+        self.counterparty = counterparty
+        self.isWithholdingEnabled = isWithholdingEnabled
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
+    }
 }
 
 @MainActor

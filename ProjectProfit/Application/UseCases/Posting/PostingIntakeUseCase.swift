@@ -192,6 +192,14 @@ struct PostingIntakeUseCase {
             }
 
             do {
+                let resolvedCounterparty = try postingSupport.resolveCounterpartyReference(
+                    explicitId: nil,
+                    rawName: entry.counterparty,
+                    businessId: businessId
+                )
+                let counterparty = resolvedCounterparty.id.flatMap { id in
+                    formSnapshot.counterparties.first(where: { $0.id == id })
+                }
                 let resolvedTaxCodeId = TaxCode.resolve(
                     legacyCategory: entry.taxCategory,
                     taxRate: entry.taxRate
@@ -213,11 +221,11 @@ struct PostingIntakeUseCase {
                         isTaxIncluded: entry.isTaxIncluded,
                         receiptImagePath: nil,
                         lineItems: [],
-                        counterpartyId: nil,
-                        counterpartyName: entry.counterparty,
+                        counterpartyId: resolvedCounterparty.id,
+                        counterpartyName: resolvedCounterparty.displayName,
                         source: .importFile,
-                        isWithholdingEnabled: false,
-                        withholdingTaxCodeId: nil,
+                        isWithholdingEnabled: counterparty?.payeeInfo?.isWithholdingSubject ?? false,
+                        withholdingTaxCodeId: counterparty?.payeeInfo?.withholdingCategory?.rawValue,
                         withholdingTaxAmount: nil,
                         createdAt: Date(),
                         updatedAt: Date(),

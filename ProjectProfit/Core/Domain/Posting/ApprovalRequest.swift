@@ -193,7 +193,59 @@ struct RecurringFormDraftSnapshot: Codable, Equatable, Sendable {
     let taxDeductibleRate: Int
     let selectedCounterpartyId: UUID?
     let counterparty: String
+    let isWithholdingEnabled: Bool
+    let selectedWithholdingTaxCodeId: String?
     let selectedDistributionTemplateId: UUID?
+
+    init(
+        recurringId: UUID?,
+        name: String,
+        type: TransactionType,
+        amountText: String,
+        frequency: RecurringFrequency,
+        dayOfMonth: Int,
+        monthOfYear: Int,
+        selectedCategoryId: String?,
+        allocationMode: AllocationMode,
+        allocations: [DraftAllocationInput],
+        memo: String,
+        isActive: Bool,
+        hasEndDate: Bool,
+        endDate: Date,
+        yearlyAmortizationMode: YearlyAmortizationMode,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int,
+        selectedCounterpartyId: UUID?,
+        counterparty: String,
+        isWithholdingEnabled: Bool = false,
+        selectedWithholdingTaxCodeId: String? = nil,
+        selectedDistributionTemplateId: UUID?
+    ) {
+        self.recurringId = recurringId
+        self.name = name
+        self.type = type
+        self.amountText = amountText
+        self.frequency = frequency
+        self.dayOfMonth = dayOfMonth
+        self.monthOfYear = monthOfYear
+        self.selectedCategoryId = selectedCategoryId
+        self.allocationMode = allocationMode
+        self.allocations = allocations
+        self.memo = memo
+        self.isActive = isActive
+        self.hasEndDate = hasEndDate
+        self.endDate = endDate
+        self.yearlyAmortizationMode = yearlyAmortizationMode
+        self.paymentAccountId = paymentAccountId
+        self.transferToAccountId = transferToAccountId
+        self.taxDeductibleRate = taxDeductibleRate
+        self.selectedCounterpartyId = selectedCounterpartyId
+        self.counterparty = counterparty
+        self.isWithholdingEnabled = isWithholdingEnabled
+        self.selectedWithholdingTaxCodeId = selectedWithholdingTaxCodeId
+        self.selectedDistributionTemplateId = selectedDistributionTemplateId
+    }
 }
 
 struct FormDraft: Identifiable, Codable, Sendable, Equatable {

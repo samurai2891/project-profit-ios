@@ -356,6 +356,8 @@ struct ApprovalQueueWorkflowUseCase {
                 taxDeductibleRate: snapshot.taxDeductibleRate,
                 selectedCounterpartyId: snapshot.selectedCounterpartyId,
                 counterparty: snapshot.counterparty,
+                isWithholdingEnabled: snapshot.isWithholdingEnabled,
+                selectedWithholdingTaxCodeId: snapshot.selectedWithholdingTaxCodeId,
                 selectedDistributionTemplateId: snapshot.selectedDistributionTemplateId
             )
             return CanonicalJSONCoder.encode(updated, fallback: draft.snapshotJSON)

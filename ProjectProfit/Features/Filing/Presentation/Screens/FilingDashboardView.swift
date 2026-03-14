@@ -179,6 +179,7 @@ struct FilingDashboardView: View {
                         subtitle: item.subtitle
                     )
                 }
+                .accessibilityIdentifier("filing.workflow.\(item.destinationID.rawValue)")
             }
         }
         .padding(16)

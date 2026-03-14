@@ -497,6 +497,94 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         })
     }
 
+    func testIntakePrefersExplicitWithholdingCodeOverCounterpartyDefault() async throws {
+        let businessId = try await seedBusinessProfile()
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies",
+            code: "611",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: AccountingConstants.withholdingTaxPayableAccountId,
+            code: "205",
+            name: "源泉所得税預り金",
+            accountType: .liability,
+            normalBalance: .credit,
+            displayOrder: 3
+        )
+
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "デザイン顧問",
+            payeeInfo: PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: .professionalFee
+            )
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        let result = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(
+            ReceiptEvidenceIntakeRequest(
+                receiptData: ReceiptData(
+                    totalAmount: 80_000,
+                    date: "2026-03-08",
+                    storeName: "デザイン顧問",
+                    registrationNumber: nil,
+                    estimatedCategory: "tools",
+                    itemSummary: "デザイン料"
+                ),
+                ocrText: "デザイン顧問\n合計 80,000円",
+                sourceType: .camera,
+                fileData: Data("jpeg-withholding-explicit".utf8),
+                originalFileName: "withholding-explicit.jpg",
+                mimeType: "image/jpeg",
+                reviewedAmount: 80_000,
+                reviewedDate: date(2026, 3, 8),
+                transactionType: .expense,
+                categoryId: "cat-tools",
+                memo: "デザイン料",
+                lineItems: [LineItem(name: "デザイン料", quantity: 1, unitPrice: 80_000)],
+                linkedProjectIds: [],
+                paymentAccountId: "acct-cash",
+                transferToAccountId: nil,
+                taxDeductibleRate: 100,
+                taxCodeId: nil,
+                isTaxIncluded: false,
+                taxAmount: nil,
+                registrationNumber: nil,
+                counterpartyId: counterparty.id,
+                counterpartyName: counterparty.displayName,
+                isWithholdingEnabled: true,
+                withholdingTaxCodeId: WithholdingTaxCode.designFee.rawValue,
+                withholdingTaxAmount: nil
+            )
+        )
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        let annotatedLine = try XCTUnwrap(result.candidate.proposedLines.first { $0.withholdingTaxAmount != nil })
+        let expected = WithholdingTaxCalculator.calculate(
+            grossAmount: Decimal(80_000),
+            code: .designFee
+        ).withholdingAmount
+
+        XCTAssertEqual(annotatedLine.withholdingTaxCodeId, WithholdingTaxCode.designFee.rawValue)
+        XCTAssertEqual(annotatedLine.withholdingTaxAmount, expected)
+    }
+
     func testIntakeAppliesUserRuleToResolvedCategoryAndCandidateLines() async throws {
         let businessId = try await seedBusinessProfile()
         let communicationLegacyAccountId = "acct-communication"

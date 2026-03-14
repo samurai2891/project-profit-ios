@@ -174,6 +174,64 @@ final class WithholdingStatementQueryUseCaseTests: XCTestCase {
         }
     }
 
+    func testSummaryIncludesApprovedRecurringAndImportedWithholdingJournals() async throws {
+        let fiscalYear = fiscalYear(for: todayDate(), startMonth: FiscalYearSettings.startMonth)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "源泉対象統合先",
+            payeeInfo: PayeeInfo(isWithholdingSubject: true, withholdingCategory: .professionalFee)
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+        let project = mutations(dataStore).addProject(name: "Withholding Combined Project", description: "")
+
+        let recurring = PPRecurringTransaction(
+            name: "定期顧問料",
+            type: .expense,
+            amount: 100_000,
+            categoryId: "cat-tools",
+            memo: "Recurring顧問料",
+            allocationMode: .manual,
+            allocations: [Allocation(projectId: project.id, ratio: 100, amount: 100_000)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            paymentAccountId: AccountingConstants.cashAccountId,
+            counterpartyId: counterparty.id,
+            counterparty: counterparty.displayName,
+            isWithholdingEnabled: true,
+            withholdingTaxCodeId: WithholdingTaxCode.professionalFee.rawValue
+        )
+        context.insert(recurring)
+        try context.save()
+
+        _ = mutations(dataStore).processRecurringTransactions()
+
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,取引先
+        \(fiscalYear)-04-10,経費,120000,ツール,Withholding Import Project(100%),Import顧問料,acct-cash,源泉対象統合先
+        """
+        let importResult = await PostingIntakeUseCase(modelContext: context).importTransactions(
+            request: CSVImportRequest(
+                csvString: csv,
+                originalFileName: "withholding-summary.csv",
+                fileData: Data(csv.utf8),
+                mimeType: "text/csv",
+                channel: .settingsTransactionCSV
+            )
+        )
+        XCTAssertEqual(importResult.successCount, 1)
+
+        let pending = try await PostingWorkflowUseCase(modelContext: context).pendingCandidates(businessId: businessId)
+        let imported = try XCTUnwrap(pending.first { $0.memo == "Import顧問料" })
+        _ = try await PostingWorkflowUseCase(modelContext: context).approveCandidate(candidateId: imported.id)
+
+        let summary = try WithholdingStatementQueryUseCase(modelContext: context).summary(fiscalYear: fiscalYear)
+        let document = try XCTUnwrap(summary.documents.first { $0.counterpartyId == counterparty.id })
+
+        XCTAssertEqual(summary.documentCount, 1)
+        XCTAssertEqual(document.paymentCount, 2)
+        XCTAssertEqual(Set(document.rows.map(\.description)), Set(["[定期] 定期顧問料 - Recurring顧問料", "Import顧問料"]))
+    }
+
     private func makeApprovedWithholdingJournal(
         counterparty: Counterparty,
         code: WithholdingTaxCode,

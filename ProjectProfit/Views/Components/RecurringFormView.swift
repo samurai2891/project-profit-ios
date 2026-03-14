@@ -33,6 +33,8 @@ struct RecurringFormView: View {
     // Phase 8: 取引先
     @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String
+    @State private var isWithholdingEnabled: Bool
+    @State private var selectedWithholdingTaxCode: WithholdingTaxCode?
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
@@ -78,6 +80,10 @@ struct RecurringFormView: View {
         self._taxDeductibleRate = State(initialValue: recurring?.taxDeductibleRate ?? 100)
         self._selectedCounterpartyId = State(initialValue: recurring?.counterpartyId)
         self._counterparty = State(initialValue: recurring?.counterparty ?? "")
+        self._isWithholdingEnabled = State(initialValue: recurring?.isWithholdingEnabled ?? false)
+        self._selectedWithholdingTaxCode = State(
+            initialValue: recurring?.withholdingTaxCodeId.flatMap(WithholdingTaxCode.resolve(id:))
+        )
     }
 
     // MARK: - Computed Properties
@@ -115,10 +121,26 @@ struct RecurringFormView: View {
             && (parsedAmount ?? 0) > 0
             && dayOfMonth >= 1
             && dayOfMonth <= 28
+            && (!isWithholdingEnabled || resolvedWithholdingPosting != nil)
     }
 
     private var hasPendingDistributionApproval: Bool {
         activeDistributionRequest?.status == .pending
+    }
+
+    private var withholdingInput: WithholdingPostingInput {
+        WithholdingPostingInput(
+            isEnabled: isWithholdingEnabled,
+            codeId: selectedWithholdingTaxCode?.rawValue,
+            explicitAmount: recurring?.withholdingTaxAmount,
+            totalAmount: parsedAmount ?? 0,
+            taxAmount: nil,
+            isTaxIncluded: nil
+        )
+    }
+
+    private var resolvedWithholdingPosting: ResolvedWithholdingPosting? {
+        try? WithholdingPostingSupport.resolve(input: withholdingInput)
     }
 
     private var recurringDraftKey: String {
@@ -267,6 +289,7 @@ struct RecurringFormView: View {
                     allocationModeSection
                     allocationSection
                     counterpartyField
+                    withholdingSection
                     memoField
                     receiptSection
                     endDateSection
@@ -743,6 +766,60 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    @ViewBuilder
+    private var withholdingSection: some View {
+        if type == .expense {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("源泉徴収")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("この定期支払で源泉徴収する", isOn: $isWithholdingEnabled)
+                    .font(.subheadline)
+
+                if isWithholdingEnabled {
+                    Picker("源泉区分", selection: Binding(
+                        get: { selectedWithholdingTaxCode },
+                        set: { selectedWithholdingTaxCode = $0 }
+                    )) {
+                        Text("選択してください").tag(WithholdingTaxCode?.none)
+                        ForEach(WithholdingTaxCode.allCases, id: \.self) { code in
+                            Text(code.displayName).tag(WithholdingTaxCode?.some(code))
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if let resolvedWithholdingPosting {
+                        HStack {
+                            Text("計算基礎額")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.calculationBaseAmount).intValue))
+                                .font(.subheadline.monospacedDigit())
+                        }
+
+                        HStack {
+                            Text("源泉徴収税額")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.withholdingAmount).intValue))
+                                .font(.subheadline.monospacedDigit())
+                        }
+                    } else {
+                        Text("金額と源泉区分を確認してください")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+            }
+            .padding(16)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     // MARK: - Memo Field
 
     private var memoField: some View {
@@ -956,6 +1033,8 @@ struct RecurringFormView: View {
             allocationMode = .manual
             allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
         }
+        isWithholdingEnabled = selectedCounterparty?.payeeInfo?.isWithholdingSubject ?? false
+        selectedWithholdingTaxCode = selectedCounterparty?.payeeInfo?.withholdingCategory
     }
 
     // MARK: - Save
@@ -1002,6 +1081,11 @@ struct RecurringFormView: View {
         }
         guard !hasPendingDistributionApproval else {
             validationMessage = "配賦承認が完了するまで保存できません"
+            showValidationError = true
+            return
+        }
+        if isWithholdingEnabled && resolvedWithholdingPosting == nil {
+            validationMessage = "源泉徴収の設定を確認してください"
             showValidationError = true
             return
         }
@@ -1053,7 +1137,10 @@ struct RecurringFormView: View {
             transferToAccountId: resolvedTransferToAccountId,
             taxDeductibleRate: resolvedTaxDeductibleRate,
             counterpartyId: selectedCounterpartyId,
-            counterparty: resolvedCounterparty
+            counterparty: resolvedCounterparty,
+            isWithholdingEnabled: isWithholdingEnabled,
+            withholdingTaxCodeId: selectedWithholdingTaxCode?.rawValue,
+            withholdingTaxAmount: resolvedWithholdingPosting?.withholdingAmount
         )
 
         if let existing = recurring {
@@ -1096,6 +1183,8 @@ struct RecurringFormView: View {
                 taxDeductibleRate: taxDeductibleRate,
                 selectedCounterpartyId: selectedCounterpartyId,
                 counterparty: counterparty,
+                isWithholdingEnabled: isWithholdingEnabled,
+                selectedWithholdingTaxCodeId: selectedWithholdingTaxCode?.rawValue,
                 selectedDistributionTemplateId: selectedDistributionTemplateId
             ),
             fallback: "{}"
@@ -1122,6 +1211,8 @@ struct RecurringFormView: View {
         taxDeductibleRate = snapshot.taxDeductibleRate
         selectedCounterpartyId = snapshot.selectedCounterpartyId
         counterparty = snapshot.counterparty
+        isWithholdingEnabled = snapshot.isWithholdingEnabled
+        selectedWithholdingTaxCode = snapshot.selectedWithholdingTaxCodeId.flatMap(WithholdingTaxCode.resolve(id:))
         selectedDistributionTemplateId = snapshot.selectedDistributionTemplateId
     }
 }
