@@ -38,7 +38,6 @@ enum ShushiNaiyakushoBuilder {
         input: FormEngine.BuildInput
     ) -> [EtaxField] {
         var fields: [EtaxField] = []
-        let canonicalAccountsById = Dictionary(uniqueKeysWithValues: input.canonicalAccounts.map { ($0.id, $0) })
 
         // 収入 — 売上のみ（白色は簡易）
         let totalRevenue = decimalInt(canonicalProfitLoss.totalRevenue)
@@ -53,12 +52,7 @@ enum ShushiNaiyakushoBuilder {
         // 経費 — e-Tax 12区分でマッピング（同じTaxLineは合算）
         var expenseByTaxLine: [TaxLine: Int] = [:]
         for item in canonicalProfitLoss.expenseItems {
-            if let taxLine = taxLine(
-                for: item.id,
-                canonicalAccountsById: canonicalAccountsById,
-                legacyAccountsById: input.legacyAccountsById
-            )
-            {
+            if let taxLine = taxLine(for: item.id, canonicalAccountsById: input.canonicalAccountsById) {
                 expenseByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
             }
         }
@@ -130,12 +124,7 @@ enum ShushiNaiyakushoBuilder {
     private static func postedRentTotal(input: FormEngine.BuildInput) -> Int {
         let rentAccountIds = Set<UUID>(
             input.canonicalAccounts.compactMap { account in
-                guard let legacyAccountId = account.legacyAccountId,
-                      input.legacyAccountsById[legacyAccountId]?.subtype == .rentExpense
-                else {
-                    return nil
-                }
-                return account.id
+                TaxLine(legalReportLineId: account.defaultLegalReportLineId) == .rentExpense ? account.id : nil
             }
         )
 
@@ -144,6 +133,11 @@ enum ShushiNaiyakushoBuilder {
                 return
             }
             for line in journal.lines where rentAccountIds.contains(line.accountId) {
+                guard TaxLine(legalReportLineId: line.legalReportLineId) == .rentExpense
+                    || TaxLine(legalReportLineId: input.canonicalAccountsById[line.accountId]?.defaultLegalReportLineId) == .rentExpense
+                else {
+                    continue
+                }
                 partialResult += decimalInt(line.debitAmount - line.creditAmount)
             }
         }
@@ -151,17 +145,10 @@ enum ShushiNaiyakushoBuilder {
 
     private static func taxLine(
         for accountId: UUID,
-        canonicalAccountsById: [UUID: CanonicalAccount],
-        legacyAccountsById: [String: PPAccount]
+        canonicalAccountsById: [UUID: CanonicalAccount]
     ) -> TaxLine? {
-        guard let canonicalAccount = canonicalAccountsById[accountId],
-              let legacyAccountId = canonicalAccount.legacyAccountId,
-              let subtype = legacyAccountsById[legacyAccountId]?.subtype
-        else {
-            return nil
-        }
-
-        return TaxLine.allCases.first { $0.accountSubtype == subtype }
+        guard let canonicalAccount = canonicalAccountsById[accountId] else { return nil }
+        return TaxLine(legalReportLineId: canonicalAccount.defaultLegalReportLineId)
     }
 
     private static func decimalInt(_ value: Decimal) -> Int {

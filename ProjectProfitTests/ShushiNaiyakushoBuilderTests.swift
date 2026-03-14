@@ -248,16 +248,45 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
         XCTAssertEqual(rentField?.value.numberValue, 120_000)
     }
 
+    func testBuildWorksWithoutLegacyAccountsInInput() {
+        let canonicalAccount = try! XCTUnwrap(
+            dataStore.canonicalAccounts().first {
+                TaxLine(legalReportLineId: $0.defaultLegalReportLineId) == .communicationExpense
+            }
+        )
+        let pl = CanonicalProfitLossReport(
+            fiscalYear: 2025,
+            generatedAt: Date(),
+            revenueItems: [],
+            expenseItems: [
+                CanonicalProfitLossItem(
+                    id: canonicalAccount.id,
+                    code: canonicalAccount.code,
+                    name: canonicalAccount.name,
+                    amount: Decimal(42_000)
+                )
+            ]
+        )
+
+        let form = ShushiNaiyakushoBuilder.build(
+            canonicalProfitLoss: pl,
+            input: makeBuildInput(fiscalYear: 2025, canonicalProfitLoss: pl)
+        )
+
+        XCTAssertEqual(form.fields.first { $0.taxLine == .communicationExpense }?.value.numberValue, 42_000)
+    }
+
     private func makeBuildInput(
         fiscalYear: Int,
         canonicalProfitLoss: CanonicalProfitLossReport? = nil,
         canonicalJournals: [CanonicalJournalEntry] = []
     ) -> FormEngine.BuildInput {
-        FormEngine.BuildInput(
+        let canonicalAccounts = dataStore.canonicalAccounts()
+        return FormEngine.BuildInput(
             fiscalYear: fiscalYear,
             startMonth: FiscalYearSettings.startMonth,
-            canonicalAccounts: dataStore.canonicalAccounts(),
-            legacyAccountsById: Dictionary(uniqueKeysWithValues: dataStore.accounts.map { ($0.id, $0) }),
+            canonicalAccounts: canonicalAccounts,
+            canonicalAccountsById: Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) }),
             categoryNamesById: Dictionary(uniqueKeysWithValues: dataStore.categories.map { ($0.id, $0.name) }),
             fixedAssets: dataStore.fixedAssets,
             inventoryRecord: nil,
@@ -278,7 +307,7 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
                 equityItems: []
             ),
             canonicalJournals: canonicalJournals,
-            postingCandidatesById: [:]
+            candidateSummariesById: [:]
         )
     }
 

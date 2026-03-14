@@ -7,7 +7,7 @@ enum FormEngine {
         let fiscalYear: Int
         let startMonth: Int
         let canonicalAccounts: [CanonicalAccount]
-        let legacyAccountsById: [String: PPAccount]
+        let canonicalAccountsById: [UUID: CanonicalAccount]
         let categoryNamesById: [String: String]
         let fixedAssets: [PPFixedAsset]
         let inventoryRecord: PPInventoryRecord?
@@ -17,7 +17,7 @@ enum FormEngine {
         let canonicalProfitLoss: CanonicalProfitLossReport
         let canonicalBalanceSheet: CanonicalBalanceSheetReport
         let canonicalJournals: [CanonicalJournalEntry]
-        let postingCandidatesById: [UUID: PostingCandidate]
+        let candidateSummariesById: [UUID: EtaxCandidateSummary]
     }
 
     enum FormEngineError: LocalizedError {
@@ -56,7 +56,6 @@ enum FormEngine {
                 canonicalBalanceSheet: input.canonicalBalanceSheet,
                 formType: .blueReturn,
                 canonicalAccounts: input.canonicalAccounts,
-                legacyAccountsById: input.legacyAccountsById,
                 businessProfile: input.businessProfile,
                 taxYearProfile: input.taxYearProfile,
                 sensitivePayload: input.sensitivePayload,
@@ -111,7 +110,7 @@ extension FormEngine.BuildInput {
             fiscalYear: snapshot.fiscalYear,
             startMonth: snapshot.startMonth,
             canonicalAccounts: snapshot.canonicalAccounts,
-            legacyAccountsById: snapshot.legacyAccountsById,
+            canonicalAccountsById: snapshot.canonicalAccountsById,
             categoryNamesById: snapshot.categoryNamesById,
             fixedAssets: snapshot.fixedAssets,
             inventoryRecord: snapshot.inventoryRecord,
@@ -121,7 +120,7 @@ extension FormEngine.BuildInput {
             canonicalProfitLoss: snapshot.canonicalProfitLoss,
             canonicalBalanceSheet: snapshot.canonicalBalanceSheet,
             canonicalJournals: snapshot.canonicalJournals,
-            postingCandidatesById: snapshot.postingCandidatesById
+            candidateSummariesById: snapshot.candidateSummariesById
         )
     }
 }

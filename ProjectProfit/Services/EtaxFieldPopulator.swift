@@ -116,7 +116,6 @@ enum EtaxFieldPopulator {
         canonicalBalanceSheet: CanonicalBalanceSheetReport?,
         formType: EtaxFormType = .blueReturn,
         canonicalAccounts: [CanonicalAccount],
-        legacyAccountsById: [String: PPAccount],
         businessProfile: BusinessProfile? = nil,
         taxYearProfile: TaxYearProfile? = nil,
         sensitivePayload: ProfileSensitivePayload? = nil,
@@ -127,11 +126,7 @@ enum EtaxFieldPopulator {
 
         var revenueByTaxLine: [TaxLine: Int] = [:]
         for item in canonicalProfitLoss.revenueItems {
-            if let taxLine = taxLineForCanonicalAccountId(
-                item.id,
-                canonicalAccountsById: canonicalAccountsById,
-                legacyAccountsById: legacyAccountsById
-            ) {
+            if let taxLine = taxLineForCanonicalAccountId(item.id, canonicalAccountsById: canonicalAccountsById) {
                 revenueByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
             }
         }
@@ -151,11 +146,7 @@ enum EtaxFieldPopulator {
 
         var expenseByTaxLine: [TaxLine: Int] = [:]
         for item in canonicalProfitLoss.expenseItems {
-            if let taxLine = taxLineForCanonicalAccountId(
-                item.id,
-                canonicalAccountsById: canonicalAccountsById,
-                legacyAccountsById: legacyAccountsById
-            ) {
+            if let taxLine = taxLineForCanonicalAccountId(item.id, canonicalAccountsById: canonicalAccountsById) {
                 expenseByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
             }
         }
@@ -439,17 +430,12 @@ enum EtaxFieldPopulator {
 
     private static func taxLineForCanonicalAccountId(
         _ accountId: UUID,
-        canonicalAccountsById: [UUID: CanonicalAccount],
-        legacyAccountsById: [String: PPAccount]
+        canonicalAccountsById: [UUID: CanonicalAccount]
     ) -> TaxLine? {
-        guard let canonicalAccount = canonicalAccountsById[accountId],
-              let legacyAccountId = canonicalAccount.legacyAccountId,
-              let subtype = legacyAccountsById[legacyAccountId]?.subtype
-        else {
+        guard let canonicalAccount = canonicalAccountsById[accountId] else {
             return nil
         }
-
-        return TaxLine.allCases.first { $0.accountSubtype == subtype }
+        return TaxLine(legalReportLineId: canonicalAccount.defaultLegalReportLineId)
     }
 
     private static func decimalInt(_ value: Decimal) -> Int {

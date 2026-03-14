@@ -168,11 +168,16 @@ struct EtaxExportContext {
     let fallbackTaxYearProfile: TaxYearProfile?
 }
 
+struct EtaxCandidateSummary {
+    let transactionType: TransactionType
+    let resolvedCategoryId: String
+}
+
 struct EtaxFormBuildSnapshot {
     let fiscalYear: Int
     let startMonth: Int
     let canonicalAccounts: [CanonicalAccount]
-    let legacyAccountsById: [String: PPAccount]
+    let canonicalAccountsById: [UUID: CanonicalAccount]
     let categoryNamesById: [String: String]
     let fixedAssets: [PPFixedAsset]
     let inventoryRecord: PPInventoryRecord?
@@ -182,7 +187,7 @@ struct EtaxFormBuildSnapshot {
     let canonicalProfitLoss: CanonicalProfitLossReport
     let canonicalBalanceSheet: CanonicalBalanceSheetReport
     let canonicalJournals: [CanonicalJournalEntry]
-    let postingCandidatesById: [UUID: PostingCandidate]
+    let candidateSummariesById: [UUID: EtaxCandidateSummary]
 }
 
 @MainActor
@@ -295,6 +300,62 @@ struct AccountingReadSupport {
             ]
         )
         return fetch(descriptor).map(CanonicalAccountEntityMapper.toDomain)
+    }
+
+    func etaxTaxLine(for canonicalAccount: CanonicalAccount) -> TaxLine? {
+        TaxLine(legalReportLineId: canonicalAccount.defaultLegalReportLineId)
+    }
+
+    func etaxTaxLine(for line: JournalLine, canonicalAccountsById: [UUID: CanonicalAccount]) -> TaxLine? {
+        if let taxLine = TaxLine(legalReportLineId: line.legalReportLineId) {
+            return taxLine
+        }
+        guard let account = canonicalAccountsById[line.accountId] else {
+            return nil
+        }
+        return etaxTaxLine(for: account)
+    }
+
+    func etaxCandidateSummaries(
+        candidatesById: [UUID: PostingCandidate]
+    ) -> [UUID: EtaxCandidateSummary] {
+        let categories = fetchCategories()
+        let activeCategories = categories.filter { $0.archivedAt == nil }
+        let expenseCategories = activeCategories.filter { $0.type == .expense }
+        let incomeCategories = activeCategories.filter { $0.type == .income }
+        let categoriesById = Dictionary(uniqueKeysWithValues: activeCategories.map { ($0.id, $0) })
+        let legacyAccountsById = Dictionary(uniqueKeysWithValues: fetchAccounts().map { ($0.id, $0) })
+        let canonicalAccountsById = Dictionary(
+            uniqueKeysWithValues: candidatesById.values
+                .flatMap(\.proposedLines)
+                .flatMap { [$0.debitAccountId, $0.creditAccountId].compactMap { $0 } }
+                .compactMap { accountId in
+                    fetchCanonicalAccount(accountId: accountId).map { (accountId, $0) }
+                }
+        )
+
+        return candidatesById.reduce(into: [UUID: EtaxCandidateSummary]()) { result, entry in
+            let candidate = entry.value
+            let transactionType = resolvedEtaxTransactionType(
+                candidate: candidate,
+                categoriesById: categoriesById,
+                legacyAccountsById: legacyAccountsById,
+                canonicalAccountsById: canonicalAccountsById
+            )
+            let resolvedCategoryId = resolvedEtaxCategoryId(
+                candidate: candidate,
+                transactionType: transactionType,
+                expenseCategories: expenseCategories,
+                incomeCategories: incomeCategories,
+                categoriesById: categoriesById,
+                legacyAccountsById: legacyAccountsById,
+                canonicalAccountsById: canonicalAccountsById
+            )
+            result[entry.key] = EtaxCandidateSummary(
+                transactionType: transactionType,
+                resolvedCategoryId: resolvedCategoryId
+            )
+        }
     }
 
     func classificationSuggestion(
@@ -590,6 +651,13 @@ struct AccountingReadSupport {
     private func fetch<T>(_ descriptor: FetchDescriptor<T>) -> [T] where T: PersistentModel {
         (try? modelContext.fetch(descriptor)) ?? []
     }
+
+    private func fetchCanonicalAccount(accountId: UUID) -> CanonicalAccount? {
+        let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+            predicate: #Predicate { $0.accountId == accountId }
+        )
+        return fetch(descriptor).first.map(CanonicalAccountEntityMapper.toDomain)
+    }
 }
 
 private extension AccountingReadSupport {
@@ -625,6 +693,135 @@ private extension AccountingReadSupport {
 
     func normalizedClassificationText(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func resolvedEtaxTransactionType(
+        candidate: PostingCandidate,
+        categoriesById: [String: PPCategory],
+        legacyAccountsById: [String: PPAccount],
+        canonicalAccountsById: [UUID: CanonicalAccount]
+    ) -> TransactionType {
+        if let explicit = candidate.legacySnapshot?.type {
+            return explicit
+        }
+
+        for line in candidate.proposedLines {
+            if let categoryId = resolvedEtaxCategoryId(
+                for: line,
+                categoriesById: categoriesById,
+                legacyAccountsById: legacyAccountsById,
+                canonicalAccountsById: canonicalAccountsById
+            ) {
+                return categoriesById[categoryId]?.type == .income ? .income : .expense
+            }
+        }
+
+        let hasDebit = candidate.proposedLines.contains { $0.debitAccountId != nil }
+        let hasCredit = candidate.proposedLines.contains { $0.creditAccountId != nil }
+        if hasDebit && hasCredit {
+            return .transfer
+        }
+        return .expense
+    }
+
+    func resolvedEtaxCategoryId(
+        candidate: PostingCandidate,
+        transactionType: TransactionType,
+        expenseCategories: [PPCategory],
+        incomeCategories: [PPCategory],
+        categoriesById: [String: PPCategory],
+        legacyAccountsById: [String: PPAccount],
+        canonicalAccountsById: [UUID: CanonicalAccount]
+    ) -> String {
+        for line in candidate.proposedLines {
+            if let categoryId = resolvedEtaxCategoryId(
+                for: line,
+                categoriesById: categoriesById,
+                legacyAccountsById: legacyAccountsById,
+                canonicalAccountsById: canonicalAccountsById
+            ) {
+                return categoryId
+            }
+        }
+
+        let fallbackCategoryId = candidate.legacySnapshot?.categoryId ?? ""
+        if categoriesById[fallbackCategoryId] != nil || fallbackCategoryId.isEmpty {
+            return fallbackCategoryId
+        }
+
+        let categories = transactionType == .income ? incomeCategories : expenseCategories
+        if let taxLine = candidate.proposedLines.compactMap({
+            resolvedEtaxTaxLine(
+                for: $0,
+                canonicalAccountsById: canonicalAccountsById
+            )
+        }).first,
+           let matchedCategory = preferredCategory(
+                for: taxLine,
+                categories: categories,
+                legacyAccountsById: legacyAccountsById
+           ) {
+            return matchedCategory.id
+        }
+
+        return fallbackCategoryId
+    }
+
+    func resolvedEtaxCategoryId(
+        for line: PostingCandidateLine,
+        categoriesById: [String: PPCategory],
+        legacyAccountsById: [String: PPAccount],
+        canonicalAccountsById: [UUID: CanonicalAccount]
+    ) -> String? {
+        if let taxLine = resolvedEtaxTaxLine(for: line, canonicalAccountsById: canonicalAccountsById),
+           let category = preferredCategory(
+                for: taxLine,
+                categories: Array(categoriesById.values),
+                legacyAccountsById: legacyAccountsById
+           ) {
+            return category.id
+        }
+        return nil
+    }
+
+    func resolvedEtaxTaxLine(
+        for line: PostingCandidateLine,
+        canonicalAccountsById: [UUID: CanonicalAccount]
+    ) -> TaxLine? {
+        if let taxLine = TaxLine(legalReportLineId: line.legalReportLineId) {
+            return taxLine
+        }
+
+        for accountId in [line.debitAccountId, line.creditAccountId].compactMap({ $0 }) {
+            guard let account = canonicalAccountsById[accountId],
+                  let taxLine = etaxTaxLine(for: account)
+            else {
+                continue
+            }
+            return taxLine
+        }
+
+        return nil
+    }
+
+    func preferredCategory(
+        for taxLine: TaxLine,
+        categories: [PPCategory],
+        legacyAccountsById: [String: PPAccount]
+    ) -> PPCategory? {
+        let matching = categories.filter { category in
+            guard let linkedAccountId = category.linkedAccountId,
+                  let subtype = legacyAccountsById[linkedAccountId]?.subtype
+            else {
+                return false
+            }
+            return TaxLine.allCases.first { $0.accountSubtype == subtype } == taxLine
+        }
+
+        if matching.count == 1 {
+            return matching.first
+        }
+        return nil
     }
 }
 
@@ -1180,12 +1377,13 @@ struct EtaxFormBuildQueryUseCase {
             support.fetchTaxYearProfile(businessId: $0, taxYear: fiscalYear)
         }
         let candidateIds = Set(readContext.journals.compactMap(\.sourceCandidateId))
+        let candidatesById = support.fetchPostingCandidates(ids: candidateIds)
 
         return EtaxFormBuildSnapshot(
             fiscalYear: fiscalYear,
             startMonth: startMonth,
             canonicalAccounts: readContext.accounts,
-            legacyAccountsById: readContext.legacyAccountsById,
+            canonicalAccountsById: readContext.canonicalAccountsById,
             categoryNamesById: Dictionary(
                 uniqueKeysWithValues: support.fetchCategories().map { ($0.id, $0.name) }
             ),
@@ -1207,7 +1405,7 @@ struct EtaxFormBuildQueryUseCase {
                 startMonth: startMonth
             ),
             canonicalJournals: readContext.journals,
-            postingCandidatesById: support.fetchPostingCandidates(ids: candidateIds)
+            candidateSummariesById: support.etaxCandidateSummaries(candidatesById: candidatesById)
         )
     }
 }

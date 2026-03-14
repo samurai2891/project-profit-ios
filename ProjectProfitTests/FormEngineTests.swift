@@ -137,29 +137,21 @@ final class FormEngineTests: XCTestCase {
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: incomeCandidateId,
-                        date: makeDate(year: 2025, month: 3, day: 15)
+                        date: makeDate(year: 2025, month: 3, day: 15),
+                        type: .income,
+                        amount: 500_000
                     ),
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: expenseCandidateId,
-                        date: makeDate(year: 2025, month: 6, day: 1)
-                    ),
-                ],
-                postingCandidatesById: [
-                    incomeCandidateId: makePostingCandidate(
-                        id: incomeCandidateId,
-                        taxYear: 2025,
-                        type: .income,
-                        categoryId: incomeCategory.id,
-                        amount: 500_000
-                    ),
-                    expenseCandidateId: makePostingCandidate(
-                        id: expenseCandidateId,
-                        taxYear: 2025,
+                        date: makeDate(year: 2025, month: 6, day: 1),
                         type: .expense,
-                        categoryId: expenseCategory.id,
                         amount: 100_000
                     ),
+                ],
+                candidateSummariesById: [
+                    incomeCandidateId: EtaxCandidateSummary(transactionType: .income, resolvedCategoryId: incomeCategory.id),
+                    expenseCandidateId: EtaxCandidateSummary(transactionType: .expense, resolvedCategoryId: expenseCategory.id),
                 ]
             )
         )
@@ -202,17 +194,13 @@ final class FormEngineTests: XCTestCase {
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: incomeCandidateId,
-                        date: makeDate(year: 2025, month: 6, day: 1)
-                    )
-                ],
-                postingCandidatesById: [
-                    incomeCandidateId: makePostingCandidate(
-                        id: incomeCandidateId,
-                        taxYear: 2025,
+                        date: makeDate(year: 2025, month: 6, day: 1),
                         type: .income,
-                        categoryId: incomeCategory.id,
                         amount: 100_000
                     )
+                ],
+                candidateSummariesById: [
+                    incomeCandidateId: EtaxCandidateSummary(transactionType: .income, resolvedCategoryId: incomeCategory.id)
                 ]
             )
         )
@@ -234,17 +222,13 @@ final class FormEngineTests: XCTestCase {
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: incomeCandidateId,
-                        date: makeDate(year: 2025, month: 6, day: 1)
-                    )
-                ],
-                postingCandidatesById: [
-                    incomeCandidateId: makePostingCandidate(
-                        id: incomeCandidateId,
-                        taxYear: 2025,
+                        date: makeDate(year: 2025, month: 6, day: 1),
                         type: .income,
-                        categoryId: incomeCategory.id,
                         amount: 100_000
                     )
+                ],
+                candidateSummariesById: [
+                    incomeCandidateId: EtaxCandidateSummary(transactionType: .income, resolvedCategoryId: incomeCategory.id)
                 ]
             )
         )
@@ -271,53 +255,37 @@ final class FormEngineTests: XCTestCase {
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: incomeCandidateId,
-                        date: makeDate(year: 2025, month: 1, day: 15)
+                        date: makeDate(year: 2025, month: 1, day: 15),
+                        type: .income,
+                        amount: 1_000_000
                     ),
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: expenseCandidateId1,
-                        date: makeDate(year: 2025, month: 2, day: 1)
+                        date: makeDate(year: 2025, month: 2, day: 1),
+                        type: .expense,
+                        amount: 50_000
                     ),
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: expenseCandidateId2,
-                        date: makeDate(year: 2025, month: 3, day: 1)
+                        date: makeDate(year: 2025, month: 3, day: 1),
+                        type: .expense,
+                        amount: 30_000
                     ),
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: expenseCandidateId3,
-                        date: makeDate(year: 2025, month: 4, day: 1)
-                    ),
-                ],
-                postingCandidatesById: [
-                    incomeCandidateId: makePostingCandidate(
-                        id: incomeCandidateId,
-                        taxYear: 2025,
-                        type: .income,
-                        categoryId: incomeCategory.id,
-                        amount: 1_000_000
-                    ),
-                    expenseCandidateId1: makePostingCandidate(
-                        id: expenseCandidateId1,
-                        taxYear: 2025,
+                        date: makeDate(year: 2025, month: 4, day: 1),
                         type: .expense,
-                        categoryId: expenseCategory1.id,
-                        amount: 50_000
-                    ),
-                    expenseCandidateId2: makePostingCandidate(
-                        id: expenseCandidateId2,
-                        taxYear: 2025,
-                        type: .expense,
-                        categoryId: expenseCategory1.id,
-                        amount: 30_000
-                    ),
-                    expenseCandidateId3: makePostingCandidate(
-                        id: expenseCandidateId3,
-                        taxYear: 2025,
-                        type: .expense,
-                        categoryId: expenseCategory2.id,
                         amount: 200_000
                     ),
+                ],
+                candidateSummariesById: [
+                    incomeCandidateId: EtaxCandidateSummary(transactionType: .income, resolvedCategoryId: incomeCategory.id),
+                    expenseCandidateId1: EtaxCandidateSummary(transactionType: .expense, resolvedCategoryId: expenseCategory1.id),
+                    expenseCandidateId2: EtaxCandidateSummary(transactionType: .expense, resolvedCategoryId: expenseCategory1.id),
+                    expenseCandidateId3: EtaxCandidateSummary(transactionType: .expense, resolvedCategoryId: expenseCategory2.id),
                 ]
             )
         )
@@ -350,17 +318,13 @@ final class FormEngineTests: XCTestCase {
                     makeCanonicalJournal(
                         id: UUID(),
                         candidateId: transferCandidateId,
-                        date: makeDate(year: 2025, month: 7, day: 1)
-                    )
-                ],
-                postingCandidatesById: [
-                    transferCandidateId: makePostingCandidate(
-                        id: transferCandidateId,
-                        taxYear: 2025,
+                        date: makeDate(year: 2025, month: 7, day: 1),
                         type: .transfer,
-                        categoryId: "",
                         amount: 100_000
                     )
+                ],
+                candidateSummariesById: [
+                    transferCandidateId: EtaxCandidateSummary(transactionType: .transfer, resolvedCategoryId: "")
                 ]
             )
         )
@@ -409,7 +373,9 @@ final class FormEngineTests: XCTestCase {
                 id: UUID(),
                 businessId: businessId,
                 candidateId: incomeCandidateId,
-                date: makeDate(year: 2025, month: 5, day: 10)
+                date: makeDate(year: 2025, month: 5, day: 10),
+                type: .income,
+                amount: 500_000
             )
         ))
         context.insert(CanonicalJournalEntryEntityMapper.toEntity(
@@ -417,7 +383,9 @@ final class FormEngineTests: XCTestCase {
                 id: UUID(),
                 businessId: businessId,
                 candidateId: expenseCandidateId,
-                date: makeDate(year: 2025, month: 5, day: 12)
+                date: makeDate(year: 2025, month: 5, day: 12),
+                type: .expense,
+                amount: 120_000
             )
         ))
         try context.save()
@@ -433,6 +401,30 @@ final class FormEngineTests: XCTestCase {
         XCTAssertEqual(form.fields.first { $0.id == "cash_basis_revenue" }?.value.numberValue, 500_000)
         XCTAssertEqual(form.fields.first { $0.id == "cash_basis_expense_total" }?.value.numberValue, 120_000)
         XCTAssertEqual(form.fields.first { $0.id == "cash_basis_income" }?.value.numberValue, 380_000)
+    }
+
+    func testCashBasisBuilderUsesCanonicalSummariesWithoutLegacySnapshot() throws {
+        let incomeCandidateId = UUID()
+        let expenseCategory = ensureCategory(id: "cat-expense-canonical", name: "通信費", type: .expense, icon: "phone")
+        let form = try CashBasisReturnBuilder.build(
+            input: makeBuildInput(
+                fiscalYear: 2025,
+                canonicalJournals: [
+                    makeCanonicalJournal(
+                        id: UUID(),
+                        candidateId: incomeCandidateId,
+                        date: makeDate(year: 2025, month: 8, day: 1),
+                        type: .expense,
+                        amount: 55_000
+                    )
+                ],
+                candidateSummariesById: [
+                    incomeCandidateId: EtaxCandidateSummary(transactionType: .expense, resolvedCategoryId: expenseCategory.id)
+                ]
+            )
+        )
+
+        XCTAssertEqual(form.fields.first { $0.id == "cash_basis_expense_total" }?.value.numberValue, 55_000)
     }
 
     // MARK: - Helpers
@@ -463,13 +455,14 @@ final class FormEngineTests: XCTestCase {
         fiscalYear: Int,
         businessProfile: BusinessProfile? = nil,
         canonicalJournals: [CanonicalJournalEntry] = [],
-        postingCandidatesById: [UUID: PostingCandidate] = [:]
+        candidateSummariesById: [UUID: EtaxCandidateSummary] = [:]
     ) -> FormEngine.BuildInput {
-        FormEngine.BuildInput(
+        let canonicalAccounts = dataStore.canonicalAccounts()
+        return FormEngine.BuildInput(
             fiscalYear: fiscalYear,
             startMonth: FiscalYearSettings.startMonth,
-            canonicalAccounts: dataStore.canonicalAccounts(),
-            legacyAccountsById: Dictionary(uniqueKeysWithValues: dataStore.accounts.map { ($0.id, $0) }),
+            canonicalAccounts: canonicalAccounts,
+            canonicalAccountsById: Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) }),
             categoryNamesById: Dictionary(uniqueKeysWithValues: dataStore.categories.map { ($0.id, $0.name) }),
             fixedAssets: dataStore.fixedAssets,
             inventoryRecord: nil,
@@ -490,7 +483,7 @@ final class FormEngineTests: XCTestCase {
                 equityItems: []
             ),
             canonicalJournals: canonicalJournals,
-            postingCandidatesById: postingCandidatesById
+            candidateSummariesById: candidateSummariesById
         )
     }
 
@@ -554,21 +547,41 @@ final class FormEngineTests: XCTestCase {
         id: UUID,
         businessId: UUID? = nil,
         candidateId: UUID,
-        date: Date
+        date: Date,
+        type: TransactionType,
+        amount: Int
     ) -> CanonicalJournalEntry {
-        CanonicalJournalEntry(
+        let accountId = dataStore.canonicalAccounts().first?.id ?? UUID()
+        let decimalAmount = Decimal(amount)
+        return CanonicalJournalEntry(
             id: id,
             businessId: businessId ?? UUID(),
             taxYear: 2025,
             journalDate: date,
             voucherNo: "1",
             sourceCandidateId: candidateId,
-            lines: [
-                JournalLine(journalId: id, accountId: UUID(), debitAmount: 1, sortOrder: 0),
-                JournalLine(journalId: id, accountId: UUID(), creditAmount: 1, sortOrder: 1),
-            ],
+            lines: lines(for: type, journalId: id, accountId: accountId, amount: decimalAmount),
             approvedAt: date
         )
+    }
+
+    private func lines(
+        for type: TransactionType,
+        journalId: UUID,
+        accountId: UUID,
+        amount: Decimal
+    ) -> [JournalLine] {
+        switch type {
+        case .income:
+            return [JournalLine(journalId: journalId, accountId: accountId, creditAmount: amount, sortOrder: 0)]
+        case .expense:
+            return [JournalLine(journalId: journalId, accountId: accountId, debitAmount: amount, sortOrder: 0)]
+        case .transfer:
+            return [
+                JournalLine(journalId: journalId, accountId: accountId, debitAmount: amount, sortOrder: 0),
+                JournalLine(journalId: journalId, accountId: accountId, creditAmount: amount, sortOrder: 1),
+            ]
+        }
     }
 
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {

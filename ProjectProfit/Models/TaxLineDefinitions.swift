@@ -70,4 +70,50 @@ enum TaxLine: String, Codable, CaseIterable, Identifiable {
         case .miscExpense: .miscExpense
         }
     }
+
+    init?(legalReportLineId: String?) {
+        guard let legalReportLineId,
+              let legalReportLine = LegalReportLine(rawValue: legalReportLineId)
+        else {
+            return nil
+        }
+        self.init(legalReportLine: legalReportLine)
+    }
+
+    init?(legalReportLine: LegalReportLine) {
+        switch legalReportLine {
+        case .salesRevenue:
+            self = .salesRevenue
+        case .miscIncome:
+            self = .otherIncome
+        case .rent:
+            self = .rentExpense
+        case .utilities:
+            self = .utilitiesExpense
+        case .travelTransport:
+            self = .travelExpense
+        case .communication:
+            self = .communicationExpense
+        case .advertising:
+            self = .advertisingExpense
+        case .entertainment:
+            self = .entertainmentExpense
+        case .depreciation:
+            self = .depreciationExpense
+        case .insurance:
+            self = .insuranceExpense
+        case .interest:
+            self = .interestExpense
+        case .taxes:
+            self = .taxesExpense
+        case .consumables:
+            self = .suppliesExpense
+        case .outsourcing:
+            self = .outsourcingExpense
+        case .miscExpense:
+            self = .miscExpense
+        default:
+            return nil
+        }
+    }
 }

@@ -47,34 +47,34 @@ enum CashBasisReturnBuilder {
 
         for journal in input.canonicalJournals where journal.approvedAt != nil {
             guard let candidateId = journal.sourceCandidateId,
-                  let candidate = input.postingCandidatesById[candidateId],
-                  let snapshot = candidate.legacySnapshot
+                  let summary = input.candidateSummariesById[candidateId]
             else {
                 continue
             }
 
-            let amount = candidate.proposedLines.reduce(0) { partialResult, line in
-                switch snapshot.type {
+            let amount = journal.lines.reduce(0) { partialResult, line in
+                switch summary.transactionType {
                 case .income:
-                    guard line.creditAccountId != nil else { return partialResult }
+                    guard line.creditAmount > 0 else { return partialResult }
+                    return partialResult + NSDecimalNumber(decimal: line.creditAmount).intValue
                 case .expense:
-                    guard line.debitAccountId != nil else { return partialResult }
+                    guard line.debitAmount > 0 else { return partialResult }
+                    return partialResult + NSDecimalNumber(decimal: line.debitAmount).intValue
                 case .transfer:
                     return partialResult
                 }
-                return partialResult + NSDecimalNumber(decimal: line.amount).intValue
             }
 
             guard amount != 0 else {
                 continue
             }
 
-            switch snapshot.type {
+            switch summary.transactionType {
             case .income:
                 totalIncome += amount
             case .expense:
                 totalExpense += amount
-                expenseByCategory[snapshot.categoryId, default: 0] += amount
+                expenseByCategory[summary.resolvedCategoryId, default: 0] += amount
             case .transfer:
                 break
             }
