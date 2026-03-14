@@ -4,13 +4,16 @@ import SwiftData
 @MainActor
 struct TransactionHistoryUseCase {
     private let repository: any TransactionHistoryRepository
+    private let exportModelContext: ModelContext?
 
     init(repository: any TransactionHistoryRepository) {
         self.repository = repository
+        self.exportModelContext = nil
     }
 
     init(modelContext: ModelContext) {
-        self.init(repository: SwiftDataTransactionHistoryRepository(modelContext: modelContext))
+        self.repository = SwiftDataTransactionHistoryRepository(modelContext: modelContext)
+        self.exportModelContext = modelContext
     }
 
     func allTransactions() -> [PPTransaction] {
@@ -72,30 +75,17 @@ struct TransactionHistoryUseCase {
     }
 
     func exportCSV(transactions: [PPTransaction]) throws -> URL {
-        let categoriesById = Dictionary(uniqueKeysWithValues: allCategories().map { ($0.id, $0) })
-        let projectsById = Dictionary(uniqueKeysWithValues: allProjects().map { ($0.id, $0) })
-        let csv = generateCSV(
-            transactions: transactions,
-            getCategory: { categoriesById[$0] },
-            getProject: { projectsById[$0] }
-        )
-        guard let data = csv.data(using: .utf8) else {
-            throw ExportCoordinator.ExportError.fileWriteFailed
+        guard let exportModelContext else {
+            throw ExportCoordinator.ExportError.dataUnavailable
         }
-
         let referenceDate = transactions.max(by: { $0.date < $1.date })?.date ?? Date()
         let fiscalYear = fiscalYear(for: referenceDate, startMonth: FiscalYearSettings.startMonth)
-        let fileName = ExportCoordinator.makeFileName(target: .transactions, fiscalYear: fiscalYear, format: .csv)
-        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        try data.write(to: fileURL, options: .atomic)
-        return fileURL
-    }
-
-    private func allCategories() -> [PPCategory] {
-        (try? repository.allCategories()) ?? []
-    }
-
-    private func allProjects() -> [PPProject] {
-        (try? repository.allProjects()) ?? []
+        return try ExportCoordinator.export(
+            target: .transactions,
+            format: .csv,
+            fiscalYear: fiscalYear,
+            modelContext: exportModelContext,
+            transactionOptions: .init(transactions: transactions)
+        )
     }
 }

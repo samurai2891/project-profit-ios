@@ -4,8 +4,43 @@ import SwiftUI
 struct BooksWorkspaceView: View {
     @Environment(\.modelContext) private var modelContext
 
+    enum WorkflowDestinationID: String, Equatable {
+        case reconciliation
+        case journalBrowser
+        case analytics
+    }
+
+    struct WorkflowItem: Equatable {
+        let icon: String
+        let title: String
+        let subtitle: String
+        let destinationID: WorkflowDestinationID
+    }
+
     static let reconciliationTitle = BankCardReconciliationView.titleText
     static let reconciliationSubtitle = "明細取込と未照合チェック"
+    static let analyticsTitle = "分析レポート"
+    static let analyticsSubtitle = "収益・費用・月別推移を確認"
+    static let workflowItems: [WorkflowItem] = [
+        WorkflowItem(
+            icon: "building.columns.circle",
+            title: reconciliationTitle,
+            subtitle: reconciliationSubtitle,
+            destinationID: .reconciliation
+        ),
+        WorkflowItem(
+            icon: "book.closed",
+            title: "仕訳ブラウザ",
+            subtitle: "Canonical仕訳の検索・確認",
+            destinationID: .journalBrowser
+        ),
+        WorkflowItem(
+            icon: "chart.line.uptrend.xyaxis",
+            title: analyticsTitle,
+            subtitle: analyticsSubtitle,
+            destinationID: .analytics
+        ),
+    ]
 
     @State private var snapshot = AccountingHomeSnapshot(
         unpostedJournalCount: 0,
@@ -16,7 +51,7 @@ struct BooksWorkspaceView: View {
     )
 
     static let titleText = "帳簿ワークスペース"
-    static let descriptionText = "仕訳確認 → 帳簿確認 → 申告作業の順に進めると、今の状態と次の作業をまとめて確認できます。"
+    static let descriptionText = "未照合の確認から仕訳・帳簿・分析・申告準備まで、この画面から今やる作業を順にたどれます。"
 
     private var queryUseCase: AccountingHomeQueryUseCase {
         AccountingHomeQueryUseCase(modelContext: modelContext)
@@ -97,33 +132,8 @@ struct BooksWorkspaceView: View {
 
     private var workflowSection: some View {
         section(
-            title: "ワークフロー確認",
-            rows: [
-                WorkspaceRow(
-                    icon: "book.closed",
-                    title: "仕訳ブラウザ",
-                    subtitle: "Canonical仕訳の検索・確認",
-                    destination: AnyView(JournalBrowserView())
-                ),
-                WorkspaceRow(
-                    icon: "building.columns.circle",
-                    title: Self.reconciliationTitle,
-                    subtitle: Self.reconciliationSubtitle,
-                    destination: AnyView(BankCardReconciliationView())
-                ),
-                WorkspaceRow(
-                    icon: "chart.bar.doc.horizontal",
-                    title: "年次レポート",
-                    subtitle: "損益・月別推移・カテゴリ分析",
-                    destination: AnyView(ReportView())
-                ),
-                WorkspaceRow(
-                    icon: "doc.text",
-                    title: "仕訳帳",
-                    subtitle: "仕訳一覧の確認",
-                    destination: AnyView(JournalListView())
-                ),
-            ]
+            title: "帳簿ワークフロー",
+            rows: Self.workflowItems.map(workflowRow)
         )
     }
 
@@ -251,6 +261,26 @@ struct BooksWorkspaceView: View {
                 ),
             ]
         )
+    }
+
+    private func workflowRow(_ item: Self.WorkflowItem) -> WorkspaceRow {
+        WorkspaceRow(
+            icon: item.icon,
+            title: item.title,
+            subtitle: item.subtitle,
+            destination: workflowDestination(for: item.destinationID)
+        )
+    }
+
+    private func workflowDestination(for destinationID: Self.WorkflowDestinationID) -> AnyView {
+        switch destinationID {
+        case .reconciliation:
+            AnyView(BankCardReconciliationView())
+        case .journalBrowser:
+            AnyView(JournalBrowserView())
+        case .analytics:
+            AnyView(ReportView())
+        }
     }
 
     #if DEBUG

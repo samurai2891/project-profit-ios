@@ -86,7 +86,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.label, "e-Tax")
         XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.label, "支払調書")
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.label, "固定資産台帳")
-        XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.label, "旧台帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.label, "旧台帳（互換）")
     }
 
     func testExportFormatExtensions() {

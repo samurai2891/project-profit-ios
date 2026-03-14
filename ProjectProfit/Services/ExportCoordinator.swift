@@ -50,7 +50,7 @@ enum ExportCoordinator {
             case .etax: "e-Tax"
             case .withholdingStatement: "支払調書"
             case .fixedAssets: "固定資産台帳"
-            case .legacyLedgerBook: "旧台帳"
+            case .legacyLedgerBook: "旧台帳（互換）"
             }
         }
 
@@ -81,6 +81,7 @@ enum ExportCoordinator {
             case .etax:
                 return [.csv, .xtx]
             case .legacyLedgerBook:
+                // 旧台帳は compat export target としてだけ残す。
                 return [.csv, .pdf, .xlsx]
             }
         }
@@ -281,7 +282,7 @@ enum ExportCoordinator {
         guard target == .legacyLedgerBook, let legacyLedgerOptions else {
             return target.supportedFormats
         }
-        return legacySupportedFormats(for: legacyLedgerOptions.ledgerType)
+        return LegacyLedgerExportAdapter.supportedFormats(for: legacyLedgerOptions.ledgerType)
     }
 
     private static func validatePreflight(
@@ -313,6 +314,242 @@ enum ExportCoordinator {
         case text(String)
         case data(Data)
         case fileWriter((URL) throws -> Void)
+    }
+
+    @MainActor
+    private enum LegacyLedgerExportAdapter {
+        static func supportedFormats(for ledgerType: LedgerType) -> Set<ExportFormat> {
+            switch ledgerType {
+            case .cashBook, .cashBookInvoice,
+                 .bankAccountBook, .bankAccountBookInvoice,
+                 .accountsReceivable, .accountsPayable,
+                 .generalLedger, .generalLedgerInvoice,
+                 .journal:
+                return [.csv, .pdf, .xlsx]
+            case .expenseBook, .expenseBookInvoice,
+                 .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+                return [.csv, .pdf]
+            case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
+                return [.pdf]
+            }
+        }
+
+        static func generateContent(
+            format: ExportFormat,
+            modelContext: ModelContext,
+            options: LegacyLedgerExportOptions
+        ) throws -> ExportContent {
+            let store = LedgerDataStore(modelContext: modelContext)
+
+            switch format {
+            case .csv:
+                return .text(try csv(store: store, options: options))
+            case .pdf:
+                return .data(try pdf(store: store, options: options))
+            case .xlsx:
+                return .fileWriter { url in
+                    try writeXLSX(store: store, options: options, to: url)
+                }
+            case .xtx:
+                throw ExportError.unsupportedFormat(.legacyLedgerBook, .xtx)
+            }
+        }
+
+        private static func csv(
+            store: LedgerDataStore,
+            options: LegacyLedgerExportOptions
+        ) throws -> String {
+            let service = CSVExportService.shared
+
+            switch options.ledgerType {
+            case .cashBook, .cashBookInvoice:
+                return service.exportCashBook(
+                    metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                    entries: store.cashBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .bankAccountBook, .bankAccountBookInvoice:
+                return service.exportBankAccountBook(
+                    metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                    entries: store.bankAccountBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .accountsReceivable:
+                return service.exportAccountsReceivable(
+                    metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                    entries: store.accountsReceivableEntries(for: options.bookId)
+                )
+
+            case .accountsPayable:
+                return service.exportAccountsPayable(
+                    metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                    entries: store.accountsPayableEntries(for: options.bookId)
+                )
+
+            case .expenseBook, .expenseBookInvoice:
+                return service.exportExpenseBook(
+                    metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
+                    entries: store.expenseBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .generalLedger, .generalLedgerInvoice:
+                return service.exportGeneralLedger(
+                    metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                    entries: store.generalLedgerEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .journal:
+                return service.exportJournal(entries: store.journalEntries(for: options.bookId))
+
+            case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+                return service.exportWhiteTaxBookkeeping(
+                    metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
+                    entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
+                throw ExportError.unsupportedFormat(.legacyLedgerBook, .csv)
+            }
+        }
+
+        private static func pdf(
+            store: LedgerDataStore,
+            options: LegacyLedgerExportOptions
+        ) throws -> Data {
+            let service = LedgerPDFExportService.shared
+
+            switch options.ledgerType {
+            case .cashBook, .cashBookInvoice:
+                return service.exportCashBook(
+                    metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                    entries: store.cashBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .bankAccountBook, .bankAccountBookInvoice:
+                return service.exportBankAccountBook(
+                    metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                    entries: store.bankAccountBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .accountsReceivable:
+                return service.exportAccountsReceivable(
+                    metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                    entries: store.accountsReceivableEntries(for: options.bookId)
+                )
+
+            case .accountsPayable:
+                return service.exportAccountsPayable(
+                    metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                    entries: store.accountsPayableEntries(for: options.bookId)
+                )
+
+            case .expenseBook, .expenseBookInvoice:
+                return service.exportExpenseBook(
+                    metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
+                    entries: store.expenseBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .generalLedger, .generalLedgerInvoice:
+                return service.exportGeneralLedger(
+                    metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                    entries: store.generalLedgerEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .journal:
+                return service.exportJournal(entries: store.journalEntries(for: options.bookId))
+
+            case .transportationExpense:
+                return service.exportTransportationExpense(
+                    metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: options.metadataJSON),
+                    entries: store.transportationExpenseEntries(for: options.bookId)
+                )
+
+            case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+                return service.exportWhiteTaxBookkeeping(
+                    metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
+                    entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice
+                )
+
+            case .fixedAssetDepreciation:
+                return service.exportFixedAssetDepreciation(
+                    entries: store.fixedAssetDepreciationEntries(for: options.bookId)
+                )
+
+            case .fixedAssetRegister:
+                return service.exportFixedAssetRegister(
+                    metadata: LedgerBridge.decodeFixedAssetRegisterMetadata(from: options.metadataJSON),
+                    entries: store.fixedAssetRegisterEntries(for: options.bookId)
+                )
+            }
+        }
+
+        private static func writeXLSX(
+            store: LedgerDataStore,
+            options: LegacyLedgerExportOptions,
+            to url: URL
+        ) throws {
+            let service = LedgerExcelExportService.shared
+            let path = url.path
+
+            switch options.ledgerType {
+            case .cashBook, .cashBookInvoice:
+                service.exportCashBook(
+                    metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
+                    entries: store.cashBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice,
+                    to: path
+                )
+
+            case .bankAccountBook, .bankAccountBookInvoice:
+                service.exportBankAccountBook(
+                    metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
+                    entries: store.bankAccountBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice,
+                    to: path
+                )
+
+            case .accountsReceivable:
+                service.exportAccountsReceivable(
+                    metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
+                    entries: store.accountsReceivableEntries(for: options.bookId),
+                    to: path
+                )
+
+            case .accountsPayable:
+                service.exportAccountsPayable(
+                    metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
+                    entries: store.accountsPayableEntries(for: options.bookId),
+                    to: path
+                )
+
+            case .generalLedger, .generalLedgerInvoice:
+                service.exportGeneralLedger(
+                    metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
+                    entries: store.generalLedgerEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice,
+                    to: path
+                )
+
+            case .journal:
+                service.exportJournal(entries: store.journalEntries(for: options.bookId), to: path)
+
+            case .expenseBook, .expenseBookInvoice,
+                 .fixedAssetDepreciation, .fixedAssetRegister,
+                 .transportationExpense,
+                 .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+                throw ExportError.unsupportedFormat(.legacyLedgerBook, .xlsx)
+            }
+        }
     }
 
     private static func exportSubLedgerCSV(entries: [SubLedgerEntry]) -> String {
@@ -493,7 +730,7 @@ enum ExportCoordinator {
             guard let legacyLedgerOptions else {
                 throw ExportError.dataUnavailable
             }
-            return try generateLegacyLedgerContent(
+            return try LegacyLedgerExportAdapter.generateContent(
                 format: format,
                 modelContext: modelContext,
                 options: legacyLedgerOptions
@@ -733,239 +970,6 @@ enum ExportCoordinator {
 
         default:
             throw ExportError.unsupportedFormat(target, format)
-        }
-    }
-
-    private static func generateLegacyLedgerContent(
-        format: ExportFormat,
-        modelContext: ModelContext,
-        options: LegacyLedgerExportOptions
-    ) throws -> ExportContent {
-        let store = LedgerDataStore(modelContext: modelContext)
-
-        switch format {
-        case .csv:
-            return .text(try legacyLedgerCSV(store: store, options: options))
-        case .pdf:
-            return .data(try legacyLedgerPDF(store: store, options: options))
-        case .xlsx:
-            return .fileWriter { url in
-                try writeLegacyLedgerXLSX(store: store, options: options, to: url)
-            }
-        case .xtx:
-            throw ExportError.unsupportedFormat(.legacyLedgerBook, .xtx)
-        }
-    }
-
-    private static func legacySupportedFormats(for ledgerType: LedgerType) -> Set<ExportFormat> {
-        switch ledgerType {
-        case .cashBook, .cashBookInvoice,
-             .bankAccountBook, .bankAccountBookInvoice,
-             .accountsReceivable, .accountsPayable,
-             .generalLedger, .generalLedgerInvoice,
-             .journal:
-            return [.csv, .pdf, .xlsx]
-        case .expenseBook, .expenseBookInvoice,
-             .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-            return [.csv, .pdf]
-        case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
-            return [.pdf]
-        }
-    }
-
-    private static func legacyLedgerCSV(
-        store: LedgerDataStore,
-        options: LegacyLedgerExportOptions
-    ) throws -> String {
-        let service = CSVExportService.shared
-
-        switch options.ledgerType {
-        case .cashBook, .cashBookInvoice:
-            return service.exportCashBook(
-                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
-                entries: store.cashBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .bankAccountBook, .bankAccountBookInvoice:
-            return service.exportBankAccountBook(
-                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
-                entries: store.bankAccountBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .accountsReceivable:
-            return service.exportAccountsReceivable(
-                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
-                entries: store.accountsReceivableEntries(for: options.bookId)
-            )
-
-        case .accountsPayable:
-            return service.exportAccountsPayable(
-                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
-                entries: store.accountsPayableEntries(for: options.bookId)
-            )
-
-        case .expenseBook, .expenseBookInvoice:
-            return service.exportExpenseBook(
-                metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
-                entries: store.expenseBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .generalLedger, .generalLedgerInvoice:
-            return service.exportGeneralLedger(
-                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
-                entries: store.generalLedgerEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .journal:
-            return service.exportJournal(entries: store.journalEntries(for: options.bookId))
-
-        case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-            return service.exportWhiteTaxBookkeeping(
-                metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
-                entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
-            throw ExportError.unsupportedFormat(.legacyLedgerBook, .csv)
-        }
-    }
-
-    private static func legacyLedgerPDF(
-        store: LedgerDataStore,
-        options: LegacyLedgerExportOptions
-    ) throws -> Data {
-        let service = LedgerPDFExportService.shared
-
-        switch options.ledgerType {
-        case .cashBook, .cashBookInvoice:
-            return service.exportCashBook(
-                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
-                entries: store.cashBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .bankAccountBook, .bankAccountBookInvoice:
-            return service.exportBankAccountBook(
-                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
-                entries: store.bankAccountBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .accountsReceivable:
-            return service.exportAccountsReceivable(
-                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
-                entries: store.accountsReceivableEntries(for: options.bookId)
-            )
-
-        case .accountsPayable:
-            return service.exportAccountsPayable(
-                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
-                entries: store.accountsPayableEntries(for: options.bookId)
-            )
-
-        case .expenseBook, .expenseBookInvoice:
-            return service.exportExpenseBook(
-                metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
-                entries: store.expenseBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .generalLedger, .generalLedgerInvoice:
-            return service.exportGeneralLedger(
-                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
-                entries: store.generalLedgerEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .journal:
-            return service.exportJournal(entries: store.journalEntries(for: options.bookId))
-
-        case .transportationExpense:
-            return service.exportTransportationExpense(
-                metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: options.metadataJSON),
-                entries: store.transportationExpenseEntries(for: options.bookId)
-            )
-
-        case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-            return service.exportWhiteTaxBookkeeping(
-                metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
-                entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice
-            )
-
-        case .fixedAssetDepreciation:
-            return service.exportFixedAssetDepreciation(
-                entries: store.fixedAssetDepreciationEntries(for: options.bookId)
-            )
-
-        case .fixedAssetRegister:
-            return service.exportFixedAssetRegister(
-                metadata: LedgerBridge.decodeFixedAssetRegisterMetadata(from: options.metadataJSON),
-                entries: store.fixedAssetRegisterEntries(for: options.bookId)
-            )
-        }
-    }
-
-    private static func writeLegacyLedgerXLSX(
-        store: LedgerDataStore,
-        options: LegacyLedgerExportOptions,
-        to url: URL
-    ) throws {
-        let service = LedgerExcelExportService.shared
-        let path = url.path
-
-        switch options.ledgerType {
-        case .cashBook, .cashBookInvoice:
-            service.exportCashBook(
-                metadata: LedgerBridge.decodeCashBookMetadata(from: options.metadataJSON),
-                entries: store.cashBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice,
-                to: path
-            )
-
-        case .bankAccountBook, .bankAccountBookInvoice:
-            service.exportBankAccountBook(
-                metadata: LedgerBridge.decodeBankAccountBookMetadata(from: options.metadataJSON),
-                entries: store.bankAccountBookEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice,
-                to: path
-            )
-
-        case .accountsReceivable:
-            service.exportAccountsReceivable(
-                metadata: LedgerBridge.decodeAccountsReceivableMetadata(from: options.metadataJSON),
-                entries: store.accountsReceivableEntries(for: options.bookId),
-                to: path
-            )
-
-        case .accountsPayable:
-            service.exportAccountsPayable(
-                metadata: LedgerBridge.decodeAccountsPayableMetadata(from: options.metadataJSON),
-                entries: store.accountsPayableEntries(for: options.bookId),
-                to: path
-            )
-
-        case .generalLedger, .generalLedgerInvoice:
-            service.exportGeneralLedger(
-                metadata: LedgerBridge.decodeGeneralLedgerMetadata(from: options.metadataJSON),
-                entries: store.generalLedgerEntries(for: options.bookId),
-                includeInvoice: options.includeInvoice,
-                to: path
-            )
-
-        case .journal:
-            service.exportJournal(entries: store.journalEntries(for: options.bookId), to: path)
-
-        case .expenseBook, .expenseBookInvoice,
-             .fixedAssetDepreciation, .fixedAssetRegister,
-             .transportationExpense,
-             .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-            throw ExportError.unsupportedFormat(.legacyLedgerBook, .xlsx)
         }
     }
 

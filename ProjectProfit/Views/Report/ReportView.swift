@@ -5,6 +5,9 @@ struct ReportView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ReportViewModel?
 
+    static let titleText = "分析レポート"
+    static let descriptionText = "収益・費用・月別推移を確認し、申告前の見直しに使います。"
+
     private var dataRevisionUseCase: DataRevisionQueryUseCase {
         DataRevisionQueryUseCase(modelContext: modelContext)
     }
@@ -34,6 +37,7 @@ struct ReportView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 yearNavigator(viewModel: viewModel)
+                analyticsSummaryCard
                 overallSummaryCards(viewModel: viewModel)
                 yoyComparisonSection(viewModel: viewModel)
                 monthlyChartSection(viewModel: viewModel)
@@ -43,7 +47,7 @@ struct ReportView: View {
             }
             .padding(.bottom, 40)
         }
-        .navigationTitle("レポート")
+        .navigationTitle(Self.titleText)
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
             viewModel.reloadStartMonth()
@@ -51,6 +55,20 @@ struct ReportView: View {
         .refreshable {
             viewModel.refresh()
         }
+    }
+
+    private var analyticsSummaryCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.title3)
+                .foregroundStyle(AppColors.primary)
+
+            Text(Self.descriptionText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Year Navigator
