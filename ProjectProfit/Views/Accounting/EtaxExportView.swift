@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct EtaxExportView: View {
+    private static let selectableFormTypes: [EtaxFormType] = [
+        .blueReturn,
+        .blueCashBasis,
+        .whiteReturn,
+    ]
+
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: EtaxExportViewModel?
     @State private var showShareSheet = false
@@ -140,11 +146,11 @@ struct EtaxExportView: View {
                         viewModel.validationErrors = []
                     }
                 )) {
-                    Text("青色申告").tag(EtaxFormType.blueReturn)
-                    Text("白色申告").tag(EtaxFormType.whiteReturn)
+                    ForEach(Self.selectableFormTypes, id: \.self) { formType in
+                        Text(formType.exportSelectionLabel).tag(formType)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
+                .pickerStyle(.menu)
             }
         }
         .padding(16)

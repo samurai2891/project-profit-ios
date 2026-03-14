@@ -193,6 +193,63 @@ final class EtaxExportViewModelTests: XCTestCase {
         XCTAssertEqual(businessField?.value.exportText, "Canonical商店")
     }
 
+    func testGeneratePreviewBuildsCashBasisFormWhenBlueCashBasisSelected() {
+        var capturedStyle: FilingStyle?
+        let expectedForm = EtaxForm(
+            fiscalYear: 2025,
+            formType: .blueCashBasis,
+            fields: [
+                EtaxField(
+                    id: "cash_basis_revenue",
+                    fieldLabel: "ア 収入金額",
+                    taxLine: nil,
+                    value: 300_000,
+                    section: .revenue
+                ),
+                EtaxField(
+                    id: "cash_basis_expense_total",
+                    fieldLabel: "経費合計",
+                    taxLine: nil,
+                    value: 80_000,
+                    section: .expenses
+                ),
+            ],
+            generatedAt: Date()
+        )
+
+        let viewModel = EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { _ in
+                EtaxExportContext(
+                    businessId: nil,
+                    fallbackTaxYearProfile: nil
+                )
+            },
+            formBuilder: { filingStyle, _ in
+                capturedStyle = filingStyle
+                return expectedForm
+            },
+            exporter: { _, _ in
+                URL(fileURLWithPath: "/tmp/mock-export.xtx")
+            }
+        )
+        viewModel.formType = .blueCashBasis
+        viewModel.fiscalYear = 2025
+
+        viewModel.generatePreview()
+
+        XCTAssertEqual(capturedStyle, .blueCashBasis)
+        XCTAssertEqual(viewModel.exportedForm?.formType, .blueCashBasis)
+        XCTAssertEqual(
+            viewModel.exportedForm?.fields.first { $0.id == "cash_basis_revenue" }?.value.numberValue,
+            300_000
+        )
+        XCTAssertEqual(
+            viewModel.exportedForm?.fields.first { $0.id == "cash_basis_expense_total" }?.value.numberValue,
+            80_000
+        )
+    }
+
     func testExportableFormDropsPreviewOnlyBalanceSheetFieldsBeforeValidation() {
         let rawForm = EtaxForm(
             fiscalYear: 2025,

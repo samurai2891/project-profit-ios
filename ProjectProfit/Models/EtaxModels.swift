@@ -130,6 +130,17 @@ enum EtaxFormType: String {
     case blueCashBasis = "青色申告決算書（現金主義）"
     case whiteReturn = "白色収支内訳書"
 
+    var exportSelectionLabel: String {
+        switch self {
+        case .blueReturn:
+            return "青色申告"
+        case .blueCashBasis:
+            return "青色申告（現金主義）"
+        case .whiteReturn:
+            return "白色申告"
+        }
+    }
+
     var definitionFormKey: String {
         switch self {
         case .blueReturn:
