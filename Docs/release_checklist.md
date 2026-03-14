@@ -12,6 +12,14 @@
 - lane の判定は `status`、`reason`、`simulator_device`、`test_summary`、artifact path で行う。
 - `support URL` はこの checklist の対象外とする。repo 内で実値を確定できないため。
 
+## Repo 管理境界
+
+- repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/privacy_policy.md`、`Docs/release_checklist.md`、`Docs/release_quality/latest.md`、`Docs/release_quality/latest-lane.md`、`Docs/release_quality/golden-baseline.md`、`Docs/release_quality/canonical-e2e.md`、`Docs/release_quality/migration-rehearsal.md`、`Docs/release_quality/performance-gate.md`、`Docs/release_quality/books.md`、`Docs/release_quality/forms.md` とする。
+- `Docs/release_quality/latest.md` は REL-P0-12 対象 4 lane の latest fully-green snapshot を保持する curated artifact とする。
+- `Docs/release_quality/latest-lane.md` は最後に実行した単一 lane の証跡とする。
+- `Docs/release_quality/<lane>.md` は lane ごとの最新証跡とする。
+- `support URL` は release 判定用の repo artifact ではなく、repo 外設定として管理する。
+
 ## 根拠ファイル
 
 - `.github/workflows/release-quality.yml`
@@ -115,6 +123,8 @@
 ## 実行時の固定条件
 
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release_quality'` を設定する。
+- commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 6 本とする。
+- `latest-lane.md` または lane 別 md に placeholder 値が残る場合は release 不可とする。
 - `Docs/release_quality/latest.md` は REL-P0-12 対象 gate の最新 fully-green snapshot として commit 管理する。
 - `Docs/release_quality/latest-lane.md` は最後に実行した lane の証跡として上書きされる。
 - lane ごとの判定は `Docs/release_quality/<lane>.md` を優先し、単一 lane の直近実行確認には `Docs/release_quality/latest-lane.md` を使う。

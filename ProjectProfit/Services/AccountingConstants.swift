@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - Default Account Definitions
 
-/// デフォルト勘定科目定義（34勘定科目）
-/// Todo.md 4B-1 準拠: 資産9, 負債4, 資本3, 収益2, 費用16(e-Tax+在庫/COGS), 特殊1
+/// デフォルト勘定科目定義（35勘定科目）
+/// Todo.md 4B-1 準拠。内訳は `defaultAccounts` の定義を正とする。
 /// コード体系: 1xx資産, 2xx負債, 3xx資本, 4xx収益, 5xx費用, 9xx特殊
 struct DefaultAccountDefinition {
     let id: String

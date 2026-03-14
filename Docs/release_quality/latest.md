@@ -1,5 +1,7 @@
 # Release Quality Latest Green Evidence
 
+REL-P0-12 の release 判定に使う curated snapshot です。`latest-lane.md` や単一 lane 実行では更新せず、対象 4 lane が fully-green で揃った run のみを保持します。
+
 - workflow_name: Release Quality
 - run_id: 22795166115
 - run_number: 5

@@ -366,7 +366,7 @@ final class AccountingIntegrationTests: XCTestCase {
         taxAmount: Int? = nil,
         taxCategory: TaxCategory? = nil
     ) -> PPTransaction {
-        let tx = PPTransaction(
+        let tx = PPTransaction.makeCompatibilityTransaction(
             type: type,
             amount: amount,
             date: Date(),

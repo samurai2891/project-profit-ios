@@ -57,11 +57,11 @@ final class AccountingBootstrapTests: XCTestCase {
 
         let result = service.execute(categories: categories, transactions: transactions)
 
-        XCTAssertEqual(result.accountsCreated, 34)
+        XCTAssertEqual(result.accountsCreated, AccountingConstants.defaultAccounts.count)
 
         let descriptor = FetchDescriptor<PPAccount>()
         let accounts = try! context.fetch(descriptor)
-        XCTAssertEqual(accounts.count, 34)
+        XCTAssertEqual(accounts.count, AccountingConstants.defaultAccounts.count)
     }
 
     func testStep2_IdempotentOnSecondRun() {
@@ -214,7 +214,7 @@ final class AccountingBootstrapTests: XCTestCase {
         let service = AccountingBootstrapService(modelContext: context)
         let result = service.execute(categories: categories, transactions: [tx])
 
-        XCTAssertEqual(result.accountsCreated, 34)
+        XCTAssertEqual(result.accountsCreated, AccountingConstants.defaultAccounts.count)
         XCTAssertGreaterThan(result.categoriesLinked, 0)
         XCTAssertEqual(result.transactionsBackfilled, 1)
         XCTAssertEqual(result.journalEntriesGenerated, 1)

@@ -6,6 +6,12 @@
 `latest.md` は script の出力先ではなく、release 判定用に commit される
 最新 fully-green `Release Quality` run の curated snapshot です。
 
+## Repo 管理境界
+
+- repo 管理対象の最小セットは `latest.md`、`latest-lane.md`、`golden-baseline.md`、`canonical-e2e.md`、`migration-rehearsal.md`、`performance-gate.md`、`books.md`、`forms.md` です。
+- `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/privacy_policy.md`、`Docs/release_checklist.md` も release 補助ファイルとして repo 管理します。
+- `support URL` は repo 内で実値を持たない外部設定であり、このディレクトリの artifact には含めません。
+
 ## 使い方
 
 ```bash
@@ -19,11 +25,19 @@ scripts/run_release_quality_lane.sh
 ## 出力ファイル
 
 - `latest.md`
-  最新 fully-green `Release Quality` run の curated snapshot。
+  最新 fully-green `Release Quality` run の curated snapshot。4 lane が揃ったときだけ更新します。
 - `latest-lane.md`
   `scripts/run_release_quality_lane.sh` が最後に出力した単一 lane の証跡。
 - `<lane>.md`
   レーン名ごとの最新証跡（例: `golden-baseline.md`）。`latest-lane.md` と同じ固定フォーマット。
+
+## 更新ルール
+
+- lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release_quality'` を必須とします。
+- 単発 lane 実行で commit する最小 artifact は `latest-lane.md` と対応する `<lane>.md` です。
+- release 判定用として repo で維持する最小 artifact セットは `latest.md`、`latest-lane.md`、lane 別 6 本です。
+- `latest.md` は fully-green 4 lane の curated snapshot なので、単発 lane 実行では更新しません。
+- `latest-lane.md` または `<lane>.md` に placeholder 値が残る状態は release 判定不可です。
 
 ## lane 証跡の固定フォーマット
 
