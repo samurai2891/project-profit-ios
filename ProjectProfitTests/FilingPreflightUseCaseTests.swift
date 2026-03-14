@@ -88,6 +88,8 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.code == .suspenseBalanceRemaining })
+        XCTAssertTrue(report.isBlocking)
+        XCTAssertTrue(report.blockingIssues.contains { $0.code == .suspenseBalanceRemaining })
     }
 
     func testClosingPreflightRequiresClosingEntryForTaxClose() throws {

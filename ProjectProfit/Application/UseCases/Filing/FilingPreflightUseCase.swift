@@ -99,18 +99,17 @@ struct FilingPreflightUseCase {
             )
         }
 
-        let suspenseAccountId = canonicalAccounts.first {
-            $0.legacyAccountId == AccountingConstants.suspenseAccountId
-        }?.id
-        if let suspenseAccountId,
-           let suspenseRow = trialBalance.rows.first(where: { $0.id == suspenseAccountId }),
-           suspenseRow.balance != 0
-        {
+        let suspenseBalance = snapshot.lines
+            .filter { $0.accountId == AccountingConstants.suspenseAccountId }
+            .reduce(0) { partialResult, line in
+                partialResult + line.debit - line.credit
+            }
+        if suspenseBalance != 0 {
             issues.append(
                 FilingPreflightIssue(
                     code: .suspenseBalanceRemaining,
                     severity: .error,
-                    message: "仮勘定の残高が残っています (\(formatCurrency(decimalInt(suspenseRow.balance))))"
+                    message: "仮勘定の残高が残っています (\(formatCurrency(suspenseBalance)))"
                 )
             )
         }
@@ -339,8 +338,4 @@ struct FilingPreflightUseCase {
         formatter.maximumFractionDigits = 0
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
-}
-
-private func decimalInt(_ value: Decimal) -> Int {
-    NSDecimalNumber(decimal: value).intValue
 }
