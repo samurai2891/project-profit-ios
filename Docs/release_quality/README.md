@@ -5,6 +5,7 @@
 
 `latest.md` は script の出力先ではなく、release 判定用に commit される
 最新 fully-green `Release Quality` run の curated snapshot です。
+current HEAD が fully-green でない場合でも、最後の green snapshot を保持したままにします。
 
 ## Repo 管理境界
 
@@ -37,6 +38,7 @@ scripts/run_release_quality_lane.sh
 - 単発 lane 実行で commit する最小 artifact は `latest-lane.md` と対応する `<lane>.md` です。
 - release 判定用として repo で維持する最小 artifact セットは `latest.md`、`latest-lane.md`、lane 別 6 本です。
 - `latest.md` は fully-green 4 lane の curated snapshot なので、単発 lane 実行では更新しません。
+- current HEAD の判定時に `latest.md` の `head_sha` が current HEAD と不一致なら、lane 別 md を current HEAD の正本として扱います。
 - `latest-lane.md` または `<lane>.md` に placeholder 値が残る状態は release 判定不可です。
 
 ## lane 証跡の固定フォーマット

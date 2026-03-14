@@ -1,6 +1,7 @@
 # ProjectProfit リリース事実監査レポート
 作成日: 2026-03-14  
 対象 HEAD: `fe19501`  
+固定資産/棚卸 再検証追記 HEAD: `8b525b6811f90a99610eb4b713972478ee60fbc1`  
 対象リポジトリ: `/Users/yutaro/project-profit-ios`
 
 ## 1. 監査条件
@@ -167,7 +168,7 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 | 定期取引 | 部分実装 | recurring 本線は存在するが、この監査では release 全面保証までは未証明 |
 | 銀行/カード照合 | 実装済み | 導線・import・match・Books 入口を確認 |
 | 帳簿/帳票 | 部分実装 | books lane は green だが申告 builder に legacy 依存が残る |
-| 固定資産/棚卸 | 未確認/未証明 | 実装とテストファイルは存在するが、今回の再実行対象外 |
+| 固定資産/棚卸 | representative tests 再確認済み | workflow use case の 2 スイートを current HEAD で再実行し、11件 green を確認 |
 | 源泉徴収 | 実装済み | 年次一覧・支払先別・CSV/PDF・UI/E2E を確認 |
 | e-Tax/申告前チェック | 不具合再現 | preflight の仮勘定検知テスト失敗、現金主義 UI 到達性も不足 |
 | release artifact | 部分実装 | books/forms の個票は更新済みだが fully-green curated snapshot は current HEAD と不一致 |
@@ -236,16 +237,34 @@ xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhon
 
 ### 4-6. 固定資産/棚卸
 
-- 2026-03-14 時点の結論: `未確認/未証明`
+- 2026-03-14 時点の結論: `representative tests 再確認済み`
 - 根拠ファイル:
   - `ProjectProfit/Views/Accounting/FixedAssetListView.swift`
   - `ProjectProfit/Views/Accounting/InventoryInputView.swift`
 - 根拠テストまたは実行結果:
   - `ProjectProfitTests/FixedAssetWorkflowUseCaseTests.swift`
   - `ProjectProfitTests/InventoryWorkflowUseCaseTests.swift`
+  - 2026-03-14 / current HEAD `8b525b6811f90a99610eb4b713972478ee60fbc1` で再実行
+  - 実行コマンド:
+
+```bash
+xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -only-testing:ProjectProfitTests/FixedAssetWorkflowUseCaseTests \
+  -only-testing:ProjectProfitTests/InventoryWorkflowUseCaseTests \
+  test
+```
+
+  - 結果:
+    - 実行テスト数: 11
+    - 失敗: 0
+    - simulator: `iPhone 17 Pro`
 - 事実:
   - 実装とテストファイルは存在する。
-  - ただし今回の再実行対象に含めていないため、2026-03-14 の動作再確認まではしていない。
+  - `FixedAssetWorkflowUseCaseTests` 7件が current HEAD で通過した。
+  - create / save / dispose / delete cascade / depreciation posting / post all / locked year block を再確認した。
+  - `InventoryWorkflowUseCaseTests` 4件が current HEAD で通過した。
+  - create / update / locked year create block / locked year update block を再確認した。
+  - 今回確認したのは workflow use case レベルであり、固定資産帳票や棚卸の決算書反映までを全面保証する証跡ではない。
 
 ### 4-7. 源泉徴収
 
