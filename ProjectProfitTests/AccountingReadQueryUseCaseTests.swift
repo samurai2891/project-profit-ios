@@ -260,7 +260,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(detailSnapshot.relatedEntries.count, 1)
     }
 
-    func testInventoryAndClassificationQueryUseCasesReadPersistedRecords() {
+    func testInventoryAndClassificationQueryUseCasesReadPersistedRecords() async {
         let project = mutations(dataStore).addProject(name: "Classification Project", description: "")
         _ = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
@@ -269,14 +269,55 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
             closingInventory: 80_000,
             memo: "棚卸"
         )
-        _ = mutations(dataStore).addTransaction(
-            type: .expense,
-            amount: 5_000,
-            date: makeDate(year: 2025, month: 8, day: 1),
-            categoryId: "cat-tools",
-            memo: "AWS 月額利用料",
-            allocations: [(projectId: project.id, ratio: 100)]
+        let evidence = EvidenceDocument(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .paperScan,
+            issueDate: makeDate(year: 2025, month: 8, day: 1),
+            originalFilename: "aws.jpg",
+            mimeType: "image/jpeg",
+            fileHash: "aws-hash",
+            originalFilePath: "aws.jpg",
+            ocrText: "AWS 月額利用料",
+            searchTokens: ["aws", "monthly"],
+            linkedProjectIds: [project.id],
+            complianceStatus: .pendingReview
         )
+        let paymentAccountId = canonicalAccounts.first(where: { $0.legacyAccountId == AccountingConstants.cashAccountId })?.id
+        let expenseAccountId = canonicalAccounts.first(where: { $0.legacyAccountId == AccountingConstants.miscExpenseAccountId })?.id
+        let candidate = PostingCandidate(
+            evidenceId: evidence.id,
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: makeDate(year: 2025, month: 8, day: 1),
+            proposedLines: [
+                PostingCandidateLine(debitAccountId: expenseAccountId, amount: Decimal(5_000), memo: "AWS 月額利用料"),
+                PostingCandidateLine(creditAccountId: paymentAccountId, amount: Decimal(5_000), memo: "AWS 月額利用料")
+            ],
+            status: .needsReview,
+            source: .ocr,
+            memo: "AWS 月額利用料",
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: AccountingConstants.cashAccountId,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                receiptImagePath: nil,
+                lineItems: [],
+                counterpartyName: "AWS"
+            )
+        )
+        try! await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+        try! await PostingWorkflowUseCase(modelContext: context).saveCandidate(candidate)
         let rule = PPUserRule(keyword: "aws", taxLine: .suppliesExpense, priority: 200)
         context.insert(rule)
         try! context.save()
@@ -284,7 +325,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         let inventorySnapshot = InventoryQueryUseCase(modelContext: context).snapshot(fiscalYear: 2025)
         let classificationSnapshot = ClassificationQueryUseCase(modelContext: context).snapshot()
         let matched = classificationSnapshot.results.first {
-            $0.transaction.memo == "AWS 月額利用料"
+            $0.candidate.id == candidate.id
         }
 
         XCTAssertEqual(inventorySnapshot.record?.openingInventory, 100_000)
@@ -292,6 +333,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertTrue(classificationSnapshot.userRules.contains(where: { $0.id == rule.id }))
         XCTAssertEqual(matched?.result.source, .userRule)
         XCTAssertEqual(matched?.result.taxLine, .suppliesExpense)
+        XCTAssertEqual(matched?.evidence?.id, evidence.id)
     }
 
     func testAccountingReadSupportResolvesCanonicalClassificationSuggestionAndApprovedCandidateTaxLine() async throws {
@@ -331,10 +373,33 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         try await SwiftDataChartOfAccountsRepository(modelContext: context).save(canonicalAccount)
 
         let support = AccountingReadSupport(modelContext: context)
-        let suggestion = support.classificationSuggestion(
+        let suggestionCandidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: makeDate(year: 2025, month: 8, day: 10),
+            status: .needsReview,
+            source: .ocr,
             memo: "AWS 月額利用料",
-            transactionType: .expense,
-            categoryId: "cat-tools"
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: nil,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                receiptImagePath: nil,
+                lineItems: [],
+                counterpartyName: "AWS"
+            )
+        )
+        let suggestion = support.classificationSuggestion(
+            candidate: suggestionCandidate,
+            fallbackCategoryId: "cat-tools"
         )
         let candidate = PostingCandidate(
             businessId: businessId,

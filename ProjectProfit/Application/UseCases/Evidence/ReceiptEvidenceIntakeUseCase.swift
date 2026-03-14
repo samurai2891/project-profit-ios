@@ -570,10 +570,12 @@ struct ReceiptEvidenceIntakeUseCase {
             return request.categoryId
         }
 
+        let previewCandidate = previewClassificationCandidate(for: request)
+        let previewEvidence = previewClassificationEvidence(for: request)
         let suggestion = classificationSupport.classificationSuggestion(
-            memo: classificationMemo(for: request),
-            transactionType: request.transactionType,
-            categoryId: request.categoryId
+            candidate: previewCandidate,
+            evidence: previewEvidence,
+            fallbackCategoryId: request.categoryId
         )
 
         guard suggestion?.result.source == .userRule else {
@@ -616,6 +618,61 @@ struct ReceiptEvidenceIntakeUseCase {
             ?? normalizedOptionalString(request.counterpartyName)
             ?? normalizedOptionalString(request.receiptData.storeName)
             ?? ""
+    }
+
+    private func previewClassificationCandidate(for request: ReceiptEvidenceIntakeRequest) -> PostingCandidate {
+        PostingCandidate(
+            businessId: UUID(),
+            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            candidateDate: request.reviewedDate,
+            status: .needsReview,
+            source: .ocr,
+            memo: normalizedOptionalString(request.memo),
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: request.transactionType,
+                categoryId: request.categoryId,
+                recurringId: nil,
+                paymentAccountId: request.paymentAccountId,
+                transferToAccountId: request.transferToAccountId,
+                taxDeductibleRate: request.transactionType == .expense ? request.taxDeductibleRate : nil,
+                taxAmount: resolvedTaxAmount(for: request),
+                taxCodeId: resolvedTaxCode(for: request)?.rawValue,
+                taxRate: resolvedTaxCode(for: request)?.taxRatePercent,
+                isTaxIncluded: request.isTaxIncluded,
+                taxCategory: resolvedTaxCode(for: request)?.legacyCategory,
+                receiptImagePath: nil,
+                lineItems: request.lineItems.map {
+                    ReceiptLineItem(
+                        name: $0.name,
+                        quantity: $0.quantity,
+                        unitPrice: $0.unitPrice,
+                        subtotal: $0.subtotal
+                    )
+                },
+                counterpartyName: normalizedOptionalString(request.counterpartyName)
+            )
+        )
+    }
+
+    private func previewClassificationEvidence(for request: ReceiptEvidenceIntakeRequest) -> EvidenceDocument {
+        EvidenceDocument(
+            businessId: UUID(),
+            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            sourceType: request.sourceType,
+            legalDocumentType: canonicalLegalDocumentType(for: request.receiptData.documentType),
+            storageCategory: storageCategory(for: request.sourceType),
+            issueDate: request.reviewedDate,
+            originalFilename: request.originalFileName,
+            mimeType: request.mimeType,
+            fileHash: "preview",
+            originalFilePath: request.originalFileName,
+            ocrText: normalizedOptionalString(request.ocrText),
+            extractionVersion: "classification-preview",
+            searchTokens: makeSearchTokens(from: request),
+            structuredFields: makeStructuredFields(from: request),
+            linkedProjectIds: Array(Set(request.linkedProjectIds)),
+            complianceStatus: .pendingReview
+        )
     }
 
     private func matchedCounterpartyId(

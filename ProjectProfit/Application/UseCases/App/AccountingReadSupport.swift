@@ -147,8 +147,10 @@ struct InventoryYearSnapshot {
 }
 
 struct ClassificationResultItem {
-    let transaction: PPTransaction
+    let candidate: PostingCandidate
+    let evidence: EvidenceDocument?
     let result: ClassificationEngine.ClassificationResult
+    let suggestedCategoryId: String
 }
 
 struct ClassificationSnapshot {
@@ -296,23 +298,21 @@ struct AccountingReadSupport {
     }
 
     func classificationSuggestion(
-        memo: String,
-        transactionType: TransactionType,
-        categoryId: String
+        candidate: PostingCandidate,
+        evidence: EvidenceDocument? = nil,
+        fallbackCategoryId: String? = nil
     ) -> CanonicalClassificationSuggestion? {
+        let transactionType = classificationTransactionType(for: candidate)
         guard transactionType != .transfer else {
             return nil
         }
 
-        let transaction = PPTransaction(
-            type: transactionType,
-            amount: 0,
-            date: Date(),
-            categoryId: categoryId,
-            memo: normalizedClassificationText(memo)
-        )
+        let categoryId = fallbackCategoryId ?? candidate.legacySnapshot?.categoryId ?? ""
         let result = ClassificationEngine.classify(
-            transaction: transaction,
+            candidate: candidate.updated(
+                memo: normalizedClassificationText(candidate.memo ?? classificationTextFallback(evidence: evidence))
+            ),
+            evidence: evidence,
             categories: fetchCategories(),
             accounts: fetchAccounts(),
             userRules: fetchUserRules()
@@ -416,6 +416,40 @@ struct AccountingReadSupport {
                 return
             }
             result[entity.candidateId] = PostingCandidateEntityMapper.toDomain(entity)
+        }
+    }
+
+    func fetchPostingCandidates(statuses: Set<CandidateStatus>) -> [PostingCandidate] {
+        guard let businessId = fetchBusinessProfile()?.id else {
+            return []
+        }
+
+        let descriptor = FetchDescriptor<PostingCandidateEntity>(
+            sortBy: [
+                SortDescriptor(\.candidateDate, order: .reverse),
+                SortDescriptor(\.updatedAt, order: .reverse)
+            ]
+        )
+        return fetch(descriptor)
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter {
+                $0.businessId == businessId && statuses.contains($0.status)
+            }
+    }
+
+    func fetchEvidence(ids: Set<UUID>) -> [UUID: EvidenceDocument] {
+        guard !ids.isEmpty else {
+            return [:]
+        }
+
+        let descriptor = FetchDescriptor<EvidenceRecordEntity>(
+            sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+        )
+        return fetch(descriptor).reduce(into: [UUID: EvidenceDocument]()) { result, entity in
+            guard ids.contains(entity.evidenceId) else {
+                return
+            }
+            result[entity.evidenceId] = EvidenceRecordEntityMapper.toDomain(entity)
         }
     }
 
@@ -559,6 +593,19 @@ struct AccountingReadSupport {
 }
 
 private extension AccountingReadSupport {
+    func classificationTransactionType(for candidate: PostingCandidate) -> TransactionType {
+        candidate.legacySnapshot?.type ?? .expense
+    }
+
+    func classificationTextFallback(evidence: EvidenceDocument?) -> String {
+        normalizedClassificationText(
+            evidence?.structuredFields?.counterpartyName
+                ?? evidence?.ocrText
+                ?? evidence?.searchTokens.first
+                ?? ""
+        )
+    }
+
     func resolvedTaxLine(
         for line: PostingCandidateLine,
         canonicalAccountsById: [UUID: CanonicalAccount],
@@ -1073,12 +1120,26 @@ struct ClassificationQueryUseCase {
 
     func snapshot() -> ClassificationSnapshot {
         let userRules = (try? userRuleRepository.allRules()) ?? []
+        let candidates = support.fetchPostingCandidates(statuses: [.draft, .needsReview])
+        let evidenceById = support.fetchEvidence(ids: Set(candidates.compactMap(\.evidenceId)))
         let results = ClassificationEngine.classifyBatch(
-            transactions: support.fetchTransactions(),
+            candidates: candidates,
+            evidencesById: evidenceById,
             categories: support.fetchCategories(),
             accounts: support.fetchAccounts(),
             userRules: userRules
-        ).map { ClassificationResultItem(transaction: $0.transaction, result: $0.result) }
+        ).map {
+            ClassificationResultItem(
+                candidate: $0.candidate,
+                evidence: $0.evidence,
+                result: $0.result,
+                suggestedCategoryId: support.preferredCategoryId(
+                    for: $0.result.taxLine,
+                    transactionType: $0.candidate.legacySnapshot?.type ?? .expense,
+                    fallbackCategoryId: $0.candidate.legacySnapshot?.categoryId ?? ""
+                )
+            )
+        }
         return ClassificationSnapshot(results: results, userRules: userRules)
     }
 }

@@ -44,7 +44,7 @@ struct UnclassifiedTransactionsView: View {
                     .foregroundStyle(AppColors.success)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("未分類")
+                Text("要レビュー")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("\(viewModel.unclassifiedResults.count)")
@@ -60,14 +60,14 @@ struct UnclassifiedTransactionsView: View {
 
     private func unclassifiedSection(viewModel: ClassificationViewModel) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("未分類の取引")
+            Text("要レビュー候補")
                 .font(.subheadline.weight(.medium))
 
             if viewModel.unclassifiedResults.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(AppColors.success)
-                    Text("すべての取引が分類されています")
+                    Text("レビュー待ちの分類候補はありません")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -76,9 +76,9 @@ struct UnclassifiedTransactionsView: View {
                 .background(AppColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
-                ForEach(viewModel.unclassifiedResults, id: \.transaction.id) { item in
+                ForEach(viewModel.unclassifiedResults, id: \.candidate.id) { item in
                     unclassifiedRow(
-                        transaction: item.transaction,
+                        item: item,
                         result: item.result,
                         viewModel: viewModel
                     )
@@ -107,22 +107,29 @@ struct UnclassifiedTransactionsView: View {
     }
 
     private func unclassifiedRow(
-        transaction: PPTransaction,
+        item: ClassificationResultItem,
         result: ClassificationEngine.ClassificationResult,
         viewModel: ClassificationViewModel
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let candidate = item.candidate
+        let evidence = item.evidence
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(formatDate(transaction.date))
+                Text(formatDate(evidence?.issueDate ?? candidate.candidateDate))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(formatCurrency(transaction.amount))
+                Text(formatCurrency(NSDecimalNumber(decimal: displayAmount(candidate)).intValue))
                     .font(.subheadline.weight(.medium).monospacedDigit())
             }
 
-            Text(transaction.memo.isEmpty ? "（メモなし）" : transaction.memo)
+            Text(primaryTitle(candidate: candidate, evidence: evidence))
                 .font(.subheadline)
+                .lineLimit(1)
+
+            Text(secondaryTitle(candidate: candidate, evidence: evidence))
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             HStack(spacing: 8) {
@@ -147,14 +154,17 @@ struct UnclassifiedTransactionsView: View {
                         .clipShape(Capsule())
                 }
 
+                Text(categoryLabel(for: item.suggestedCategoryId))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+
                 Spacer()
 
-                // Phase 9B: 分類修正メニュー
                 Menu {
                     ForEach(TaxLine.allCases) { taxLine in
                         Button(taxLine.label) {
                             viewModel.correctClassification(
-                                transactionId: transaction.id,
+                                candidateId: candidate.id,
                                 newTaxLine: taxLine
                             )
                         }
@@ -172,5 +182,46 @@ struct UnclassifiedTransactionsView: View {
         .padding(12)
         .background(AppColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func primaryTitle(candidate: PostingCandidate, evidence: EvidenceDocument?) -> String {
+        let title = candidate.memo
+            ?? candidate.legacySnapshot?.counterpartyName
+            ?? evidence?.structuredFields?.counterpartyName
+            ?? evidence?.originalFilename
+            ?? ""
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "（摘要なし）" : normalized
+    }
+
+    private func secondaryTitle(candidate: PostingCandidate, evidence: EvidenceDocument?) -> String {
+        let parts: [String] = [
+            candidate.source.displayName,
+            evidence?.legalDocumentType.displayName,
+            evidence?.structuredFields?.counterpartyName
+        ].compactMap { rawValue in
+            guard let value = rawValue, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        return parts.isEmpty ? "分類候補" : parts.joined(separator: " / ")
+    }
+
+    private func displayAmount(_ candidate: PostingCandidate) -> Decimal {
+        let debitTotal = candidate.proposedLines
+            .filter { $0.debitAccountId != nil }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        let creditTotal = candidate.proposedLines
+            .filter { $0.creditAccountId != nil }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        return max(debitTotal, creditTotal)
+    }
+
+    private func categoryLabel(for categoryId: String) -> String {
+        guard !categoryId.isEmpty else {
+            return "カテゴリ未解決"
+        }
+        return "候補カテゴリ: \(categoryId)"
     }
 }

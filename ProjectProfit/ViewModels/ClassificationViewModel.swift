@@ -25,7 +25,7 @@ final class ClassificationViewModel {
     }
 
     var unclassifiedResults: [ClassificationResultItem] {
-        results.filter { $0.result.source == .fallback }
+        results.filter { $0.result.needsReview }
     }
 
     var classifiedCount: Int {
@@ -35,13 +35,14 @@ final class ClassificationViewModel {
     // MARK: - 学習フィードバック (9B)
 
     /// ユーザーの手動分類修正を学習し、PPUserRuleを自動生成・更新する
-    func correctClassification(transactionId: UUID, newTaxLine: TaxLine) {
-        guard let transaction = results.first(where: { $0.transaction.id == transactionId })?.transaction else {
+    func correctClassification(candidateId: UUID, newTaxLine: TaxLine) {
+        guard let item = results.first(where: { $0.candidate.id == candidateId }) else {
             return
         }
 
         ClassificationLearningService.learnFromCorrection(
-            transaction: transaction,
+            candidate: item.candidate,
+            evidence: item.evidence,
             correctedTaxLine: newTaxLine,
             existingRules: userRules,
             modelContext: modelContext

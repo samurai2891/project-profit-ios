@@ -41,7 +41,7 @@ final class AccountingPerformanceTests: XCTestCase {
         }
 
         measure {
-            _ = ClassificationEngine.classifyBatch(
+            _ = ClassificationEngineCompatibilityAdapter.classifyBatch(
                 transactions: transactions,
                 categories: dataStore.categories,
                 accounts: dataStore.accounts,

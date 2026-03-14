@@ -56,6 +56,7 @@ struct PostingWorkflowUseCase {
     private let modelContext: ModelContext?
     private let classificationSupport: AccountingReadSupport?
     private let userRuleRepository: (any UserRuleRepository)?
+    private let evidenceCatalogUseCase: EvidenceCatalogUseCase?
 
     init(
         postingCandidateRepository: any PostingCandidateRepository,
@@ -65,7 +66,8 @@ struct PostingWorkflowUseCase {
         journalSearchIndex: LocalJournalSearchIndex? = nil,
         modelContext: ModelContext? = nil,
         classificationSupport: AccountingReadSupport? = nil,
-        userRuleRepository: (any UserRuleRepository)? = nil
+        userRuleRepository: (any UserRuleRepository)? = nil,
+        evidenceCatalogUseCase: EvidenceCatalogUseCase? = nil
     ) {
         self.postingCandidateRepository = postingCandidateRepository
         self.journalEntryRepository = journalEntryRepository
@@ -75,6 +77,7 @@ struct PostingWorkflowUseCase {
         self.modelContext = modelContext
         self.classificationSupport = classificationSupport
         self.userRuleRepository = userRuleRepository
+        self.evidenceCatalogUseCase = evidenceCatalogUseCase
     }
 
     init(modelContext: ModelContext) {
@@ -86,7 +89,8 @@ struct PostingWorkflowUseCase {
             journalSearchIndex: LocalJournalSearchIndex(modelContext: modelContext),
             modelContext: modelContext,
             classificationSupport: AccountingReadSupport(modelContext: modelContext),
-            userRuleRepository: SwiftDataUserRuleRepository(modelContext: modelContext)
+            userRuleRepository: SwiftDataUserRuleRepository(modelContext: modelContext),
+            evidenceCatalogUseCase: EvidenceCatalogUseCase(modelContext: modelContext)
         )
     }
 
@@ -162,7 +166,7 @@ struct PostingWorkflowUseCase {
             approvedAt: approvedAt,
             actor: actor
         )
-        learnFromApprovedCandidateIfPossible(candidate)
+        await learnFromApprovedCandidateIfPossible(candidate)
         return journal
     }
 
@@ -357,7 +361,7 @@ struct PostingWorkflowUseCase {
         return reopened
     }
 
-    private func learnFromApprovedCandidateIfPossible(_ candidate: PostingCandidate) {
+    private func learnFromApprovedCandidateIfPossible(_ candidate: PostingCandidate) async {
         guard let modelContext,
               let classificationSupport,
               let userRuleRepository,
@@ -367,8 +371,14 @@ struct PostingWorkflowUseCase {
 
         do {
             let existingRules = try userRuleRepository.allRules()
+            let evidence: EvidenceDocument? = if let evidenceId = candidate.evidenceId {
+                try await evidenceCatalogUseCase?.evidence(evidenceId)
+            } else {
+                nil
+            }
             _ = ClassificationLearningService.learnFromApprovedCandidate(
                 candidate: candidate,
+                evidence: evidence,
                 resolvedTaxLine: resolvedTaxLine,
                 existingRules: existingRules,
                 modelContext: modelContext

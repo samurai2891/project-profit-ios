@@ -5,15 +5,25 @@ import Foundation
 @MainActor
 enum ClassificationLearningService {
 
-    /// ユーザーの手動分類修正からPPUserRuleを生成または更新する
-    /// - Parameters:
-    ///   - transaction: 修正対象のトランザクション
-    ///   - correctedTaxLine: ユーザーが選択した正しいTaxLine
-    ///   - existingRules: 既存のPPUserRule一覧
-    ///   - modelContext: SwiftData永続化コンテキスト
-    /// - Returns: 生成または更新されたPPUserRule（memoが空の場合nil）
     @discardableResult
     static func learnFromCorrection(
+        candidate: PostingCandidate,
+        evidence: EvidenceDocument? = nil,
+        correctedTaxLine: TaxLine,
+        existingRules: [PPUserRule],
+        modelContext: ModelContext
+    ) -> PPUserRule? {
+        learnFromKeyword(
+            extractKeyword(from: candidate, evidence: evidence),
+            correctedTaxLine: correctedTaxLine,
+            existingRules: existingRules,
+            modelContext: modelContext
+        )
+    }
+
+    /// 互換用途。production の main path では candidate/evidence 版を使う。
+    @discardableResult
+    static func learnFromTransactionCorrection(
         transaction: PPTransaction,
         correctedTaxLine: TaxLine,
         existingRules: [PPUserRule],
