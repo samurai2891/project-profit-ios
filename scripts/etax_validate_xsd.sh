@@ -42,7 +42,7 @@ Usage:
 
 Options:
   --xml <path>            XML/XTX file path to validate
-  --form-key <name>       forms key in TaxYear json (required when --schema is not used)
+  --form-key <name>       forms key in TaxYear json or filing pack (`blue_general`, `blue_cash_basis`, `white_shushi`)
   --schema <path>         explicit XSD path (optional)
   --taxyear-json <path>   TaxYear*.json path
   --schema-dir <path>     shotoku XSD directory (default: auto-detect ETAX_REFERENCE_ROOT -> tools/etax/xsd/shotoku)

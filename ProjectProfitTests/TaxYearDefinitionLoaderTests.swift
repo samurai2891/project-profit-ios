@@ -37,6 +37,7 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(definition?.fiscalYear, 2025)
         XCTAssertNotNil(definition?.forms?["common"])
         XCTAssertNotNil(definition?.forms?["blue_general"])
+        XCTAssertNotNil(definition?.forms?["blue_cash_basis"])
         XCTAssertNotNil(definition?.forms?["white_shushi"])
     }
 
@@ -70,6 +71,30 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
     func testXmlTag_whiteTag() {
         let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "shushi_revenue_total", formType: .whiteReturn, fiscalYear: 2025)
         XCTAssertEqual(xmlTag, "AIG00020")
+    }
+
+    func testBlueCashBasisMetadata_2025UsesKOA230CurrentSpec() {
+        let definition = TaxYearDefinitionLoader.loadDefinition(for: 2025)
+        let form = definition?.forms?["blue_cash_basis"]
+
+        XCTAssertEqual(form?.formId, "KOA230")
+        XCTAssertEqual(form?.formVer, "10.0")
+        XCTAssertEqual(form?.rootTag, "KOA230")
+    }
+
+    func testBlueCashBasisXmlTags_2025ArePresent() {
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_revenue", formType: .blueCashBasis, fiscalYear: 2025),
+            "AOF00110"
+        )
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_expense_total", formType: .blueCashBasis, fiscalYear: 2025),
+            "AOF00200"
+        )
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_income", formType: .blueCashBasis, fiscalYear: 2025),
+            "AOF00290"
+        )
     }
 
     func testXmlTag_whiteTaxesTagIsCurrentSpec() {
@@ -161,7 +186,32 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(definition?.fiscalYear, 2026)
         XCTAssertNotNil(definition?.forms?["common"])
         XCTAssertNotNil(definition?.forms?["blue_general"])
+        XCTAssertNotNil(definition?.forms?["blue_cash_basis"])
         XCTAssertNotNil(definition?.forms?["white_shushi"])
+    }
+
+    func testBlueCashBasisMetadata_2026UsesKOA230CurrentSpec() {
+        let definition = TaxYearDefinitionLoader.loadDefinition(for: 2026)
+        let form = definition?.forms?["blue_cash_basis"]
+
+        XCTAssertEqual(form?.formId, "KOA230")
+        XCTAssertEqual(form?.formVer, "10.0")
+        XCTAssertEqual(form?.rootTag, "KOA230")
+    }
+
+    func testBlueCashBasisXmlTags_2026ArePresent() {
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_revenue", formType: .blueCashBasis, fiscalYear: 2026),
+            "AOF00110"
+        )
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_expense_total", formType: .blueCashBasis, fiscalYear: 2026),
+            "AOF00200"
+        )
+        XCTAssertEqual(
+            TaxYearDefinitionLoader.xmlTag(for: "cash_basis_income", formType: .blueCashBasis, fiscalYear: 2026),
+            "AOF00290"
+        )
     }
 
     func testFieldLabel_2026_blueReturnSalesRevenue() {

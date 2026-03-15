@@ -47,8 +47,10 @@ overlay_generated_report_json="$artifact_dir/cab_overlay_2025.generated.report.j
 
 blue_export_xml="${ETAX_XSD_BLUE_EXPORT_XML:-$artifact_dir/KOA210.export.xml}"
 white_export_xml="${ETAX_XSD_WHITE_EXPORT_XML:-$artifact_dir/KOA110.export.xml}"
+cash_export_xml="${ETAX_XSD_CASH_EXPORT_XML:-$artifact_dir/KOA230.export.xml}"
 xsd_blue_log="$artifact_dir/xsd_blue_validation.log"
 xsd_white_log="$artifact_dir/xsd_white_validation.log"
+xsd_cash_log="$artifact_dir/xsd_cash_validation.log"
 xsd_summary_file="$artifact_dir/xsd_validation_summary.txt"
 
 mkdir -p "$artifact_dir"
@@ -172,6 +174,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
   xcodebuild_log="$artifact_dir/xcodebuild_etax.log"
   ETAX_XSD_BLUE_EXPORT_XML="$blue_export_xml" \
   ETAX_XSD_WHITE_EXPORT_XML="$white_export_xml" \
+  ETAX_XSD_CASH_EXPORT_XML="$cash_export_xml" \
   xcodebuild test \
     -project ProjectProfit.xcodeproj \
     -scheme ProjectProfit \
@@ -182,7 +185,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests \
     -only-testing:ProjectProfitTests/ProfileSettingsViewTests 2>&1 | tee "$xcodebuild_log"
 
-  python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" <<'PY'
+  python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" "$cash_export_xml" <<'PY'
 import base64
 from pathlib import Path
 import re
@@ -191,6 +194,7 @@ import sys
 log_path = Path(sys.argv[1])
 blue_out = Path(sys.argv[2])
 white_out = Path(sys.argv[3])
+cash_out = Path(sys.argv[4])
 log_text = log_path.read_text(encoding="utf-8", errors="ignore")
 
 def extract(marker: str, output: Path) -> None:
@@ -214,6 +218,7 @@ def extract(marker: str, output: Path) -> None:
 
 extract("BLUE", blue_out)
 extract("WHITE", white_out)
+extract("CASH", cash_out)
 PY
 else
   if [[ -z "$health_status" ]]; then
@@ -228,6 +233,7 @@ fi
 echo "[7/8] XSD validation"
 blue_sample_xml="${ETAX_XSD_BLUE_SAMPLE_XML:-$blue_export_xml}"
 white_sample_xml="${ETAX_XSD_WHITE_SAMPLE_XML:-$white_export_xml}"
+cash_sample_xml="${ETAX_XSD_CASH_SAMPLE_XML:-$cash_export_xml}"
 blue_fallback_xml="${ETAX_XSD_BLUE_FALLBACK_XML:-tools/etax/fixtures/KOA210_minimal.xml}"
 white_fallback_xml="${ETAX_XSD_WHITE_FALLBACK_XML:-tools/etax/fixtures/KOA110_minimal.xml}"
 
@@ -269,6 +275,14 @@ if [[ ! -f "$white_sample_xml" ]]; then
   white_sample_xml="$white_fallback_xml"
   echo "info: white export xml not found, fallback to $white_sample_xml"
 fi
+if [[ ! -f "$cash_sample_xml" ]]; then
+  if [[ "$require_generated_xml" == "true" ]]; then
+    echo "error: cash generated xml is required but missing: $cash_sample_xml" >&2
+    exit 1
+  fi
+  echo "info: cash export xml not found, skip cash xsd validation"
+  cash_sample_xml=""
+fi
 
 if [[ ! -f "$blue_sample_xml" ]]; then
   echo "error: blue xsd validation input missing: $blue_sample_xml" >&2
@@ -281,10 +295,14 @@ fi
 
 bash scripts/etax_validate_xsd.sh --xml "$blue_sample_xml" --form-key blue_general 2>&1 | tee "$xsd_blue_log"
 bash scripts/etax_validate_xsd.sh --xml "$white_sample_xml" --form-key white_shushi 2>&1 | tee "$xsd_white_log"
+if [[ -n "$cash_sample_xml" ]]; then
+  bash scripts/etax_validate_xsd.sh --xml "$cash_sample_xml" --form-key blue_cash_basis 2>&1 | tee "$xsd_cash_log"
+fi
 
 cat > "$xsd_summary_file" <<EOF
 blue_xml=$blue_sample_xml
 white_xml=$white_sample_xml
+cash_xml=$cash_sample_xml
 require_generated_xml=$require_generated_xml
 swift_lane_executed=$swift_lane_executed
 EOF

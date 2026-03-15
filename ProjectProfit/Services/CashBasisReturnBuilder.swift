@@ -97,7 +97,12 @@ enum CashBasisReturnBuilder {
 
         // 必要経費
         var expenseIndex = 1
-        for (categoryId, amount) in expenseByCategory.sorted(by: { $0.value > $1.value }) {
+        for (categoryId, amount) in expenseByCategory.sorted(by: {
+            if $0.value == $1.value {
+                return $0.key < $1.key
+            }
+            return $0.value > $1.value
+        }) {
             let categoryName = input.categoryNamesById[categoryId] ?? categoryId
             let label = "\(expenseFieldLabel(index: expenseIndex)) \(categoryName)"
             fields.append(EtaxField(

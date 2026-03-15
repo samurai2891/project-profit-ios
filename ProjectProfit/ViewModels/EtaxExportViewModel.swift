@@ -159,10 +159,15 @@ final class EtaxExportViewModel {
                 }
         )
 
+        let allowCashBasisDynamicExpenses = form.formType == .blueCashBasis
+
         return EtaxForm(
             fiscalYear: form.fiscalYear,
             formType: form.formType,
-            fields: form.fields.filter { exportableKeys.contains($0.id) },
+            fields: form.fields.filter {
+                exportableKeys.contains($0.id)
+                    || (allowCashBasisDynamicExpenses && $0.id.hasPrefix("cash_basis_expense_") && $0.id != "cash_basis_expense_total")
+            },
             generatedAt: form.generatedAt
         )
     }

@@ -36,7 +36,7 @@ schema_dir="$default_schema_dir"
 print_usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/etax_resolve_xsd.sh --form-key <blue_general|white_shushi> [options]
+  ./scripts/etax_resolve_xsd.sh --form-key <blue_general|blue_cash_basis|white_shushi> [options]
 
 Options:
   --taxyear-json <path>   TaxYear*.json path (default: ProjectProfit/Resources/TaxYear2025.json)
@@ -115,13 +115,14 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 parse_result="$(
-python3 - "$taxyear_json" "$form_key" <<'PY'
+python3 - "$taxyear_json" "$form_key" "$REPO_ROOT" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 taxyear_json = Path(sys.argv[1])
 form_key = sys.argv[2]
+repo_root = Path(sys.argv[3])
 
 data = json.loads(taxyear_json.read_text(encoding="utf-8"))
 forms = data.get("forms")
@@ -130,6 +131,17 @@ if not isinstance(forms, dict):
     sys.exit(1)
 
 form = forms.get(form_key)
+if not isinstance(form, dict) and form_key == "blue_cash_basis":
+    year = "".join(ch for ch in taxyear_json.stem if ch.isdigit())
+    if year:
+        pack_path = repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / year / "filing" / "blue_cash_basis.json"
+        if pack_path.is_file():
+            pack = json.loads(pack_path.read_text(encoding="utf-8"))
+            form = {
+                "formId": pack.get("formId", ""),
+                "formVer": pack.get("formVer", ""),
+            }
+
 if not isinstance(form, dict):
     print(f"ERROR: form key not found: {form_key}", file=sys.stderr)
     sys.exit(1)
@@ -146,13 +158,14 @@ if not form_ver:
 print(f"{form_id}\t{form_ver}")
 PY
 )" || {
-  reason="$(python3 - "$taxyear_json" "$form_key" <<'PY'
+  reason="$(python3 - "$taxyear_json" "$form_key" "$REPO_ROOT" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 taxyear_json = Path(sys.argv[1])
 form_key = sys.argv[2]
+repo_root = Path(sys.argv[3])
 
 try:
     data = json.loads(taxyear_json.read_text(encoding="utf-8"))
@@ -165,6 +178,17 @@ if not isinstance(forms, dict):
     print("`forms` is missing")
     raise SystemExit(0)
 if form_key not in forms:
+    if form_key == "blue_cash_basis":
+        year = "".join(ch for ch in taxyear_json.stem if ch.isdigit())
+        if year:
+            pack_path = repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / year / "filing" / "blue_cash_basis.json"
+            if pack_path.is_file():
+                pack = json.loads(pack_path.read_text(encoding="utf-8"))
+                form_id = str(pack.get("formId", "")).strip()
+                form_ver = str(pack.get("formVer", "")).strip()
+                if form_id and form_ver:
+                    print("failed to parse form definition")
+                    raise SystemExit(0)
     print(f"form key not found: {form_key}")
     raise SystemExit(0)
 form = forms[form_key]

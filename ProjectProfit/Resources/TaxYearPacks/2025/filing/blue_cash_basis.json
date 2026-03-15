@@ -1,9 +1,9 @@
 {
   "formType": "blue_cash_basis",
   "taxYear": 2025,
-  "formId": "KOA220",
-  "formVer": "7.0",
-  "rootTag": "KOA220",
+  "formId": "KOA230",
+  "formVer": "10.0",
+  "rootTag": "KOA230",
   "displayName": "青色申告決算書（現金主義用）",
   "filingDeadline": "2026-03-16",
   "sections": [
@@ -11,21 +11,21 @@
       "id": "revenue",
       "label": "収入金額",
       "fields": [
-        { "internalKey": "cash_basis_revenue", "fieldLabel": "収入金額", "xmlTag": null, "dataType": "number" }
+        { "internalKey": "cash_basis_revenue", "fieldLabel": "収入金額", "xmlTag": "AOF00110", "dataType": "number" }
       ]
     },
     {
       "id": "expenses",
       "label": "必要経費",
       "fields": [
-        { "internalKey": "cash_basis_expense_total", "fieldLabel": "経費合計", "xmlTag": null, "dataType": "number" }
+        { "internalKey": "cash_basis_expense_total", "fieldLabel": "経費合計", "xmlTag": "AOF00200", "dataType": "number" }
       ]
     },
     {
       "id": "income",
       "label": "所得金額",
       "fields": [
-        { "internalKey": "cash_basis_income", "fieldLabel": "所得金額", "xmlTag": null, "dataType": "number" }
+        { "internalKey": "cash_basis_income", "fieldLabel": "所得金額", "xmlTag": "AOF00290", "dataType": "number" }
       ]
     }
   ]
