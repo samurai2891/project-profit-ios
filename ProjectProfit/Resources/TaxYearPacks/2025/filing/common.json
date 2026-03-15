@@ -5,7 +5,7 @@
   "formVer": "1.0",
   "rootTag": "COMMON",
   "displayName": "共通申告者情報",
-  "filingDeadline": "2026-03-17",
+  "filingDeadline": "2026-03-16",
   "sections": [
     {
       "id": "declarantInfo",

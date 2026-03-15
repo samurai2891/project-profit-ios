@@ -4,6 +4,21 @@ import XCTest
 @MainActor
 final class TaxYearDefinitionLoaderTests: XCTestCase {
 
+    private struct FilingDefinitionFixture: Decodable {
+        let filingDeadline: String
+    }
+
+    private func filingDefinition(named fileName: String, fiscalYear: Int = 2025) throws -> FilingDefinitionFixture {
+        let baseURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fileURL = baseURL
+            .appendingPathComponent("ProjectProfit/Resources/TaxYearPacks/\(fiscalYear)/filing", isDirectory: true)
+            .appendingPathComponent(fileName)
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode(FilingDefinitionFixture.self, from: data)
+    }
+
     override func setUp() {
         super.setUp()
         TaxYearDefinitionLoader.clearCache()
@@ -122,6 +137,20 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(pack.transitionalMeasures.count, 2)
         XCTAssertEqual(pack.transitionalMeasures.first?.id, "transitional_80")
         XCTAssertEqual(pack.transitionalMeasures.last?.id, "transitional_50")
+    }
+
+    func testFilingDeadline_2025FilingPacksAreMarch16() throws {
+        let fileNames = [
+            "common.json",
+            "blue_general.json",
+            "white_shushi.json",
+            "blue_cash_basis.json"
+        ]
+
+        for fileName in fileNames {
+            let definition = try filingDefinition(named: fileName)
+            XCTAssertEqual(definition.filingDeadline, "2026-03-16", "\(fileName) deadline should match the release task document")
+        }
     }
 
     // MARK: - 2026 Pack-based Definition
