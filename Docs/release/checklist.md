@@ -32,6 +32,14 @@
 - `Docs/release/quality/latest.md`
 - `Docs/release/quality/latest-lane.md`
 
+## 参照ドキュメント
+
+- `Docs/release/統合_修正タスク一覧_P0_P1_必要書類作成まで.md`
+- `Docs/release/Codex_バッチ実行プロンプト集_必要書類作成まで.md`
+- `Docs/release/codex_batch_state.md`
+- `Docs/vendor_package/README_最初に読む.md`
+- `Docs/vendor_package/release_ticket_list.md`
+
 ## Current HEAD 判定手順
 
 1. `git rev-parse HEAD` で判定対象の HEAD を確認する。
