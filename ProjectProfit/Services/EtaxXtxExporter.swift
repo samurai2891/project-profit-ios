@@ -31,7 +31,7 @@ enum EtaxXtxExporter {
             EtaxForm(
                 fiscalYear: form.fiscalYear,
                 formType: form.formType,
-                fields: mappedFields.map(\.field),
+                fields: validationFields(for: form.formType, mappedFields: mappedFields),
                 generatedAt: form.generatedAt
             )
         )
@@ -73,7 +73,7 @@ enum EtaxXtxExporter {
             EtaxForm(
                 fiscalYear: form.fiscalYear,
                 formType: form.formType,
-                fields: mappedFields.map(\.field),
+                fields: validationFields(for: form.formType, mappedFields: mappedFields),
                 generatedAt: form.generatedAt
             )
         )
@@ -113,8 +113,10 @@ enum EtaxXtxExporter {
         fields: [MappedEtaxField]
     ) throws -> String {
         switch form.formType {
-        case .blueReturn, .blueCashBasis:
+        case .blueReturn:
             return buildBlueReturnXml(form: form, definition: definition, fields: fields)
+        case .blueCashBasis:
+            return buildBlueCashBasisXml(form: form, definition: definition, fields: fields)
         case .whiteReturn:
             return buildWhiteReturnXml(form: form, definition: definition, fields: fields)
         }
@@ -172,6 +174,65 @@ enum EtaxXtxExporter {
         lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
 
         lines.append("  </KOA210-1>")
+        lines.append("</\(rootTag)>")
+        return lines.joined(separator: "\n")
+    }
+
+    private static func buildBlueCashBasisXml(
+        form: EtaxForm,
+        definition: TaxYearDefinition,
+        fields: [MappedEtaxField]
+    ) -> String {
+        let formDef = definition.forms?["blue_cash_basis"]
+        let rootTag = formDef?.rootTag ?? "KOA230"
+        let vr = formDef?.formVer ?? "10.0"
+
+        let formDate = ymd(form.generatedAt)
+        var lines: [String] = []
+        lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        lines.append("<\(rootTag) xmlns=\"http://xml.e-tax.nta.go.jp/XSD/shotoku\" xmlns:gen=\"http://xml.e-tax.nta.go.jp/XSD/general\" VR=\"\(xmlEscape(vr))\" softNM=\"ProjectProfit\" sakuseiNM=\"Project Profit iOS\" sakuseiDay=\"\(formDate)\">")
+        lines.append("  <KOA230-1>")
+        lines.append("    <AOF00000>")
+
+        let representativeExpense = fields.first(where: { isCashBasisDynamicExpense($0.field.id) })
+        let otherExpenseTotal = fields
+            .filter { isCashBasisDynamicExpense($0.field.id) && $0.field.id != representativeExpense?.field.id }
+            .reduce(0) { $0 + ($1.field.value.numberValue ?? 0) }
+
+        if let representativeExpense {
+            lines.append("      <AOF00040>")
+            lines.append("        <AOF00050>\(xmlEscape(cashBasisCategoryName(from: representativeExpense.field.fieldLabel)))</AOF00050>")
+            lines.append("      </AOF00040>")
+        }
+
+        let revenueField = fields.first(where: { $0.field.id == "cash_basis_revenue" })
+        if let revenueValue = revenueField?.field.value.numberValue {
+            lines.append("      <AOF00070>")
+            lines.append("        <AOF00110>\(xmlEscape(String(revenueValue)))</AOF00110>")
+            lines.append("      </AOF00070>")
+        }
+
+        let expenseTotalField = fields.first(where: { $0.field.id == "cash_basis_expense_total" })
+        if representativeExpense != nil || otherExpenseTotal > 0 || expenseTotalField != nil {
+            lines.append("      <AOF00120>")
+            if let representativeExpenseValue = representativeExpense?.field.value.numberValue {
+                lines.append("        <AOF00180>\(xmlEscape(String(representativeExpenseValue)))</AOF00180>")
+            }
+            if otherExpenseTotal > 0 {
+                lines.append("        <AOF00190>\(xmlEscape(String(otherExpenseTotal)))</AOF00190>")
+            }
+            if let expenseTotalValue = expenseTotalField?.field.value.numberValue {
+                lines.append("        <AOF00200>\(xmlEscape(String(expenseTotalValue)))</AOF00200>")
+            }
+            lines.append("      </AOF00120>")
+        }
+
+        if let incomeValue = fields.first(where: { $0.field.id == "cash_basis_income" })?.field.value.numberValue {
+            lines.append("      <AOF00290>\(xmlEscape(String(incomeValue)))</AOF00290>")
+        }
+
+        lines.append("    </AOF00000>")
+        lines.append("  </KOA230-1>")
         lines.append("</\(rootTag)>")
         return lines.joined(separator: "\n")
     }
@@ -241,6 +302,24 @@ enum EtaxXtxExporter {
 
         var mapped: [MappedEtaxField] = []
         for field in form.fields {
+            if form.formType == .blueCashBasis, isCashBasisDynamicExpense(field.id) {
+                let syntheticTag = cashBasisDynamicExpenseXmlTag(for: field.id)
+                let definitionField = TaxFieldDefinition(
+                    internalKey: field.id,
+                    fieldLabel: field.fieldLabel,
+                    xmlTag: syntheticTag,
+                    taxLineRawValue: nil,
+                    section: field.section.rawValue,
+                    dataType: .number,
+                    form: form.formType.definitionFormKey,
+                    idref: nil,
+                    format: nil,
+                    requiredRule: nil
+                )
+                mapped.append(MappedEtaxField(field: field, definition: definitionField, xmlTag: syntheticTag))
+                continue
+            }
+
             guard let definitionField = definitionsByKey[field.id] else {
                 return .failure(.validationFailed(reasons: ["未定義internalKey: \(field.id)"]))
             }
@@ -263,6 +342,32 @@ enum EtaxXtxExporter {
 
     private static func prefix(of xmlTag: String) -> String {
         String(xmlTag.prefix(3)).uppercased()
+    }
+
+    private static func validationFields(
+        for formType: EtaxFormType,
+        mappedFields: [MappedEtaxField]
+    ) -> [EtaxField] {
+        if formType == .blueCashBasis {
+            return mappedFields.map(\.field).filter { !isCashBasisDynamicExpense($0.id) }
+        }
+        return mappedFields.map(\.field)
+    }
+
+    private static func isCashBasisDynamicExpense(_ internalKey: String) -> Bool {
+        internalKey.hasPrefix("cash_basis_expense_") && internalKey != "cash_basis_expense_total"
+    }
+
+    private static func cashBasisDynamicExpenseXmlTag(for internalKey: String) -> String {
+        internalKey == "cash_basis_expense_1" ? "AOF00180" : "AOF00190"
+    }
+
+    private static func cashBasisCategoryName(from fieldLabel: String) -> String {
+        let parts = fieldLabel.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        if parts.count == 2 {
+            return String(parts[1])
+        }
+        return fieldLabel
     }
 
     private static func xmlEscape(_ text: String) -> String {

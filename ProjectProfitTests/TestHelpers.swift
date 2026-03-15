@@ -4,6 +4,9 @@ import SwiftData
 enum TestModelContainer {
     @MainActor
     static func create() throws -> ModelContainer {
-        try ModelContainerFactory.makeAppContainer(inMemory: true)
+        FeatureFlags.clearOverrides()
+        FeatureFlags.useCanonicalPosting = false
+        FeatureFlags.useCanonicalProfileOnly = false
+        return try ModelContainerFactory.makeAppContainer(inMemory: true)
     }
 }

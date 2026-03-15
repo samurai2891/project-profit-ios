@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - CategoryManageView
 
 struct CategoryManageView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var editingCategoryID: String? = nil
@@ -16,17 +16,34 @@ struct CategoryManageView: View {
     @State private var showDeleteConfirmation: Bool = false
     @State private var categoryToDelete: PPCategory? = nil
     @State private var errorMessage: String? = nil
+    @State private var categorySnapshot: CategorySnapshot = .empty
+
+    private var categoryWorkflowUseCase: CategoryWorkflowUseCase {
+        CategoryWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var categoryQueryUseCase: CategoryQueryUseCase {
+        CategoryQueryUseCase(modelContext: modelContext)
+    }
 
     private var expenseCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .expense && $0.archivedAt == nil }
+        categoryQueryUseCase.categories(
+            type: .expense,
+            archived: false,
+            snapshot: categorySnapshot
+        )
     }
 
     private var incomeCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .income && $0.archivedAt == nil }
+        categoryQueryUseCase.categories(
+            type: .income,
+            archived: false,
+            snapshot: categorySnapshot
+        )
     }
 
     private var archivedCategories: [PPCategory] {
-        dataStore.categories.filter { $0.archivedAt != nil }
+        categoryQueryUseCase.archivedCategories(snapshot: categorySnapshot)
     }
 
     var body: some View {
@@ -40,6 +57,9 @@ struct CategoryManageView: View {
             }
             .navigationTitle("カテゴリ管理")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                refreshSnapshot()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完了") {
@@ -259,7 +279,8 @@ struct CategoryManageView: View {
                     Spacer()
 
                     Button {
-                        dataStore.unarchiveCategory(id: category.id)
+                        _ = categoryWorkflowUseCase.unarchiveCategory(id: category.id)
+                        refreshSnapshot()
                     } label: {
                         Text("復元")
                             .font(.caption.weight(.medium))
@@ -294,14 +315,25 @@ struct CategoryManageView: View {
             return
         }
 
-        let sameTypeCategories = dataStore.categories.filter { $0.type == category.type }
-        if sameTypeCategories.contains(where: { $0.id != category.id && $0.name == trimmedName }) {
+        if categoryQueryUseCase.hasDuplicateName(
+            trimmedName,
+            type: category.type,
+            excluding: category.id,
+            snapshot: categorySnapshot
+        ) {
             errorMessage = "同じ名前のカテゴリが既に存在します"
             return
         }
 
-        dataStore.updateCategory(id: category.id, name: trimmedName)
-        cancelEditing()
+        if categoryWorkflowUseCase.updateCategory(
+            id: category.id,
+            input: CategoryUpdateInput(name: trimmedName, type: nil, icon: nil)
+        ) {
+            cancelEditing()
+            refreshSnapshot()
+        } else {
+            errorMessage = "カテゴリを更新できませんでした。"
+        }
     }
 
     private func saveNewCategory(name: String, type: CategoryType) {
@@ -312,13 +344,19 @@ struct CategoryManageView: View {
             return
         }
 
-        let sameTypeCategories = dataStore.categories.filter { $0.type == type }
-        if sameTypeCategories.contains(where: { $0.name == trimmedName }) {
+        if categoryQueryUseCase.hasDuplicateName(
+            trimmedName,
+            type: type,
+            snapshot: categorySnapshot
+        ) {
             errorMessage = "同じ名前のカテゴリが既に存在します"
             return
         }
 
-        dataStore.addCategory(name: trimmedName, type: type, icon: "tag")
+        _ = categoryWorkflowUseCase.createCategory(
+            input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
+        )
+        refreshSnapshot()
 
         switch type {
         case .expense:
@@ -347,11 +385,19 @@ struct CategoryManageView: View {
             return
         }
 
-        dataStore.archiveCategory(id: category.id)
-        categoryToDelete = nil
+        if categoryWorkflowUseCase.archiveCategory(id: category.id) {
+            categoryToDelete = nil
+            refreshSnapshot()
+        } else {
+            errorMessage = "カテゴリをアーカイブできませんでした。"
+        }
     }
 
     // MARK: - Helpers
+
+    private func refreshSnapshot() {
+        categorySnapshot = categoryQueryUseCase.snapshot()
+    }
 
     private var showErrorBinding: Binding<Bool> {
         Binding(
@@ -365,5 +411,4 @@ struct CategoryManageView: View {
 
 #Preview {
     CategoryManageView()
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
 }

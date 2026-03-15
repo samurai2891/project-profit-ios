@@ -28,16 +28,17 @@ extension DataStore {
     func getMonthlySummary(year: Int) -> [MonthlySummaryRow] {
         let start = startOfYear(year)
         let end = endOfYear(year)
-        let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
-        let entryMap = Dictionary(uniqueKeysWithValues: journalEntries.map { ($0.id, $0) })
-        let linesByEntry = Dictionary(grouping: journalLines) { $0.entryId }
+        let projected = projectedCanonicalJournals(fiscalYear: year)
+        let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
+        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
+        let linesByEntry = Dictionary(grouping: projected.lines) { $0.entryId }
         let calendar = Calendar.current
 
         // 月別・科目別集計 (key: accountId, value: 12要素タプル配列)
         var monthlyTotals: [String: [(debit: Int, credit: Int)]] = [:]
         var lineContexts: [JournalLineContext] = []
 
-        for journalLine in journalLines {
+        for journalLine in projected.lines {
             guard postedEntryIds.contains(journalLine.entryId),
                   let entry = entryMap[journalLine.entryId] else { continue }
             guard entry.date >= start, entry.date <= end else { continue }

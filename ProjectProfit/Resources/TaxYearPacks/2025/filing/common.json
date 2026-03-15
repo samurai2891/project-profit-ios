@@ -1,0 +1,26 @@
+{
+  "formType": "common",
+  "taxYear": 2025,
+  "formId": "COMMON",
+  "formVer": "1.0",
+  "rootTag": "COMMON",
+  "displayName": "共通申告者情報",
+  "filingDeadline": "2026-03-16",
+  "sections": [
+    {
+      "id": "declarantInfo",
+      "label": "申告者情報",
+      "fields": [
+        { "internalKey": "declarant_name", "fieldLabel": "氏名", "xmlTag": "ABA00140", "dataType": "text" },
+        { "internalKey": "declarant_name_kana", "fieldLabel": "氏名カナ", "xmlTag": "ABA00130", "dataType": "text" },
+        { "internalKey": "declarant_postal_code", "fieldLabel": "郵便番号", "xmlTag": "ABA00080", "dataType": "text", "format": "digits7" },
+        { "internalKey": "declarant_address", "fieldLabel": "住所", "xmlTag": "ABA00090", "dataType": "text" },
+        { "internalKey": "declarant_phone", "fieldLabel": "電話番号", "xmlTag": "ABA00220", "dataType": "text" },
+        { "internalKey": "declarant_business_name", "fieldLabel": "屋号", "xmlTag": "ABA00170", "dataType": "text" },
+        { "internalKey": "declarant_business_category", "fieldLabel": "事業種類", "xmlTag": "ABA00160", "dataType": "text" },
+        { "internalKey": "declarant_birth_date", "fieldLabel": "生年月日", "xmlTag": "ABA00200", "dataType": "text", "format": "date" },
+        { "internalKey": "declarant_my_number_flag", "fieldLabel": "マイナンバー提出有無", "xmlTag": "ABA00125", "dataType": "flag" }
+      ]
+    }
+  ]
+}

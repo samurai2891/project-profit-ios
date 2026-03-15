@@ -1,8 +1,9 @@
+import SwiftData
 import SwiftUI
 
 /// 月別総括集計表 — NTA「帳簿の記帳のしかた」p.18-19 準拠
 struct MonthlySummaryView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedYear = Calendar.current.component(.year, from: Date())
 
     private var yearOptions: [Int] {
@@ -11,7 +12,7 @@ struct MonthlySummaryView: View {
     }
 
     private var rows: [MonthlySummaryRow] {
-        dataStore.getMonthlySummary(year: selectedYear)
+        ReportingQueryUseCase(modelContext: modelContext).monthlySummaryRows(year: selectedYear)
     }
 
     private let monthLabels = (1...12).map { "\($0)月" }

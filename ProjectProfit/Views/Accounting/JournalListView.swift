@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct JournalListView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var showManualEntryForm = false
@@ -13,17 +12,25 @@ struct JournalListView: View {
     @State private var isReindexing = false
     @State private var errorMessage: String?
 
-    private var projectedJournals: (entries: [PPJournalEntry], lines: [PPJournalLine]) {
-        dataStore.projectedCanonicalJournals()
+    private var readQueryUseCase: JournalReadQueryUseCase {
+        JournalReadQueryUseCase(modelContext: modelContext)
     }
 
-    private var sortedEntries: [PPJournalEntry] {
-        projectedJournals.entries
+    private var journalSnapshot: JournalListSnapshot {
+        readQueryUseCase.listSnapshot()
     }
 
-    private var visibleEntries: [PPJournalEntry] {
+    private var sortedEntries: [JournalListItem] {
+        journalSnapshot.entries
+    }
+
+    private var visibleEntries: [JournalListItem] {
         guard let matchingJournalIds else { return sortedEntries }
         return sortedEntries.filter { matchingJournalIds.contains($0.id) }
+    }
+
+    private var canCreateManualJournals: Bool {
+        journalSnapshot.canCreateManualJournals
     }
 
     var body: some View {
@@ -45,8 +52,7 @@ struct JournalListView: View {
                     if !sortedEntries.isEmpty {
                         ExportMenuButton(
                             target: .journal,
-                            fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
-                            dataStore: dataStore
+                            fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
                         )
                     }
                     Menu {
@@ -60,12 +66,14 @@ struct JournalListView: View {
                         Image(systemName: "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityLabel("検索条件")
-                    Button {
-                        showManualEntryForm = true
-                    } label: {
-                        Image(systemName: "plus")
+                    if canCreateManualJournals {
+                        Button {
+                            showManualEntryForm = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("手動仕訳を追加")
                     }
-                    .accessibilityLabel("手動仕訳を追加")
                 }
             }
         }
@@ -86,7 +94,7 @@ struct JournalListView: View {
         .sheet(isPresented: $showSearchFilters) {
             JournalSearchFilterSheet(
                 form: $searchForm,
-                projects: dataStore.projects
+                projects: journalSnapshot.projects
             )
         }
         .alert("検索エラー", isPresented: Binding(
@@ -101,7 +109,7 @@ struct JournalListView: View {
 
     private var reloadKey: String {
         [
-            dataStore.businessProfile?.id.uuidString ?? "none",
+            journalSnapshot.businessId?.uuidString ?? "none",
             searchForm.reloadToken,
             String(sortedEntries.count)
         ].joined(separator: ":")
@@ -115,14 +123,25 @@ struct JournalListView: View {
             Text(searchForm.hasActiveFilters ? "検索条件に一致する仕訳がありません" : "仕訳がありません")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if !searchForm.hasActiveFilters, !canCreateManualJournals {
+                canonicalCutoverNotice
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 20)
     }
 
     private var journalList: some View {
         List {
+            if !canCreateManualJournals {
+                Section {
+                    canonicalCutoverNotice
+                        .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
+                        .listRowBackground(Color.clear)
+                }
+            }
             ForEach(visibleEntries, id: \.id) { entry in
-                NavigationLink(destination: JournalDetailView(entry: entry)) {
+                NavigationLink(destination: JournalDetailView(entryId: entry.id)) {
                     journalRow(entry)
                 }
             }
@@ -130,13 +149,21 @@ struct JournalListView: View {
         .listStyle(.plain)
     }
 
-    private func journalRow(_ entry: PPJournalEntry) -> some View {
-        let lines = projectedJournals.lines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
-        let debitTotal = lines.reduce(0) { $0 + $1.debit }
-        let creditTotal = lines.reduce(0) { $0 + $1.credit }
+    private var canonicalCutoverNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("手動仕訳の追加は停止中です", systemImage: "arrow.trianglehead.branch")
+                .font(.subheadline.weight(.semibold))
+            Text("canonical 正本へ切り替え済みのため、仕訳は証憑タブと承認タブから作成してください。決算整理は決算仕訳画面から管理します。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppColors.warning.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
+    private func journalRow(_ entry: JournalListItem) -> some View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(formatDate(entry.date))
@@ -155,7 +182,7 @@ struct JournalListView: View {
                     Text("借方")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text(formatCurrency(debitTotal))
+                    Text(formatCurrency(entry.debitTotal))
                         .font(.caption.weight(.medium).monospacedDigit())
                 }
                 Spacer()
@@ -163,7 +190,7 @@ struct JournalListView: View {
                     Text("貸方")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text(formatCurrency(creditTotal))
+                    Text(formatCurrency(entry.creditTotal))
                         .font(.caption.weight(.medium).monospacedDigit())
                 }
             }
@@ -198,7 +225,7 @@ struct JournalListView: View {
 
     private func refreshSearchResults() async {
         guard searchForm.hasActiveFilters,
-              let businessId = dataStore.businessProfile?.id
+              let businessId = journalSnapshot.businessId
         else {
             matchingJournalIds = nil
             return
@@ -210,7 +237,10 @@ struct JournalListView: View {
         do {
             let criteria = searchForm.makeCriteria(businessId: businessId)
             let canonicalMatches = try await JournalSearchUseCase(modelContext: modelContext).search(criteria: criteria)
-            let supplementalMatches = supplementalMatchIds(criteria: criteria)
+            let supplementalMatches = readQueryUseCase.supplementalMatchIds(
+                criteria: criteria,
+                snapshot: journalSnapshot
+            )
             matchingJournalIds = Set(canonicalMatches).union(supplementalMatches)
         } catch {
             matchingJournalIds = nil
@@ -218,46 +248,8 @@ struct JournalListView: View {
         }
     }
 
-    private func supplementalMatchIds(criteria: JournalSearchCriteria) -> Set<UUID> {
-        let supplementalEntries = sortedEntries.filter { entry in
-            entry.sourceKey.hasPrefix("manual:")
-                || entry.sourceKey.hasPrefix("opening:")
-                || entry.sourceKey.hasPrefix("closing:")
-        }
-
-        return Set(supplementalEntries.compactMap { entry in
-            if let dateRange = criteria.dateRange, !dateRange.contains(entry.date) {
-                return nil
-            }
-
-            let lines = projectedJournals.lines.filter { $0.entryId == entry.id }
-            let totalAmount = Decimal(lines.reduce(0) { $0 + max($1.debit, $1.credit) })
-            if let amountRange = criteria.amountRange, !amountRange.contains(totalAmount) {
-                return nil
-            }
-
-            if criteria.counterpartyText != nil
-                || criteria.registrationNumber != nil
-                || criteria.projectId != nil
-                || criteria.fileHash != nil {
-                return nil
-            }
-
-            if let textQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery) {
-                let searchText = SearchIndexNormalizer.normalizeText(
-                    ([entry.memo] + lines.map(\.memo)).joined(separator: " ")
-                )
-                if !searchText.contains(textQuery) {
-                    return nil
-                }
-            }
-
-            return entry.id
-        })
-    }
-
     private func rebuildJournalIndex() async {
-        guard let businessId = dataStore.businessProfile?.id else { return }
+        guard let businessId = journalSnapshot.businessId else { return }
         isReindexing = true
         defer { isReindexing = false }
 

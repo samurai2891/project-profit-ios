@@ -4,15 +4,18 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(NotificationService.self) private var notificationService
-    @State private var dataStore: DataStore?
+    @State private var appStore: DataStore?
     @State private var hasInitialized = false
     @State private var pendingRecurringCount = 0
     @State private var showRecurringPreview = false
 
     var body: some View {
         Group {
-            if let store = dataStore {
-                MainTabView()
+            if let store = appStore {
+                MainTabView(
+                    store: store,
+                    appShellWorkflowUseCase: appShellWorkflowUseCase(for: store)
+                )
                     .environment(store)
                     .sheet(isPresented: $showRecurringPreview) {
                         RecurringPreviewView()
@@ -29,29 +32,100 @@ struct ContentView: View {
             let store = DataStore(modelContext: modelContext)
             let notifService = notificationService
             store.onRecurringScheduleChanged = { recurrings in
-                Task { @MainActor in await notifService.rescheduleAll(recurringTransactions: recurrings) }
+                Task { @MainActor in
+                    await notifService.rescheduleAll(recurringTransactions: recurrings)
+                    refreshRecurringPreviewState(for: store)
+                }
             }
-            store.loadData()
-            _ = await store.reloadProfileSettings()
-            store.recalculateAllPartialPeriodProjects()
-            let pendingItems = store.previewRecurringTransactions()
-            pendingRecurringCount = pendingItems.count
+            await appBootstrapWorkflowUseCase(for: store).initialize()
+            await UITestBootstrap.seedIfNeeded(modelContext: modelContext, store: store)
+            appStateRefreshWorkflowUseCase(for: store).refreshAppState()
             await notificationService.rescheduleAll(recurringTransactions: store.recurringTransactions)
-            self.dataStore = store
-            if !pendingItems.isEmpty {
+            self.appStore = store
+            refreshRecurringPreviewState(for: store)
+        }
+    }
+
+    @MainActor
+    private func refreshRecurringPreviewState(for store: DataStore) {
+        Task { @MainActor in
+            let pendingItems = await appShellWorkflowUseCase(for: store).loadRecurringPreview()
+            pendingRecurringCount = pendingItems.count
+            if pendingRecurringCount > 0 {
                 showRecurringPreview = true
             }
         }
     }
+
+    @MainActor
+    private func appBootstrapWorkflowUseCase(for store: DataStore) -> AppBootstrapWorkflowUseCase {
+        AppBootstrapWorkflowUseCase(
+            ports: .init(
+                refreshAppState: {
+                    appStateRefreshWorkflowUseCase(for: store).refreshAppState()
+                },
+                prepareCanonicalProfile: { defaultTaxYear in
+                    await profileSettingsWorkflowUseCase(for: store).loadProfile(defaultTaxYear: defaultTaxYear)
+                }
+            )
+        )
+    }
+
+    @MainActor
+    private func appShellWorkflowUseCase(for store: DataStore) -> AppShellWorkflowUseCase {
+        AppShellWorkflowUseCase(
+            ports: .init(
+                refreshAppState: {
+                    appStateRefreshWorkflowUseCase(for: store).refreshAppState()
+                },
+                loadRecurringPreview: {
+                    await RecurringWorkflowUseCase(modelContext: store.modelContext).previewRecurringTransactions()
+                },
+                readCurrentError: { store.lastError },
+                writeCurrentError: { store.lastError = $0 }
+            )
+        )
+    }
+
+    @MainActor
+    private func appStateRefreshWorkflowUseCase(for store: DataStore) -> AppStateRefreshWorkflowUseCase {
+        AppStateRefreshWorkflowUseCase(
+            ports: .init(
+                loadAppState: {
+                    store.loadData()
+                },
+                recalculatePartialPeriodProjects: {
+                    store.recalculateAllPartialPeriodProjects()
+                }
+            )
+        )
+    }
+
+    @MainActor
+    private func profileSettingsWorkflowUseCase(for store: DataStore) -> ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(
+            modelContext: store.modelContext,
+            ports: .init(
+                readSensitivePayload: { store.profileSensitivePayload },
+                readCurrentTaxYear: { store.currentTaxYearProfile?.taxYear },
+                applyState: { store.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    store.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { store.lastError = $0 }
+            )
+        )
+    }
 }
 
 struct MainTabView: View {
-    @Environment(DataStore.self) private var dataStore
+    let store: DataStore
+    let appShellWorkflowUseCase: AppShellWorkflowUseCase
 
     private var showErrorBinding: Binding<Bool> {
         Binding(
-            get: { dataStore.lastError != nil },
-            set: { if !$0 { dataStore.lastError = nil } }
+            get: { appShellWorkflowUseCase.currentError() != nil },
+            set: { if !$0 { appShellWorkflowUseCase.dismissCurrentError() } }
         )
     }
 
@@ -86,14 +160,16 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                ReportView()
+                FilingDashboardView()
             }
             .tabItem {
-                Label("レポート", systemImage: "chart.bar.doc.horizontal.fill")
+                Label("確定申告", systemImage: "doc.text.fill")
             }
 
             NavigationStack {
-                SettingsView()
+                SettingsMainView(reloadStoreState: {
+                    appShellWorkflowUseCase.refreshAppState()
+                })
             }
             .tabItem {
                 Label("設定", systemImage: "gearshape.fill")
@@ -102,10 +178,10 @@ struct MainTabView: View {
         .tint(AppColors.primary)
         .alert("エラー", isPresented: showErrorBinding) {
             Button("OK", role: .cancel) {
-                dataStore.lastError = nil
+                appShellWorkflowUseCase.dismissCurrentError()
             }
         } message: {
-            Text(dataStore.lastError?.errorDescription ?? "不明なエラーが発生しました")
+            Text(appShellWorkflowUseCase.currentError()?.errorDescription ?? "不明なエラーが発生しました")
         }
     }
 }

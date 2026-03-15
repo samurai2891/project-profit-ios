@@ -6,7 +6,7 @@
 
 import UIKit
 
-class LedgerPDFExportService {
+final class LedgerPDFExportService {
 
     static let shared = LedgerPDFExportService()
 

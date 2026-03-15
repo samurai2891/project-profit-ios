@@ -1,19 +1,34 @@
+import SwiftData
 import SwiftUI
 
 struct FixedAssetListView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     @State private var showAddForm = false
     @State private var showBulkPostConfirmation = false
-    @State private var showSchedule = false
+    @State private var reloadToken = 0
+    @State private var errorMessage: String?
 
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
     }
 
+    private var queryUseCase: FixedAssetQueryUseCase {
+        FixedAssetQueryUseCase(modelContext: modelContext)
+    }
+
+    private var snapshot: FixedAssetListSnapshot {
+        _ = reloadToken
+        return queryUseCase.listSnapshot(currentYear: currentYear)
+    }
+
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(modelContext: modelContext)
+    }
+
     var body: some View {
         Group {
-            if dataStore.fixedAssets.isEmpty {
+            if snapshot.assets.isEmpty {
                 emptyState
             } else {
                 assetList
@@ -23,11 +38,10 @@ struct FixedAssetListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
-                    if !dataStore.fixedAssets.isEmpty {
+                    if !snapshot.assets.isEmpty {
                         ExportMenuButton(
                             target: .fixedAssets,
-                            fiscalYear: currentYear,
-                            dataStore: dataStore
+                            fiscalYear: currentYear
                         )
                         NavigationLink(destination: FixedAssetScheduleView()) {
                             Image(systemName: "tablecells")
@@ -51,16 +65,40 @@ struct FixedAssetListView: View {
                 FixedAssetFormView()
             }
         }
+        .onAppear {
+            reloadToken += 1
+        }
+        .onChange(of: showAddForm) { _, isPresented in
+            if !isPresented {
+                reloadToken += 1
+            }
+        }
         .alert("一括計上", isPresented: $showBulkPostConfirmation) {
             Button("計上") {
-                let count = dataStore.postAllDepreciations(fiscalYear: currentYear)
-                if count == 0 {
-                    dataStore.lastError = .invalidInput(message: "計上可能な資産がありません")
+                do {
+                    let count = try fixedAssetWorkflowUseCase.postAllDepreciations(fiscalYear: currentYear)
+                    if count == 0 {
+                        errorMessage = "計上可能な資産がありません"
+                    } else {
+                        reloadToken += 1
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
                 }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("\(currentYear)年の減価償却を全資産に対して一括計上しますか？")
+        }
+        .alert("固定資産台帳を更新できません", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -80,7 +118,7 @@ struct FixedAssetListView: View {
 
     private var assetList: some View {
         List {
-            ForEach(dataStore.fixedAssets, id: \.id) { asset in
+            ForEach(snapshot.assets, id: \.id) { asset in
                 NavigationLink(destination: FixedAssetDetailView(assetId: asset.id)) {
                     assetRow(asset)
                 }
@@ -111,10 +149,7 @@ struct FixedAssetListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                let accumulated = dataStore.calculatePriorAccumulatedDepreciation(
-                    asset: asset, beforeYear: currentYear + 1
-                )
-                let bookValue = asset.acquisitionCost - accumulated
+                let bookValue = snapshot.bookValueByAssetId[asset.id] ?? asset.acquisitionCost
                 Text("帳簿: ¥\(bookValue.formatted())")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

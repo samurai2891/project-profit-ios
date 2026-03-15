@@ -16,7 +16,7 @@ enum FilterStatus: String, CaseIterable, Identifiable {
 // MARK: - ProjectsView
 
 struct ProjectsView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel: ProjectsViewModel?
     @State private var showAddSheet = false
@@ -27,7 +27,7 @@ struct ProjectsView: View {
     @State private var showBatchDeleteConfirmation = false
 
     private var resolvedViewModel: ProjectsViewModel {
-        viewModel ?? ProjectsViewModel(dataStore: dataStore)
+        viewModel ?? ProjectsViewModel(modelContext: modelContext)
     }
 
     var body: some View {
@@ -66,7 +66,9 @@ struct ProjectsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showAddSheet) {
+        .sheet(isPresented: $showAddSheet, onDismiss: {
+            viewModel?.reload()
+        }) {
             ProjectFormView(project: nil)
         }
         .alert("プロジェクトを削除", isPresented: $showDeleteConfirmation) {
@@ -81,7 +83,9 @@ struct ProjectsView: View {
         }
         .task {
             if viewModel == nil {
-                viewModel = ProjectsViewModel(dataStore: dataStore)
+                viewModel = ProjectsViewModel(modelContext: modelContext)
+            } else {
+                viewModel?.reload()
             }
         }
     }
@@ -146,7 +150,10 @@ private extension ProjectsView {
                 List(selection: $selectedProjectIds) {
                     ForEach(resolvedViewModel.filteredProjects) { project in
                         NavigationLink(destination: ProjectDetailView(projectId: project.id)) {
-                            ProjectCardView(project: project)
+                            ProjectCardView(
+                                project: project,
+                                summary: resolvedViewModel.getProjectSummary(projectId: project.id)
+                            )
                         }
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -287,12 +294,7 @@ private extension ProjectsView {
 
 private struct ProjectCardView: View {
     let project: PPProject
-
-    @Environment(DataStore.self) private var dataStore
-
-    private var summary: ProjectSummary? {
-        dataStore.getProjectSummary(projectId: project.id)
-    }
+    let summary: ProjectSummary?
 
     private var projectIncome: Int {
         summary?.totalIncome ?? 0
@@ -466,5 +468,5 @@ struct StatusBadge: View {
 
 #Preview {
     ProjectsView()
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
+        .modelContainer(for: [PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self], inMemory: true)
 }

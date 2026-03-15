@@ -94,7 +94,6 @@ struct BackupService {
         let allAccounts = try fetchAll(PPAccount.self)
         let allJournalEntries = try fetchAll(PPJournalEntry.self)
         let allJournalLines = try fetchAll(PPJournalLine.self)
-        let allProfiles = try fetchAll(PPAccountingProfile.self)
         let allUserRules = try fetchAll(PPUserRule.self)
         let allFixedAssets = try fetchAll(PPFixedAsset.self)
         let allInventory = try fetchAll(PPInventoryRecord.self)
@@ -180,7 +179,8 @@ struct BackupService {
                 accounts: allAccounts.map(LegacyAccountSnapshot.init),
                 journalEntries: journalEntries.map(LegacyJournalEntrySnapshot.init),
                 journalLines: journalLines.map(LegacyJournalLineSnapshot.init),
-                accountingProfiles: allProfiles.map(LegacyAccountingProfileSnapshot.init),
+                // Legacy profile snapshots are restore-compat only. New backups use canonical profiles as the single source of truth.
+                accountingProfiles: [],
                 userRules: allUserRules.map(LegacyUserRuleSnapshot.init),
                 fixedAssets: allFixedAssets.map(LegacyFixedAssetSnapshot.init),
                 inventoryRecords: inventoryRecords.map(LegacyInventoryRecordSnapshot.init),
@@ -205,13 +205,13 @@ struct BackupService {
     }
 
     private func loadSecureProfiles(payload: AppSnapshotPayload) -> [SnapshotSecureProfile] {
-        let profileIds = Set(payload.legacy.accountingProfiles.map(\.id))
-            .union(payload.canonical.businessProfiles.map { $0.id.uuidString })
-        return profileIds.compactMap { profileId in
-            guard let payload = ProfileSecureStore.load(profileId: profileId) else {
+        // Secure profile payloads are exported only for canonical business profiles.
+        return payload.canonical.businessProfiles.compactMap { profile in
+            let canonicalProfileId = profile.id.uuidString
+            guard let payload = ProfileSecureStore.load(profileId: canonicalProfileId) else {
                 return nil
             }
-            return SnapshotSecureProfile(profileId: profileId, payload: payload)
+            return SnapshotSecureProfile(profileId: canonicalProfileId, payload: payload)
         }
     }
 

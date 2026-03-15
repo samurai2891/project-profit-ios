@@ -3,8 +3,50 @@ import SwiftData
 
 /// 確定申告ダッシュボード
 struct FilingDashboardView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
+
+    enum WorkflowDestinationID: String, Equatable {
+        case booksWorkspace
+        case withholding
+        case closingEntry
+        case etaxExport
+    }
+
+    struct WorkflowItem: Equatable {
+        let icon: String
+        let title: String
+        let subtitle: String
+        let destinationID: WorkflowDestinationID
+    }
+
+    static let booksWorkspaceTitle = "帳簿ワークスペース"
+    static let booksWorkspaceSubtitle = "仕訳確認・分析・申告準備の入口"
+    static let workflowItems: [WorkflowItem] = [
+        WorkflowItem(
+            icon: "books.vertical",
+            title: booksWorkspaceTitle,
+            subtitle: booksWorkspaceSubtitle,
+            destinationID: .booksWorkspace
+        ),
+        WorkflowItem(
+            icon: "doc.text.magnifyingglass",
+            title: "支払調書",
+            subtitle: "源泉徴収の年次一覧と支払先単票を確認",
+            destinationID: .withholding
+        ),
+        WorkflowItem(
+            icon: "doc.badge.gearshape",
+            title: "決算仕訳",
+            subtitle: "締め処理前の最終確認と仕訳生成",
+            destinationID: .closingEntry
+        ),
+        WorkflowItem(
+            icon: "square.and.arrow.up",
+            title: "e-Tax出力",
+            subtitle: "確定申告データの出力",
+            destinationID: .etaxExport
+        ),
+    ]
 
     @State private var selectedFiscalYear: Int
     @State private var preflightIssues: [String] = []
@@ -28,11 +70,8 @@ struct FilingDashboardView: View {
         }
         .navigationTitle("確定申告")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await refreshState()
-        }
-        .onChange(of: selectedFiscalYear) {
-            Task { await refreshState() }
+        .task(id: selectedFiscalYear) {
+            await refreshState(for: selectedFiscalYear)
         }
     }
 
@@ -130,29 +169,36 @@ struct FilingDashboardView: View {
             Text("申告ワークフロー")
                 .font(.subheadline.weight(.semibold))
 
-            NavigationLink {
-                AccountingHomeView()
-            } label: {
-                workflowRow(
-                    icon: "doc.text.magnifyingglass",
-                    title: "帳簿・決算書",
-                    subtitle: "仕訳帳・元帳・試算表・決算書の確認"
-                )
-            }
-
-            NavigationLink {
-                EtaxExportView()
-            } label: {
-                workflowRow(
-                    icon: "square.and.arrow.up",
-                    title: "e-Tax出力",
-                    subtitle: "確定申告データの出力"
-                )
+            ForEach(Self.workflowItems, id: \.destinationID) { item in
+                NavigationLink {
+                    workflowDestination(for: item.destinationID)
+                } label: {
+                    workflowRow(
+                        icon: item.icon,
+                        title: item.title,
+                        subtitle: item.subtitle
+                    )
+                }
+                .accessibilityIdentifier("filing.workflow.\(item.destinationID.rawValue)")
             }
         }
         .padding(16)
         .background(AppColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func workflowDestination(for destinationID: Self.WorkflowDestinationID) -> some View {
+        switch destinationID {
+        case .booksWorkspace:
+            BooksWorkspaceView()
+        case .withholding:
+            WithholdingStatementView(initialFiscalYear: selectedFiscalYear)
+        case .closingEntry:
+            ClosingEntryView()
+        case .etaxExport:
+            EtaxExportView()
+        }
     }
 
     private func workflowRow(icon: String, title: String, subtitle: String) -> some View {
@@ -182,26 +228,23 @@ struct FilingDashboardView: View {
 
     // MARK: - Data
 
-    private func refreshState() async {
-        yearLockState = dataStore.yearLockState(for: selectedFiscalYear)
-
+    private func refreshState(for fiscalYear: Int) async {
         isCheckingPreflight = true
         defer { isCheckingPreflight = false }
 
-        guard let businessId = dataStore.businessProfile?.id else {
-            preflightIssues = []
-            return
-        }
-
         do {
-            let useCase = FilingPreflightUseCase(modelContext: modelContext)
-            let report = try useCase.preflightReport(
-                businessId: businessId,
-                taxYear: selectedFiscalYear,
-                context: .export
-            )
-            preflightIssues = report.blockingIssues.map(\.message)
+            let snapshot = try await FilingDashboardQueryUseCase(modelContext: modelContext)
+                .snapshot(fiscalYear: fiscalYear)
+            guard !Task.isCancelled, fiscalYear == selectedFiscalYear else {
+                return
+            }
+            yearLockState = snapshot.yearLockState
+            preflightIssues = snapshot.preflightIssues
         } catch {
+            guard !Task.isCancelled, fiscalYear == selectedFiscalYear else {
+                return
+            }
+            yearLockState = .open
             preflightIssues = [error.localizedDescription]
         }
     }

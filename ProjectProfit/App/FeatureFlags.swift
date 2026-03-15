@@ -9,11 +9,17 @@ enum FeatureFlags {
         static let useLegacyLedger = "ff_useLegacyLedger"
         static let useCanonicalEvidence = "ff_useCanonicalEvidence"
         static let useCanonicalTaxEngine = "ff_useCanonicalTaxEngine"
+        static let useCanonicalProfileOnly = "ff_useCanonicalProfileOnly"
     }
 
     /// 新正本系統 (Evidence → Candidate → PostedJournal) を使用
     static var useCanonicalPosting: Bool {
-        get { UserDefaults.standard.bool(forKey: Keys.useCanonicalPosting) }
+        get {
+            if UserDefaults.standard.object(forKey: Keys.useCanonicalPosting) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Keys.useCanonicalPosting)
+        }
         set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalPosting) }
     }
 
@@ -40,6 +46,17 @@ enum FeatureFlags {
         set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalTaxEngine) }
     }
 
+    /// canonical profile のみ使用（PPAccountingProfile の新規作成を停止）
+    static var useCanonicalProfileOnly: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: Keys.useCanonicalProfileOnly) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: Keys.useCanonicalProfileOnly)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Keys.useCanonicalProfileOnly) }
+    }
+
     /// 全フラグの明示設定を解除してデフォルト値に戻す
     static func resetToDefaults() {
         clearOverrides()
@@ -51,6 +68,7 @@ enum FeatureFlags {
         useLegacyLedger = false
         useCanonicalEvidence = true
         useCanonicalTaxEngine = true
+        useCanonicalProfileOnly = true
     }
 
     /// テスト・切り戻し確認用に全フラグの上書きを削除する
@@ -59,6 +77,7 @@ enum FeatureFlags {
         UserDefaults.standard.removeObject(forKey: Keys.useLegacyLedger)
         UserDefaults.standard.removeObject(forKey: Keys.useCanonicalEvidence)
         UserDefaults.standard.removeObject(forKey: Keys.useCanonicalTaxEngine)
+        UserDefaults.standard.removeObject(forKey: Keys.useCanonicalProfileOnly)
     }
 
     /// デバッグ用: 現在のフラグ状態
@@ -69,6 +88,7 @@ enum FeatureFlags {
           useLegacyLedger: \(useLegacyLedger)
           useCanonicalEvidence: \(useCanonicalEvidence)
           useCanonicalTaxEngine: \(useCanonicalTaxEngine)
+          useCanonicalProfileOnly: \(useCanonicalProfileOnly)
         """
     }
 }

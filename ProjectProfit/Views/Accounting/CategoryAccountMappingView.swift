@@ -1,24 +1,45 @@
 import SwiftUI
 
 struct CategoryAccountMappingView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
+    @State private var categorySnapshot: CategorySnapshot = .empty
+
+    private var categoryWorkflowUseCase: CategoryWorkflowUseCase {
+        CategoryWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var categoryQueryUseCase: CategoryQueryUseCase {
+        CategoryQueryUseCase(modelContext: modelContext)
+    }
 
     private var expenseCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .expense }
+        categoryQueryUseCase.categories(
+            type: .expense,
+            archived: false,
+            snapshot: categorySnapshot
+        )
     }
 
     private var incomeCategories: [PPCategory] {
-        dataStore.categories.filter { $0.type == .income }
+        categoryQueryUseCase.categories(
+            type: .income,
+            archived: false,
+            snapshot: categorySnapshot
+        )
     }
 
     private var expenseAccounts: [PPAccount] {
-        dataStore.accounts.filter { $0.accountType == .expense && $0.isActive }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        categoryQueryUseCase.accounts(
+            for: .expense,
+            snapshot: categorySnapshot
+        )
     }
 
     private var revenueAccounts: [PPAccount] {
-        dataStore.accounts.filter { $0.accountType == .revenue && $0.isActive }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        categoryQueryUseCase.accounts(
+            for: .income,
+            snapshot: categorySnapshot
+        )
     }
 
     var body: some View {
@@ -37,6 +58,9 @@ struct CategoryAccountMappingView: View {
         }
         .navigationTitle("カテゴリ紐付け")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            refreshSnapshot()
+        }
     }
 
     private func mappingRow(category: PPCategory, availableAccounts: [PPAccount]) -> some View {
@@ -44,8 +68,10 @@ struct CategoryAccountMappingView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.name)
                     .font(.subheadline)
-                if let linkedId = category.linkedAccountId,
-                   let account = dataStore.accounts.first(where: { $0.id == linkedId }) {
+                if let account = categoryQueryUseCase.linkedAccount(
+                    for: category,
+                    snapshot: categorySnapshot
+                ) {
                     Text("\(account.code) \(account.name)")
                         .font(.caption)
                         .foregroundStyle(AppColors.primary)
@@ -60,12 +86,14 @@ struct CategoryAccountMappingView: View {
 
             Menu {
                 Button("未設定") {
-                    dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: nil)
+                    _ = categoryWorkflowUseCase.updateLinkedAccount(categoryId: category.id, accountId: nil)
+                    refreshSnapshot()
                 }
 
                 ForEach(availableAccounts, id: \.id) { account in
                     Button("\(account.code) \(account.name)") {
-                        dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: account.id)
+                        _ = categoryWorkflowUseCase.updateLinkedAccount(categoryId: category.id, accountId: account.id)
+                        refreshSnapshot()
                     }
                 }
             } label: {
@@ -74,5 +102,9 @@ struct CategoryAccountMappingView: View {
                     .foregroundStyle(AppColors.primary)
             }
         }
+    }
+
+    private func refreshSnapshot() {
+        categorySnapshot = categoryQueryUseCase.snapshot()
     }
 }

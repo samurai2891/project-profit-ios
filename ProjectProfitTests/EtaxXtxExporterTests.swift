@@ -3,6 +3,8 @@ import XCTest
 
 final class EtaxXtxExporterTests: XCTestCase {
 
+    private let cashBasisXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA230-010.xsd"
+
     private func makeForm(
         fields: [EtaxField] = [],
         formType: EtaxFormType = .blueReturn
@@ -35,6 +37,17 @@ final class EtaxXtxExporterTests: XCTestCase {
             EtaxField(id: "shushi_expense_taxes", fieldLabel: "租税公課", taxLine: .taxesExpense, value: 80_000, section: .expenses),
             EtaxField(id: "shushi_expense_total", fieldLabel: "経費合計", taxLine: nil, value: 250_000, section: .expenses),
             EtaxField(id: "shushi_income_net", fieldLabel: "所得金額", taxLine: nil, value: 2_750_000, section: .income),
+        ]
+    }
+
+    private func sampleCashBasisFields() -> [EtaxField] {
+        [
+            EtaxField(id: "cash_basis_revenue", fieldLabel: "ア 収入金額", taxLine: nil, value: 3_000_000, section: .revenue),
+            EtaxField(id: "cash_basis_expense_1", fieldLabel: "イ 通信費", taxLine: nil, value: 120_000, section: .expenses),
+            EtaxField(id: "cash_basis_expense_2", fieldLabel: "ウ 旅費交通費", taxLine: nil, value: 80_000, section: .expenses),
+            EtaxField(id: "cash_basis_expense_3", fieldLabel: "エ 消耗品費", taxLine: nil, value: 50_000, section: .expenses),
+            EtaxField(id: "cash_basis_expense_total", fieldLabel: "経費合計", taxLine: nil, value: 250_000, section: .expenses),
+            EtaxField(id: "cash_basis_income", fieldLabel: "所得金額", taxLine: nil, value: 2_750_000, section: .income),
         ]
     }
 
@@ -179,6 +192,65 @@ final class EtaxXtxExporterTests: XCTestCase {
     }
 
     @MainActor
+    func testGenerateXtxBlueCashBasisUsesDedicatedKOA230Route() {
+        let form = makeForm(fields: sampleCashBasisFields(), formType: .blueCashBasis)
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success(let data):
+            let xml = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(xml.contains("<KOA230 "))
+            XCTAssertTrue(xml.contains("VR=\"10.0\""))
+            XCTAssertTrue(xml.contains("<KOA230-1>"))
+            XCTAssertTrue(xml.contains("<AOF00000>"))
+            XCTAssertTrue(xml.contains("<AOF00110>3000000</AOF00110>"))
+            XCTAssertTrue(xml.contains("<AOF00050>通信費</AOF00050>"))
+            XCTAssertTrue(xml.contains("<AOF00180>120000</AOF00180>"))
+            XCTAssertTrue(xml.contains("<AOF00190>130000</AOF00190>"))
+            XCTAssertTrue(xml.contains("<AOF00200>250000</AOF00200>"))
+            XCTAssertTrue(xml.contains("<AOF00290>2750000</AOF00290>"))
+            XCTAssertFalse(xml.contains("<KOA210-1>"))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testGenerateXtxWritesCashFixtureWhenEnvIsSet() throws {
+        let form = makeForm(fields: sampleCashBasisFields(), formType: .blueCashBasis)
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success(let data):
+            let xml = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(xml.contains("<KOA230 "))
+            XCTAssertTrue(xml.contains("<AOF00180>120000</AOF00180>"))
+            XCTAssertTrue(xml.contains("<AOF00190>130000</AOF00190>"))
+            emitFixturePayloadForCI(data, marker: "CASH")
+            try writeFixtureIfRequested(data, envKey: "ETAX_XSD_CASH_EXPORT_XML")
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testGenerateXtxBlueCashBasisProducesXmlForCurrentOfficialXsdValidation() throws {
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cashBasisXsdPath), "cash basis XSD should exist at \(cashBasisXsdPath)")
+
+        let form = makeForm(fields: sampleCashBasisFields(), formType: .blueCashBasis)
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success(let data):
+            let xml = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(xml.contains("<KOA230 "))
+            XCTAssertTrue(xml.contains("<AOF00110>3000000</AOF00110>"))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    @MainActor
     func testGenerateXtxXmlEscaping() {
         let fields = [
             EtaxField(id: "declarant_name", fieldLabel: "氏名", taxLine: nil, value: "テスト<>&'\"", section: .declarantInfo)
@@ -259,6 +331,22 @@ final class EtaxXtxExporterTests: XCTestCase {
             XCTAssertEqual(lines.count, 8)
         } else {
             XCTFail("Expected success")
+        }
+    }
+
+    @MainActor
+    func testGenerateCsvBlueCashBasisKeepsDynamicExpenseRows() {
+        let form = makeForm(fields: sampleCashBasisFields(), formType: .blueCashBasis)
+        let result = EtaxXtxExporter.generateCsv(form: form)
+
+        switch result {
+        case .success(let data):
+            let csv = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(csv.contains("\"cash_basis_expense_1\",\"AOF00180\",\"blue_cash_basis\""))
+            XCTAssertTrue(csv.contains("\"cash_basis_expense_2\",\"AOF00190\",\"blue_cash_basis\""))
+            XCTAssertTrue(csv.contains("\"cash_basis_expense_3\",\"AOF00190\",\"blue_cash_basis\""))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
         }
     }
 }

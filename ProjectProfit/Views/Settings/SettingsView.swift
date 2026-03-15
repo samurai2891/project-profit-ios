@@ -1,10 +1,11 @@
 import SwiftUI
+import SwiftData
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @AppStorage(FiscalYearSettings.userDefaultsKey) private var fiscalStartMonth = FiscalYearSettings.defaultStartMonth
-    @State private var showCategorySheet = false
+    private let reloadStoreState: @MainActor () -> Void
     @State private var showDeleteAlert = false
     @State private var showFileImporter = false
     @State private var showRestoreImporter = false
@@ -18,6 +19,35 @@ struct SettingsView: View {
     @State private var operationMessage: String?
     @State private var showOperationAlert = false
     @State private var selectedBackupYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
+    @State private var overviewSnapshot = SettingsOverviewSnapshot(
+        projectCount: 0,
+        transactionCount: 0,
+        recurringTransactionCount: 0,
+        availableBackupYears: [currentFiscalYear(startMonth: FiscalYearSettings.defaultStartMonth)]
+    )
+
+    init(reloadStoreState: @escaping @MainActor () -> Void = {}) {
+        self.reloadStoreState = reloadStoreState
+    }
+
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(modelContext: modelContext)
+    }
+
+    private var settingsMaintenanceUseCase: SettingsMaintenanceUseCase {
+        SettingsMaintenanceUseCase(modelContext: modelContext)
+    }
+
+    private var settingsMaintenanceWorkflowUseCase: SettingsMaintenanceWorkflowUseCase {
+        SettingsMaintenanceWorkflowUseCase(
+            modelContext: modelContext,
+            reloadStoreState: reloadStoreState
+        )
+    }
+
+    private var settingsOverviewUseCase: SettingsOverviewUseCase {
+        SettingsOverviewUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         ScrollView {
@@ -48,16 +78,18 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.large)
+        .task(id: fiscalStartMonth) {
+            refreshOverview()
+        }
         .alert("データを削除", isPresented: $showDeleteAlert) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {
-                dataStore.deleteAllData()
+                settingsMaintenanceUseCase.deleteAllData()
+                reloadStoreState()
+                refreshOverview()
             }
         } message: {
             Text("すべてのデータを削除しますか？この操作は取り消せません。")
-        }
-        .sheet(isPresented: $showCategorySheet) {
-            CategoryManageView()
         }
         .sheet(isPresented: $showBackupShareSheet) {
             if let backupShareURL {
@@ -73,20 +105,36 @@ struct SettingsView: View {
             case .success(let urls):
                 guard let url = urls.first else { return }
                 guard url.startAccessingSecurityScopedResource() else {
-                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルへのアクセスが拒否されました。"])
+                    importResult = CSVImportResult(errors: ["ファイルへのアクセスが拒否されました。"])
                     showImportResultAlert = true
                     return
                 }
                 defer { url.stopAccessingSecurityScopedResource() }
                 do {
-                    let csvString = try String(contentsOf: url, encoding: .utf8)
-                    importResult = dataStore.importTransactions(from: csvString)
+                    let fileData = try Data(contentsOf: url)
+                    guard let csvString = String(data: fileData, encoding: .utf8) else {
+                        throw AppError.invalidInput(message: "CSV の文字コードを UTF-8 として読み取れません")
+                    }
+                    Task {
+                        importResult = await postingIntakeUseCase.importTransactions(
+                            request: CSVImportRequest(
+                                csvString: csvString,
+                                originalFileName: url.lastPathComponent,
+                                fileData: fileData,
+                                mimeType: "text/csv",
+                                channel: .settingsTransactionCSV
+                            )
+                        )
+                        reloadStoreState()
+                        refreshOverview()
+                        showImportResultAlert = true
+                    }
                 } catch {
-                    importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"])
+                    importResult = CSVImportResult(errors: ["ファイルの読み込みに失敗しました: \(error.localizedDescription)"])
+                    showImportResultAlert = true
                 }
-                showImportResultAlert = true
             case .failure(let error):
-                importResult = CSVImportResult(successCount: 0, errorCount: 1, errors: ["ファイル選択エラー: \(error.localizedDescription)"])
+                importResult = CSVImportResult(errors: ["ファイル選択エラー: \(error.localizedDescription)"])
                 showImportResultAlert = true
             }
         }
@@ -102,7 +150,7 @@ struct SettingsView: View {
         } message: {
             if let result = importResult {
                 if result.errorCount == 0 {
-                    Text("\(result.successCount)件の取引をインポートしました。")
+                    Text("evidence \(result.evidenceCount)件 / candidate \(result.candidateCount)件 / asset \(result.assetCount)件を取り込みました。")
                 } else {
                     Text("成功: \(result.successCount)件\nエラー: \(result.errorCount)件\n\(result.errors.prefix(3).joined(separator: "\n"))")
                 }
@@ -125,17 +173,19 @@ struct SettingsView: View {
                 .textCase(.uppercase)
 
             HStack(spacing: 0) {
-                statItem(icon: "folder.fill", value: dataStore.projects.count, label: "プロジェクト")
+                statItem(icon: "folder.fill", value: overviewSnapshot.projectCount, label: "プロジェクト")
                 Divider().frame(height: 40)
-                statItem(icon: "list.bullet.rectangle", value: dataStore.transactions.count, label: "取引")
+                statItem(icon: "list.bullet.rectangle", value: overviewSnapshot.transactionCount, label: "取引")
                 Divider().frame(height: 40)
-                statItem(icon: "repeat", value: dataStore.recurringTransactions.count, label: "定期取引")
+                statItem(icon: "repeat", value: overviewSnapshot.recurringTransactionCount, label: "定期取引")
             }
             .padding(20)
             .background(AppColors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("データ統計 プロジェクト\(dataStore.projects.count)件 取引\(dataStore.transactions.count)件 定期取引\(dataStore.recurringTransactions.count)件")
+            .accessibilityLabel(
+                "データ統計 プロジェクト\(overviewSnapshot.projectCount)件 取引\(overviewSnapshot.transactionCount)件 定期取引\(overviewSnapshot.recurringTransactionCount)件"
+            )
         }
     }
 
@@ -253,7 +303,7 @@ struct SettingsView: View {
 
             VStack(spacing: 0) {
                 NavigationLink {
-                    ProfileSettingsView()
+                    ProfileSettingsView(onSaved: reloadStoreState)
                 } label: {
                     menuRow(
                         icon: "person.text.rectangle",
@@ -316,7 +366,7 @@ struct SettingsView: View {
                 Divider().padding(.leading, 70)
 
                 NavigationLink {
-                    DistributionTemplateSettingsView()
+                    DistributionTemplateListView()
                 } label: {
                     menuRow(
                         icon: "square.split.2x2",
@@ -328,8 +378,8 @@ struct SettingsView: View {
 
                 Divider().padding(.leading, 70)
 
-                Button {
-                    showCategorySheet = true
+                NavigationLink {
+                    CategoryListView()
                 } label: {
                     menuRow(
                         icon: "chart.pie.fill",
@@ -581,21 +631,12 @@ struct SettingsView: View {
     }
 
     private var availableBackupYears: [Int] {
-        let years = Set(
-            dataStore.transactions.map { fiscalYear(for: $0.date, startMonth: fiscalStartMonth) }
-                + dataStore.inventoryRecords.map(\.fiscalYear)
-                + [dataStore.currentTaxYearProfile?.taxYear, dataStore.accountingProfile?.fiscalYear].compactMap { $0 }
-        )
-        let sorted = years.sorted(by: >)
-        if sorted.isEmpty {
-            return [currentFiscalYear(startMonth: fiscalStartMonth)]
-        }
-        return sorted
+        overviewSnapshot.availableBackupYears
     }
 
     private func exportBackup(scope: BackupScope) {
         do {
-            let result = try BackupService(modelContext: dataStore.modelContext).export(scope: scope)
+            let result = try settingsMaintenanceWorkflowUseCase.exportBackup(scope: scope)
             backupShareURL = result.archiveURL
             showBackupShareSheet = true
             let warningText = result.manifest.warnings.isEmpty ? "warning なし" : "warning \(result.manifest.warnings.count)件"
@@ -620,7 +661,7 @@ struct SettingsView: View {
             do {
                 let cachedURL = try cacheRestoreSnapshot(from: url)
                 cachedRestoreSnapshotURL = cachedURL
-                restoreDryRunReport = try RestoreService(modelContext: dataStore.modelContext).dryRun(snapshotURL: cachedURL)
+                restoreDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunRestore(snapshotURL: cachedURL)
                 operationMessage = restoreDryRunReport?.canApply == true ? "復元 dry-run が完了しました。" : "復元 dry-run に issue があります。"
                 showOperationAlert = true
             } catch {
@@ -636,9 +677,9 @@ struct SettingsView: View {
     private func applyRestore() {
         guard let cachedRestoreSnapshotURL else { return }
         do {
-            let result = try RestoreService(modelContext: dataStore.modelContext).apply(snapshotURL: cachedRestoreSnapshotURL)
-            dataStore.loadData()
+            let result = try settingsMaintenanceWorkflowUseCase.applyRestore(snapshotURL: cachedRestoreSnapshotURL)
             restoreDryRunReport = result.report
+            refreshOverview()
             operationMessage = "復元を実行しました。rollback: \(result.rollbackArchiveURL.lastPathComponent)"
             showOperationAlert = true
         } catch {
@@ -649,7 +690,7 @@ struct SettingsView: View {
 
     private func runMigrationDryRun() {
         do {
-            migrationDryRunReport = try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
+            migrationDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunMigration()
             operationMessage = "移行 dry-run を更新しました。"
             showOperationAlert = true
         } catch {
@@ -659,15 +700,8 @@ struct SettingsView: View {
     }
 
     private func executeMigration() {
-        guard let businessId = dataStore.businessProfile?.id else {
-            operationMessage = "事業者情報が未設定です"
-            showOperationAlert = true
-            return
-        }
-
         do {
-            let executor = LegacyDataMigrationExecutor(modelContext: dataStore.modelContext)
-            let result = try executor.execute(businessId: businessId)
+            let result = try settingsMaintenanceWorkflowUseCase.executeMigration()
 
             let summary = "移行完了: 取引 \(result.transactionsMigrated)件, 仕訳 \(result.journalsMigrated)件, 書類 \(result.documentsMigrated)件"
             if result.hasErrors {
@@ -676,8 +710,8 @@ struct SettingsView: View {
                 operationMessage = summary
             }
 
-            migrationDryRunReport = try MigrationReportRunner(modelContext: dataStore.modelContext).dryRun()
-            dataStore.loadData()
+            migrationDryRunReport = try settingsMaintenanceWorkflowUseCase.dryRunMigration()
+            refreshOverview()
             showOperationAlert = true
         } catch {
             operationMessage = "移行に失敗しました: \(error.localizedDescription)"
@@ -692,6 +726,14 @@ struct SettingsView: View {
         }
         try FileManager.default.copyItem(at: url, to: targetURL)
         return targetURL
+    }
+
+    private func refreshOverview() {
+        overviewSnapshot = settingsOverviewUseCase.snapshot(startMonth: fiscalStartMonth)
+        if let firstYear = overviewSnapshot.availableBackupYears.first,
+           !overviewSnapshot.availableBackupYears.contains(selectedBackupYear) {
+            selectedBackupYear = firstYear
+        }
     }
 
     @ViewBuilder

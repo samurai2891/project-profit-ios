@@ -19,13 +19,41 @@ final class ClassificationLearningServiceTests: XCTestCase {
         super.tearDown()
     }
 
+    private func makeCandidate(memo: String?, counterpartyName: String? = nil) -> PostingCandidate {
+        PostingCandidate(
+            businessId: UUID(),
+            taxYear: 2026,
+            candidateDate: Date(),
+            proposedLines: [],
+            status: .needsReview,
+            source: .ocr,
+            memo: memo,
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: nil,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                receiptImagePath: nil,
+                lineItems: [],
+                counterpartyName: counterpartyName
+            )
+        )
+    }
+
     // MARK: - learnFromCorrection
 
     func testLearnFromCorrection_createsNewRule() {
-        let tx = PPTransaction(type: .expense, amount: 5000, date: Date(), categoryId: "cat-tools", memo: "AWS月額利用料")
+        let candidate = makeCandidate(memo: "AWS月額利用料")
 
         let rule = ClassificationLearningService.learnFromCorrection(
-            transaction: tx,
+            candidate: candidate,
             correctedTaxLine: .communicationExpense,
             existingRules: [],
             modelContext: context
@@ -42,10 +70,10 @@ final class ClassificationLearningServiceTests: XCTestCase {
         let existingRule = PPUserRule(keyword: "AWS月額利用料", taxLine: .suppliesExpense, priority: 100)
         context.insert(existingRule)
 
-        let tx = PPTransaction(type: .expense, amount: 5000, date: Date(), categoryId: "cat-tools", memo: "AWS月額利用料")
+        let candidate = makeCandidate(memo: "AWS月額利用料")
 
         let rule = ClassificationLearningService.learnFromCorrection(
-            transaction: tx,
+            candidate: candidate,
             correctedTaxLine: .communicationExpense,
             existingRules: [existingRule],
             modelContext: context
@@ -57,10 +85,10 @@ final class ClassificationLearningServiceTests: XCTestCase {
     }
 
     func testLearnFromCorrection_emptyMemoReturnsNil() {
-        let tx = PPTransaction(type: .expense, amount: 5000, date: Date(), categoryId: "cat-tools", memo: "")
+        let candidate = makeCandidate(memo: "")
 
         let rule = ClassificationLearningService.learnFromCorrection(
-            transaction: tx,
+            candidate: candidate,
             correctedTaxLine: .communicationExpense,
             existingRules: [],
             modelContext: context
@@ -70,10 +98,10 @@ final class ClassificationLearningServiceTests: XCTestCase {
     }
 
     func testLearnFromCorrection_prefixedMemoStripsPrefix() {
-        let tx = PPTransaction(type: .expense, amount: 5000, date: Date(), categoryId: "cat-tools", memo: "[定期] サーバー代")
+        let candidate = makeCandidate(memo: "[定期] サーバー代")
 
         let rule = ClassificationLearningService.learnFromCorrection(
-            transaction: tx,
+            candidate: candidate,
             correctedTaxLine: .communicationExpense,
             existingRules: [],
             modelContext: context
@@ -81,6 +109,75 @@ final class ClassificationLearningServiceTests: XCTestCase {
 
         XCTAssertNotNil(rule)
         XCTAssertEqual(rule?.keyword, "サーバー代")
+    }
+
+    func testLearnFromApprovedCandidate_usesCounterpartyFallbackWhenMemoIsEmpty() {
+        let candidate = makeCandidate(memo: nil, counterpartyName: "クラウドサービス")
+
+        let rule = ClassificationLearningService.learnFromApprovedCandidate(
+            candidate: candidate,
+            resolvedTaxLine: .communicationExpense,
+            existingRules: [],
+            modelContext: context
+        )
+
+        XCTAssertEqual(rule?.keyword, "クラウドサービス")
+        XCTAssertEqual(rule?.taxLine, .communicationExpense)
+    }
+
+    func testLearnFromCorrection_usesEvidenceCounterpartyWhenCandidateFieldsEmpty() {
+        let candidate = makeCandidate(memo: "   ", counterpartyName: nil)
+        let evidence = EvidenceDocument(
+            businessId: UUID(),
+            taxYear: 2026,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .paperScan,
+            originalFilename: "receipt.jpg",
+            mimeType: "image/jpeg",
+            fileHash: "hash",
+            originalFilePath: "receipt.jpg",
+            structuredFields: EvidenceStructuredFields(counterpartyName: "さくらインターネット")
+        )
+
+        let rule = ClassificationLearningService.learnFromCorrection(
+            candidate: candidate,
+            evidence: evidence,
+            correctedTaxLine: .communicationExpense,
+            existingRules: [],
+            modelContext: context
+        )
+
+        XCTAssertEqual(rule?.keyword, "さくらインターネット")
+    }
+
+    func testExtractKeywordFromCandidate_prefersEvidenceCounterpartyWhenCandidateTextMissing() {
+        let candidate = PostingCandidate(
+            businessId: UUID(),
+            taxYear: 2026,
+            candidateDate: Date(),
+            proposedLines: [],
+            status: .needsReview,
+            source: .ocr,
+            memo: "   ",
+            legacySnapshot: nil
+        )
+        let evidence = EvidenceDocument(
+            businessId: UUID(),
+            taxYear: 2026,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .paperScan,
+            originalFilename: "receipt.jpg",
+            mimeType: "image/jpeg",
+            fileHash: "hash",
+            originalFilePath: "receipt.jpg",
+            structuredFields: EvidenceStructuredFields(counterpartyName: "さくらインターネット")
+        )
+
+        let keyword = ClassificationLearningService.extractKeyword(from: candidate, evidence: evidence)
+
+        XCTAssertEqual(keyword, "さくらインターネット")
     }
 
     // MARK: - extractKeyword

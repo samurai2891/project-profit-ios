@@ -3,6 +3,22 @@ import Foundation
 /// 申告書式を FilingStyle に応じて生成するファクトリ
 @MainActor
 enum FormEngine {
+    struct BuildInput {
+        let fiscalYear: Int
+        let startMonth: Int
+        let canonicalAccounts: [CanonicalAccount]
+        let canonicalAccountsById: [UUID: CanonicalAccount]
+        let categoryNamesById: [String: String]
+        let fixedAssets: [PPFixedAsset]
+        let inventoryRecord: PPInventoryRecord?
+        let businessProfile: BusinessProfile?
+        let taxYearProfile: TaxYearProfile?
+        let sensitivePayload: ProfileSensitivePayload?
+        let canonicalProfitLoss: CanonicalProfitLossReport
+        let canonicalBalanceSheet: CanonicalBalanceSheetReport
+        let canonicalJournals: [CanonicalJournalEntry]
+        let candidateSummariesById: [UUID: EtaxCandidateSummary]
+    }
 
     enum FormEngineError: LocalizedError {
         case unsupportedFilingStyle(FilingStyle)
@@ -24,72 +40,47 @@ enum FormEngine {
     /// FilingStyle に応じた EtaxForm を生成
     static func build(
         filingStyle: FilingStyle,
-        dataStore: DataStore,
-        fiscalYear: Int
+        input: BuildInput
     ) throws -> EtaxForm {
         let formType = formType(for: filingStyle)
 
-        guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
-            throw FormEngineError.unsupportedTaxYear(fiscalYear)
+        guard TaxYearDefinitionLoader.isSupported(year: input.fiscalYear, formType: formType) else {
+            throw FormEngineError.unsupportedTaxYear(input.fiscalYear)
         }
-
-        let startMonth = FiscalYearSettings.startMonth
-        let projected = dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let accounts = dataStore.accounts
-        let profile = dataStore.etaxExportProfile(for: fiscalYear)
 
         switch filingStyle {
         case .blueGeneral:
-            let pl = AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            )
-            let bs = AccountingReportService.generateBalanceSheet(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            )
-            let inventoryRecord = dataStore.getInventoryRecord(fiscalYear: fiscalYear)
             return EtaxFieldPopulator.populate(
-                fiscalYear: fiscalYear,
-                profitLoss: pl,
-                balanceSheet: bs,
+                fiscalYear: input.fiscalYear,
+                canonicalProfitLoss: input.canonicalProfitLoss,
+                canonicalBalanceSheet: input.canonicalBalanceSheet,
                 formType: .blueReturn,
-                accounts: accounts,
-                profile: profile,
-                inventoryRecord: inventoryRecord
+                canonicalAccounts: input.canonicalAccounts,
+                businessProfile: input.businessProfile,
+                taxYearProfile: input.taxYearProfile,
+                sensitivePayload: input.sensitivePayload,
+                inventoryRecord: input.inventoryRecord
             )
 
         case .blueCashBasis:
-            return try CashBasisReturnBuilder.build(
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                profile: profile
-            )
+            return try CashBasisReturnBuilder.build(input: input)
 
         case .white:
-            let pl = AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
-                accounts: accounts,
-                journalEntries: projected.entries,
-                journalLines: projected.lines,
-                startMonth: startMonth
-            )
             return ShushiNaiyakushoBuilder.build(
-                fiscalYear: fiscalYear,
-                profitLoss: pl,
-                accounts: accounts,
-                profile: profile,
-                fixedAssets: dataStore.fixedAssets,
-                journalLines: projected.lines,
-                journalEntries: projected.entries
+                canonicalProfitLoss: input.canonicalProfitLoss,
+                input: input
             )
         }
+    }
+
+    static func makeBuildInput(
+        dataStore: DataStore,
+        fiscalYear: Int
+    ) throws -> BuildInput {
+        BuildInput(
+            snapshot: EtaxFormBuildQueryUseCase(modelContext: dataStore.modelContext)
+                .snapshot(fiscalYear: fiscalYear)
+        )
     }
 
     /// FilingStyle -> EtaxFormType のマッピング
@@ -99,5 +90,37 @@ enum FormEngine {
         case .blueCashBasis: .blueCashBasis
         case .white: .whiteReturn
         }
+    }
+
+    static func build(
+        filingStyle: FilingStyle,
+        dataStore: DataStore,
+        fiscalYear: Int
+    ) throws -> EtaxForm {
+        try build(
+            filingStyle: filingStyle,
+            input: makeBuildInput(dataStore: dataStore, fiscalYear: fiscalYear)
+        )
+    }
+}
+
+extension FormEngine.BuildInput {
+    init(snapshot: EtaxFormBuildSnapshot) {
+        self.init(
+            fiscalYear: snapshot.fiscalYear,
+            startMonth: snapshot.startMonth,
+            canonicalAccounts: snapshot.canonicalAccounts,
+            canonicalAccountsById: snapshot.canonicalAccountsById,
+            categoryNamesById: snapshot.categoryNamesById,
+            fixedAssets: snapshot.fixedAssets,
+            inventoryRecord: snapshot.inventoryRecord,
+            businessProfile: snapshot.businessProfile,
+            taxYearProfile: snapshot.taxYearProfile,
+            sensitivePayload: snapshot.sensitivePayload,
+            canonicalProfitLoss: snapshot.canonicalProfitLoss,
+            canonicalBalanceSheet: snapshot.canonicalBalanceSheet,
+            canonicalJournals: snapshot.canonicalJournals,
+            candidateSummariesById: snapshot.candidateSummariesById
+        )
     }
 }

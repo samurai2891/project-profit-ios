@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProjectFormView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let project: PPProject?
@@ -19,6 +19,9 @@ struct ProjectFormView: View {
     @State private var dateErrorMessage: String = ""
 
     private var isEditMode: Bool { project != nil }
+    private var projectWorkflowUseCase: ProjectWorkflowUseCase {
+        ProjectWorkflowUseCase(modelContext: modelContext)
+    }
 
     init(project: PPProject? = nil) {
         self.project = project
@@ -199,16 +202,32 @@ struct ProjectFormView: View {
         }
 
         let resolvedStartDate: Date?? = hasStartDate ? .some(startDate) : .some(nil)
-        let resolvedPlannedEndDate: Date?? = hasPlannedEndDate ? .some(plannedEndDate) : .some(nil)
+        let resolvedStartDateValue = resolvedStartDate ?? nil
+        let resolvedPlannedEndDateValue = hasPlannedEndDate ? plannedEndDate : nil
 
         if let project {
-            if status == .completed && hasCompletedAt {
-                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate, completedAt: completedAt, plannedEndDate: .some(nil))
-            } else {
-                dataStore.updateProject(id: project.id, name: trimmedName, description: description, status: status, startDate: resolvedStartDate, plannedEndDate: resolvedPlannedEndDate)
-            }
+            projectWorkflowUseCase.updateProject(
+                id: project.id,
+                input: ProjectUpsertInput(
+                    name: trimmedName,
+                    description: description,
+                    status: status,
+                    startDate: resolvedStartDateValue,
+                    completedAt: status == .completed && hasCompletedAt ? completedAt : nil,
+                    plannedEndDate: status == .completed ? nil : resolvedPlannedEndDateValue
+                )
+            )
         } else {
-            dataStore.addProject(name: trimmedName, description: description, startDate: hasStartDate ? startDate : nil, plannedEndDate: hasPlannedEndDate ? plannedEndDate : nil)
+            _ = projectWorkflowUseCase.createProject(
+                input: ProjectUpsertInput(
+                    name: trimmedName,
+                    description: description,
+                    status: .active,
+                    startDate: resolvedStartDateValue,
+                    completedAt: nil,
+                    plannedEndDate: resolvedPlannedEndDateValue
+                )
+            )
         }
         dismiss()
     }

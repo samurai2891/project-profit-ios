@@ -6,322 +6,406 @@ import XCTest
 final class ClosingEntryTests: XCTestCase {
     var container: ModelContainer!
     var context: ModelContext!
-    var engine: AccountingEngine!
-    var accounts: [PPAccount]!
-    var categories: [PPCategory]!
+    var dataStore: ProjectProfit.DataStore!
+    var businessId: UUID!
+    var accounts: [CanonicalAccount]!
+    var useCase: ClosingEntryUseCase!
 
     override func setUp() {
         super.setUp()
         container = try! TestModelContainer.create()
         context = container.mainContext
-        engine = AccountingEngine(modelContext: context)
-
-        for def in AccountingConstants.defaultAccounts {
-            let account = PPAccount(
-                id: def.id, code: def.code, name: def.name,
-                accountType: def.accountType, normalBalance: def.normalBalance,
-                subtype: def.subtype, isSystem: true, displayOrder: def.displayOrder
-            )
-            context.insert(account)
-        }
-        try! context.save()
-
-        let descriptor = FetchDescriptor<PPAccount>(sortBy: [SortDescriptor(\.displayOrder)])
-        accounts = try! context.fetch(descriptor)
-
-        for cat in DEFAULT_CATEGORIES {
-            let category = PPCategory(
-                id: cat.id, name: cat.name, type: cat.type, icon: cat.icon, isDefault: true
-            )
-            if let accountId = AccountingConstants.categoryToAccountMapping[cat.id] {
-                category.linkedAccountId = accountId
-            }
-            context.insert(category)
-        }
-        try! context.save()
-
-        let catDescriptor = FetchDescriptor<PPCategory>()
-        categories = try! context.fetch(catDescriptor)
+        dataStore = ProjectProfit.DataStore(modelContext: context)
+        dataStore.loadData()
+        businessId = dataStore.businessProfile?.id
+        accounts = dataStore.canonicalAccounts()
+        useCase = ClosingEntryUseCase(modelContext: context)
+        XCTAssertNotNil(businessId)
+        XCTAssertFalse(accounts.isEmpty)
     }
 
     override func tearDown() {
         accounts = nil
-        categories = nil
-        engine = nil
+        businessId = nil
+        useCase = nil
+        dataStore = nil
         context = nil
         container = nil
         super.tearDown()
     }
 
-    // MARK: - Closing Entry Tests
-
     func testClosingEntry_Basic() {
-        // 収益100万、費用60万 → 純利益40万が元入金へ
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 1_000_000, year: 2025)
-        createPostedEntry(accountId: "acct-rent", debit: 600_000, credit: 0, year: 2025)
-
-        let entries = fetchAllEntries()
-        let lines = fetchAllLines()
-
-        let result = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries, journalLines: lines
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 1_000_000,
+            year: 2025
+        )
+        createApprovedJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 600_000,
+            year: 2025
         )
 
-        XCTAssertNotNil(result)
-        XCTAssertTrue(result!.isPosted)
-        XCTAssertEqual(result!.entryType, .closing)
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+        try! context.save()
 
-        let closingLines = fetchLines(for: result!.id)
-        // 収益1行(借方) + 費用1行(貸方) + 元入金1行(貸方) = 3行
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.entryType, .closing)
+        XCTAssertNotNil(result?.approvedAt)
+
+        let closingLines = result!.lines.sorted { $0.sortOrder < $1.sortOrder }
         XCTAssertEqual(closingLines.count, 3)
 
-        // 収益を閉じる: 借方1,000,000
-        let revenueLine = closingLines.first { $0.accountId == "acct-sales" }
-        XCTAssertEqual(revenueLine?.debit, 1_000_000)
-        XCTAssertEqual(revenueLine?.credit, 0)
+        let revenueLine = closingLines.first { $0.accountId == canonicalAccountId(AccountingConstants.salesAccountId) }
+        XCTAssertEqual(decimalInt(revenueLine?.debitAmount), 1_000_000)
+        XCTAssertEqual(decimalInt(revenueLine?.creditAmount), 0)
 
-        // 費用を閉じる: 貸方600,000
-        let expenseLine = closingLines.first { $0.accountId == "acct-rent" }
-        XCTAssertEqual(expenseLine?.debit, 0)
-        XCTAssertEqual(expenseLine?.credit, 600_000)
+        let expenseLine = closingLines.first { $0.accountId == canonicalAccountId("acct-rent") }
+        XCTAssertEqual(decimalInt(expenseLine?.debitAmount), 0)
+        XCTAssertEqual(decimalInt(expenseLine?.creditAmount), 600_000)
 
-        // 元入金: 貸方400,000 (純利益)
-        let capitalLine = closingLines.first { $0.accountId == "acct-owner-capital" }
-        XCTAssertEqual(capitalLine?.debit, 0)
-        XCTAssertEqual(capitalLine?.credit, 400_000)
+        let capitalLine = closingLines.first { $0.accountId == canonicalAccountId(AccountingConstants.ownerCapitalAccountId) }
+        XCTAssertEqual(decimalInt(capitalLine?.debitAmount), 0)
+        XCTAssertEqual(decimalInt(capitalLine?.creditAmount), 400_000)
     }
 
     func testClosingEntry_NetLoss() {
-        // 収益30万、費用50万 → 純損失20万が元入金借方へ
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 300_000, year: 2025)
-        createPostedEntry(accountId: "acct-rent", debit: 500_000, credit: 0, year: 2025)
-
-        let entries = fetchAllEntries()
-        let lines = fetchAllLines()
-
-        let result = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries, journalLines: lines
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 300_000,
+            year: 2025
+        )
+        createApprovedJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 500_000,
+            year: 2025
         )
 
-        XCTAssertNotNil(result)
-        XCTAssertTrue(result!.isPosted)
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+        try! context.save()
 
-        let closingLines = fetchLines(for: result!.id)
-        let capitalLine = closingLines.first { $0.accountId == "acct-owner-capital" }
-        XCTAssertEqual(capitalLine?.debit, 200_000)  // 純損失 → 借方
-        XCTAssertEqual(capitalLine?.credit, 0)
+        let capitalLine = result?.lines.first { $0.accountId == canonicalAccountId(AccountingConstants.ownerCapitalAccountId) }
+        XCTAssertEqual(decimalInt(capitalLine?.debitAmount), 200_000)
+        XCTAssertEqual(decimalInt(capitalLine?.creditAmount), 0)
     }
 
     func testClosingEntry_Idempotent() {
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 100_000, year: 2025)
-
-        let entries1 = fetchAllEntries()
-        let lines1 = fetchAllLines()
-        let first = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries1, journalLines: lines1
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 100_000,
+            year: 2025
         )
 
-        let entries2 = fetchAllEntries()
-        let lines2 = fetchAllLines()
-        let second = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries2, journalLines: lines2
+        let first = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+        try! context.save()
+
+        let second = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
         )
 
-        XCTAssertNotNil(first)
-        XCTAssertNotNil(second)
-        XCTAssertEqual(first!.id, second!.id, "同一年度の二重生成は既存を返す")
+        XCTAssertEqual(first?.id, second?.id)
     }
 
     func testClosingEntry_Delete() {
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 100_000, year: 2025)
-
-        let entries = fetchAllEntries()
-        let lines = fetchAllLines()
-        let entry = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries, journalLines: lines
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 100_000,
+            year: 2025
         )
-        XCTAssertNotNil(entry)
 
-        engine.deleteClosingBalanceEntry(for: 2025)
+        _ = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
         try! context.save()
 
-        let remainingEntries = fetchAllEntries()
-        let closingEntries = remainingEntries.filter { $0.entryType == .closing }
-        XCTAssertTrue(closingEntries.isEmpty)
+        try! useCase.delete(businessId: businessId, taxYear: 2025)
+        try! context.save()
 
-        let remainingLines = fetchLines(for: entry!.id)
-        XCTAssertTrue(remainingLines.isEmpty)
+        XCTAssertTrue(fetchClosingEntries(taxYear: 2025).isEmpty)
     }
 
     func testClosingEntry_Regenerate() {
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 100_000, year: 2025)
-
-        let entries1 = fetchAllEntries()
-        let lines1 = fetchAllLines()
-        let first = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries1, journalLines: lines1
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 100_000,
+            year: 2025
         )
-        let firstId = first!.id
 
-        engine.deleteClosingBalanceEntry(for: 2025)
+        let first = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
         try! context.save()
 
-        let entries2 = fetchAllEntries()
-        let lines2 = fetchAllLines()
-        let second = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries2, journalLines: lines2
-        )
+        try! useCase.delete(businessId: businessId, taxYear: 2025)
+        try! context.save()
 
-        XCTAssertNotNil(second)
-        XCTAssertNotEqual(firstId, second!.id, "再生成は新しいIDで作成される")
+        let second = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+        try! context.save()
+
+        XCTAssertNotEqual(first?.id, second?.id)
     }
 
     func testClosingEntry_NoRevenueOrExpense() {
-        // 残高0 → nil を返す
-        let entries = fetchAllEntries()
-        let lines = fetchAllLines()
-
-        let result = engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries, journalLines: lines
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
         )
         XCTAssertNil(result)
     }
 
     func testReports_ExcludeClosingEntries() {
-        // まず収益・費用を記録
-        createPostedEntry(accountId: "acct-sales", debit: 0, credit: 500_000, year: 2025)
-        createPostedEntry(accountId: "acct-rent", debit: 200_000, credit: 0, year: 2025)
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 500_000,
+            year: 2025
+        )
+        createApprovedJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 200_000,
+            year: 2025
+        )
 
-        // 決算仕訳を生成
-        let entries1 = fetchAllEntries()
-        let lines1 = fetchAllLines()
-        engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries1, journalLines: lines1
+        _ = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
         )
         try! context.save()
 
-        // P&Lが決算仕訳を除外していることを確認
-        let entries2 = fetchAllEntries()
-        let lines2 = fetchAllLines()
-        let pl = AccountingReportService.generateProfitLoss(
-            fiscalYear: 2025, accounts: accounts, journalEntries: entries2, journalLines: lines2
+        let profitLoss = AccountingReportService.generateProfitLoss(
+            fiscalYear: 2025,
+            accounts: accounts,
+            journals: fetchCanonicalEntries(taxYear: 2025)
         )
 
-        XCTAssertEqual(pl.totalRevenue, 500_000, "P&Lは決算仕訳を除外すべき")
-        XCTAssertEqual(pl.totalExpenses, 200_000, "P&Lは決算仕訳を除外すべき")
-        XCTAssertEqual(pl.netIncome, 300_000)
+        XCTAssertEqual(decimalInt(profitLoss.totalRevenue), 500_000)
+        XCTAssertEqual(decimalInt(profitLoss.totalExpenses), 200_000)
+        XCTAssertEqual(decimalInt(profitLoss.netIncome), 300_000)
     }
 
-    func testOpeningEntry_UsesPreClosingBalance() {
-        // 収入取引: 借方=cash 500,000, 貸方=sales 500,000
-        createBalancedEntry(
-            debitAccountId: "acct-cash", creditAccountId: "acct-sales",
-            amount: 500_000, year: 2025
+    func testClosingEntry_IncludesCanonicalOpeningEntry() {
+        createCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 120_000,
+            year: 2025,
+            month: 1,
+            day: 1,
+            entryType: .opening,
+            approved: true
         )
-        // 経費取引: 借方=rent 200,000, 貸方=cash 200,000
-        createBalancedEntry(
-            debitAccountId: "acct-rent", creditAccountId: "acct-cash",
-            amount: 200_000, year: 2025
+        createApprovedJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 300_000,
+            year: 2025
+        )
+        createApprovedJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 50_000,
+            year: 2025
         )
 
-        // 決算仕訳を生成
-        let entries1 = fetchAllEntries()
-        let lines1 = fetchAllLines()
-        engine.generateClosingBalanceEntry(
-            for: 2025, accounts: accounts, journalEntries: entries1, journalLines: lines1
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
         )
         try! context.save()
 
-        // 期首残高仕訳を生成
-        let entries2 = fetchAllEntries()
-        let lines2 = fetchAllLines()
-        let opening = engine.generateOpeningBalanceEntry(
-            for: 2026, accounts: accounts, journalEntries: entries2, journalLines: lines2
-        )
-
-        XCTAssertNotNil(opening)
-
-        // 期首残高にB/S科目（cash）のみが含まれ、P&L科目は含まれないことを確認
-        // cash残高: 500,000(debit) - 200,000(credit) = 300,000
-        let openingLines = fetchLines(for: opening!.id)
-        let cashLine = openingLines.first { $0.accountId == "acct-cash" }
-        XCTAssertNotNil(cashLine, "期首残高にcash残高が含まれるべき")
-        XCTAssertEqual(cashLine?.debit, 300_000)
-
-        // 収益・費用科目は期首残高に含まれない（generateOpeningBalanceEntryのbsAccountsフィルタ）
-        let salesLine = openingLines.first { $0.accountId == "acct-sales" }
-        XCTAssertNil(salesLine, "P&L科目は期首残高に含まれない")
+        let capitalLine = result?.lines.first { $0.accountId == canonicalAccountId(AccountingConstants.ownerCapitalAccountId) }
+        XCTAssertEqual(decimalInt(capitalLine?.creditAmount), 250_000)
+        XCTAssertEqual(decimalInt(capitalLine?.debitAmount), 0)
     }
 
-    // MARK: - Helpers
+    func testClosingEntry_ExcludesUnapprovedCanonicalEntry() {
+        createCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 999_999,
+            year: 2025,
+            approved: false
+        )
 
-    private func createBalancedEntry(debitAccountId: String, creditAccountId: String, amount: Int, year: Int) {
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+
+        XCTAssertNil(result)
+    }
+
+    func testClosingEntry_IgnoresLegacySupplementalEntries() {
+        createLegacySupplementalEntry(
+            sourceKey: "manual:\(UUID().uuidString)",
+            year: 2025,
+            debitAccountId: AccountingConstants.cashAccountId,
+            creditAccountId: AccountingConstants.salesAccountId,
+            amount: 700_000
+        )
+
+        let result = try! useCase.generate(
+            businessId: businessId,
+            taxYear: 2025
+        )
+
+        XCTAssertNil(result)
+    }
+
+    private func createApprovedJournal(
+        debitLegacyAccountId: String,
+        creditLegacyAccountId: String,
+        amount: Int,
+        year: Int
+    ) {
+        createCanonicalJournal(
+            debitLegacyAccountId: debitLegacyAccountId,
+            creditLegacyAccountId: creditLegacyAccountId,
+            amount: amount,
+            year: year,
+            approved: true
+        )
+    }
+
+    private func createCanonicalJournal(
+        debitLegacyAccountId: String,
+        creditLegacyAccountId: String,
+        amount: Int,
+        year: Int,
+        month: Int = 6,
+        day: Int = 15,
+        entryType: CanonicalJournalEntryType = .normal,
+        approved: Bool
+    ) {
+        let calendar = Calendar(identifier: .gregorian)
+        let date = calendar.date(from: DateComponents(year: year, month: month, day: day))!
+        let journalId = UUID()
+        let entry = CanonicalJournalEntry(
+            id: journalId,
+            businessId: businessId,
+            taxYear: year,
+            journalDate: date,
+            voucherNo: VoucherNumber(taxYear: year, month: month, sequence: nextVoucherSequence(for: year)).value,
+            entryType: entryType,
+            description: "テスト",
+            lines: [
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(debitLegacyAccountId),
+                    debitAmount: Decimal(amount),
+                    creditAmount: 0,
+                    legalReportLineId: canonicalAccount(debitLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 0
+                ),
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(creditLegacyAccountId),
+                    debitAmount: 0,
+                    creditAmount: Decimal(amount),
+                    legalReportLineId: canonicalAccount(creditLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 1
+                ),
+            ],
+            approvedAt: approved ? date : nil,
+            createdAt: date,
+            updatedAt: date
+        )
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(entry))
+        try! context.save()
+    }
+
+    private func fetchCanonicalEntries(taxYear: Int) -> [CanonicalJournalEntry] {
+        let currentBusinessId = businessId!
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate { $0.businessId == currentBusinessId && $0.taxYear == taxYear },
+            sortBy: [SortDescriptor(\.journalDate)]
+        )
+        return (try? context.fetch(descriptor).map(CanonicalJournalEntryEntityMapper.toDomain)) ?? []
+    }
+
+    private func fetchClosingEntries(taxYear: Int) -> [CanonicalJournalEntry] {
+        fetchCanonicalEntries(taxYear: taxYear).filter { $0.entryType == .closing }
+    }
+
+    private func createLegacySupplementalEntry(
+        sourceKey: String,
+        year: Int,
+        debitAccountId: String,
+        creditAccountId: String,
+        amount: Int
+    ) {
         let calendar = Calendar(identifier: .gregorian)
         let date = calendar.date(from: DateComponents(year: year, month: 6, day: 15))!
-
         let entry = PPJournalEntry(
-            sourceKey: "test:\(UUID().uuidString)",
+            sourceKey: sourceKey,
             date: date,
-            entryType: .auto,
-            memo: "テスト",
+            entryType: .manual,
+            memo: "legacy supplemental",
             isPosted: true
         )
         context.insert(entry)
-
-        let line1 = PPJournalLine(entryId: entry.id, accountId: debitAccountId, debit: amount, credit: 0, displayOrder: 0)
-        let line2 = PPJournalLine(entryId: entry.id, accountId: creditAccountId, debit: 0, credit: amount, displayOrder: 1)
-        context.insert(line1)
-        context.insert(line2)
-
+        context.insert(
+            PPJournalLine(
+                entryId: entry.id,
+                accountId: debitAccountId,
+                debit: amount,
+                credit: 0,
+                displayOrder: 0
+            )
+        )
+        context.insert(
+            PPJournalLine(
+                entryId: entry.id,
+                accountId: creditAccountId,
+                debit: 0,
+                credit: amount,
+                displayOrder: 1
+            )
+        )
         try! context.save()
     }
 
-    private func createPostedEntry(accountId: String, debit: Int, credit: Int, year: Int) {
-        let calendar = Calendar(identifier: .gregorian)
-        let date = calendar.date(from: DateComponents(year: year, month: 6, day: 15))!
-
-        let entry = PPJournalEntry(
-            sourceKey: "test:\(UUID().uuidString)",
-            date: date,
-            entryType: .auto,
-            memo: "テスト",
-            isPosted: true
-        )
-        context.insert(entry)
-
-        // 相手科目行を追加して借方=貸方を保証
-        if debit > 0 {
-            // 借方=accountId, 貸方=cash
-            let line1 = PPJournalLine(entryId: entry.id, accountId: accountId, debit: debit, credit: 0, displayOrder: 0)
-            let line2 = PPJournalLine(entryId: entry.id, accountId: "acct-cash", debit: 0, credit: debit, displayOrder: 1)
-            context.insert(line1)
-            context.insert(line2)
-        } else {
-            // 借方=cash, 貸方=accountId
-            let line1 = PPJournalLine(entryId: entry.id, accountId: "acct-cash", debit: credit, credit: 0, displayOrder: 0)
-            let line2 = PPJournalLine(entryId: entry.id, accountId: accountId, debit: 0, credit: credit, displayOrder: 1)
-            context.insert(line1)
-            context.insert(line2)
+    private func canonicalAccount(_ legacyAccountId: String) -> CanonicalAccount {
+        guard let account = accounts.first(where: { $0.legacyAccountId == legacyAccountId }) else {
+            XCTFail("Canonical account not found for \(legacyAccountId)")
+            fatalError("Canonical account not found for \(legacyAccountId)")
         }
-
-        try! context.save()
+        return account
     }
 
-    private func fetchAllEntries() -> [PPJournalEntry] {
-        let descriptor = FetchDescriptor<PPJournalEntry>()
-        return (try? context.fetch(descriptor)) ?? []
+    private func canonicalAccountId(_ legacyAccountId: String) -> UUID {
+        canonicalAccount(legacyAccountId).id
     }
 
-    private func fetchAllLines() -> [PPJournalLine] {
-        let descriptor = FetchDescriptor<PPJournalLine>()
-        return (try? context.fetch(descriptor)) ?? []
+    private func decimalInt(_ value: Decimal?) -> Int {
+        guard let value else { return 0 }
+        return NSDecimalNumber(decimal: value).intValue
     }
 
-    private func fetchLines(for entryId: UUID) -> [PPJournalLine] {
-        let descriptor = FetchDescriptor<PPJournalLine>(
-            predicate: #Predicate<PPJournalLine> { $0.entryId == entryId },
-            sortBy: [SortDescriptor(\.displayOrder)]
-        )
-        return (try? context.fetch(descriptor)) ?? []
+    private func nextVoucherSequence(for taxYear: Int) -> Int {
+        fetchCanonicalEntries(taxYear: taxYear).count + 1
     }
 }

@@ -4,14 +4,37 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+resolve_etax_reference_root() {
+  local candidates=()
+  if [[ -n "${ETAX_REFERENCE_ROOT:-}" ]]; then
+    candidates+=("${ETAX_REFERENCE_ROOT}")
+  fi
+  candidates+=(
+    "$REPO_ROOT/e-taxall"
+    "$REPO_ROOT/../project-profit-ios-local/e-taxall"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -d "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$REPO_ROOT/e-taxall"
+}
+
+ETAX_REFERENCE_ROOT_RESOLVED="$(resolve_etax_reference_root)"
+
 artifact_dir="${ETAX_ARTIFACTS_DIR:-/tmp/etax-unit-lane}"
 extract_input_dir="${ETAX_TAG_INPUT_DIR:-tools/etax/fixtures}"
 overlay_json="${ETAX_CAB_OVERLAY_JSON:-tools/etax/fixtures/cab_overlay_2025.json}"
-cab_blue_spec_xlsx="${ETAX_CAB_BLUE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx}"
+cab_blue_spec_xlsx="${ETAX_CAB_BLUE_FIELD_SPEC_XLSX:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx}"
 cab_blue_spec_sheet="${ETAX_CAB_BLUE_FIELD_SPEC_SHEET:-KOA210}"
-cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
+cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
 cab_white_spec_sheet="${ETAX_CAB_WHITE_FIELD_SPEC_SHEET:-KOA110}"
-cab_spec_dir="${ETAX_CAB_SPEC_DIR:-e-taxall/09XML構造設計書等【所得税】}"
+cab_spec_dir="${ETAX_CAB_SPEC_DIR:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】}"
 xsd_require_generated_mode="${ETAX_XSD_REQUIRE_GENERATED_XML:-auto}"
 
 tag_dict_json="$artifact_dir/TagDictionary_2025.json"
@@ -24,8 +47,10 @@ overlay_generated_report_json="$artifact_dir/cab_overlay_2025.generated.report.j
 
 blue_export_xml="${ETAX_XSD_BLUE_EXPORT_XML:-$artifact_dir/KOA210.export.xml}"
 white_export_xml="${ETAX_XSD_WHITE_EXPORT_XML:-$artifact_dir/KOA110.export.xml}"
+cash_export_xml="${ETAX_XSD_CASH_EXPORT_XML:-$artifact_dir/KOA230.export.xml}"
 xsd_blue_log="$artifact_dir/xsd_blue_validation.log"
 xsd_white_log="$artifact_dir/xsd_white_validation.log"
+xsd_cash_log="$artifact_dir/xsd_cash_validation.log"
 xsd_summary_file="$artifact_dir/xsd_validation_summary.txt"
 
 mkdir -p "$artifact_dir"
@@ -49,10 +74,10 @@ resolve_spec_path() {
     fi
   fi
 
-  if [[ -d "e-taxall" ]]; then
+  if [[ -d "$ETAX_REFERENCE_ROOT_RESOLVED" ]]; then
     local broad_candidate
     broad_candidate="$(
-      find "e-taxall" -type f -name "*Ver${version_hint}.xlsx" \
+      find "$ETAX_REFERENCE_ROOT_RESOLVED" -type f -name "*Ver${version_hint}.xlsx" \
         | grep '所得-申告' \
         | grep '帳票' \
         | sort \
@@ -89,7 +114,7 @@ python3 scripts/etax_validate_tags.py \
 
 overlay_to_apply="$overlay_json"
 
-echo "[4/8] Generate CAB overlay from e-taxall specs (optional)"
+echo "[4/8] Generate CAB overlay from e-Tax reference specs (optional)"
 if [[ -f "$cab_blue_spec_xlsx_resolved" ]] && [[ -f "$cab_white_spec_xlsx_resolved" ]]; then
   echo "info: resolved blue spec xlsx: $cab_blue_spec_xlsx_resolved"
   echo "info: resolved white spec xlsx: $cab_white_spec_xlsx_resolved"
@@ -149,6 +174,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
   xcodebuild_log="$artifact_dir/xcodebuild_etax.log"
   ETAX_XSD_BLUE_EXPORT_XML="$blue_export_xml" \
   ETAX_XSD_WHITE_EXPORT_XML="$white_export_xml" \
+  ETAX_XSD_CASH_EXPORT_XML="$cash_export_xml" \
   xcodebuild test \
     -project ProjectProfit.xcodeproj \
     -scheme ProjectProfit \
@@ -159,7 +185,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests \
     -only-testing:ProjectProfitTests/ProfileSettingsViewTests 2>&1 | tee "$xcodebuild_log"
 
-  python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" <<'PY'
+  python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" "$cash_export_xml" <<'PY'
 import base64
 from pathlib import Path
 import re
@@ -168,6 +194,7 @@ import sys
 log_path = Path(sys.argv[1])
 blue_out = Path(sys.argv[2])
 white_out = Path(sys.argv[3])
+cash_out = Path(sys.argv[4])
 log_text = log_path.read_text(encoding="utf-8", errors="ignore")
 
 def extract(marker: str, output: Path) -> None:
@@ -191,6 +218,7 @@ def extract(marker: str, output: Path) -> None:
 
 extract("BLUE", blue_out)
 extract("WHITE", white_out)
+extract("CASH", cash_out)
 PY
 else
   if [[ -z "$health_status" ]]; then
@@ -205,6 +233,7 @@ fi
 echo "[7/8] XSD validation"
 blue_sample_xml="${ETAX_XSD_BLUE_SAMPLE_XML:-$blue_export_xml}"
 white_sample_xml="${ETAX_XSD_WHITE_SAMPLE_XML:-$white_export_xml}"
+cash_sample_xml="${ETAX_XSD_CASH_SAMPLE_XML:-$cash_export_xml}"
 blue_fallback_xml="${ETAX_XSD_BLUE_FALLBACK_XML:-tools/etax/fixtures/KOA210_minimal.xml}"
 white_fallback_xml="${ETAX_XSD_WHITE_FALLBACK_XML:-tools/etax/fixtures/KOA110_minimal.xml}"
 
@@ -246,6 +275,14 @@ if [[ ! -f "$white_sample_xml" ]]; then
   white_sample_xml="$white_fallback_xml"
   echo "info: white export xml not found, fallback to $white_sample_xml"
 fi
+if [[ ! -f "$cash_sample_xml" ]]; then
+  if [[ "$require_generated_xml" == "true" ]]; then
+    echo "error: cash generated xml is required but missing: $cash_sample_xml" >&2
+    exit 1
+  fi
+  echo "info: cash export xml not found, skip cash xsd validation"
+  cash_sample_xml=""
+fi
 
 if [[ ! -f "$blue_sample_xml" ]]; then
   echo "error: blue xsd validation input missing: $blue_sample_xml" >&2
@@ -258,10 +295,14 @@ fi
 
 bash scripts/etax_validate_xsd.sh --xml "$blue_sample_xml" --form-key blue_general 2>&1 | tee "$xsd_blue_log"
 bash scripts/etax_validate_xsd.sh --xml "$white_sample_xml" --form-key white_shushi 2>&1 | tee "$xsd_white_log"
+if [[ -n "$cash_sample_xml" ]]; then
+  bash scripts/etax_validate_xsd.sh --xml "$cash_sample_xml" --form-key blue_cash_basis 2>&1 | tee "$xsd_cash_log"
+fi
 
 cat > "$xsd_summary_file" <<EOF
 blue_xml=$blue_sample_xml
 white_xml=$white_sample_xml
+cash_xml=$cash_sample_xml
 require_generated_xml=$require_generated_xml
 swift_lane_executed=$swift_lane_executed
 EOF

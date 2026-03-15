@@ -53,7 +53,6 @@ class DataStore {
     var accounts: [PPAccount] = []
     var journalEntries: [PPJournalEntry] = []
     var journalLines: [PPJournalLine] = []
-    var accountingProfile: PPAccountingProfile?
     var businessProfile: BusinessProfile?
     var currentTaxYearProfile: TaxYearProfile?
     var fixedAssets: [PPFixedAsset] = []
@@ -78,16 +77,35 @@ class DataStore {
         self.modelContext = modelContext
     }
 
-    private var profileSettingsUseCase: ProfileSettingsUseCase {
-        ProfileSettingsUseCase(modelContext: modelContext)
-    }
-
     private var counterpartyMasterUseCase: CounterpartyMasterUseCase {
         CounterpartyMasterUseCase(modelContext: modelContext)
     }
 
     private var postingWorkflowUseCase: PostingWorkflowUseCase {
         PostingWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var postingIntakeUseCase: PostingIntakeUseCase {
+        PostingIntakeUseCase(modelContext: modelContext)
+    }
+
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(
+            modelContext: modelContext,
+            onRecurringScheduleChanged: onRecurringScheduleChanged
+        )
+    }
+
+    var canonicalPostingSupport: CanonicalPostingSupport {
+        CanonicalPostingSupport(modelContext: modelContext)
+    }
+
+    private var projectWorkflowUseCase: ProjectWorkflowUseCase {
+        ProjectWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var bundledTaxYearPackProvider: BundledTaxYearPackProvider {
+        BundledTaxYearPackProvider(bundle: .main)
     }
 
     var profileSensitivePayload: ProfileSensitivePayload? {
@@ -98,20 +116,39 @@ class DataStore {
         businessProfile?.id.uuidString
     }
 
-    private var legacyProfileSecureStoreId: String? {
-        accountingProfile?.id
-    }
-
     var isAccountingBootstrapped: Bool {
-        businessProfile != nil || accountingProfile != nil
+        businessProfile != nil
     }
 
     var defaultPaymentAccountPreference: String? {
-        businessProfile?.defaultPaymentAccountId ?? accountingProfile?.defaultPaymentAccountId
+        businessProfile?.defaultPaymentAccountId
     }
 
     var profileOpeningDate: Date? {
-        businessProfile?.openingDate ?? accountingProfile?.openingDate
+        businessProfile?.openingDate
+    }
+
+    var isLegacyTransactionEditingEnabled: Bool {
+        !FeatureFlags.useCanonicalPosting
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        AppError.legacyTransactionMutationDisabled.errorDescription ?? "この操作は現在利用できません"
+    }
+
+    private func canonicalTaxCodeId(explicitTaxCodeId: String?) -> String? {
+        TaxCode.resolve(id: explicitTaxCodeId)?.rawValue
+    }
+
+    private func compatibilityTaxCodeId(
+        explicitTaxCodeId: String?,
+        legacyCategory: TaxCategory?,
+        taxRate: Int?
+    ) -> String? {
+        if let taxCodeId = canonicalTaxCodeId(explicitTaxCodeId: explicitTaxCodeId) {
+            return taxCodeId
+        }
+        return TaxCode.resolve(legacyCategory: legacyCategory, taxRate: taxRate)?.rawValue
     }
 
     private func syncCanonicalAccountsFromLegacyAccountsIfNeeded() {
@@ -224,7 +261,7 @@ class DataStore {
         return nil
     }
 
-    private func canonicalCounterparty(id: UUID) -> Counterparty? {
+    func canonicalCounterparty(id: UUID) -> Counterparty? {
         do {
             let descriptor = FetchDescriptor<CounterpartyEntity>(
                 predicate: #Predicate { $0.counterpartyId == id }
@@ -236,7 +273,14 @@ class DataStore {
         }
     }
 
-    private func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
+    func canonicalCounterparties() -> [Counterparty] {
+        guard let businessId = businessProfile?.id else {
+            return []
+        }
+        return fetchCanonicalCounterparties(businessId: businessId)
+    }
+
+    func fetchCanonicalAccounts(businessId: UUID) -> [CanonicalAccount] {
         do {
             let descriptor = FetchDescriptor<CanonicalAccountEntity>(
                 predicate: #Predicate { $0.businessId == businessId },
@@ -252,7 +296,75 @@ class DataStore {
         }
     }
 
-    private func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
+    private func fetchCanonicalCounterparties(businessId: UUID) -> [Counterparty] {
+        do {
+            let descriptor = FetchDescriptor<CounterpartyEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [SortDescriptor(\.displayName)]
+            )
+            return try modelContext.fetch(descriptor).map(CounterpartyEntityMapper.toDomain)
+        } catch {
+            AppLogger.dataStore.warning("Canonical counterparties fetch failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func upsertCanonicalCounterparty(_ counterparty: Counterparty) {
+        let descriptor = FetchDescriptor<CounterpartyEntity>(
+            predicate: #Predicate { $0.counterpartyId == counterparty.id }
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            CounterpartyEntityMapper.update(existing, from: counterparty)
+        } else {
+            modelContext.insert(CounterpartyEntityMapper.toEntity(counterparty))
+        }
+    }
+
+    private func resolveLegacyCounterpartyReference(
+        explicitId: UUID?,
+        rawName: String?,
+        defaultTaxCodeId: String?
+    ) -> (id: UUID?, displayName: String?) {
+        if let explicitId, let existing = canonicalCounterparty(id: explicitId) {
+            if defaultTaxCodeId != nil, existing.defaultTaxCodeId != defaultTaxCodeId {
+                upsertCanonicalCounterparty(existing.updated(defaultTaxCodeId: .some(defaultTaxCodeId)))
+            }
+            return (existing.id, existing.displayName)
+        }
+
+        guard let businessId = businessProfile?.id else {
+            return (nil, normalizedOptionalString(rawName))
+        }
+        guard let displayName = normalizedOptionalString(rawName) else {
+            return (nil, nil)
+        }
+
+        let counterparties = fetchCanonicalCounterparties(businessId: businessId)
+        if let exactMatch = counterparties.first(where: {
+            $0.displayName.compare(
+                displayName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }) {
+            if defaultTaxCodeId != nil, exactMatch.defaultTaxCodeId != defaultTaxCodeId {
+                upsertCanonicalCounterparty(exactMatch.updated(defaultTaxCodeId: .some(defaultTaxCodeId)))
+            }
+            return (exactMatch.id, exactMatch.displayName)
+        }
+
+        let counterparty = Counterparty(
+            id: stableCounterpartyId(businessId: businessId, displayName: displayName),
+            businessId: businessId,
+            displayName: displayName,
+            defaultTaxCodeId: defaultTaxCodeId,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        upsertCanonicalCounterparty(counterparty)
+        return (counterparty.id, counterparty.displayName)
+    }
+
+    func fetchCanonicalJournalEntries(businessId: UUID, taxYear: Int? = nil) -> [CanonicalJournalEntry] {
         do {
             let descriptor: FetchDescriptor<JournalEntryEntity>
             if let taxYear {
@@ -301,6 +413,7 @@ class DataStore {
         do {
             let books = try modelContext.fetch(FetchDescriptor<SDLedgerBook>())
             let entries = try modelContext.fetch(FetchDescriptor<SDLedgerEntry>())
+            let canonicalEntries = try modelContext.fetch(FetchDescriptor<JournalEntryEntity>())
             let journalBookIds = Set(
                 books
                     .filter { $0.ledgerTypeRaw == LedgerType.journal.rawValue }
@@ -317,7 +430,7 @@ class DataStore {
                 legacyEntryCount: entries.count,
                 legacyJournalBookCount: journalBookIds.count,
                 legacyJournalEntryCount: legacyJournalEntryCount,
-                canonicalJournalEntryCount: journalEntries.count
+                canonicalJournalEntryCount: canonicalEntries.count
             )
         } catch {
             AppLogger.dataStore.warning("Legacy ledger diagnostics failed: \(error.localizedDescription)")
@@ -326,7 +439,7 @@ class DataStore {
                 legacyEntryCount: 0,
                 legacyJournalBookCount: 0,
                 legacyJournalEntryCount: 0,
-                canonicalJournalEntryCount: journalEntries.count
+                canonicalJournalEntryCount: canonicalJournalEntries().count
             )
         }
     }
@@ -388,8 +501,6 @@ class DataStore {
             let lineDescriptor = FetchDescriptor<PPJournalLine>(sortBy: [SortDescriptor(\.displayOrder)])
             journalLines = try modelContext.fetch(lineDescriptor)
 
-            let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
-            accountingProfile = try modelContext.fetch(profileDescriptor).first
             runLegacyProfileMigrationIfNeeded()
             refreshCanonicalProfileCache()
             _ = loadSensitivePayload()
@@ -410,8 +521,6 @@ class DataStore {
                 refreshJournalLines()
                 refreshCategories()
                 refreshTransactions()
-                let profileDesc = FetchDescriptor<PPAccountingProfile>()
-                accountingProfile = try? modelContext.fetch(profileDesc).first
                 runLegacyProfileMigrationIfNeeded()
                 refreshCanonicalProfileCache()
                 AppLogger.dataStore.info("Bootstrap完了: accounts=\(result.accountsCreated), journals=\(result.journalEntriesGenerated)")
@@ -437,21 +546,18 @@ class DataStore {
 
     @discardableResult
     func reloadProfileSettings() async -> Bool {
-        let payload = loadSensitivePayload()
-        do {
-            let defaultTaxYear = currentTaxYearProfile?.taxYear ?? accountingProfile?.fiscalYear ?? currentFiscalYear()
-            let state = try await profileSettingsUseCase.load(
-                defaultTaxYear: defaultTaxYear,
-                legacyProfile: accountingProfile,
-                sensitivePayload: payload
+        await ProfileSettingsWorkflowUseCase(
+            modelContext: modelContext,
+            ports: .init(
+                readSensitivePayload: { self.profileSensitivePayload },
+                readCurrentTaxYear: { self.currentTaxYearProfile?.taxYear },
+                applyState: { self.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    self.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { self.lastError = $0 }
             )
-            applyProfileSettingsState(state)
-            return true
-        } catch {
-            AppLogger.dataStore.error("Failed to reload profile settings: \(error.localizedDescription)")
-            lastError = .dataLoadFailed(underlying: error)
-            return false
-        }
+        ).loadProfile()
     }
 
     @discardableResult
@@ -459,45 +565,47 @@ class DataStore {
         command: SaveProfileSettingsCommand,
         sensitivePayload: ProfileSensitivePayload
     ) async -> Result<Void, Error> {
-        do {
-            let state = try await profileSettingsUseCase.load(
-                defaultTaxYear: command.taxYear,
-                legacyProfile: accountingProfile,
-                sensitivePayload: sensitivePayload
+        await ProfileSettingsWorkflowUseCase(
+            modelContext: modelContext,
+            ports: .init(
+                readSensitivePayload: { self.profileSensitivePayload },
+                readCurrentTaxYear: { self.currentTaxYearProfile?.taxYear },
+                applyState: { self.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    self.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { self.lastError = $0 }
             )
-            guard persistSensitivePayload(sensitivePayload, businessProfileId: state.businessProfile.id) else {
-                return .failure(AppError.saveFailed(underlying: NSError(domain: "ProfileSecureStore", code: 1)))
-            }
-            let savedState = try await profileSettingsUseCase.save(
-                command: command,
-                currentState: state
-            )
-
-            persistLegacyFiscalYearIfNeeded(savedState.taxYearProfile.taxYear)
-            applyProfileSettingsState(savedState)
-
-            if save() {
-                return .success(())
-            }
-            return .failure(lastError ?? AppError.saveFailed(underlying: NSError(domain: "ProfileSettings", code: 2)))
-        } catch {
-            AppLogger.dataStore.error("Failed to save profile settings: \(error.localizedDescription)")
-            lastError = .saveFailed(underlying: error)
-            return .failure(error)
-        }
+        ).saveProfile(command: command, sensitivePayload: sensitivePayload)
     }
 
     /// マイグレーション: SwiftDataスキーマ変更後の整合性チェック
     /// allocationMode/yearlyAmortizationMode は非Optionalに変更済み。
     /// SwiftDataが自動的にデフォルト値を適用するため、現在は追加処理不要。
     private func migrateNilOptionalFields() {
-        // SwiftData handles schema migration with default values from init.
-        // This method is retained as a hook for future migrations.
+        var changed = false
+        for transaction in allTransactions where transaction.taxCodeId == nil {
+            guard let taxCodeId = compatibilityTaxCodeId(
+                explicitTaxCodeId: nil,
+                legacyCategory: transaction.taxCategory,
+                taxRate: transaction.taxRate
+            ) else {
+                continue
+            }
+            transaction.taxCodeId = taxCodeId
+            if let taxCode = TaxCode.resolve(id: taxCodeId) {
+                transaction.taxRate = taxCode.taxRatePercent
+                transaction.taxCategory = taxCode.legacyCategory
+            }
+            transaction.updatedAt = Date()
+            changed = true
+        }
+        if changed {
+            _ = save()
+        }
     }
 
     func refreshCanonicalProfileCache() {
-        let payload = loadSensitivePayload()
-
         do {
             let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
                 sortBy: [SortDescriptor(\.createdAt)]
@@ -505,17 +613,12 @@ class DataStore {
             let businessEntities = try modelContext.fetch(businessDescriptor)
             if let entity = businessEntities.first {
                 businessProfile = BusinessProfileEntityMapper.toDomain(entity)
-            } else if let accountingProfile {
-                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
-                    from: accountingProfile,
-                    sensitivePayload: payload
-                )
             } else {
                 businessProfile = nil
             }
 
             if let businessProfile {
-                let defaultTaxYear = accountingProfile?.fiscalYear ?? currentFiscalYear()
+                let defaultTaxYear = currentTaxYearProfile?.taxYear ?? currentFiscalYear()
                 let businessId = businessProfile.id
                 let taxDescriptor = FetchDescriptor<TaxYearProfileEntity>(
                     predicate: #Predicate {
@@ -525,37 +628,18 @@ class DataStore {
                 let taxEntities = try modelContext.fetch(taxDescriptor)
                 if let entity = taxEntities.first {
                     currentTaxYearProfile = TaxYearProfileEntityMapper.toDomain(entity)
-                } else if let accountingProfile {
-                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
-                        from: accountingProfile,
-                        businessId: businessProfile.id,
-                        taxPackVersion: "\(defaultTaxYear)-v1"
-                    )
                 } else {
                     currentTaxYearProfile = TaxYearProfile(
                         businessId: businessProfile.id,
                         taxYear: defaultTaxYear,
-                        taxPackVersion: "\(defaultTaxYear)-v1"
+                        taxPackVersion: resolvedPackVersion(for: defaultTaxYear)
                     )
                 }
             } else {
                 currentTaxYearProfile = nil
             }
         } catch {
-            AppLogger.dataStore.warning("Canonical profile cache refresh skipped: \(error.localizedDescription)")
-            if let accountingProfile {
-                businessProfile = LegacyAccountingProfileCanonicalMapper.businessProfile(
-                    from: accountingProfile,
-                    sensitivePayload: payload
-                )
-                if let businessProfile {
-                    currentTaxYearProfile = LegacyAccountingProfileCanonicalMapper.taxYearProfile(
-                        from: accountingProfile,
-                        businessId: businessProfile.id,
-                        taxPackVersion: "\(accountingProfile.fiscalYear)-v1"
-                    )
-                }
-            }
+            AppLogger.dataStore.warning("Canonical profile cache refresh failed: \(error.localizedDescription)")
         }
     }
 
@@ -592,7 +676,7 @@ class DataStore {
         }
     }
 
-    private func applyProfileSettingsState(_ state: ProfileSettingsState) {
+    func applyProfileSettingsState(_ state: ProfileSettingsState) {
         businessProfile = state.businessProfile
         currentTaxYearProfile = state.taxYearProfile
     }
@@ -602,109 +686,27 @@ class DataStore {
            let payload = ProfileSecureStore.load(profileId: canonicalProfileSecureStoreId) {
             return payload
         }
-
-        if let legacyProfileSecureStoreId,
-           let payload = ProfileSecureStore.load(profileId: legacyProfileSecureStoreId) {
-            if let canonicalProfileSecureStoreId,
-               canonicalProfileSecureStoreId != legacyProfileSecureStoreId {
-                _ = ProfileSecureStore.save(payload, profileId: canonicalProfileSecureStoreId)
-            }
-            return payload
-        }
-
-        guard let legacyPayload = fallbackSensitivePayloadFromLegacyProfile() else {
-            return nil
-        }
-        if let canonicalProfileSecureStoreId {
-            _ = ProfileSecureStore.save(legacyPayload, profileId: canonicalProfileSecureStoreId)
-        }
-        if let legacyProfileSecureStoreId {
-            _ = ProfileSecureStore.save(legacyPayload, profileId: legacyProfileSecureStoreId)
-        }
-        return legacyPayload
-    }
-
-    private func fallbackSensitivePayloadFromLegacyProfile() -> ProfileSensitivePayload? {
-        guard let accountingProfile else {
-            return nil
-        }
-
-        let payload = ProfileSensitivePayload.fromLegacyProfile(
-            ownerNameKana: accountingProfile.ownerNameKana,
-            postalCode: accountingProfile.postalCode,
-            address: accountingProfile.address,
-            phoneNumber: accountingProfile.phoneNumber,
-            dateOfBirth: accountingProfile.dateOfBirth,
-            businessCategory: accountingProfile.businessCategory,
-            myNumberFlag: accountingProfile.myNumberFlag
-        )
-
-        let hasLegacySensitiveValue =
-            payload.ownerNameKana != nil ||
-            payload.postalCode != nil ||
-            payload.address != nil ||
-            payload.phoneNumber != nil ||
-            payload.dateOfBirth != nil ||
-            payload.businessCategory != nil ||
-            payload.myNumberFlag != nil
-
-        if hasLegacySensitiveValue {
-            AppLogger.dataStore.info("Profile sensitive payload backfilled from legacy profile")
-            return payload
-        }
         return nil
     }
 
-    private func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
+    func persistSensitivePayload(_ payload: ProfileSensitivePayload, businessProfileId: UUID) -> Bool {
         let canonicalId = businessProfileId.uuidString
-        guard ProfileSecureStore.save(payload, profileId: canonicalId) else {
-            return false
-        }
-        if let legacyProfileSecureStoreId,
-           legacyProfileSecureStoreId != canonicalId {
-            _ = ProfileSecureStore.save(payload, profileId: legacyProfileSecureStoreId)
-        }
-        return true
+        return ProfileSecureStore.save(payload, profileId: canonicalId)
     }
 
-    private func persistLegacyFiscalYearIfNeeded(_ taxYear: Int) {
-        guard let accountingProfile, accountingProfile.fiscalYear != taxYear else {
-            return
-        }
-        accountingProfile.fiscalYear = taxYear
-        accountingProfile.updatedAt = Date()
-    }
-
-    func etaxExportProfile(for fiscalYear: Int) -> PPAccountingProfile? {
+    /// canonical プロフィールを直接返す（PPAccountingProfile を経由しない）
+    func canonicalExportProfiles(
+        for fiscalYear: Int
+    ) -> (business: BusinessProfile, taxYear: TaxYearProfile, sensitive: ProfileSensitivePayload?)? {
         guard let businessProfile else {
-            return accountingProfile
+            return nil
         }
-
-        let payload = loadSensitivePayload()
-        let taxYearProfile = resolvedTaxYearProfileForExport(
+        let taxYear = resolvedTaxYearProfileForExport(
             fiscalYear: fiscalYear,
             businessId: businessProfile.id
         )
-
-        return PPAccountingProfile(
-            id: businessProfile.id.uuidString,
-            fiscalYear: fiscalYear,
-            bookkeepingMode: bookkeepingModeForExport(taxYearProfile.bookkeepingBasis),
-            businessName: businessProfile.businessName,
-            ownerName: businessProfile.ownerName,
-            taxOfficeCode: normalizedOptionalString(businessProfile.taxOfficeCode),
-            isBlueReturn: taxYearProfile.filingStyle.isBlue,
-            defaultPaymentAccountId: businessProfile.defaultPaymentAccountId,
-            openingDate: businessProfile.openingDate,
-            lockedYears: taxYearProfile.yearLockState == .open ? [] : [fiscalYear],
-            ownerNameKana: normalizedOptionalString(payload?.ownerNameKana ?? businessProfile.ownerNameKana),
-            postalCode: normalizedOptionalString(payload?.postalCode ?? businessProfile.postalCode),
-            address: normalizedOptionalString(payload?.address ?? businessProfile.businessAddress),
-            phoneNumber: normalizedOptionalString(payload?.phoneNumber ?? businessProfile.phoneNumber),
-            dateOfBirth: payload?.dateOfBirth,
-            businessCategory: normalizedOptionalString(payload?.businessCategory),
-            myNumberFlag: payload?.myNumberFlag
-        )
+        let sensitive = loadSensitivePayload()
+        return (business: businessProfile, taxYear: taxYear, sensitive: sensitive)
     }
 
     private func taxYearProfileForExport(fiscalYear: Int, businessId: UUID) -> TaxYearProfile? {
@@ -744,24 +746,15 @@ class DataStore {
                 electronicBookLevel: currentTaxYearProfile.electronicBookLevel,
                 etaxSubmissionPlanned: currentTaxYearProfile.etaxSubmissionPlanned,
                 yearLockState: currentTaxYearProfile.yearLockState,
-                taxPackVersion: "\(fiscalYear)-v1"
+                taxPackVersion: resolvedPackVersion(for: fiscalYear)
             )
         }
 
         return TaxYearProfile(
             businessId: businessId,
             taxYear: fiscalYear,
-            taxPackVersion: "\(fiscalYear)-v1"
+            taxPackVersion: resolvedPackVersion(for: fiscalYear)
         )
-    }
-
-    private func bookkeepingModeForExport(_ bookkeepingBasis: BookkeepingBasis) -> BookkeepingMode {
-        switch bookkeepingBasis {
-        case .singleEntry:
-            return .singleEntry
-        case .doubleEntry, .cashBasis:
-            return .doubleEntry
-        }
     }
 
     private func normalizedOptionalString(_ value: String?) -> String? {
@@ -776,11 +769,8 @@ class DataStore {
         Calendar.current.component(.year, from: Date())
     }
 
-    private func enqueueCanonicalTransactionSync(for transactionId: UUID, source: CandidateSource?) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            _ = await self.syncCanonicalArtifacts(forTransactionId: transactionId, source: source)
-        }
+    private func resolvedPackVersion(for taxYear: Int) -> String {
+        (try? bundledTaxYearPackProvider.packSync(for: taxYear).version) ?? "\(taxYear)-v1"
     }
 
     private func enqueueCanonicalRecurringCounterpartySync(for recurringId: UUID) {
@@ -790,90 +780,361 @@ class DataStore {
         }
     }
 
-    func syncCanonicalArtifacts(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) async -> CanonicalTransactionSyncResult {
-        guard let transaction = allTransactions.first(where: { $0.id == transactionId }) else {
-            return CanonicalTransactionSyncResult(
-                counterpartyStatus: .skippedSourceNotFound,
-                postingStatus: .skippedSourceNotFound
-            )
-        }
-
-        let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )?.rawValue
-        let counterpartyStatus = await syncCanonicalCounterparty(
-            named: transaction.counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let counterpartyId: UUID?
-        switch counterpartyStatus {
-        case .synced(let id):
-            counterpartyId = id
-        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
-            counterpartyId = nil
-        }
-        let postingStatus = await syncCanonicalPosting(
-            for: transaction,
-            counterpartyId: counterpartyId,
-            source: source
-        )
-
-        return CanonicalTransactionSyncResult(
-            counterpartyStatus: counterpartyStatus,
-            postingStatus: postingStatus
-        )
-    }
-
     func syncCanonicalCounterparty(forRecurringId recurringId: UUID) async -> CanonicalCounterpartySyncStatus {
         guard let recurring = recurringTransactions.first(where: { $0.id == recurringId }) else {
             return .skippedSourceNotFound
         }
-        return await syncCanonicalCounterparty(named: recurring.counterparty, defaultTaxCodeId: nil)
+        return await syncCanonicalCounterparty(
+            id: recurring.counterpartyId,
+            named: recurring.counterparty,
+            defaultTaxCodeId: nil
+        )
     }
 
-    private func syncCanonicalCounterparty(
-        named rawName: String?,
-        defaultTaxCodeId: String?
-    ) async -> CanonicalCounterpartySyncStatus {
-        guard let businessId = businessProfile?.id else {
-            return .skippedBusinessProfileUnavailable
+    func saveManualPostingCandidate(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        isTaxIncluded: Bool? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource? = nil
+    ) async -> Result<PostingCandidate, AppError> {
+        let resolvedTaxCodeId = canonicalTaxCodeId(explicitTaxCodeId: taxCodeId)
+        do {
+            return .success(
+                try await postingIntakeUseCase.saveManualCandidate(
+                    input: ManualPostingCandidateInput(
+                        type: type,
+                        amount: amount,
+                        date: date,
+                        categoryId: categoryId,
+                        memo: memo,
+                        allocations: allocations,
+                        paymentAccountId: paymentAccountId,
+                        transferToAccountId: transferToAccountId,
+                        taxDeductibleRate: taxDeductibleRate,
+                        taxAmount: taxAmount,
+                        taxCodeId: resolvedTaxCodeId,
+                        isTaxIncluded: isTaxIncluded,
+                        counterpartyId: counterpartyId,
+                        counterparty: counterparty,
+                        isWithholdingEnabled: false,
+                        withholdingTaxCodeId: nil,
+                        withholdingTaxAmount: nil,
+                        candidateSource: candidateSource ?? .manual
+                    )
+                )
+            )
+        } catch let error as AppError {
+            return .failure(error)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
         }
-        guard let displayName = normalizedOptionalString(rawName) else {
-            return .skippedBlankName
-        }
-        let stableId = stableCounterpartyId(businessId: businessId, displayName: displayName)
+    }
+
+    func buildCanonicalPostingSync(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID?,
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxCodeId: String?,
+        isTaxIncluded: Bool?,
+        counterpartyId: UUID?,
+        counterparty: String?,
+        source: CandidateSource
+    ) -> Result<CanonicalTransactionPostingBridge.Posting, AppError> {
+        syncCanonicalAccountsFromLegacyAccountsIfNeeded()
 
         do {
-            let matches = try await counterpartyMasterUseCase.searchCounterparties(
-                businessId: businessId,
-                query: displayName
-            )
-            let existing = matches.first {
-                $0.displayName.compare(displayName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-            }
-            let resolvedDefaultTaxCodeId = defaultTaxCodeId ?? existing?.defaultTaxCodeId
-            let counterparty = existing?.updated(
-                displayName: displayName,
-                defaultTaxCodeId: .some(resolvedDefaultTaxCodeId)
-            )
-                ?? Counterparty(
-                    id: stableId,
-                    businessId: businessId,
-                    displayName: displayName,
-                    defaultTaxCodeId: resolvedDefaultTaxCodeId,
+            let resolvedTaxCodeId = canonicalTaxCodeId(explicitTaxCodeId: taxCodeId)
+            let posting = try canonicalPostingSupport.buildApprovedPosting(
+                seed: CanonicalPostingSeed(
+                    id: UUID(),
+                    type: type,
+                    amount: amount,
+                    date: date,
+                    categoryId: categoryId,
+                    memo: memo,
+                    recurringId: recurringId,
+                    paymentAccountId: paymentAccountId,
+                    transferToAccountId: transferToAccountId,
+                    taxDeductibleRate: taxDeductibleRate,
+                    taxAmount: taxAmount,
+                    taxCodeId: resolvedTaxCodeId,
+                    isTaxIncluded: isTaxIncluded,
+                    receiptImagePath: nil,
+                    lineItems: [],
+                    counterpartyId: counterpartyId,
+                    counterpartyName: counterparty,
+                    source: source,
                     createdAt: Date(),
-                    updatedAt: Date()
-                )
-            try await counterpartyMasterUseCase.save(counterparty)
-            return .synced(counterparty.id)
+                    updatedAt: Date(),
+                    journalEntryId: nil
+                ),
+                snapshot: try canonicalPostingSupport.snapshot()
+            )
+            lastError = nil
+            return .success(posting)
+        } catch let error as AppError {
+            lastError = error
+            return .failure(error)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
+    func saveApprovedPostingSync(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        isTaxIncluded: Bool? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) -> Result<CanonicalJournalEntry, AppError> {
+        let result = buildCanonicalPostingSync(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            isTaxIncluded: isTaxIncluded,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            source: candidateSource
+        )
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        switch result {
+        case .success(let builtPosting):
+            posting = builtPosting
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let normalizedAllocations = calculateRatioAllocations(
+            amount: amount,
+            allocations: type == .transfer ? [] : allocations
+        )
+
+        do {
+            let actor = candidateSource == .importFile ? "user" : "system"
+            let journal = try saveApprovedPostingSynchronously(
+                posting,
+                allocations: normalizedAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                actor: actor
+            )
+            lastError = nil
+            return .success(journal)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
+    func saveApprovedPostingSync(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocationAmounts: [Allocation],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        isTaxIncluded: Bool? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) -> Result<CanonicalJournalEntry, AppError> {
+        let allocationRatios = allocationAmounts.map { allocation in
+            (projectId: allocation.projectId, ratio: allocation.ratio)
+        }
+        let result = buildCanonicalPostingSync(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocationRatios,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            isTaxIncluded: isTaxIncluded,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            source: candidateSource
+        )
+
+        let posting: CanonicalTransactionPostingBridge.Posting
+        switch result {
+        case .success(let builtPosting):
+            posting = builtPosting
+        case .failure(let error):
+            return .failure(error)
+        }
+
+        let normalizedAllocationAmounts = allocationAmounts.filter { $0.amount > 0 }
+
+        do {
+            let actor = candidateSource == .importFile ? "user" : "system"
+            let journal = try saveApprovedPostingSynchronously(
+                posting,
+                allocationAmounts: normalizedAllocationAmounts,
+                actor: actor
+            )
+            lastError = nil
+            return .success(journal)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            return .failure(appError)
+        }
+    }
+
+    private func saveApprovedPosting(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        isTaxIncluded: Bool? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        candidateSource: CandidateSource
+    ) async -> Result<CanonicalJournalEntry, AppError> {
+        saveApprovedPostingSync(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
+            isTaxIncluded: isTaxIncluded,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            candidateSource: candidateSource
+        )
+    }
+
+    func approvePostingCandidate(
+        candidateId: UUID,
+        description: String? = nil
+    ) async throws -> (journal: CanonicalJournalEntry, candidate: PostingCandidate) {
+        guard try await postingWorkflowUseCase.candidate(candidateId) != nil else {
+            let error = AppError.invalidInput(message: "承認対象の候補が見つかりません")
+            lastError = error
+            throw error
+        }
+
+        let journal = try await postingWorkflowUseCase.approveCandidate(
+            candidateId: candidateId,
+            description: description
+        )
+        guard let approvedCandidate = try await postingWorkflowUseCase.candidate(candidateId) else {
+            let error = AppError.invalidInput(message: "承認後の候補を再取得できませんでした")
+            lastError = error
+            throw error
+        }
+
+        refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
+        lastError = nil
+        return (journal, approvedCandidate)
+    }
+
+    private func syncCanonicalCounterpartyNow(
+        id explicitId: UUID?,
+        named rawName: String?,
+        defaultTaxCodeId: String?
+    ) -> CanonicalCounterpartySyncStatus {
+        do {
+            let resolved = resolveLegacyCounterpartyReference(
+                explicitId: explicitId,
+                rawName: rawName,
+                defaultTaxCodeId: defaultTaxCodeId
+            )
+            guard let counterpartyId = resolved.id else {
+                if explicitId != nil || businessProfile == nil {
+                    return .skippedBusinessProfileUnavailable
+                }
+                return .skippedBlankName
+            }
+            try modelContext.save()
+            return .synced(counterpartyId)
         } catch {
             AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
         }
+    }
+
+    private func syncCanonicalCounterparty(
+        id explicitId: UUID?,
+        named rawName: String?,
+        defaultTaxCodeId: String?
+    ) async -> CanonicalCounterpartySyncStatus {
+        syncCanonicalCounterpartyNow(
+            id: explicitId,
+            named: rawName,
+            defaultTaxCodeId: defaultTaxCodeId
+        )
     }
 
     private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {
@@ -894,201 +1155,80 @@ class DataStore {
         return UUID(uuid: uuid)
     }
 
+    #if DEBUG
     private func syncCanonicalPosting(
         for transaction: PPTransaction,
         counterpartyId: UUID?,
         source: CandidateSource?
     ) async -> CanonicalPostingSyncStatus {
-        guard let businessId = businessProfile?.id else {
-            return .skippedBusinessProfileUnavailable
-        }
         syncCanonicalAccountsFromLegacyAccountsIfNeeded()
-        guard let legacyJournalId = transaction.journalEntryId,
-              let legacyEntry = journalEntries.first(where: { $0.id == legacyJournalId })
-        else {
+        let posting: CanonicalTransactionPostingBridge.Posting
+        do {
+            posting = try buildCanonicalPosting(
+                for: transaction,
+                counterpartyId: counterpartyId,
+                source: source ?? .manual
+            )
+        } catch AppError.invalidInput(let message)
+            where message.contains("事業者プロフィールが未設定") {
+            return .skippedBusinessProfileUnavailable
+        } catch AppError.yearLocked {
+            return .skippedBusinessProfileUnavailable
+        } catch {
             return .skippedLegacyJournalUnavailable
         }
-
-        let legacyLines = journalLines
-            .filter { $0.entryId == legacyJournalId }
-            .sorted { $0.displayOrder < $1.displayOrder }
-        guard !legacyLines.isEmpty else {
-            return .skippedLegacyJournalUnavailable
-        }
-
-        let canonicalIdsByLegacyId = canonicalAccountIdsByLegacyId(businessId: businessId)
-        let canonicalAccountsByLegacyId = canonicalAccountsByLegacyId(businessId: businessId)
-
-        let unmappableAccountIds = Array(
-            Set(
-                legacyLines.compactMap { line in
-                    canonicalAccountId(
-                        for: line.accountId,
-                        canonicalIdsByLegacyId: canonicalIdsByLegacyId
-                    ) == nil ? line.accountId : nil
-                }
-            )
-        ).sorted()
-        guard unmappableAccountIds.isEmpty else {
-            let unmappableList = unmappableAccountIds.joined(separator: ", ")
-            AppLogger.dataStore.info(
-                "Canonical posting sync skipped for transaction \(transaction.id.uuidString): unmappable legacy account ids = \(unmappableList)"
-            )
-            return .skippedUnmappableAccountIds(unmappableAccountIds)
-        }
-
-        let counterparty = counterpartyId.flatMap { canonicalCounterparty(id: $0) }
-        let resolvedTaxCodeId = resolvedCanonicalTaxCodeId(
-            for: transaction,
-            counterparty: counterparty,
-            legacyLines: legacyLines,
-            canonicalAccountsByLegacyId: canonicalAccountsByLegacyId
-        )
-        let taxYear = fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
-        let taxYearProfile = resolvedTaxYearProfileForExport(
-            fiscalYear: taxYear,
-            businessId: businessId
-        )
-        let pack = try? await BundledTaxYearPackProvider(bundle: .main).pack(for: taxYear)
-        let resolvedTaxAnalysis = makeCanonicalTaxAnalysis(
-            for: transaction,
-            taxCodeId: resolvedTaxCodeId,
-            counterparty: counterparty,
-            taxYearProfile: taxYearProfile,
-            pack: pack
-        )
-
-        let candidateLines = legacyLines.compactMap { line -> PostingCandidateLine? in
-            guard let accountId = canonicalAccountId(
-                for: line.accountId,
-                canonicalIdsByLegacyId: canonicalIdsByLegacyId
-            ) else {
-                return nil
-            }
-            return PostingCandidateLine(
-                debitAccountId: line.debit > 0 ? accountId : nil,
-                creditAccountId: line.credit > 0 ? accountId : nil,
-                amount: Decimal(line.amount),
-                taxCodeId: resolvedTaxCodeId,
-                memo: normalizedOptionalString(line.memo)
-            )
-        }
-
-        guard !candidateLines.isEmpty else {
-            return .skippedLegacyJournalUnavailable
-        }
-
-        let description = normalizedOptionalString(legacyEntry.memo)
-            ?? normalizedOptionalString(transaction.memo)
-            ?? ""
-        let inferredSource: CandidateSource = source ?? (transaction.recurringId == nil ? .manual : .recurring)
-        let candidate = PostingCandidate(
-            id: transaction.id,
-            evidenceId: nil,
-            businessId: businessId,
-            taxYear: taxYear,
-            candidateDate: transaction.date,
-            counterpartyId: counterpartyId,
-            proposedLines: candidateLines,
-            taxAnalysis: resolvedTaxAnalysis,
-            confidenceScore: 1.0,
-            status: .approved,
-            source: inferredSource,
-            memo: description,
-            createdAt: transaction.createdAt,
-            updatedAt: transaction.updatedAt
-        )
 
         do {
-            let journal = try await postingWorkflowUseCase.syncApprovedCandidate(
-                candidate,
-                journalId: legacyJournalId,
-                entryType: transaction.recurringId == nil ? .normal : .recurring,
-                description: description,
-                approvedAt: transaction.updatedAt
+            let journal = try await canonicalPostingSupport.syncApprovedCandidate(
+                posting: posting,
+                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
+                actor: source == .importFile ? "user" : "system"
             )
-            return .synced(candidateId: candidate.id, journalId: journal.id)
+            if transaction.journalEntryId != journal.id {
+                transaction.journalEntryId = journal.id
+                save()
+                refreshTransactions()
+            }
+            return .synced(candidateId: posting.candidate.id, journalId: journal.id)
         } catch {
             AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
             return .failed(error.localizedDescription)
         }
     }
 
-    private func resolvedCanonicalTaxCodeId(
+    private func buildCanonicalPosting(
         for transaction: PPTransaction,
-        counterparty: Counterparty?,
-        legacyLines: [PPJournalLine],
-        canonicalAccountsByLegacyId: [String: CanonicalAccount]
-    ) -> String? {
-        if let explicitTaxCodeId = TaxCode.resolve(
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )?.rawValue {
-            return explicitTaxCodeId
-        }
-
-        if let counterpartyDefault = counterparty?.defaultTaxCodeId {
-            return counterpartyDefault
-        }
-
-        for legacyLine in legacyLines {
-            guard let account = canonicalAccountsByLegacyId[legacyLine.accountId] else {
-                continue
-            }
-            guard account.accountType == .expense || account.accountType == .revenue else {
-                continue
-            }
-            if let defaultTaxCodeId = account.defaultTaxCodeId {
-                return defaultTaxCodeId
-            }
-        }
-
-        return nil
-    }
-
-    private func makeCanonicalTaxAnalysis(
-        for transaction: PPTransaction,
-        taxCodeId: String?,
-        counterparty: Counterparty?,
-        taxYearProfile: TaxYearProfile,
-        pack: TaxYearPack?
-    ) -> TaxAnalysis? {
-        guard let taxCode = TaxCode.resolve(id: taxCodeId), taxCode.isTaxable else {
-            return nil
-        }
-        guard let taxAmount = transaction.taxAmount, taxAmount > 0 else {
-            return nil
-        }
-
-        let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
-        let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
-        let grossAmount = Decimal(transaction.amount)
-        let creditMethod: InputTaxCreditMethod
-        if transaction.type == .expense {
-            creditMethod = evaluator.evaluateInputTaxCreditMethod(
-                transactionDate: transaction.date,
-                counterpartyInvoiceStatus: counterpartyInvoiceStatus,
-                amount: grossAmount
-            )
-        } else {
-            creditMethod = .notApplicable
-        }
-
-        let deductibleTaxAmount: Decimal
-        if transaction.type == .expense {
-            deductibleTaxAmount = Decimal(taxAmount) * creditMethod.creditRate
-        } else {
-            deductibleTaxAmount = Decimal(0)
-        }
-
-        return TaxAnalysis(
-            creditMethod: creditMethod,
-            taxRateBreakdown: taxCode.rateBreakdown(using: pack),
-            taxableAmount: Decimal(transaction.netAmount),
-            taxAmount: Decimal(taxAmount),
-            deductibleTaxAmount: deductibleTaxAmount
+        counterpartyId: UUID?,
+        source: CandidateSource
+    ) throws -> CanonicalTransactionPostingBridge.Posting {
+        try canonicalPostingSupport.buildApprovedPosting(
+            seed: CanonicalPostingSeed(
+                id: transaction.id,
+                type: transaction.type,
+                amount: transaction.amount,
+                date: transaction.date,
+                categoryId: transaction.categoryId,
+                memo: transaction.memo,
+                recurringId: transaction.recurringId,
+                paymentAccountId: transaction.paymentAccountId,
+                transferToAccountId: transaction.transferToAccountId,
+                taxDeductibleRate: transaction.taxDeductibleRate,
+                taxAmount: transaction.taxAmount,
+                taxCodeId: transaction.taxCodeId,
+                isTaxIncluded: transaction.isTaxIncluded,
+                receiptImagePath: transaction.receiptImagePath,
+                lineItems: transaction.lineItems,
+                counterpartyId: counterpartyId,
+                counterpartyName: transaction.counterparty,
+                source: source,
+                createdAt: transaction.createdAt,
+                updatedAt: transaction.updatedAt,
+                journalEntryId: transaction.journalEntryId
+            ),
+            snapshot: try canonicalPostingSupport.snapshot()
         )
     }
+    #endif
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
     /// 冪等性を担保するため、同一 transactionId + originalFileName の既存レコードがあれば再作成しない。
@@ -1114,6 +1254,12 @@ class DataStore {
                 return "\(transactionId.uuidString)|\(record.originalFileName)"
             }
         )
+        let existingReceiptTransactionIds = Set(
+            existingRecords.compactMap { record -> UUID? in
+                guard record.documentType == .receipt else { return nil }
+                return record.transactionId
+            }
+        )
 
         var changed = false
         var migratedCount = 0
@@ -1131,7 +1277,7 @@ class DataStore {
             }
 
             let key = "\(transaction.id.uuidString)|\(safeLegacyPath)"
-            if existingKeys.contains(key) {
+            if existingKeys.contains(key) || existingReceiptTransactionIds.contains(transaction.id) {
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 legacyFilesToDelete.append(safeLegacyPath)
@@ -1193,7 +1339,7 @@ class DataStore {
         }
     }
 
-    private func seedDefaultCategories() {
+    func seedDefaultCategories() {
         for cat in DEFAULT_CATEGORIES {
             let category = PPCategory(
                 id: cat.id,
@@ -1251,7 +1397,7 @@ class DataStore {
         }
     }
 
-    private func refreshProjects() {
+    func refreshProjects() {
         do {
             let descriptor = FetchDescriptor<PPProject>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
             projects = try modelContext.fetch(descriptor)
@@ -1261,7 +1407,7 @@ class DataStore {
         }
     }
 
-    private func refreshTransactions() {
+    func refreshTransactions() {
         do {
             let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
             allTransactions = try modelContext.fetch(descriptor)
@@ -1271,7 +1417,7 @@ class DataStore {
         }
     }
 
-    private func refreshCategories() {
+    func refreshCategories() {
         do {
             let descriptor = FetchDescriptor<PPCategory>(sortBy: [SortDescriptor(\.name)])
             categories = try modelContext.fetch(descriptor)
@@ -1281,7 +1427,7 @@ class DataStore {
         }
     }
 
-    private func refreshRecurring() {
+    func refreshRecurring() {
         do {
             let descriptor = FetchDescriptor<PPRecurringTransaction>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
             recurringTransactions = try modelContext.fetch(descriptor)
@@ -1352,103 +1498,78 @@ class DataStore {
 
     // MARK: - Project CRUD
 
+#if DEBUG
     @discardableResult
     func addProject(name: String, description: String, startDate: Date? = nil, plannedEndDate: Date? = nil) -> PPProject {
-        let safePlannedEndDate: Date? = {
-            guard let start = startDate, let planned = plannedEndDate else { return plannedEndDate }
-            let calendar = Calendar.current
-            return calendar.startOfDay(for: start) > calendar.startOfDay(for: planned) ? nil : plannedEndDate
-        }()
-        let project = PPProject(name: name, projectDescription: description, startDate: startDate, plannedEndDate: safePlannedEndDate)
-        modelContext.insert(project)
-        save()
-        refreshProjects()
-        reprocessEqualAllCurrentPeriodTransactions()
-        processRecurringTransactions()
-        refreshTransactions()
+        let project = projectWorkflowUseCase.createProject(
+            input: ProjectUpsertInput(
+                name: name,
+                description: description,
+                status: .active,
+                startDate: startDate,
+                completedAt: nil,
+                plannedEndDate: plannedEndDate
+            )
+        )
+        loadData()
         return project
     }
 
     func updateProject(id: UUID, name: String? = nil, description: String? = nil, status: ProjectStatus? = nil, startDate: Date?? = nil, completedAt: Date?? = nil, plannedEndDate: Date?? = nil) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
-        if let name { project.name = name }
-        if let description { project.projectDescription = description }
 
-        let previousStatus = project.status
-        let previousCompletedAt = project.completedAt
-        let previousStartDate = project.startDate
-        let previousPlannedEndDate = project.plannedEndDate
-
-        if let status { project.status = status }
-
-        // startDateの処理: 明示的に指定された場合はそれを使用
-        if let startDate {
-            project.startDate = startDate
-        }
-
-        // completedAtの処理: 明示的に指定された場合はそれを使用、そうでなければ自動管理
-        if let completedAt {
-            // 明示的に指定された（nilも含む）
-            project.completedAt = completedAt
-        } else {
-            // 指定されていない場合、ステータスに基づいて自動管理
-            if project.status == .completed && project.completedAt == nil {
-                project.completedAt = Date()
+        let resolvedStatus = status ?? project.status
+        let resolvedStartDate: Date? = {
+            if let startDate {
+                return startDate
             }
-            if project.status != .completed {
-                project.completedAt = nil
-            }
-        }
+            return project.startDate
+        }()
 
-        // plannedEndDateの処理
-        if let plannedEndDate {
-            project.plannedEndDate = plannedEndDate
-        }
-
-        // 防御的ガード: startDate > completedAt の場合は completedAt をクリア
-        if let currentStart = project.startDate, let currentCompleted = project.completedAt {
-            let calendar = Calendar.current
-            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentCompleted) {
-                project.completedAt = nil
+        let resolvedCompletedAt: Date? = {
+            if let completedAt {
+                return completedAt
             }
-        }
-        // 防御的ガード: startDate > plannedEndDate の場合は plannedEndDate をクリア
-        if let currentStart = project.startDate, let currentPlanned = project.plannedEndDate {
-            let calendar = Calendar.current
-            if calendar.startOfDay(for: currentStart) > calendar.startOfDay(for: currentPlanned) {
-                project.plannedEndDate = nil
+            if resolvedStatus == .completed {
+                return project.completedAt ?? Date()
             }
-        }
+            return nil
+        }()
 
-        project.updatedAt = Date()
-        save()
-        refreshProjects()
-
-        // completedAt、startDate、またはplannedEndDateが変更された場合の処理
-        let completedAtChanged = project.completedAt != previousCompletedAt
-        let startDateChanged = project.startDate != previousStartDate
-        let plannedEndDateChanged = project.plannedEndDate != previousPlannedEndDate
-        let statusChangedAwayFromCompleted = previousStatus == .completed && project.status != .completed
-        if completedAtChanged || startDateChanged || plannedEndDateChanged {
-            if project.startDate != nil || project.effectiveEndDate != nil {
-                recalculateAllocationsForProject(projectId: id)
-            } else if statusChangedAwayFromCompleted {
-                // 両方の日付がクリアされ、かつ完了→非完了へ遷移した場合
-                reverseCompletionAllocations(projectId: id)
-                // 他のプロジェクトの日割りを再適用
-                recalculateAllPartialPeriodProjects()
-            } else if previousStartDate != nil || previousCompletedAt != nil || previousPlannedEndDate != nil {
-                // 日割り対象だったが全日付がクリアされた場合、比率ベースに復元
-                reverseCompletionAllocations(projectId: id)
-                // 他のプロジェクトの日割りを再適用
-                recalculateAllPartialPeriodProjects()
+        let resolvedPlannedEndDate: Date? = {
+            if let plannedEndDate {
+                return plannedEndDate
             }
-            processRecurringTransactions()
-            refreshTransactions()
-        }
+            return project.plannedEndDate
+        }()
+
+        projectWorkflowUseCase.updateProject(
+            id: id,
+            input: ProjectUpsertInput(
+                name: name ?? project.name,
+                description: description ?? project.projectDescription,
+                status: resolvedStatus,
+                startDate: resolvedStartDate,
+                completedAt: resolvedCompletedAt,
+                plannedEndDate: resolvedPlannedEndDate
+            )
+        )
+        loadData()
     }
 
     // MARK: - Archive / Unarchive
+
+    func projectHasHistoricalReferences(_ id: UUID) -> Bool {
+        if transactions.contains(where: { transaction in
+            transaction.allocations.contains { $0.projectId == id }
+        }) {
+            return true
+        }
+
+        return canonicalJournalEntries().contains { journal in
+            journal.lines.contains { $0.projectAllocationId == id }
+        }
+    }
 
     /// H9: トランザクション参照がある場合はアーカイブ（ソフトデリート）
     func archiveProject(id: UUID) {
@@ -1508,461 +1629,18 @@ class DataStore {
 
     /// H9: トランザクション参照ありならアーカイブ、なしならハードデリート
     func deleteProject(id: UUID) {
-        guard let project = projects.first(where: { $0.id == id }) else { return }
-
-        // トランザクション参照があるか確認
-        let hasTransactionReferences = transactions.contains { tx in
-            tx.allocations.contains { $0.projectId == id }
-        }
-
-        // 参照がある場合はアーカイブに委譲
-        if hasTransactionReferences {
-            archiveProject(id: id)
-            return
-        }
-
-        // 参照なし: 従来通りハードデリート
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        // Remove allocations from recurring
-        for recurring in recurringTransactions {
-            let filtered = recurring.allocations.filter { $0.projectId != id }
-            if filtered.count != recurring.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = recurring.receiptImagePath {
-                        imagesToDelete.append(imagePath)
-                    }
-                    modelContext.delete(recurring)
-                } else {
-                    recurring.allocations = redistributeAllocations(
-                        totalAmount: recurring.amount,
-                        remainingAllocations: filtered
-                    )
-                }
-            }
-        }
-
-        modelContext.delete(project)
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshProjects()
-        refreshTransactions()
-        refreshRecurring()
-        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
-        reprocessEqualAllCurrentPeriodTransactions()
-        refreshTransactions()
+        projectWorkflowUseCase.deleteProject(id: id)
+        loadData()
     }
 
     func deleteProjects(ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-
-        // H9: トランザクション参照があるプロジェクトはアーカイブ、ないものはハードデリート
-        var idsToArchive = Set<UUID>()
-        var idsToHardDelete = Set<UUID>()
-        for id in ids {
-            let hasReferences = transactions.contains { tx in
-                tx.allocations.contains { $0.projectId == id }
-            }
-            if hasReferences {
-                idsToArchive.insert(id)
-            } else {
-                idsToHardDelete.insert(id)
-            }
-        }
-
-        // バッチアーカイブ（save/refreshを1回にまとめる）
-        if !idsToArchive.isEmpty {
-            let now = Date()
-            for id in idsToArchive {
-                guard let project = projects.first(where: { $0.id == id }) else { continue }
-                project.isArchived = true
-                project.updatedAt = now
-            }
-            // H10+H9: アーカイブ対象を参照する equalAll トランザクションの手動編集フラグをクリア
-            for transaction in transactions {
-                guard transaction.isManuallyEdited == true,
-                      transaction.allocations.contains(where: { idsToArchive.contains($0.projectId) }),
-                      let recurringId = transaction.recurringId,
-                      let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-                      recurring.allocationMode == .equalAll
-                else { continue }
-                transaction.isManuallyEdited = nil
-            }
-            for recurring in recurringTransactions {
-                let filtered = recurring.allocations.filter { !idsToArchive.contains($0.projectId) }
-                if filtered.count != recurring.allocations.count {
-                    if filtered.isEmpty && recurring.allocationMode == .manual {
-                        for transaction in transactions where transaction.recurringId == recurring.id {
-                            transaction.recurringId = nil
-                            transaction.updatedAt = now
-                        }
-                        modelContext.delete(recurring)
-                    } else if !filtered.isEmpty {
-                        recurring.allocations = redistributeAllocations(
-                            totalAmount: recurring.amount,
-                            remainingAllocations: filtered
-                        )
-                    }
-                }
-            }
-            save()
-            refreshProjects()
-            refreshRecurring()
-            reprocessEqualAllCurrentPeriodTransactions()
-            refreshTransactions()
-        }
-
-        guard !idsToHardDelete.isEmpty else { return }
-
-        // C4: save成功後に削除するため画像パスを収集
-        var imagesToDelete: [String] = []
-
-        for recurring in recurringTransactions {
-            let filtered = recurring.allocations.filter { !idsToHardDelete.contains($0.projectId) }
-            if filtered.count != recurring.allocations.count {
-                if filtered.isEmpty {
-                    if let imagePath = recurring.receiptImagePath {
-                        imagesToDelete.append(imagePath)
-                    }
-                    modelContext.delete(recurring)
-                } else {
-                    recurring.allocations = redistributeAllocations(
-                        totalAmount: recurring.amount,
-                        remainingAllocations: filtered
-                    )
-                }
-            }
-        }
-
-        for id in idsToHardDelete {
-            if let project = projects.first(where: { $0.id == id }) {
-                modelContext.delete(project)
-            }
-        }
-
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshProjects()
-        refreshTransactions()
-        refreshRecurring()
-        // H1: equalAll定期取引の今期分トランザクションをaddProjectと対称的に再計算
-        reprocessEqualAllCurrentPeriodTransactions()
-        refreshTransactions()
+        projectWorkflowUseCase.deleteProjects(ids: ids)
+        loadData()
     }
+#endif
 
     func getProject(id: UUID) -> PPProject? {
         projects.first { $0.id == id }
-    }
-
-    // MARK: - Transaction CRUD
-
-    /// 取引を追加し、保存結果を返す。
-    /// 年度ロックなどで追加できない場合は `.failure` を返す。
-    func addTransactionResult(
-        type: TransactionType,
-        amount: Int,
-        date: Date,
-        categoryId: String,
-        memo: String,
-        allocations: [(projectId: UUID, ratio: Int)],
-        recurringId: UUID? = nil,
-        receiptImagePath: String? = nil,
-        lineItems: [ReceiptLineItem] = [],
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        taxAmount: Int? = nil,
-        taxRate: Int? = nil,
-        isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
-        counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil
-    ) -> Result<PPTransaction, AppError> {
-        // T5: 年度ロックガード（段階的チェック）
-        guard !cannotPostNormalEntry(for: date) else {
-            return .failure(.yearLocked(year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)))
-        }
-        let safeCategoryId: String
-        switch type {
-        case .transfer:
-            // 振替はカテゴリ不要。入力がなければ空文字を保持する。
-            safeCategoryId = categoryId
-        case .income, .expense:
-            safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        }
-        let baseAllocations = type == .transfer ? [] : allocations
-        let allocs = calculateRatioAllocations(amount: amount, allocations: baseAllocations)
-        let transaction = PPTransaction(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: safeCategoryId,
-            memo: memo,
-            allocations: allocs,
-            recurringId: recurringId,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterparty: counterparty
-        )
-        modelContext.insert(transaction)
-
-        // Phase 4B: 仕訳を自動生成
-        let engine = AccountingEngine(modelContext: modelContext)
-        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-            transaction.journalEntryId = entry.id
-        }
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
-        return .success(transaction)
-    }
-
-    @discardableResult
-    func addTransaction(
-        type: TransactionType,
-        amount: Int,
-        date: Date,
-        categoryId: String,
-        memo: String,
-        allocations: [(projectId: UUID, ratio: Int)],
-        recurringId: UUID? = nil,
-        receiptImagePath: String? = nil,
-        lineItems: [ReceiptLineItem] = [],
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        taxAmount: Int? = nil,
-        taxRate: Int? = nil,
-        isTaxIncluded: Bool? = nil,
-        taxCategory: TaxCategory? = nil,
-        counterparty: String? = nil,
-        candidateSource: CandidateSource? = nil
-    ) -> PPTransaction {
-        switch addTransactionResult(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: categoryId,
-            memo: memo,
-            allocations: allocations,
-            recurringId: recurringId,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterparty: counterparty,
-            candidateSource: candidateSource
-        ) {
-        case .success(let transaction):
-            return transaction
-        case .failure(let error):
-            preconditionFailure("DataStore.addTransaction failed: \(error.localizedDescription). Use addTransactionResult() for failure handling.")
-        }
-    }
-
-    @discardableResult
-    func updateTransaction(
-        id: UUID,
-        type: TransactionType? = nil,
-        amount: Int? = nil,
-        date: Date? = nil,
-        categoryId: String? = nil,
-        memo: String? = nil,
-        allocations: [(projectId: UUID, ratio: Int)]? = nil,
-        receiptImagePath: String?? = nil,
-        lineItems: [ReceiptLineItem]? = nil,
-        paymentAccountId: String?? = nil,
-        transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil,
-        taxAmount: Int?? = nil,
-        taxRate: Int?? = nil,
-        isTaxIncluded: Bool?? = nil,
-        taxCategory: TaxCategory?? = nil,
-        counterparty: String?? = nil,
-        candidateSource: CandidateSource? = nil
-    ) -> Bool {
-        guard let transaction = transactions.first(where: { $0.id == id }) else {
-            lastError = .transactionNotFound(id: id)
-            return false
-        }
-        // T5: 年度ロックガード（段階的チェック：変更先の日付と現在の日付の両方）
-        if cannotPostNormalEntry(for: transaction.date) {
-            return false
-        }
-        if let date, cannotPostNormalEntry(for: date) {
-            return false
-        }
-        lastError = nil
-        // Phase 9: 監査ログ（変更前の値を記録）
-        let txId = transaction.id
-        if let type {
-            logFieldChange(transactionId: txId, fieldName: "type", oldValue: transaction.type.rawValue, newValue: type.rawValue)
-            transaction.type = type
-        }
-        if let date {
-            logFieldChange(transactionId: txId, fieldName: "date", oldValue: transaction.date.ISO8601Format(), newValue: date.ISO8601Format())
-            transaction.date = date
-        }
-        if let categoryId {
-            logFieldChange(transactionId: txId, fieldName: "categoryId", oldValue: transaction.categoryId, newValue: categoryId)
-            transaction.categoryId = categoryId
-        }
-        if let memo {
-            logFieldChange(transactionId: txId, fieldName: "memo", oldValue: transaction.memo, newValue: memo)
-            transaction.memo = memo
-        }
-        if let receiptImagePath {
-            logFieldChange(transactionId: txId, fieldName: "receiptImagePath", oldValue: transaction.receiptImagePath, newValue: receiptImagePath)
-            transaction.receiptImagePath = receiptImagePath
-        }
-        if let lineItems { transaction.lineItems = lineItems }
-        if let paymentAccountId {
-            logFieldChange(transactionId: txId, fieldName: "paymentAccountId", oldValue: transaction.paymentAccountId, newValue: paymentAccountId)
-            transaction.paymentAccountId = paymentAccountId
-        }
-        if let transferToAccountId {
-            logFieldChange(transactionId: txId, fieldName: "transferToAccountId", oldValue: transaction.transferToAccountId, newValue: transferToAccountId)
-            transaction.transferToAccountId = transferToAccountId
-        }
-        if let taxDeductibleRate {
-            logFieldChange(transactionId: txId, fieldName: "taxDeductibleRate", oldValue: transaction.taxDeductibleRate.map(String.init), newValue: taxDeductibleRate.map(String.init))
-            transaction.taxDeductibleRate = taxDeductibleRate
-        }
-        if let taxAmount {
-            logFieldChange(transactionId: txId, fieldName: "taxAmount", oldValue: transaction.taxAmount.map(String.init), newValue: taxAmount.map(String.init))
-            transaction.taxAmount = taxAmount
-        }
-        if let taxRate {
-            logFieldChange(transactionId: txId, fieldName: "taxRate", oldValue: transaction.taxRate.map(String.init), newValue: taxRate.map(String.init))
-            transaction.taxRate = taxRate
-        }
-        if let isTaxIncluded {
-            logFieldChange(transactionId: txId, fieldName: "isTaxIncluded", oldValue: transaction.isTaxIncluded.map(String.init), newValue: isTaxIncluded.map(String.init))
-            transaction.isTaxIncluded = isTaxIncluded
-        }
-        if let taxCategory {
-            logFieldChange(transactionId: txId, fieldName: "taxCategory", oldValue: transaction.taxCategory?.rawValue, newValue: taxCategory?.rawValue)
-            transaction.taxCategory = taxCategory
-        }
-        if let counterparty {
-            logFieldChange(transactionId: txId, fieldName: "counterparty", oldValue: transaction.counterparty, newValue: counterparty)
-            transaction.counterparty = counterparty
-        }
-
-        let finalAmount = amount ?? transaction.amount
-        if let amount {
-            logFieldChange(transactionId: txId, fieldName: "amount", oldValue: String(transaction.amount), newValue: String(amount))
-            transaction.amount = amount
-        }
-
-        if let allocations {
-            transaction.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
-            // H10: equalAll定期取引の配分をユーザーが手動変更した場合にフラグを立てる
-            if let recurringId = transaction.recurringId,
-               let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
-               recurring.allocationMode == .equalAll {
-                transaction.isManuallyEdited = true
-            }
-        } else if amount != nil {
-            transaction.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: transaction.allocations)
-            // H8: 金額変更時、pro-rata調整を再適用（ユーザー指定allocationsの場合は意図を尊重し適用しない）
-            reapplyProRataIfNeeded(transaction: transaction, amount: finalAmount)
-        }
-
-        transaction.updatedAt = Date()
-
-        // Phase 4B: 仕訳を再生成（bookkeepingMode が locked でない場合）
-        let engine = AccountingEngine(modelContext: modelContext)
-        if let entry = engine.upsertJournalEntry(for: transaction, categories: categories, accounts: accounts) {
-            transaction.journalEntryId = entry.id
-        }
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-        enqueueCanonicalTransactionSync(for: transaction.id, source: candidateSource)
-        return true
-    }
-
-    func deleteTransaction(id: UUID) {
-        guard let transaction = allTransactions.first(where: { $0.id == id }) else { return }
-        // T5: 年度ロックガード（段階的チェック）
-        if cannotPostNormalEntry(for: transaction.date) { return }
-
-        // ソフトデリート: 物理削除ではなく deletedAt を設定
-        transaction.deletedAt = Date()
-        transaction.updatedAt = Date()
-
-        // Phase 4B: 対応する仕訳を削除
-        let engine = AccountingEngine(modelContext: modelContext)
-        engine.deleteJournalEntry(for: transaction.id)
-
-        save()
-        refreshTransactions()
-        refreshJournalEntries()
-        refreshJournalLines()
-
-        // Roll back recurring generation tracking so the deleted period can be regenerated
-        if let recurringId = transaction.recurringId, let recurring = recurringTransactions.first(where: { $0.id == recurringId }) {
-            rollBackRecurringGenerationState(recurring: recurring, deletedTransactionDate: transaction.date)
-        }
-    }
-
-    /// Roll back recurring generation tracking after a linked transaction is deleted.
-    /// Allows processRecurringTransactions() to regenerate the deleted period on next run.
-    private func rollBackRecurringGenerationState(
-        recurring: PPRecurringTransaction,
-        deletedTransactionDate: Date
-    ) {
-        let calendar = Calendar.current
-
-        // Find remaining transactions still linked to this recurring template
-        let remainingTransactions = transactions
-            .filter { $0.recurringId == recurring.id }
-            .sorted { $0.date < $1.date }
-
-        if recurring.frequency == .yearly,
-           recurring.yearlyAmortizationMode == .monthlySpread {
-            // Monthly spread mode: remove the deleted month key from lastGeneratedMonths
-            let deletedComps = calendar.dateComponents([.year, .month], from: deletedTransactionDate)
-            if let year = deletedComps.year, let month = deletedComps.month {
-                let monthKey = String(format: "%d-%02d", year, month)
-                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths.filter { $0 != monthKey }
-            }
-            // Also update lastGeneratedDate to the latest remaining transaction date, or nil
-            recurring.lastGeneratedDate = remainingTransactions.last?.date
-        } else {
-            // Monthly or Yearly (lumpSum): set lastGeneratedDate to the latest
-            // remaining linked transaction's date, or nil if none remain.
-            recurring.lastGeneratedDate = remainingTransactions.last?.date
-        }
-
-        recurring.updatedAt = Date()
-        save()
-        refreshRecurring()
     }
 
     func removeReceiptImage(transactionId: UUID) {
@@ -1987,257 +1665,41 @@ class DataStore {
 
     @discardableResult
     func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
-        // 同名・同タイプの重複チェック: 既存があればそれを返す
-        if let existing = categories.first(where: { $0.type == type && $0.name == name }) {
-            return existing
-        }
-        let category = PPCategory(id: UUID().uuidString, name: name, type: type, icon: icon)
-        modelContext.insert(category)
-        save()
+        let category = CategoryWorkflowUseCase(modelContext: modelContext).createCategory(
+            input: CategoryCreateInput(name: name, type: type, icon: icon)
+        )
         refreshCategories()
         return category
     }
 
     func updateCategory(id: String, name: String? = nil, type: CategoryType? = nil, icon: String? = nil) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        if let name {
-            let targetType = type ?? category.type
-            if categories.contains(where: { $0.id != id && $0.type == targetType && $0.name == name }) {
-                return
-            }
-            category.name = name
+        if CategoryWorkflowUseCase(modelContext: modelContext).updateCategory(
+            id: id,
+            input: CategoryUpdateInput(name: name, type: type, icon: icon)
+        ) {
+            refreshCategories()
         }
-        if let type { category.type = type }
-        if let icon { category.icon = icon }
-        save()
-        refreshCategories()
     }
 
     func updateCategoryLinkedAccount(categoryId: String, accountId: String?) {
-        guard let category = categories.first(where: { $0.id == categoryId }) else { return }
-        category.linkedAccountId = accountId
-        save()
-        refreshCategories()
+        if CategoryWorkflowUseCase(modelContext: modelContext).updateLinkedAccount(
+            categoryId: categoryId,
+            accountId: accountId
+        ) {
+            refreshCategories()
+        }
     }
 
     func deleteCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        guard !category.isDefault else { return }
-
-        // タイプに応じたフォールバックカテゴリ
-        let fallbackId: String = switch category.type {
-        case .expense: "cat-other-expense"
-        case .income: "cat-other-income"
+        if CategoryWorkflowUseCase(modelContext: modelContext).deleteCategory(id: id) {
+            refreshCategories()
+            refreshTransactions()
+            refreshRecurring()
         }
-
-        // 参照しているトランザクションを移行
-        let now = Date()
-        for transaction in transactions where transaction.categoryId == id {
-            transaction.categoryId = fallbackId
-            transaction.updatedAt = now
-        }
-        for recurring in recurringTransactions where recurring.categoryId == id {
-            recurring.categoryId = fallbackId
-            recurring.updatedAt = now
-        }
-
-        modelContext.delete(category)
-        save()
-        refreshCategories()
-        refreshTransactions()
-        refreshRecurring()
     }
 
     func getCategory(id: String) -> PPCategory? {
         categories.first { $0.id == id }
-    }
-
-    static func defaultCategoryId(for type: TransactionType) -> String {
-        switch type {
-        case .expense, .transfer: "cat-other-expense"
-        case .income: "cat-other-income"
-        }
-    }
-
-    // MARK: - Recurring CRUD
-
-    @discardableResult
-    func addRecurring(
-        name: String,
-        type: TransactionType,
-        amount: Int,
-        categoryId: String,
-        memo: String,
-        allocationMode: AllocationMode = .manual,
-        allocations: [(projectId: UUID, ratio: Int)],
-        frequency: RecurringFrequency,
-        dayOfMonth: Int,
-        monthOfYear: Int? = nil,
-        endDate: Date? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode = .lumpSum,
-        receiptImagePath: String? = nil,
-        paymentAccountId: String? = nil,
-        transferToAccountId: String? = nil,
-        taxDeductibleRate: Int? = nil,
-        counterparty: String? = nil
-    ) -> PPRecurringTransaction {
-        let safeCategoryId = categoryId.isEmpty ? Self.defaultCategoryId(for: type) : categoryId
-        let allocs: [Allocation]
-        switch allocationMode {
-        case .equalAll:
-            allocs = []
-        case .manual:
-            allocs = calculateRatioAllocations(amount: amount, allocations: allocations)
-        }
-        let recurring = PPRecurringTransaction(
-            name: name,
-            type: type,
-            amount: amount,
-            categoryId: safeCategoryId,
-            memo: memo,
-            allocationMode: allocationMode,
-            allocations: allocs,
-            frequency: frequency,
-            dayOfMonth: dayOfMonth,
-            monthOfYear: monthOfYear,
-            endDate: endDate,
-            yearlyAmortizationMode: yearlyAmortizationMode,
-            receiptImagePath: receiptImagePath,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            counterparty: counterparty
-        )
-        modelContext.insert(recurring)
-        save()
-        refreshRecurring()
-        processRecurringTransactions()
-        refreshTransactions()
-        onRecurringScheduleChanged?(recurringTransactions)
-        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
-        return recurring
-    }
-
-    func updateRecurring(
-        id: UUID,
-        name: String? = nil,
-        type: TransactionType? = nil,
-        amount: Int? = nil,
-        categoryId: String? = nil,
-        memo: String? = nil,
-        allocationMode: AllocationMode? = nil,
-        allocations: [(projectId: UUID, ratio: Int)]? = nil,
-        frequency: RecurringFrequency? = nil,
-        dayOfMonth: Int? = nil,
-        monthOfYear: Int? = nil,
-        isActive: Bool? = nil,
-        endDate: Date?? = nil,
-        yearlyAmortizationMode: YearlyAmortizationMode? = nil,
-        notificationTiming: NotificationTiming? = nil,
-        skipDates: [Date]? = nil,
-        receiptImagePath: String?? = nil,
-        paymentAccountId: String?? = nil,
-        transferToAccountId: String?? = nil,
-        taxDeductibleRate: Int?? = nil,
-        counterparty: String?? = nil
-    ) {
-        guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
-        if let name { recurring.name = name }
-        if let type { recurring.type = type }
-        if let categoryId { recurring.categoryId = categoryId }
-        if let memo { recurring.memo = memo }
-        if let allocationMode { recurring.allocationMode = allocationMode }
-        if let frequency {
-            let frequencyChanged = recurring.frequency != frequency
-            recurring.frequency = frequency
-            if frequency == .monthly {
-                recurring.monthOfYear = nil
-                // monthlyに変更した場合、月次分割モードをクリア
-                recurring.yearlyAmortizationMode = .lumpSum
-                recurring.lastGeneratedMonths = []
-                if frequencyChanged {
-                    recurring.lastGeneratedDate = nil
-                }
-            } else {
-                if let monthOfYear {
-                    recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
-                }
-                if frequencyChanged {
-                    recurring.lastGeneratedDate = nil
-                    recurring.lastGeneratedMonths = []
-                }
-            }
-        } else if let monthOfYear {
-            recurring.monthOfYear = (1...12).contains(monthOfYear) ? monthOfYear : recurring.monthOfYear
-        }
-        if let dayOfMonth { recurring.dayOfMonth = min(28, max(1, dayOfMonth)) }
-        if let isActive { recurring.isActive = isActive }
-        if let endDate { recurring.endDate = endDate }
-        if let yearlyAmortizationMode {
-            let previousMode = recurring.yearlyAmortizationMode
-            recurring.yearlyAmortizationMode = yearlyAmortizationMode
-            // モード切替時の処理
-            if previousMode != yearlyAmortizationMode {
-                if yearlyAmortizationMode == .lumpSum {
-                    // 月次→一括: lastGeneratedMonthsをクリア
-                    recurring.lastGeneratedMonths = []
-                }
-                // 一括→月次: lastGeneratedDateが今年ならその年は生成しない（既存ロジックで対応）
-            }
-        }
-        if let notificationTiming { recurring.notificationTiming = notificationTiming }
-        if let skipDates { recurring.skipDates = skipDates }
-        if let receiptImagePath { recurring.receiptImagePath = receiptImagePath }
-        if let paymentAccountId { recurring.paymentAccountId = paymentAccountId }
-        if let transferToAccountId { recurring.transferToAccountId = transferToAccountId }
-        if let taxDeductibleRate { recurring.taxDeductibleRate = taxDeductibleRate }
-        if let counterparty { recurring.counterparty = counterparty }
-
-        let resolvedMode = allocationMode ?? recurring.allocationMode
-        let finalAmount = amount ?? recurring.amount
-        if let amount { recurring.amount = amount }
-
-        switch resolvedMode {
-        case .equalAll:
-            recurring.allocations = []
-        case .manual:
-            if let allocations {
-                recurring.allocations = calculateRatioAllocations(amount: finalAmount, allocations: allocations)
-            } else if amount != nil {
-                recurring.allocations = recalculateAllocationAmounts(amount: finalAmount, existingAllocations: recurring.allocations)
-            }
-        }
-
-        recurring.updatedAt = Date()
-        save()
-        refreshRecurring()
-        processRecurringTransactions()
-        refreshTransactions()
-        onRecurringScheduleChanged?(recurringTransactions)
-        enqueueCanonicalRecurringCounterpartySync(for: recurring.id)
-    }
-
-    func deleteRecurring(id: UUID) {
-        guard let recurring = recurringTransactions.first(where: { $0.id == id }) else { return }
-
-        // 生成済みトランザクションの recurringId をクリア（ダングリング参照防止）
-        let now = Date()
-        for transaction in transactions where transaction.recurringId == id {
-            transaction.recurringId = nil
-            transaction.updatedAt = now
-        }
-
-        // C4: save成功後に削除するため画像パスを保持
-        let imageToDelete = recurring.receiptImagePath
-        modelContext.delete(recurring)
-        if save() {
-            if let imagePath = imageToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-        }
-        refreshRecurring()
-        refreshTransactions()
-        onRecurringScheduleChanged?(recurringTransactions)
     }
 
     func getRecurring(id: UUID) -> PPRecurringTransaction? {
@@ -2247,7 +1709,7 @@ class DataStore {
     // MARK: - Pro-Rata Reallocation
 
     /// equalAll定期取引の今期分トランザクションを、現在のアクティブプロジェクト一覧で再分配する
-    private func reprocessEqualAllCurrentPeriodTransactions() {
+    func reprocessEqualAllCurrentPeriodTransactions() {
         let calendar = Calendar.current
         let today = todayDate()
         let todayComps = calendar.dateComponents([.year, .month], from: today)
@@ -2317,6 +1779,129 @@ class DataStore {
 
             latestTx.allocations = newAllocations
             latestTx.updatedAt = Date()
+        }
+
+        guard let businessId = businessProfile?.id else {
+            save()
+            return
+        }
+
+        let recurringJournals = canonicalJournalEntries().filter { $0.entryType == .recurring }
+        let candidateIds = Set(recurringJournals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        for recurring in recurringTransactions {
+            guard recurring.isActive,
+                  recurring.allocationMode == .equalAll
+            else { continue }
+
+            guard let latestPosting = recurringJournals
+                .compactMap({ journal -> (journal: CanonicalJournalEntry, candidate: PostingCandidate)? in
+                    guard let candidateId = journal.sourceCandidateId,
+                          let candidate = candidatesById[candidateId],
+                          candidate.legacySnapshot?.recurringId == recurring.id else {
+                        return nil
+                    }
+                    return (journal, candidate)
+                })
+                .sorted(by: { $0.journal.journalDate > $1.journal.journalDate })
+                .first
+            else {
+                continue
+            }
+
+            let txComps = calendar.dateComponents([.year, .month], from: latestPosting.journal.journalDate)
+            let isCurrentPeriod: Bool
+            if recurring.frequency == .monthly {
+                isCurrentPeriod = txComps.year == todayComps.year && txComps.month == todayComps.month
+            } else {
+                isCurrentPeriod = txComps.year == todayComps.year
+            }
+            guard isCurrentPeriod else { continue }
+
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+            let completedThisPeriod = projects.filter { project in
+                guard project.status == .completed,
+                      project.isArchived != true,
+                      let completedAt = project.completedAt else {
+                    return false
+                }
+                let compComps = calendar.dateComponents([.year, .month], from: completedAt)
+                return compComps.year == txComps.year && compComps.month == txComps.month
+            }
+            let allEligibleIds = activeProjectIds + completedThisPeriod.map(\.id)
+            guard !allEligibleIds.isEmpty else { continue }
+
+            var newAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+
+            let isYearly = recurring.frequency == .yearly
+            if let txYear = txComps.year, let txMonth = txComps.month {
+                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+                let needsProRata = newAllocations.contains { allocation in
+                    guard let project = projects.first(where: { $0.id == allocation.projectId }) else { return false }
+                    let activeDays = isYearly
+                        ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                        : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+                    return activeDays < totalDays
+                }
+                if needsProRata {
+                    let inputs: [HolisticProRataInput] = newAllocations.map { allocation in
+                        let project = projects.first { $0.id == allocation.projectId }
+                        let activeDays = isYearly
+                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                        return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+                    }
+                    newAllocations = calculateHolisticProRata(
+                        totalAmount: recurring.amount,
+                        totalDays: totalDays,
+                        inputs: inputs
+                    )
+                }
+            }
+
+            let snapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
+                id: latestPosting.candidate.id,
+                type: recurring.type,
+                amount: recurring.amount,
+                date: latestPosting.journal.journalDate,
+                categoryId: recurring.categoryId,
+                memo: latestPosting.journal.description,
+                recurringId: recurring.id,
+                paymentAccountId: recurring.paymentAccountId,
+                transferToAccountId: recurring.transferToAccountId,
+                taxDeductibleRate: recurring.taxDeductibleRate,
+                taxAmount: nil,
+                taxCodeId: nil,
+                taxRate: nil,
+                isTaxIncluded: nil,
+                taxCategory: nil,
+                counterpartyName: recurring.counterparty,
+                createdAt: latestPosting.candidate.createdAt,
+                updatedAt: Date(),
+                journalEntryId: latestPosting.journal.id
+            )
+            let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+            guard let posting = bridge.buildApprovedPosting(
+                for: snapshot,
+                businessId: businessId,
+                counterpartyId: latestPosting.candidate.counterpartyId,
+                source: .recurring,
+                categories: categories,
+                legacyAccounts: accounts
+            ) else {
+                continue
+            }
+
+            do {
+                _ = try saveApprovedPostingSynchronously(
+                    posting,
+                    allocations: newAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                    actor: "system"
+                )
+            } catch {
+                AppLogger.dataStore.warning("Failed to reprocess canonical equalAll posting: \(error.localizedDescription)")
+            }
         }
         save()
     }
@@ -2418,6 +2003,93 @@ class DataStore {
             }.map { $0.frequency == .yearly } ?? false
             recalculateAllocationsForTransaction(transaction, isYearly: isYearly)
         }
+
+        guard let businessId = businessProfile?.id else {
+            save()
+            return
+        }
+
+        let recurringJournals = canonicalJournalEntries().filter { $0.entryType == .recurring }
+        let candidateIds = Set(recurringJournals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        for recurringJournal in recurringJournals {
+            guard let candidateId = recurringJournal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot,
+                  let recurringId = snapshot.recurringId,
+                  let recurring = recurringTransactions.first(where: { $0.id == recurringId }),
+                  candidate.proposedLines.contains(where: { $0.projectAllocationId == projectId }) else {
+                continue
+            }
+
+            let isMonthlySpread = recurringJournal.description.hasPrefix("[定期/月次]")
+            let candidateAmount = candidate.proposedLines.reduce(0) { partialResult, line in
+                switch snapshot.type {
+                case .income:
+                    guard line.creditAccountId != nil else { return partialResult }
+                case .expense:
+                    guard line.debitAccountId != nil else { return partialResult }
+                case .transfer:
+                    return partialResult
+                }
+                return partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            guard let newAllocations = recurringAllocations(
+                for: recurring,
+                amount: candidateAmount,
+                txDate: recurringJournal.journalDate,
+                treatAsYearly: recurring.frequency == .yearly && !isMonthlySpread
+            ) else {
+                continue
+            }
+
+            let updatedSnapshot = CanonicalTransactionPostingBridge.TransactionSnapshot(
+                id: candidate.id,
+                type: snapshot.type,
+                amount: candidateAmount,
+                date: recurringJournal.journalDate,
+                categoryId: snapshot.categoryId,
+                memo: recurringJournal.description,
+                recurringId: snapshot.recurringId,
+                paymentAccountId: snapshot.paymentAccountId,
+                transferToAccountId: snapshot.transferToAccountId,
+                taxDeductibleRate: snapshot.taxDeductibleRate,
+                taxAmount: snapshot.taxAmount,
+                taxCodeId: snapshot.taxCodeId,
+                taxRate: snapshot.taxRate,
+                isTaxIncluded: snapshot.isTaxIncluded,
+                taxCategory: snapshot.taxCategory,
+                receiptImagePath: snapshot.receiptImagePath,
+                lineItems: snapshot.lineItems,
+                counterpartyName: snapshot.counterpartyName,
+                createdAt: candidate.createdAt,
+                updatedAt: Date(),
+                journalEntryId: recurringJournal.id
+            )
+            let bridge = CanonicalTransactionPostingBridge(modelContext: modelContext)
+            guard let posting = bridge.buildApprovedPosting(
+                for: updatedSnapshot,
+                businessId: businessId,
+                counterpartyId: candidate.counterpartyId,
+                source: .recurring,
+                categories: categories,
+                legacyAccounts: accounts
+            ) else {
+                continue
+            }
+
+            do {
+                _ = try saveApprovedPostingSynchronously(
+                    posting,
+                    allocationAmounts: newAllocations,
+                    actor: "system"
+                )
+            } catch {
+                AppLogger.dataStore.warning("Failed to recalculate canonical recurring allocations for project \(projectId.uuidString): \(error.localizedDescription)")
+            }
+        }
+
         save()
     }
 
@@ -2445,300 +2117,396 @@ class DataStore {
 
     // MARK: - Process Recurring Transactions
 
-    /// 1件の定期取引から実取引を生成する共通ヘルパー
-    @discardableResult
-    private func createTransactionFromRecurring(
-        _ recurring: PPRecurringTransaction,
-        txDate: Date,
-        isYearly: Bool,
-        calendar: Calendar
-    ) -> PPTransaction? {
-        let memo = "[定期] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-        var txAllocations: [Allocation]
-        switch recurring.allocationMode {
-        case .equalAll:
-            // H9: アーカイブ済みプロジェクトを除外
-            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-            let completedThisMonth = projects.filter { p in
-                guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
-                let compComps = calendar.dateComponents([.year, .month], from: completedAt)
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                return compComps.year == txComps.year && compComps.month == txComps.month
-            }
-            let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
-            guard !allEligibleIds.isEmpty else { return nil }
-            txAllocations = calculateEqualSplitAllocations(amount: recurring.amount, projectIds: allEligibleIds)
+    private struct RecurringDueOccurrence {
+        let recurringId: UUID
+        let scheduledDate: Date
+        let amount: Int
+        let previewMemo: String
+        let postingMemo: String
+        let categoryId: String
+        let isMonthlySpread: Bool
+        let monthKey: String?
+        let projectName: String?
+        let allocationMode: AllocationMode
+        let isSkipped: Bool
+        let isYearLocked: Bool
+    }
 
-            let txCompsEq = calendar.dateComponents([.year, .month], from: txDate)
-            if let txYear = txCompsEq.year, let txMonth = txCompsEq.month {
-                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                let needsProRata = txAllocations.contains { alloc in
-                    guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                    let activeDays = isYearly
-                        ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
-                        : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
-                    return activeDays < totalDays
-                }
-                if needsProRata {
-                    let inputs: [HolisticProRataInput] = txAllocations.map { alloc in
-                        let project = projects.first { $0.id == alloc.projectId }
-                        let activeDays = isYearly
-                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                        return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                    }
-                    txAllocations = calculateHolisticProRata(
-                        totalAmount: recurring.amount,
-                        totalDays: totalDays,
-                        inputs: inputs
-                    )
-                }
-            }
-        case .manual:
-            txAllocations = recalculateAllocationAmounts(amount: recurring.amount, existingAllocations: recurring.allocations)
-            let txCompsMan = calendar.dateComponents([.year, .month], from: txDate)
-            if let txYear = txCompsMan.year, let txMonth = txCompsMan.month {
-                let totalDays = isYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
-                let needsProRata = recurring.allocations.contains { alloc in
-                    guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                    return project.startDate != nil || project.effectiveEndDate != nil
-                }
-                if needsProRata {
-                    let inputs: [HolisticProRataInput] = recurring.allocations.map { alloc in
-                        let project = projects.first { $0.id == alloc.projectId }
-                        let activeDays = isYearly
-                            ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
-                            : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                        return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                    }
-                    txAllocations = calculateHolisticProRata(
-                        totalAmount: recurring.amount,
-                        totalDays: totalDays,
-                        inputs: inputs
-                    )
-                }
-            }
-        }
-        let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-        switch addTransactionResult(
-            type: recurring.type,
-            amount: recurring.amount,
-            date: txDate,
-            categoryId: recurring.categoryId,
-            memo: memo,
-            allocations: txRatios,
-            recurringId: recurring.id,
-            paymentAccountId: recurring.paymentAccountId,
-            transferToAccountId: recurring.transferToAccountId,
-            taxDeductibleRate: recurring.taxDeductibleRate,
-            counterparty: recurring.counterparty,
-            candidateSource: .recurring
-        ) {
-        case .success(let transaction):
-            transaction.allocations = txAllocations
-            transaction.updatedAt = Date()
-            return transaction
-        case .failure:
-            return nil
+    private func recurringProjectName(_ recurring: PPRecurringTransaction) -> String? {
+        recurring.allocations.first.flatMap { allocation in
+            projects.first(where: { $0.id == allocation.projectId })?.name
         }
     }
 
-    /// 定期取引の生成プレビュー（dry-run）。実際の取引は生成しない。
-    func previewRecurringTransactions() -> [RecurringPreviewItem] {
-        let calendar = Calendar.current
-        let today = todayDate()
-        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
-        guard let currentYear = todayComps.year, let currentMonth = todayComps.month, let currentDay = todayComps.day else { return [] }
+    private func recurringPostingMemo(for recurring: PPRecurringTransaction, isMonthlySpread: Bool) -> String {
+        let prefix = isMonthlySpread ? "[定期/月次]" : "[定期]"
+        return "\(prefix) \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
+    }
 
-        var items: [RecurringPreviewItem] = []
+    private func recurringPreviewMemo(for recurring: PPRecurringTransaction, isMonthlySpread: Bool) -> String {
+        let prefix = isMonthlySpread ? "[定期/月次]" : "[定期]"
+        return "\(prefix) \(recurring.name)"
+    }
+
+    private func monthlySpreadEligibleRemainderMonth(
+        recurring: PPRecurringTransaction,
+        year: Int,
+        calendar: Calendar
+    ) -> Int? {
+        let startMonth = recurring.monthOfYear ?? 1
+        var lastEligibleMonth = 12
+
+        if let endDate = recurring.endDate {
+            for month in stride(from: 12, through: startMonth, by: -1) {
+                if let date = calendar.date(from: DateComponents(year: year, month: month, day: recurring.dayOfMonth)),
+                   date <= endDate {
+                    lastEligibleMonth = month
+                    break
+                }
+                if month == startMonth {
+                    lastEligibleMonth = startMonth
+                }
+            }
+        }
+
+        for month in stride(from: lastEligibleMonth, through: startMonth, by: -1) {
+            guard let date = calendar.date(from: DateComponents(year: year, month: month, day: recurring.dayOfMonth)) else {
+                continue
+            }
+            if !recurring.skipDates.contains(where: { calendar.isDate($0, inSameDayAs: date) }) {
+                return month
+            }
+        }
+        return nil
+    }
+
+    private func dueRecurringOccurrences(on today: Date = todayDate()) -> [RecurringDueOccurrence] {
+        let calendar = Calendar.current
+        let todayComponents = calendar.dateComponents([.year, .month, .day], from: today)
+        guard let currentYear = todayComponents.year,
+              let currentMonth = todayComponents.month,
+              let currentDay = todayComponents.day else {
+            return []
+        }
+
+        var occurrences: [RecurringDueOccurrence] = []
 
         for recurring in recurringTransactions {
             guard recurring.isActive else { continue }
             if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
 
-            let projectName = recurring.allocations.first.flatMap { alloc in
-                projects.first(where: { $0.id == alloc.projectId })?.name
-            }
+            let projectName = recurringProjectName(recurring)
 
             if recurring.frequency == .monthly {
                 var iterYear: Int
                 var iterMonth: Int
 
                 if let lastGen = recurring.lastGeneratedDate {
-                    let lastComps = calendar.dateComponents([.year, .month], from: lastGen)
-                    iterYear = lastComps.year!
-                    iterMonth = lastComps.month!
-                    iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                    let lastComponents = calendar.dateComponents([.year, .month], from: lastGen)
+                    iterYear = lastComponents.year ?? currentYear
+                    iterMonth = (lastComponents.month ?? currentMonth) + 1
+                    if iterMonth > 12 {
+                        iterMonth = 1
+                        iterYear += 1
+                    }
                 } else {
                     iterYear = currentYear
                     iterMonth = currentMonth
                 }
 
                 while iterYear < currentYear || (iterYear == currentYear && iterMonth <= currentMonth) {
-                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth { break }
+                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth {
+                        break
+                    }
 
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
+                    guard let scheduledDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
                         iterMonth += 1
-                        if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                        if iterMonth > 12 {
+                            iterMonth = 1
+                            iterYear += 1
+                        }
                         continue
                     }
 
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    let yearLocked = isYearLocked(for: txDate)
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !yearLocked && !isSkipped {
-                        items.append(RecurringPreviewItem(
-                            recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: recurring.amount,
-                            scheduledDate: txDate,
-                            categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)",
-                            projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
+                    if let endDate = recurring.endDate, scheduledDate > endDate {
+                        break
                     }
 
+                    occurrences.append(
+                        RecurringDueOccurrence(
+                            recurringId: recurring.id,
+                            scheduledDate: scheduledDate,
+                            amount: recurring.amount,
+                            previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: false),
+                            postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: false),
+                            categoryId: recurring.categoryId,
+                            isMonthlySpread: false,
+                            monthKey: nil,
+                            projectName: projectName,
+                            allocationMode: recurring.allocationMode,
+                            isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                            isYearLocked: isYearLocked(for: scheduledDate)
+                        )
+                    )
+
                     iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
+                    if iterMonth > 12 {
+                        iterMonth = 1
+                        iterYear += 1
+                    }
                 }
-            } else if recurring.yearlyAmortizationMode == .monthlySpread {
-                if let endDate = recurring.endDate, today > endDate { continue }
+                continue
+            }
+
+            if recurring.yearlyAmortizationMode == .monthlySpread {
+                if let endDate = recurring.endDate, today > endDate {
+                    continue
+                }
+
                 let startMonth = recurring.monthOfYear ?? 1
                 let actualMonthCount = 12 - startMonth + 1
                 let monthlyAmount = recurring.amount / actualMonthCount
                 let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
+                let eligibleRemainderMonth = monthlySpreadEligibleRemainderMonth(
+                    recurring: recurring,
+                    year: currentYear,
+                    calendar: calendar
+                )
                 let currentYearPrefix = String(format: "%d-", currentYear)
-                let generatedMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
+                let generatedMonths = Set(recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) })
 
                 for month in startMonth...12 {
-                    guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else { continue }
+                    guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else {
+                        continue
+                    }
                     let monthKey = String(format: "%d-%02d", currentYear, month)
                     guard !generatedMonths.contains(monthKey) else { continue }
-                    guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
-                    if let endDate = recurring.endDate, txDate > endDate { continue }
-                    if isYearLocked(for: txDate) { continue }
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !isSkipped {
-                        let txAmount = month == 12 ? monthlyAmount + remainder : monthlyAmount
-                        items.append(RecurringPreviewItem(
+                    guard let scheduledDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else {
+                        continue
+                    }
+                    if let endDate = recurring.endDate, scheduledDate > endDate {
+                        continue
+                    }
+
+                    occurrences.append(
+                        RecurringDueOccurrence(
                             recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: txAmount,
-                            scheduledDate: txDate,
+                            scheduledDate: scheduledDate,
+                            amount: month == eligibleRemainderMonth ? monthlyAmount + remainder : monthlyAmount,
+                            previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: true),
+                            postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: true),
                             categoryId: recurring.categoryId,
-                            memo: "[定期/月次] \(recurring.name)",
                             isMonthlySpread: true,
+                            monthKey: monthKey,
                             projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
-                    }
+                            allocationMode: recurring.allocationMode,
+                            isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                            isYearLocked: isYearLocked(for: scheduledDate)
+                        )
+                    )
                 }
-            } else {
-                let targetMonth = recurring.monthOfYear ?? 1
-                let startYear: Int
-                if let lastGen = recurring.lastGeneratedDate {
-                    startYear = calendar.component(.year, from: lastGen) + 1
-                } else {
-                    startYear = currentYear
-                }
-                guard startYear <= currentYear else { continue }
-                for iterYear in startYear...currentYear {
-                    if iterYear == currentYear {
-                        if currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth) { break }
-                    }
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-                    if isYearLocked(for: txDate) { continue }
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if !isSkipped {
-                        items.append(RecurringPreviewItem(
-                            recurringId: recurring.id,
-                            recurringName: recurring.name,
-                            type: recurring.type,
-                            amount: recurring.amount,
-                            scheduledDate: txDate,
-                            categoryId: recurring.categoryId,
-                            memo: "[定期] \(recurring.name)",
-                            projectName: projectName,
-                            allocationMode: recurring.allocationMode
-                        ))
-                    }
-                }
+                continue
             }
-        }
 
-        return items.sorted { $0.scheduledDate < $1.scheduledDate }
-    }
+            let targetMonth = recurring.monthOfYear ?? 1
+            let startYear: Int
+            if let lastGen = recurring.lastGeneratedDate {
+                startYear = calendar.component(.year, from: lastGen) + 1
+            } else {
+                startYear = currentYear
+            }
 
-    /// 指定されたプレビュー項目のみを実際に処理する（承認フロー）
-    func approveRecurringItems(_ approvedIds: Set<UUID>, from items: [RecurringPreviewItem]) -> Int {
-        let approvedItems = items.filter { approvedIds.contains($0.id) }
-        var generatedCount = 0
-
-        for item in approvedItems {
-            guard let recurring = recurringTransactions.first(where: { $0.id == item.recurringId }) else { continue }
-            if isYearLocked(for: item.scheduledDate) { continue }
-            let calendar = Calendar.current
-            let txDate = item.scheduledDate
-
-            if item.isMonthlySpread {
-                let monthKey = String(format: "%d-%02d", calendar.component(.year, from: txDate), calendar.component(.month, from: txDate))
-                let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-
-                var txAllocations: [Allocation]
-                switch recurring.allocationMode {
-                case .equalAll:
-                    let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-                    guard !activeProjectIds.isEmpty else { continue }
-                    txAllocations = calculateEqualSplitAllocations(amount: item.amount, projectIds: activeProjectIds)
-                case .manual:
-                    txAllocations = recalculateAllocationAmounts(amount: item.amount, existingAllocations: recurring.allocations)
-                }
-
-                let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-                switch addTransactionResult(
-                    type: recurring.type,
-                    amount: item.amount,
-                    date: txDate,
-                    categoryId: recurring.categoryId,
-                    memo: memo,
-                    allocations: txRatios,
-                    recurringId: recurring.id,
-                    paymentAccountId: recurring.paymentAccountId,
-                    transferToAccountId: recurring.transferToAccountId,
-                    taxDeductibleRate: recurring.taxDeductibleRate,
-                    counterparty: recurring.counterparty,
-                    candidateSource: .recurring
-                ) {
-                case .success:
-                    recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-                    recurring.updatedAt = Date()
-                    generatedCount += 1
-                case .failure:
+            guard startYear <= currentYear else { continue }
+            for iterYear in startYear...currentYear {
+                if iterYear == currentYear,
+                   (currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth)) {
                     break
                 }
-            } else {
-                let isYearly = recurring.frequency == .yearly
-                if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: isYearly, calendar: calendar) != nil {
-                    recurring.lastGeneratedDate = txDate
-                    recurring.updatedAt = Date()
-                    generatedCount += 1
+
+                guard let scheduledDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else {
+                    continue
                 }
+                if let endDate = recurring.endDate, scheduledDate > endDate {
+                    break
+                }
+
+                occurrences.append(
+                    RecurringDueOccurrence(
+                        recurringId: recurring.id,
+                        scheduledDate: scheduledDate,
+                        amount: recurring.amount,
+                        previewMemo: recurringPreviewMemo(for: recurring, isMonthlySpread: false),
+                        postingMemo: recurringPostingMemo(for: recurring, isMonthlySpread: false),
+                        categoryId: recurring.categoryId,
+                        isMonthlySpread: false,
+                        monthKey: nil,
+                        projectName: projectName,
+                        allocationMode: recurring.allocationMode,
+                        isSkipped: recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: scheduledDate) },
+                        isYearLocked: isYearLocked(for: scheduledDate)
+                    )
+                )
             }
         }
 
+        return occurrences.sorted { lhs, rhs in
+            if lhs.scheduledDate == rhs.scheduledDate {
+                return lhs.recurringId.uuidString < rhs.recurringId.uuidString
+            }
+            return lhs.scheduledDate < rhs.scheduledDate
+        }
+    }
+
+    private func recurringAllocations(
+        for recurring: PPRecurringTransaction,
+        amount: Int,
+        txDate: Date,
+        treatAsYearly: Bool
+    ) -> [Allocation]? {
+        let calendar = Calendar.current
+        var resolvedAllocations: [Allocation]
+
+        switch recurring.allocationMode {
+        case .equalAll:
+            let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
+            let completedInPeriod = projects.filter { project in
+                guard project.status == .completed,
+                      project.isArchived != true,
+                      let completedAt = project.completedAt else {
+                    return false
+                }
+                let completedComponents = calendar.dateComponents([.year, .month], from: completedAt)
+                let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+                return completedComponents.year == txComponents.year && completedComponents.month == txComponents.month
+            }
+            let projectIds = activeProjectIds + completedInPeriod.map(\.id)
+            guard !projectIds.isEmpty else { return nil }
+            resolvedAllocations = calculateEqualSplitAllocations(amount: amount, projectIds: projectIds)
+        case .manual:
+            resolvedAllocations = recalculateAllocationAmounts(amount: amount, existingAllocations: recurring.allocations)
+        }
+
+        let txComponents = calendar.dateComponents([.year, .month], from: txDate)
+        guard let txYear = txComponents.year, let txMonth = txComponents.month else {
+            return resolvedAllocations
+        }
+
+        let totalDays = treatAsYearly ? daysInYear(txYear) : daysInMonth(year: txYear, month: txMonth)
+        let needsProRata: Bool
+        switch recurring.allocationMode {
+        case .equalAll:
+            needsProRata = resolvedAllocations.contains { allocation in
+                guard let project = projects.first(where: { $0.id == allocation.projectId }) else {
+                    return false
+                }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
+                return activeDays < totalDays
+            }
+        case .manual:
+            needsProRata = recurring.allocations.contains { allocation in
+                guard let project = projects.first(where: { $0.id == allocation.projectId }) else {
+                    return false
+                }
+                return project.startDate != nil || project.effectiveEndDate != nil
+            }
+        }
+
+        guard needsProRata else { return resolvedAllocations }
+
+        let inputs: [HolisticProRataInput]
+        switch recurring.allocationMode {
+        case .equalAll:
+            inputs = resolvedAllocations.map { allocation in
+                let project = projects.first { $0.id == allocation.projectId }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+            }
+        case .manual:
+            inputs = recurring.allocations.map { allocation in
+                let project = projects.first { $0.id == allocation.projectId }
+                let activeDays = treatAsYearly
+                    ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear)
+                    : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
+                return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+            }
+        }
+
+        return calculateHolisticProRata(
+            totalAmount: amount,
+            totalDays: totalDays,
+            inputs: inputs
+        )
+    }
+
+    @discardableResult
+    private func consumeRecurringSkipOccurrence(
+        _ occurrence: RecurringDueOccurrence,
+        recurring: PPRecurringTransaction
+    ) -> Bool {
+        let calendar = Calendar.current
+        guard occurrence.isSkipped else { return false }
+
+        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: occurrence.scheduledDate) }
+        if occurrence.isMonthlySpread {
+            if let monthKey = occurrence.monthKey, !recurring.lastGeneratedMonths.contains(monthKey) {
+                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
+            }
+        } else {
+            recurring.lastGeneratedDate = occurrence.scheduledDate
+        }
+        recurring.updatedAt = Date()
+        return true
+    }
+
+    @discardableResult
+    private func applyRecurringProcessedOccurrence(
+        _ occurrence: RecurringDueOccurrence,
+        recurring: PPRecurringTransaction
+    ) -> Bool {
+        if occurrence.isMonthlySpread,
+           let monthKey = occurrence.monthKey,
+           !recurring.lastGeneratedMonths.contains(monthKey) {
+            recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
+        }
+        recurring.lastGeneratedDate = occurrence.scheduledDate
+        recurring.updatedAt = Date()
+        return true
+    }
+
+    @discardableResult
+    private func pruneRecurringGeneratedMonthsForCurrentYear(on today: Date) -> Bool {
+        let currentYear = Calendar.current.component(.year, from: today)
+        let currentYearPrefix = String(format: "%d-", currentYear)
+        var mutated = false
+
+        for recurring in recurringTransactions where recurring.yearlyAmortizationMode == .monthlySpread {
+            let filteredMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
+            if filteredMonths.count != recurring.lastGeneratedMonths.count {
+                recurring.lastGeneratedMonths = filteredMonths
+                recurring.updatedAt = Date()
+                mutated = true
+            }
+        }
+        return mutated
+    }
+
+    /// 定期取引の承認待ちプレビュー。Approval Request と同期された内容を返す。
+    func previewRecurringTransactions() async -> [RecurringPreviewItem] {
+        await recurringWorkflowUseCase.previewRecurringTransactions()
+    }
+
+    /// 指定された承認依頼のみを実際に処理する。
+    func approveRecurringItems(_ approvedIds: Set<UUID>) async -> Int {
+        let generatedCount = await recurringWorkflowUseCase.approveRecurringItems(approvedIds)
+        refreshRecurring()
         if generatedCount > 0 {
-            save()
-            refreshRecurring()
             refreshTransactions()
             refreshJournalEntries()
             refreshJournalLines()
-
             if let businessId = businessProfile?.id {
                 let auditEvent = AuditEvent(
                     businessId: businessId,
@@ -2751,318 +2519,77 @@ class DataStore {
                 appendAuditEvent(auditEvent)
             }
         }
-
         return generatedCount
     }
 
+#if DEBUG
     @discardableResult
     func processRecurringTransactions() -> Int {
-        let calendar = Calendar.current
         let today = todayDate()
-        let todayComps = calendar.dateComponents([.year, .month, .day], from: today)
-        guard let currentYear = todayComps.year, let currentMonth = todayComps.month, let currentDay = todayComps.day else { return 0 }
-
         var generatedCount = 0
+        var didMutateRecurringState = pruneRecurringGeneratedMonthsForCurrentYear(on: today)
 
-        for recurring in recurringTransactions {
-            guard recurring.isActive else { continue }
-            if recurring.allocationMode == .manual && recurring.allocations.isEmpty { continue }
+        for occurrence in dueRecurringOccurrences(on: today) {
+            guard let recurring = recurringTransactions.first(where: { $0.id == occurrence.recurringId }) else { continue }
 
-            if recurring.frequency == .monthly {
-                // 月次キャッチアップループ: lastGeneratedDate の翌月から現在月まで
-                var iterYear: Int
-                var iterMonth: Int
-
-                if let lastGen = recurring.lastGeneratedDate {
-                    let lastComps = calendar.dateComponents([.year, .month], from: lastGen)
-                    iterYear = lastComps.year!
-                    iterMonth = lastComps.month!
-                    // lastGeneratedDate の翌月から開始
-                    iterMonth += 1
-                    if iterMonth > 12 {
-                        iterMonth = 1
-                        iterYear += 1
-                    }
-                } else {
-                    // 初回: 現在月から
-                    iterYear = currentYear
-                    iterMonth = currentMonth
-                }
-
-                while iterYear < currentYear || (iterYear == currentYear && iterMonth <= currentMonth) {
-                    // 今月の場合、dayOfMonth がまだ来ていなければ生成しない
-                    if iterYear == currentYear && iterMonth == currentMonth && currentDay < recurring.dayOfMonth {
-                        break
-                    }
-
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: iterMonth, day: recurring.dayOfMonth)) else {
-                        iterMonth += 1
-                        if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
-                        continue
-                    }
-
-                    // endDate チェック
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    // skipDates チェック
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if isSkipped {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                        recurring.updatedAt = Date()
-                    } else if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: false, calendar: calendar) != nil {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.updatedAt = Date()
-                        generatedCount += 1
-                    }
-
-                    iterMonth += 1
-                    if iterMonth > 12 { iterMonth = 1; iterYear += 1 }
-                }
-            } else if recurring.yearlyAmortizationMode == .monthlySpread {
-                // endDateを過ぎた定期取引は月次分割前に停止チェック
-                if let endDate = recurring.endDate, today > endDate {
-                    recurring.isActive = false
-                    recurring.updatedAt = Date()
-                    continue
-                }
-                // 月次分割モード: monthOfYear月から12月まで毎月生成
-                let generated = generateMonthlySpreadTransactions(
-                    recurring: recurring,
-                    currentYear: currentYear,
-                    currentMonth: currentMonth,
-                    currentDay: currentDay,
-                    calendar: calendar
-                )
-                generatedCount += generated
+            if occurrence.isSkipped {
+                didMutateRecurringState = consumeRecurringSkipOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
                 continue
-            } else {
-                // 年次キャッチアップループ: lastGeneratedDate の翌年から現在年まで
-                let targetMonth = recurring.monthOfYear ?? 1
-                let startYear: Int
-                if let lastGen = recurring.lastGeneratedDate {
-                    startYear = calendar.component(.year, from: lastGen) + 1
-                } else {
-                    startYear = currentYear
-                }
-
-                guard startYear <= currentYear else { continue }
-                for iterYear in startYear...currentYear {
-                    // 今年の場合、対象月/日がまだ来ていなければ生成しない
-                    if iterYear == currentYear {
-                        if currentMonth < targetMonth || (currentMonth == targetMonth && currentDay < recurring.dayOfMonth) {
-                            break
-                        }
-                    }
-
-                    guard let txDate = calendar.date(from: DateComponents(year: iterYear, month: targetMonth, day: recurring.dayOfMonth)) else { continue }
-
-                    // endDate チェック
-                    if let endDate = recurring.endDate, txDate > endDate { break }
-
-                    // skipDates チェック
-                    let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-                    if isSkipped {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                        recurring.updatedAt = Date()
-                    } else if createTransactionFromRecurring(recurring, txDate: txDate, isYearly: true, calendar: calendar) != nil {
-                        recurring.lastGeneratedDate = txDate
-                        recurring.updatedAt = Date()
-                        generatedCount += 1
-                    }
-                }
             }
-
-            // endDateを過ぎた定期取引はキャッチアップ完了後に自動停止
-            if let endDate = recurring.endDate, today > endDate {
-                recurring.isActive = false
-                recurring.updatedAt = Date()
+            if occurrence.isYearLocked {
+                continue
             }
-        }
-
-        if generatedCount > 0 {
-            save()
-            refreshRecurring()
-            refreshTransactions()
-            refreshJournalEntries()
-            refreshJournalLines()
-        }
-
-        return generatedCount
-    }
-
-    // MARK: - Monthly Spread Generation
-
-    /// 年次定期取引を月次分割で生成する
-    /// monthOfYear月から12月まで、各月のdayOfMonth日に取引を生成する
-    private func generateMonthlySpreadTransactions(
-        recurring: PPRecurringTransaction,
-        currentYear: Int,
-        currentMonth: Int,
-        currentDay: Int,
-        calendar: Calendar
-    ) -> Int {
-        let startMonth = recurring.monthOfYear ?? 1
-        var generatedCount = 0
-
-        // 年が変わったら前年のエントリをクリア
-        let currentYearPrefix = String(format: "%d-", currentYear)
-        let filteredMonths = recurring.lastGeneratedMonths.filter { $0.hasPrefix(currentYearPrefix) }
-        if filteredMonths.count != recurring.lastGeneratedMonths.count {
-            recurring.lastGeneratedMonths = filteredMonths
-        }
-
-        // H4: 月額計算: 実際の生成月数で除算（年途中開始を考慮）
-        let actualMonthCount = 12 - startMonth + 1
-        let monthlyAmount = recurring.amount / actualMonthCount
-        let remainder = recurring.amount - (monthlyAmount * actualMonthCount)
-
-        // 最終生成月を事前計算（endDateやskipDatesを考慮し、端数を正しい月に加算するため）
-        var lastEligibleMonth = 12
-        if let endDate = recurring.endDate {
-            for m in stride(from: 12, through: startMonth, by: -1) {
-                if let d = calendar.date(from: DateComponents(year: currentYear, month: m, day: recurring.dayOfMonth)), d <= endDate {
-                    lastEligibleMonth = m
-                    break
-                }
-                if m == startMonth { lastEligibleMonth = startMonth }
-            }
-        }
-
-        // H3: skipDatesを考慮して端数加算月を調整（スキップ月に端数が消失するのを防止）
-        var foundEligibleMonth = false
-        for m in stride(from: lastEligibleMonth, through: startMonth, by: -1) {
-            guard let d = calendar.date(from: DateComponents(year: currentYear, month: m, day: recurring.dayOfMonth)) else { continue }
-            if !recurring.skipDates.contains(where: { calendar.isDate($0, inSameDayAs: d) }) {
-                lastEligibleMonth = m
-                foundEligibleMonth = true
-                break
-            }
-        }
-        // 全月がスキップの場合、端数を付与する対象月がないためsentinel値を設定
-        if !foundEligibleMonth {
-            lastEligibleMonth = -1
-        }
-
-        for month in startMonth...12 {
-            // まだ到来していない月はスキップ
-            guard currentMonth > month || (currentMonth == month && currentDay >= recurring.dayOfMonth) else { continue }
-
-            let monthKey = String(format: "%d-%02d", currentYear, month)
-
-            // 重複防止
-            guard !recurring.lastGeneratedMonths.contains(monthKey) else { continue }
-
-            // endDateチェック
-            guard let txDate = calendar.date(from: DateComponents(year: currentYear, month: month, day: recurring.dayOfMonth)) else { continue }
-            if let endDate = recurring.endDate, txDate > endDate { continue }
-
-            // skipDatesチェック
-            let isSkipped = recurring.skipDates.contains { calendar.isDate($0, inSameDayAs: txDate) }
-            if isSkipped {
-                recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-                recurring.skipDates = recurring.skipDates.filter { !calendar.isDate($0, inSameDayAs: txDate) }
-                recurring.updatedAt = Date()
+            guard let allocations = recurringAllocations(
+                for: recurring,
+                amount: occurrence.amount,
+                txDate: occurrence.scheduledDate,
+                treatAsYearly: recurring.frequency == .yearly && !occurrence.isMonthlySpread
+            ) else {
                 continue
             }
 
-            // 最終生成月に端数を加算
-            let txAmount = month == lastEligibleMonth ? monthlyAmount + remainder : monthlyAmount
-
-            let memo = "[定期/月次] \(recurring.name)" + (recurring.memo.isEmpty ? "" : " - \(recurring.memo)")
-
-            var txAllocations: [Allocation]
-            switch recurring.allocationMode {
-            case .equalAll:
-                // H9: アーカイブ済みプロジェクトを除外
-                let activeProjectIds = projects.filter { $0.status == .active && $0.isArchived != true }.map(\.id)
-                let completedThisMonth = projects.filter { p in
-                    guard p.status == .completed, p.isArchived != true, let completedAt = p.completedAt else { return false }
-                    let compComps = calendar.dateComponents([.year, .month], from: completedAt)
-                    return compComps.year == currentYear && compComps.month == month
-                }
-                let allEligibleIds = activeProjectIds + completedThisMonth.map(\.id)
-                guard !allEligibleIds.isEmpty else { continue }
-                txAllocations = calculateEqualSplitAllocations(amount: txAmount, projectIds: allEligibleIds)
-
-                // 月次プロラタ適用
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                if let txYear = txComps.year, let txMonth = txComps.month {
-                    let totalDays = daysInMonth(year: txYear, month: txMonth)
-                    let needsProRata = txAllocations.contains { alloc in
-                        guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                        let activeDays = calculateActiveDaysInMonth(startDate: project.startDate, completedAt: project.effectiveEndDate, year: txYear, month: txMonth)
-                        return activeDays < totalDays
-                    }
-                    if needsProRata {
-                        let inputs: [HolisticProRataInput] = txAllocations.map { alloc in
-                            let project = projects.first { $0.id == alloc.projectId }
-                            let activeDays = calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                            return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                        }
-                        txAllocations = calculateHolisticProRata(
-                            totalAmount: txAmount,
-                            totalDays: totalDays,
-                            inputs: inputs
-                        )
-                    }
-                }
-            case .manual:
-                txAllocations = recalculateAllocationAmounts(amount: txAmount, existingAllocations: recurring.allocations)
-                // 月次プロラタ適用
-                let txComps = calendar.dateComponents([.year, .month], from: txDate)
-                if let txYear = txComps.year, let txMonth = txComps.month {
-                    let totalDays = daysInMonth(year: txYear, month: txMonth)
-                    let needsProRata = recurring.allocations.contains { alloc in
-                        guard let project = projects.first(where: { $0.id == alloc.projectId }) else { return false }
-                        return project.startDate != nil || project.effectiveEndDate != nil
-                    }
-                    if needsProRata {
-                        let inputs: [HolisticProRataInput] = recurring.allocations.map { alloc in
-                            let project = projects.first { $0.id == alloc.projectId }
-                            let activeDays = calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: txYear, month: txMonth)
-                            return HolisticProRataInput(projectId: alloc.projectId, ratio: alloc.ratio, activeDays: activeDays)
-                        }
-                        txAllocations = calculateHolisticProRata(
-                            totalAmount: txAmount,
-                            totalDays: totalDays,
-                            inputs: inputs
-                        )
-                    }
-                }
-            }
-
-            let txRatios = txAllocations.map { (projectId: $0.projectId, ratio: $0.ratio) }
-            switch addTransactionResult(
+            let result = saveApprovedPostingSync(
                 type: recurring.type,
-                amount: txAmount,
-                date: txDate,
+                amount: occurrence.amount,
+                date: occurrence.scheduledDate,
                 categoryId: recurring.categoryId,
-                memo: memo,
-                allocations: txRatios,
+                memo: occurrence.postingMemo,
+                allocationAmounts: allocations,
                 recurringId: recurring.id,
                 paymentAccountId: recurring.paymentAccountId,
                 transferToAccountId: recurring.transferToAccountId,
                 taxDeductibleRate: recurring.taxDeductibleRate,
+                counterpartyId: recurring.counterpartyId,
                 counterparty: recurring.counterparty,
                 candidateSource: .recurring
-            ) {
-            case .success(let transaction):
-                transaction.allocations = txAllocations
-                transaction.updatedAt = Date()
-            case .failure:
-                continue
+            )
+            if case .success = result {
+                didMutateRecurringState = applyRecurringProcessedOccurrence(occurrence, recurring: recurring) || didMutateRecurringState
+                generatedCount += 1
             }
+        }
 
-            recurring.lastGeneratedMonths = recurring.lastGeneratedMonths + [monthKey]
-            recurring.lastGeneratedDate = txDate
-            recurring.updatedAt = Date()
-            generatedCount += 1
+        for recurring in recurringTransactions where recurring.isActive {
+            if let endDate = recurring.endDate, today > endDate {
+                recurring.isActive = false
+                recurring.updatedAt = Date()
+                didMutateRecurringState = true
+            }
+        }
+
+        if didMutateRecurringState || generatedCount > 0 {
+            _ = save()
+            refreshRecurring()
+            if generatedCount > 0 {
+                refreshTransactions()
+                refreshJournalEntries()
+                refreshJournalLines()
+            }
         }
 
         return generatedCount
     }
+#endif
 
     // MARK: - Summary Functions
 
@@ -3081,6 +2608,17 @@ class DataStore {
                 case .expense: totalExpense += alloc.amount
                 case .transfer: break
                 }
+            }
+        }
+
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) where record.projectId == projectId {
+            switch record.type {
+            case .income:
+                totalIncome += record.amount
+            case .expense:
+                totalExpense += record.amount
+            case .transfer:
+                break
             }
         }
 
@@ -3116,6 +2654,17 @@ class DataStore {
             }
         }
 
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) {
+            switch record.type {
+            case .income:
+                totalIncome += record.amount
+            case .expense:
+                totalExpense += record.amount
+            case .transfer:
+                break
+            }
+        }
+
         let netProfit = totalIncome - totalExpense
         let profitMargin = totalIncome > 0 ? Double(netProfit) / Double(totalIncome) * 100 : 0
 
@@ -3135,6 +2684,12 @@ class DataStore {
             if let end = endDate, t.date > end { continue }
             totals[t.categoryId, default: 0] += t.amount
             grandTotal += t.amount
+        }
+
+        for record in canonicalSupplementalSummaryRecords(startDate: startDate, endDate: endDate) {
+            guard record.type == type, let categoryId = record.categoryId else { continue }
+            totals[categoryId, default: 0] += record.amount
+            grandTotal += record.amount
         }
 
         return totals.map { categoryId, total in
@@ -3166,8 +2721,109 @@ class DataStore {
             monthlyData[month] = data
         }
 
+        for record in canonicalSupplementalSummaryRecords() {
+            let month = formatter.string(from: record.date)
+            guard month.hasPrefix(String(year)), monthlyData[month] != nil else { continue }
+            guard var data = monthlyData[month] else { continue }
+            switch record.type {
+            case .income:
+                data.income += record.amount
+            case .expense:
+                data.expense += record.amount
+            case .transfer:
+                break
+            }
+            monthlyData[month] = data
+        }
+
         return monthlyData.sorted { $0.key < $1.key }.map { key, data in
             MonthlySummary(month: key, income: data.income, expense: data.expense, profit: data.income - data.expense)
+        }
+    }
+
+    private struct CanonicalSupplementalSummaryRecord {
+        let date: Date
+        let type: TransactionType
+        let amount: Int
+        let projectId: UUID?
+        let categoryId: String?
+    }
+
+    private func canonicalSupplementalSummaryRecords(
+        startDate: Date? = nil,
+        endDate: Date? = nil
+    ) -> [CanonicalSupplementalSummaryRecord] {
+        let legacyTransactionIds = Set(transactions.map(\.id))
+        let journals = canonicalJournalEntries().filter { journal in
+            guard let sourceCandidateId = journal.sourceCandidateId else {
+                return false
+            }
+            guard !legacyTransactionIds.contains(sourceCandidateId) else {
+                return false
+            }
+            if let startDate, journal.journalDate < startDate {
+                return false
+            }
+            if let endDate, journal.journalDate > endDate {
+                return false
+            }
+            return true
+        }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let candidatesById = fetchPostingCandidates(ids: candidateIds)
+
+        return journals.flatMap { journal -> [CanonicalSupplementalSummaryRecord] in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let transactionType = candidate.legacySnapshot?.type else {
+                return []
+            }
+
+            let relevantLines: [PostingCandidateLine]
+            switch transactionType {
+            case .income:
+                relevantLines = candidate.proposedLines.filter { $0.creditAccountId != nil }
+            case .expense:
+                relevantLines = candidate.proposedLines.filter { $0.debitAccountId != nil }
+            case .transfer:
+                relevantLines = []
+            }
+
+            let categoryId = candidate.legacySnapshot?.categoryId
+            return relevantLines.compactMap { line -> CanonicalSupplementalSummaryRecord? in
+                let amount = NSDecimalNumber(decimal: line.amount).intValue
+                guard amount != 0 else {
+                    return nil
+                }
+
+                return CanonicalSupplementalSummaryRecord(
+                    date: journal.journalDate,
+                    type: transactionType,
+                    amount: amount,
+                    projectId: line.projectAllocationId,
+                    categoryId: categoryId
+                )
+            }
+        }
+    }
+
+    private func fetchPostingCandidates(ids: Set<UUID>) -> [UUID: PostingCandidate] {
+        guard !ids.isEmpty else {
+            return [:]
+        }
+
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let entities = (try? modelContext.fetch(descriptor)) ?? []
+        return entities.reduce(into: [UUID: PostingCandidate]()) { result, entity in
+            guard ids.contains(entity.candidateId) else {
+                return
+            }
+            let candidate = PostingCandidateEntityMapper.toDomain(entity)
+            result[candidate.id] = candidate
         }
     }
 
@@ -3348,158 +3004,47 @@ class DataStore {
     // MARK: - Category Archive
 
     func archiveCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        category.archivedAt = Date()
-        save()
-        refreshCategories()
+        if CategoryWorkflowUseCase(modelContext: modelContext).archiveCategory(id: id) {
+            refreshCategories()
+        }
     }
 
     func unarchiveCategory(id: String) {
-        guard let category = categories.first(where: { $0.id == id }) else { return }
-        category.archivedAt = nil
-        save()
-        refreshCategories()
+        if CategoryWorkflowUseCase(modelContext: modelContext).unarchiveCategory(id: id) {
+            refreshCategories()
+        }
     }
 
     // MARK: - CSV Import
 
-    func importTransactions(from csvString: String) -> CSVImportResult {
-        var successCount = 0
-        var errorCount = 0
-        var errors: [String] = []
-
-        let parsed = parseCSV(csvString: csvString)
-
-        for entry in parsed {
-            let allocations: [(projectId: UUID, ratio: Int)] = entry.allocations.compactMap { allocation in
-                if let existing = projects.first(where: { $0.name == allocation.projectName }) {
-                    return (projectId: existing.id, ratio: allocation.ratio)
-                }
-                let created = addProject(name: allocation.projectName, description: "")
-                return (projectId: created.id, ratio: allocation.ratio)
-            }
-
-            if entry.type != .transfer {
-                guard !allocations.isEmpty else {
-                    errorCount += 1
-                    errors.append("プロジェクトが見つかりません")
-                    continue
-                }
-
-                let totalRatio = allocations.reduce(0) { $0 + $1.ratio }
-                guard totalRatio == 100 else {
-                    errorCount += 1
-                    errors.append("配分比率が不正です（合計: \(totalRatio)%）")
-                    continue
-                }
-            }
-
-            let categoryId: String
-            switch entry.type {
-            case .transfer:
-                categoryId = ""
-            case .income, .expense:
-                let categoryType: CategoryType = entry.type == .income ? .income : .expense
-                if let existing = categories.first(where: { $0.name == entry.categoryName && $0.type == categoryType }) {
-                    categoryId = existing.id
-                } else if let fallback = categories.first(where: { $0.name == entry.categoryName }) {
-                    categoryId = fallback.id
-                } else {
-                    errorCount += 1
-                    errors.append("カテゴリが見つかりません: \(entry.categoryName)")
-                    continue
-                }
-            }
-
-            let result = addTransactionResult(
-                type: entry.type,
-                amount: entry.amount,
-                date: entry.date,
-                categoryId: categoryId,
-                memo: entry.memo,
-                allocations: entry.type == .transfer ? [] : allocations,
-                paymentAccountId: entry.paymentAccountId,
-                transferToAccountId: entry.type == .transfer ? entry.transferToAccountId : nil,
-                taxDeductibleRate: entry.type == .expense ? entry.taxDeductibleRate : nil,
-                taxAmount: entry.taxAmount,
-                taxRate: entry.taxRate,
-                isTaxIncluded: entry.isTaxIncluded,
-                taxCategory: entry.taxCategory,
-                counterparty: entry.counterparty,
-                candidateSource: .importFile
+#if DEBUG
+    func importTransactions(from csvString: String) async -> CSVImportResult {
+        let result = await postingIntakeUseCase.importTransactions(
+            request: CSVImportRequest(
+                csvString: csvString,
+                originalFileName: "debug-import.csv",
+                fileData: Data(csvString.utf8),
+                mimeType: "text/csv",
+                channel: .settingsTransactionCSV
             )
-
-            if case .failure(let error) = result {
-                errorCount += 1
-                errors.append(error.localizedDescription)
-                continue
-            }
-            successCount += 1
-        }
-
-        return CSVImportResult(successCount: successCount, errorCount: errorCount, errors: errors)
+        )
+        refreshProjects()
+        refreshTransactions()
+        refreshJournalEntries()
+        refreshJournalLines()
+        loadData()
+        return result
     }
 
     // MARK: - Bulk Delete
 
     func deleteAllData() {
-        // C4: save成功後に削除するため画像パスを収集（トランザクション＋定期取引の両方）
-        let imagesToDelete = transactions.compactMap(\.receiptImagePath)
-            + recurringTransactions.compactMap(\.receiptImagePath)
-        let documentRecords = listDocumentRecords()
-        let documentFilesToDelete = documentRecords.map(\.storedFileName)
-        let complianceLogs = listComplianceLogs(limit: Int.max)
-        let secureStoreIds = Set([
-            canonicalProfileSecureStoreId,
-            legacyProfileSecureStoreId
-        ].compactMap { $0 })
-
-        for p in projects { modelContext.delete(p) }
-        for t in transactions { modelContext.delete(t) }
-        for c in categories { modelContext.delete(c) }
-        for r in recurringTransactions { modelContext.delete(r) }
-        // Phase 4B: 会計データも削除
-        for a in accounts { modelContext.delete(a) }
-        for je in journalEntries { modelContext.delete(je) }
-        for jl in journalLines { modelContext.delete(jl) }
-        if let profile = accountingProfile { modelContext.delete(profile) }
-        if let businessProfiles = try? modelContext.fetch(FetchDescriptor<BusinessProfileEntity>()) {
-            for profile in businessProfiles {
-                modelContext.delete(profile)
-            }
-        }
-        if let taxYearProfiles = try? modelContext.fetch(FetchDescriptor<TaxYearProfileEntity>()) {
-            for profile in taxYearProfiles {
-                modelContext.delete(profile)
-            }
-        }
-        for fa in fixedAssets { modelContext.delete(fa) }
-        for document in documentRecords { modelContext.delete(document) }
-        for log in complianceLogs { modelContext.delete(log) }
-        if save() {
-            for imagePath in imagesToDelete {
-                ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-            for fileName in documentFilesToDelete {
-                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
-            }
-        }
-        for profileId in secureStoreIds {
-            _ = ProfileSecureStore.delete(profileId: profileId)
-        }
-        projects = []
-        allTransactions = []
-        categories = []
-        recurringTransactions = []
-        accounts = []
-        journalEntries = []
-        journalLines = []
-        accountingProfile = nil
-        businessProfile = nil
-        currentTaxYearProfile = nil
-        fixedAssets = []
-        seedDefaultCategories()
+        SettingsMaintenanceUseCase(
+            modelContext: modelContext,
+            resetStoreState: { self.loadData() }
+        ).deleteAllData()
     }
+#endif
 
     // MARK: - Accounting CRUD
 
@@ -3576,80 +3121,16 @@ class DataStore {
         guard let businessId = businessProfile?.id else {
             return ([], [])
         }
-
-        let canonicalAccounts = fetchCanonicalAccounts(businessId: businessId)
-        let accountsById = Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) })
-        let journals = fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear)
-
-        let projectedEntries = journals.map { entry in
-            PPJournalEntry(
-                id: entry.id,
-                sourceKey: "canonical:\(entry.id.uuidString)",
-                date: entry.journalDate,
-                entryType: projectedLegacyEntryType(for: entry),
-                memo: entry.description,
-                isPosted: entry.approvedAt != nil,
-                createdAt: entry.createdAt,
-                updatedAt: entry.updatedAt
-            )
-        }
-
-        let projectedLines = journals.flatMap { entry in
-            entry.lines.sorted { $0.sortOrder < $1.sortOrder }.map { line in
-                let legacyAccountId = accountsById[line.accountId]?.legacyAccountId ?? line.accountId.uuidString
-                return PPJournalLine(
-                    id: line.id,
-                    entryId: entry.id,
-                    accountId: legacyAccountId,
-                    debit: NSDecimalNumber(decimal: line.debitAmount).intValue,
-                    credit: NSDecimalNumber(decimal: line.creditAmount).intValue,
-                    memo: "",
-                    displayOrder: line.sortOrder,
-                    createdAt: entry.createdAt,
-                    updatedAt: entry.updatedAt
-                )
-            }
-        }
-
-        let legacySupplementalEntries = journalEntries.filter { entry in
-            guard !projectedEntries.contains(where: { $0.id == entry.id }) else {
-                return false
-            }
-            let isSupplemental = entry.sourceKey.hasPrefix("manual:")
-                || entry.sourceKey.hasPrefix("opening:")
-                || entry.sourceKey.hasPrefix("closing:")
-            guard isSupplemental else {
-                return false
-            }
-            guard let requestedFiscalYear else {
-                return true
-            }
-            return fiscalYear(for: entry.date, startMonth: FiscalYearSettings.startMonth) == requestedFiscalYear
-        }
-        let legacySupplementalLines = journalLines.filter { line in
-            legacySupplementalEntries.contains { $0.id == line.entryId }
-        }
-
-        let mergedEntries = (projectedEntries + legacySupplementalEntries)
-            .sorted { lhs, rhs in
-                if lhs.date == rhs.date {
-                    return lhs.createdAt > rhs.createdAt
-                }
-                return lhs.date > rhs.date
-            }
-        let mergedLines = projectedLines + legacySupplementalLines
-        return (mergedEntries, mergedLines)
-    }
-
-    private func projectedLegacyEntryType(for entry: CanonicalJournalEntry) -> JournalEntryType {
-        switch entry.entryType {
-        case .opening:
-            return .opening
-        case .closing:
-            return .closing
-        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
-            return .auto
-        }
+        let projected = LegacyProjectedJournalAssembler.assemble(
+            businessId: businessId,
+            fiscalYear: requestedFiscalYear,
+            canonicalAccounts: fetchCanonicalAccounts(businessId: businessId),
+            canonicalJournals: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear),
+            legacyEntries: journalEntries,
+            legacyLines: journalLines,
+            supplementalSourcePrefixes: ["manual:", "opening:", "closing:", "depreciation:"]
+        )
+        return (projected.entries, projected.lines)
     }
 
     func getJournalEntry(id: UUID) -> PPJournalEntry? {

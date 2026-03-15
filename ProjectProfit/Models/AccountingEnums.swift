@@ -58,6 +58,7 @@ enum AccountSubtype: String, Codable, CaseIterable {
     // 負債 (Liabilities)
     case accountsPayable         // 買掛金
     case accruedExpenses         // 未払費用
+    case withholdingTaxPayable   // 源泉所得税預り金
 
     // 資本 (Equity)
     case ownerCapital            // 元入金
@@ -108,6 +109,7 @@ enum AccountSubtype: String, Codable, CaseIterable {
         case .creditCard: "クレジットカード"
         case .accountsPayable: "買掛金"
         case .accruedExpenses: "未払費用"
+        case .withholdingTaxPayable: "源泉所得税預り金"
         case .ownerCapital: "元入金"
         case .ownerContributions: "事業主借"
         case .ownerDrawings: "事業主貸"

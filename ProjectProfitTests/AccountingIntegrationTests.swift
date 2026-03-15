@@ -202,18 +202,12 @@ final class AccountingIntegrationTests: XCTestCase {
 
     // MARK: - Test 4: EtaxFieldPopulator 申告者情報フィールド生成
 
-    /// PPAccountingProfile に e-Tax フィールドを設定し、EtaxFieldPopulator が
+    /// BusinessProfile + ProfileSensitivePayload から EtaxFieldPopulator が
     /// .declarantInfo セクションのフィールドを正しく生成することを検証
     func testEtaxFieldPopulator_GeneratesDeclarantInfoFields() {
-        let profileId = UUID().uuidString
-        defer { _ = ProfileSecureStore.delete(profileId: profileId) }
-
-        let profile = PPAccountingProfile(
-            id: profileId,
-            fiscalYear: 2025,
-            bookkeepingMode: .doubleEntry,
-            businessName: "テスト屋号",
-            ownerName: "田中太郎"
+        let businessProfile = BusinessProfile(
+            ownerName: "田中太郎",
+            businessName: "テスト屋号"
         )
         let payload = ProfileSensitivePayload.fromLegacyProfile(
             ownerNameKana: "タナカタロウ",
@@ -225,9 +219,11 @@ final class AccountingIntegrationTests: XCTestCase {
             myNumberFlag: nil,
             includeSensitiveInExport: true
         )
-        XCTAssertTrue(ProfileSecureStore.save(payload, profileId: profileId))
 
-        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(
+            businessProfile: businessProfile,
+            sensitivePayload: payload
+        )
 
         // 7フィールドすべてが生成されることを確認
         XCTAssertEqual(fields.count, 7, "全てのe-Tax申告者情報フィールドが生成されること")
@@ -254,15 +250,15 @@ final class AccountingIntegrationTests: XCTestCase {
 
     /// 空文字のフィールドは .declarantInfo に含まれないことを検証
     func testEtaxFieldPopulator_SkipsEmptyDeclarantFields() {
-        let profile = PPAccountingProfile(
-            fiscalYear: 2025,
-            bookkeepingMode: .doubleEntry,
-            businessName: "",
-            ownerName: "山田花子"
-            // ownerNameKana, postalCode, address, phoneNumber, businessCategory は全て nil
+        let businessProfile = BusinessProfile(
+            ownerName: "山田花子",
+            businessName: ""
         )
+        // sensitivePayload なし → ownerName のみ出力される
 
-        let fields = EtaxFieldPopulator.populateDeclarantInfo(profile: profile)
+        let fields = EtaxFieldPopulator.populateDeclarantInfo(
+            businessProfile: businessProfile
+        )
 
         // ownerName のみ設定 → declarant_name のみ
         XCTAssertEqual(fields.count, 1, "ownerName のみの場合は1フィールドのみ")
@@ -370,7 +366,7 @@ final class AccountingIntegrationTests: XCTestCase {
         taxAmount: Int? = nil,
         taxCategory: TaxCategory? = nil
     ) -> PPTransaction {
-        let tx = PPTransaction(
+        let tx = PPTransaction.makeCompatibilityTransaction(
             type: type,
             amount: amount,
             date: Date(),

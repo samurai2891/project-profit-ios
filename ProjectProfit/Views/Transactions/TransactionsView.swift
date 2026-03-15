@@ -1,18 +1,6 @@
 import SwiftData
 import SwiftUI
 
-// MARK: - ActivityViewController Wrapper
-
-private struct ActivityViewControllerWrapper: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
 // MARK: - Display Mode
 
 enum TransactionDisplayMode: String, CaseIterable {
@@ -30,17 +18,21 @@ enum TransactionDisplayMode: String, CaseIterable {
 // MARK: - TransactionsView
 
 struct TransactionsView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: TransactionsViewModel?
 
     @State private var showAddSheet = false
     @State private var showFilterSheet = false
     @State private var showReceiptScanner = false
     @State private var selectedTransaction: PPTransaction?
-    @State private var deletingTransaction: PPTransaction?
     @State private var showShareSheet = false
-    @State private var csvText = ""
+    @State private var shareURL: URL?
+    @State private var exportErrorMessage: String?
     @AppStorage("transactionDisplayMode") private var displayMode: String = TransactionDisplayMode.card.rawValue
+
+    private var dataRevisionUseCase: DataRevisionQueryUseCase {
+        DataRevisionQueryUseCase(modelContext: modelContext)
+    }
 
     // MARK: - Body
 
@@ -52,11 +44,17 @@ struct TransactionsView: View {
                 ProgressView()
             }
         }
-        .task {
+        .task(id: dataRevisionKey) {
             if viewModel == nil {
-                viewModel = TransactionsViewModel(dataStore: dataStore)
+                viewModel = TransactionsViewModel(modelContext: modelContext)
+            } else {
+                viewModel?.refresh()
             }
         }
+    }
+
+    private var dataRevisionKey: String {
+        dataRevisionUseCase.transactionsRevisionKey()
     }
 
     private func mainContent(viewModel: TransactionsViewModel) -> some View {
@@ -102,14 +100,12 @@ struct TransactionsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
-                        csvText = viewModel.generateCSVText(exportAll: false)
-                        showShareSheet = true
+                        exportTransactions(viewModel: viewModel, exportAll: false)
                     } label: {
                         Label("フィルタ中のデータ", systemImage: "line.3.horizontal.decrease.circle")
                     }
                     Button {
-                        csvText = viewModel.generateCSVText(exportAll: true)
-                        showShareSheet = true
+                        exportTransactions(viewModel: viewModel, exportAll: true)
                     } label: {
                         Label("全データ", systemImage: "tray.full")
                     }
@@ -136,7 +132,9 @@ struct TransactionsView: View {
             ))
         }
         .sheet(isPresented: $showShareSheet) {
-            ActivityViewControllerWrapper(items: [csvText])
+            if let shareURL {
+                ShareSheetView(activityItems: [shareURL])
+            }
         }
         .searchable(
             text: Binding(
@@ -145,24 +143,15 @@ struct TransactionsView: View {
             ),
             prompt: "メモを検索"
         )
-        .alert(
-            "取引を削除",
-            isPresented: .init(
-                get: { deletingTransaction != nil },
-                set: { if !$0 { deletingTransaction = nil } }
-            )
-        ) {
-            Button("キャンセル", role: .cancel) {
-                deletingTransaction = nil
-            }
-            Button("削除", role: .destructive) {
-                if let transaction = deletingTransaction {
-                    viewModel.deleteTransaction(id: transaction.id)
-                    deletingTransaction = nil
-                }
+        .alert("出力エラー", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportErrorMessage = nil
             }
         } message: {
-            Text("この取引を削除してもよろしいですか？")
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -175,6 +164,9 @@ struct TransactionsView: View {
     private func scrollContent(viewModel: TransactionsViewModel) -> some View {
         ScrollView {
             VStack(spacing: 12) {
+                if !viewModel.canMutateLegacyTransactions {
+                    canonicalCutoverNotice
+                }
                 HStack {
                     Text("\(viewModel.filteredTransactions.count)件")
                         .font(.caption)
@@ -189,7 +181,7 @@ struct TransactionsView: View {
                 filterSortBar(viewModel: viewModel)
 
                 if viewModel.filteredTransactions.isEmpty {
-                    emptyState
+                    emptyState(viewModel: viewModel)
                 } else if currentDisplayMode == .ledger {
                     ledgerTable(viewModel: viewModel)
                 } else {
@@ -498,10 +490,13 @@ struct TransactionsView: View {
                     sectionHeader(group: group, isTransferFilter: viewModel.isTransferFilter)
 
                     ForEach(group.transactions) { transaction in
+                        let categoryName = viewModel.categoryName(for: transaction)
+                        let projectNames = viewModel.projectNames(for: transaction)
                         TransactionCardView(
                             transaction: transaction,
-                            onTap: { selectedTransaction = transaction },
-                            onDelete: { deletingTransaction = transaction }
+                            categoryName: categoryName,
+                            projectNames: projectNames,
+                            onTap: { selectedTransaction = transaction }
                         )
                     }
                 }
@@ -541,7 +536,7 @@ struct TransactionsView: View {
 
     // MARK: - Empty State
 
-    private var emptyState: some View {
+    private func emptyState(viewModel: TransactionsViewModel) -> some View {
         VStack(spacing: 16) {
             Spacer().frame(height: 40)
 
@@ -549,14 +544,14 @@ struct TransactionsView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(AppColors.muted)
 
-            Text("取引がありません")
+                Text("取引がありません")
                 .font(.headline)
                 .foregroundStyle(AppColors.muted)
 
             Button {
                 showAddSheet = true
             } label: {
-                Text("最初の取引を追加")
+                Text(viewModel.canMutateLegacyTransactions ? "最初の取引を追加" : "最初の候補を作成")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
@@ -565,8 +560,8 @@ struct TransactionsView: View {
                     .background(AppColors.primary)
                     .clipShape(Capsule())
             }
-            .accessibilityLabel("最初の取引を追加")
-            .accessibilityHint("タップして新しい取引を作成")
+            .accessibilityLabel(viewModel.canMutateLegacyTransactions ? "最初の取引を追加" : "最初の候補を作成")
+            .accessibilityHint(viewModel.canMutateLegacyTransactions ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
 
             Spacer().frame(height: 40)
         }
@@ -574,6 +569,24 @@ struct TransactionsView: View {
     }
 
     // MARK: - FAB
+
+    private var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("既存取引の編集・削除は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text("新規の手入力は承認待ち候補として保存されます。証憑取込は右上の書類読取から行えます。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
     private var fabButton: some View {
         Button {
@@ -588,10 +601,21 @@ struct TransactionsView: View {
                 .clipShape(Circle())
                 .shadow(color: AppColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
         }
-        .accessibilityLabel("新規追加")
-        .accessibilityHint("タップして新しい取引を作成")
+        .accessibilityLabel(viewModel?.canMutateLegacyTransactions == true ? "新規追加" : "候補を手入力")
+        .accessibilityHint(viewModel?.canMutateLegacyTransactions == true ? "タップして新しい取引を作成" : "タップして承認待ち候補を手入力します")
         .padding(.trailing, 20)
         .padding(.bottom, 24)
+    }
+
+    private func exportTransactions(viewModel: TransactionsViewModel, exportAll: Bool) {
+        do {
+            shareURL = try viewModel.exportURL(exportAll: exportAll)
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            exportErrorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -599,26 +623,15 @@ struct TransactionsView: View {
 
 private struct TransactionCardView: View {
     let transaction: PPTransaction
+    let categoryName: String
+    let projectNames: [String]
     let onTap: () -> Void
-    let onDelete: () -> Void
-
-    @Environment(DataStore.self) private var dataStore
 
     private var typeColor: Color {
         switch transaction.type {
         case .income: AppColors.success
         case .expense: AppColors.error
         case .transfer: AppColors.warning
-        }
-    }
-
-    private var categoryName: String {
-        dataStore.getCategory(id: transaction.categoryId)?.name ?? "未分類"
-    }
-
-    private var projectNames: [String] {
-        transaction.allocations.compactMap { alloc in
-            dataStore.getProject(id: alloc.projectId)?.name
         }
     }
 
@@ -764,14 +777,6 @@ private struct TransactionCardView: View {
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(typeColor)
                 .accessibilityHidden(true)
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error.opacity(0.7))
-            }
-            .accessibilityLabel("削除")
-            .accessibilityHint("タップして削除確認画面を表示")
         }
     }
 }

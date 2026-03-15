@@ -3,9 +3,9 @@
   "generatedAt": "2026-02-26T15:32:31.987295+00:00",
   "source": {
     "taxYearJson": "/Users/yutaro/project-profit-ios/ProjectProfit/Resources/TaxYear2025.json",
-    "blueSpecXlsx": "/Users/yutaro/project-profit-ios/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx",
+    "blueSpecXlsx": "/Users/yutaro/project-profit-ios-local/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx",
     "blueSheet": "KOA210",
-    "whiteSpecXlsx": "/Users/yutaro/project-profit-ios/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx",
+    "whiteSpecXlsx": "/Users/yutaro/project-profit-ios-local/e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx",
     "whiteSheet": "KOA110"
   },
   "itemCount": 39,

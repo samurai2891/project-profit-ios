@@ -1,0 +1,186 @@
+import SwiftData
+import XCTest
+@testable import ProjectProfit
+
+@MainActor
+final class AppBootstrapWorkflowUseCaseTests: XCTestCase {
+    func testInitializeMatchesDirectBootstrapState() async throws {
+        let containerA = try TestModelContainer.create()
+        let storeA = ProjectProfit.DataStore(modelContext: ModelContext(containerA))
+
+        let containerB = try TestModelContainer.create()
+        let storeB = ProjectProfit.DataStore(modelContext: ModelContext(containerB))
+
+        await makeBootstrapUseCase(store: storeA).initialize()
+
+        storeB.loadData()
+        _ = await makeProfileWorkflowUseCase(store: storeB).loadProfile()
+        storeB.recalculateAllPartialPeriodProjects()
+
+        XCTAssertEqual(storeA.projects.count, storeB.projects.count)
+        XCTAssertEqual(storeA.transactions.count, storeB.transactions.count)
+        XCTAssertEqual(storeA.recurringTransactions.count, storeB.recurringTransactions.count)
+        XCTAssertEqual(storeA.categories.count, storeB.categories.count)
+        XCTAssertEqual(storeA.accounts.count, storeB.accounts.count)
+        XCTAssertEqual(storeA.currentTaxYearProfile?.taxYear, storeB.currentTaxYearProfile?.taxYear)
+        XCTAssertEqual(storeA.businessProfile != nil, storeB.businessProfile != nil)
+        XCTAssertFalse(storeA.isLoading)
+    }
+
+    func testInitializeLoadsCanonicalProfileState() async throws {
+        let container = try TestModelContainer.create()
+        let context = ModelContext(container)
+        let businessId = UUID()
+        let business = BusinessProfile(
+            id: businessId,
+            ownerName: "田中太郎",
+            businessName: "田中商店"
+        )
+        let taxYear = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2026,
+            filingStyle: .blueGeneral,
+            yearLockState: .taxClose,
+            taxPackVersion: "2026-v1"
+        )
+        context.insert(BusinessProfileEntityMapper.toEntity(business))
+        context.insert(TaxYearProfileEntityMapper.toEntity(taxYear))
+        try context.save()
+
+        let store = ProjectProfit.DataStore(modelContext: context)
+        await makeBootstrapUseCase(store: store).initialize()
+
+        XCTAssertEqual(store.businessProfile?.id, businessId)
+        XCTAssertEqual(store.businessProfile?.businessName, "田中商店")
+        XCTAssertEqual(store.currentTaxYearProfile?.taxYear, 2026)
+        XCTAssertEqual(store.currentTaxYearProfile?.yearLockState, .taxClose)
+    }
+
+    func testInitializeHydratesStoreAfterRepositoryBackedProfilePreparation() async throws {
+        let container = try TestModelContainer.create()
+        let context = ModelContext(container)
+        let store = ProjectProfit.DataStore(modelContext: context)
+        var preparedBusinessId: UUID?
+
+        let useCase = AppBootstrapWorkflowUseCase(
+            ports: .init(
+                refreshAppState: {
+                    AppStateRefreshWorkflowUseCase(
+                        ports: .init(
+                            loadAppState: {
+                                store.loadData()
+                            },
+                            recalculatePartialPeriodProjects: {
+                                store.recalculateAllPartialPeriodProjects()
+                            }
+                        )
+                    ).refreshAppState()
+                },
+                prepareCanonicalProfile: { defaultTaxYear in
+                    WorkflowPersistenceSupport.runLegacyProfileMigrationIfNeeded(modelContext: context)
+                    do {
+                        let state = try await ProfileSettingsUseCase(modelContext: context).load(
+                            defaultTaxYear: defaultTaxYear ?? 2026
+                        )
+                        preparedBusinessId = state.businessProfile.id
+                        return true
+                    } catch {
+                        store.lastError = .dataLoadFailed(underlying: error)
+                        return false
+                    }
+                }
+            )
+        )
+
+        await useCase.initialize(defaultTaxYear: 2026)
+
+        XCTAssertEqual(store.businessProfile?.id, preparedBusinessId)
+        XCTAssertEqual(store.currentTaxYearProfile?.taxYear, 2026)
+        XCTAssertNil(store.lastError)
+    }
+
+    func testInitializeRecalculatesPartialPeriodProjects() async throws {
+        let container = try TestModelContainer.create()
+        let context = ModelContext(container)
+        let setupStore = ProjectProfit.DataStore(modelContext: context)
+        setupStore.loadData()
+
+        let projectA = mutations(setupStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(setupStore).addProject(name: "Project B", description: "")
+        let transactionDate = Self.makeDate(year: 2024, month: 2, day: 28)
+        _ = mutations(setupStore).addTransaction(
+            type: .expense,
+            amount: 10_000,
+            date: transactionDate,
+            categoryId: "cat-hosting",
+            memo: "startup recalc",
+            allocations: [
+                (projectId: projectA.id, ratio: 50),
+                (projectId: projectB.id, ratio: 50)
+            ]
+        )
+
+        let storedProjectA = try XCTUnwrap(setupStore.getProject(id: projectA.id))
+        storedProjectA.status = .completed
+        storedProjectA.completedAt = Self.makeDate(year: 2024, month: 2, day: 15)
+        try context.save()
+
+        let bootStore = ProjectProfit.DataStore(modelContext: context)
+        await makeBootstrapUseCase(store: bootStore).initialize()
+
+        let transaction = try XCTUnwrap(bootStore.transactions.first)
+        let allocationA = try XCTUnwrap(transaction.allocations.first { $0.projectId == projectA.id })
+        let allocationB = try XCTUnwrap(transaction.allocations.first { $0.projectId == projectB.id })
+
+        XCTAssertEqual(allocationA.amount, 2586)
+        XCTAssertEqual(allocationB.amount, 7414)
+        XCTAssertEqual(allocationA.amount + allocationB.amount, 10_000)
+    }
+
+    private static func makeDate(year: Int, month: Int, day: Int) -> Date {
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            year: year,
+            month: month,
+            day: day
+        )
+        return components.date!
+    }
+
+    private func makeBootstrapUseCase(store: ProjectProfit.DataStore) -> AppBootstrapWorkflowUseCase {
+        AppBootstrapWorkflowUseCase(
+            ports: .init(
+                refreshAppState: {
+                    AppStateRefreshWorkflowUseCase(
+                        ports: .init(
+                            loadAppState: {
+                                store.loadData()
+                            },
+                            recalculatePartialPeriodProjects: {
+                                store.recalculateAllPartialPeriodProjects()
+                            }
+                        )
+                    ).refreshAppState()
+                },
+                prepareCanonicalProfile: { defaultTaxYear in
+                    await self.makeProfileWorkflowUseCase(store: store).loadProfile(defaultTaxYear: defaultTaxYear)
+                }
+            )
+        )
+    }
+
+    private func makeProfileWorkflowUseCase(store: ProjectProfit.DataStore) -> ProfileSettingsWorkflowUseCase {
+        ProfileSettingsWorkflowUseCase(
+            modelContext: store.modelContext,
+            ports: .init(
+                readSensitivePayload: { store.profileSensitivePayload },
+                readCurrentTaxYear: { store.currentTaxYearProfile?.taxYear },
+                applyState: { store.applyProfileSettingsState($0) },
+                persistSensitivePayload: { payload, businessProfileId in
+                    store.persistSensitivePayload(payload, businessProfileId: businessProfileId)
+                },
+                setLastError: { store.lastError = $0 }
+            )
+        )
+    }
+}

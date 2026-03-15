@@ -30,15 +30,12 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
             myNumberFlag: nil
         )
 
-        let state = try await useCase.load(
-            defaultTaxYear: 2025,
-            legacyProfile: legacy,
-            sensitivePayload: payload
-        )
+        let report = LegacyProfileMigrationRunner(modelContext: context).executeIfNeeded()
+        XCTAssertEqual(report.outcome, .executed)
+
+        let state = try await useCase.load(defaultTaxYear: 2025, sensitivePayload: payload)
 
         XCTAssertEqual(state.businessProfile.businessName, "テスト商店")
-        XCTAssertEqual(state.businessProfile.ownerNameKana, "タナカタロウ")
-        XCTAssertEqual(state.businessProfile.postalCode, "1000001")
         XCTAssertEqual(state.businessProfile.defaultPaymentAccountId, "acct-bank")
         XCTAssertEqual(state.taxYearProfile.taxYear, 2025)
         XCTAssertEqual(state.taxYearProfile.filingStyle, .white)
@@ -46,9 +43,11 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
 
         let businesses = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
         let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         XCTAssertEqual(businesses.count, 1)
         XCTAssertEqual(businesses.first?.defaultPaymentAccountId, "acct-bank")
         XCTAssertEqual(taxYears.count, 1)
+        XCTAssertTrue(legacyProfiles.isEmpty)
     }
 
     func testSavePersistsUpdatedBusinessAndTaxYearProfiles() async throws {
@@ -56,11 +55,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let command = SaveProfileSettingsCommand(
             ownerName: "山田太郎",
             ownerNameKana: "ヤマダタロウ",
@@ -106,11 +101,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let existingTaxProfile = initial.taxYearProfile.updated(
             vatStatus: .taxable,
             invoiceIssuerStatusAtYear: .registered
@@ -159,11 +150,7 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
         let context = container.mainContext
         let useCase = ProfileSettingsUseCase(modelContext: context)
 
-        let initial = try await useCase.load(
-            defaultTaxYear: 2026,
-            legacyProfile: nil,
-            sensitivePayload: nil
-        )
+        let initial = try await useCase.load(defaultTaxYear: 2026)
         let command = SaveProfileSettingsCommand(
             ownerName: initial.businessProfile.ownerName,
             ownerNameKana: initial.businessProfile.ownerNameKana,
@@ -193,6 +180,75 @@ final class ProfileSettingsUseCaseTests: XCTestCase {
                 .validationFailed("年度状態を未締めから最終確定へ変更できません")
             )
         }
+    }
+
+    func testSaveUpdatesCanonicalYearLockAndDeletesLegacyProfile() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let legacyId = "legacy-profile-save-path"
+        let legacy = PPAccountingProfile(
+            id: legacyId,
+            fiscalYear: 2027,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            taxOfficeCode: "1111",
+            isBlueReturn: false,
+            defaultPaymentAccountId: "acct-legacy",
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_300)
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let report = LegacyProfileMigrationRunner(modelContext: context).executeIfNeeded()
+        XCTAssertEqual(report.outcome, .executed)
+        XCTAssertEqual(report.deletedLegacyProfiles, 1)
+
+        let useCase = ProfileSettingsUseCase(modelContext: context)
+        let initial = try await useCase.load(defaultTaxYear: 2027)
+        let command = SaveProfileSettingsCommand(
+            ownerName: "Canonical Owner",
+            ownerNameKana: "カノニカル",
+            businessName: "Canonical商店",
+            businessAddress: "東京都港区1-1-1",
+            postalCode: "1070001",
+            phoneNumber: "0311111111",
+            openingDate: initial.businessProfile.openingDate,
+            taxOfficeCode: "2222",
+            filingStyle: .white,
+            blueDeductionLevel: .none,
+            bookkeepingBasis: .singleEntry,
+            vatStatus: .exempt,
+            vatMethod: .general,
+            simplifiedBusinessCategory: nil,
+            invoiceIssuerStatusAtYear: .unknown,
+            electronicBookLevel: .none,
+            yearLockState: .finalLock,
+            taxYear: 2027
+        )
+
+        let saved = try await useCase.save(command: command, currentState: initial)
+        XCTAssertEqual(saved.taxYearProfile.yearLockState, .finalLock)
+
+        let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        XCTAssertEqual(taxYears.count, 1)
+        XCTAssertEqual(taxYears.first?.yearLockStateRaw, YearLockState.finalLock.rawValue)
+
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+        XCTAssertTrue(legacyProfiles.isEmpty)
+    }
+
+    func testLoadCreatesCanonicalProfilesWithoutLegacyProfile() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let useCase = ProfileSettingsUseCase(modelContext: context)
+
+        let state = try await useCase.load(defaultTaxYear: 2030)
+
+        XCTAssertEqual(state.taxYearProfile.taxYear, 2030)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<BusinessProfileEntity>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<TaxYearProfileEntity>()).count, 1)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPAccountingProfile>()).isEmpty)
     }
 }
 

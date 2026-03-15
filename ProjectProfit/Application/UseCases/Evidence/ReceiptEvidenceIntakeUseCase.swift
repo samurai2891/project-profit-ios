@@ -5,6 +5,7 @@ import SwiftData
 enum ReceiptEvidenceIntakeUseCaseError: LocalizedError {
     case businessProfileUnavailable
     case invalidFileData
+    case duplicateEvidence(existingEvidenceId: UUID, fileHash: String)
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +13,8 @@ enum ReceiptEvidenceIntakeUseCaseError: LocalizedError {
             return "事業者プロフィールが見つかりません"
         case .invalidFileData:
             return "書類ファイルの保存に失敗しました"
+        case let .duplicateEvidence(existingEvidenceId, _):
+            return "同一ファイルの証憑が既に登録されています（evidenceId: \(existingEvidenceId.uuidString)）"
         }
     }
 }
@@ -33,17 +36,22 @@ struct ReceiptEvidenceIntakeRequest {
     let paymentAccountId: String?
     let transferToAccountId: String?
     let taxDeductibleRate: Int
-    let taxCategory: TaxCategory?
-    let taxRate: Int
+    let taxCodeId: String?
     let isTaxIncluded: Bool
     let taxAmount: Int?
+    let registrationNumber: String?
+    let counterpartyId: UUID?
     let counterpartyName: String?
+    let isWithholdingEnabled: Bool
+    let withholdingTaxCodeId: String?
+    let withholdingTaxAmount: Decimal?
 }
 
 struct ReceiptEvidenceIntakeResult {
     let evidence: EvidenceDocument
     let candidate: PostingCandidate
     let documentRecordId: UUID
+    let duplicateDetected: Bool
 }
 
 @MainActor
@@ -55,6 +63,7 @@ struct ReceiptEvidenceIntakeUseCase {
     private let chartOfAccountsUseCase: ChartOfAccountsUseCase
     private let postingWorkflowUseCase: PostingWorkflowUseCase
     private let auditRepository: any AuditRepository
+    private let classificationSupport: AccountingReadSupport
 
     init(
         modelContext: ModelContext,
@@ -63,7 +72,8 @@ struct ReceiptEvidenceIntakeUseCase {
         counterpartyMasterUseCase: CounterpartyMasterUseCase,
         chartOfAccountsUseCase: ChartOfAccountsUseCase,
         postingWorkflowUseCase: PostingWorkflowUseCase,
-        auditRepository: any AuditRepository
+        auditRepository: any AuditRepository,
+        classificationSupport: AccountingReadSupport? = nil
     ) {
         self.modelContext = modelContext
         self.businessProfileRepository = businessProfileRepository
@@ -72,6 +82,7 @@ struct ReceiptEvidenceIntakeUseCase {
         self.chartOfAccountsUseCase = chartOfAccountsUseCase
         self.postingWorkflowUseCase = postingWorkflowUseCase
         self.auditRepository = auditRepository
+        self.classificationSupport = classificationSupport ?? AccountingReadSupport(modelContext: modelContext)
     }
 
     init(modelContext: ModelContext) {
@@ -96,15 +107,25 @@ struct ReceiptEvidenceIntakeUseCase {
 
         let businessId = businessProfile.id
         let taxYear = fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth)
+        let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
+        if let existingEvidenceId = try existingEvidenceId(businessId: businessId, fileHash: contentHash) {
+            throw ReceiptEvidenceIntakeUseCaseError.duplicateEvidence(
+                existingEvidenceId: existingEvidenceId,
+                fileHash: contentHash
+            )
+        }
         let storedFileName = try ReceiptImageStore.saveDocumentData(
             request.fileData,
             originalFileName: request.originalFileName
         )
-        let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
         let counterpartyId = try await matchedCounterpartyId(
             businessId: businessId,
-            name: request.counterpartyName
+            explicitId: request.counterpartyId,
+            registrationNumber: request.registrationNumber,
+            name: request.counterpartyName,
+            defaultTaxCodeId: request.taxCodeId
         )
+        let resolvedCategoryId = resolvedCategoryId(for: request)
         let evidence = EvidenceDocument(
             businessId: businessId,
             taxYear: taxYear,
@@ -132,7 +153,8 @@ struct ReceiptEvidenceIntakeUseCase {
             businessId: businessId,
             taxYear: taxYear,
             evidenceId: evidence.id,
-            counterpartyId: counterpartyId
+            counterpartyId: counterpartyId,
+            categoryId: resolvedCategoryId
         )
 
         do {
@@ -211,7 +233,8 @@ struct ReceiptEvidenceIntakeUseCase {
             return ReceiptEvidenceIntakeResult(
                 evidence: evidence,
                 candidate: candidate,
-                documentRecordId: documentRecord.id
+                documentRecordId: documentRecord.id,
+                duplicateDetected: false
             )
         } catch {
             modelContext.delete(documentRecord)
@@ -228,13 +251,37 @@ struct ReceiptEvidenceIntakeUseCase {
         businessId: UUID,
         taxYear: Int,
         evidenceId: UUID,
-        counterpartyId: UUID?
+        counterpartyId: UUID?,
+        categoryId: String
     ) async throws -> PostingCandidate {
         let candidateDate = request.reviewedDate
-        let lines = try await makePostingCandidateLines(
+        let resolvedTaxCode = resolvedTaxCode(for: request)
+        var lines = try await makePostingCandidateLines(
             request: request,
-            businessId: businessId
+            businessId: businessId,
+            categoryId: categoryId
         )
+        if request.transactionType == .expense,
+           let withholding = try resolvedWithholdingPosting(
+                request: request,
+                counterpartyId: counterpartyId
+           ) {
+            let paymentAccountId = try await canonicalAccountId(
+                businessId: businessId,
+                legacyAccountId: request.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
+            )
+            let liabilityAccount = try await WithholdingPostingSupport.liabilityAccount(
+                businessId: businessId,
+                chartOfAccountsUseCase: chartOfAccountsUseCase
+            )
+            lines = try WithholdingPostingSupport.applyToExpenseLines(
+                lines,
+                paymentAccountId: paymentAccountId,
+                liabilityAccount: liabilityAccount,
+                withholding: withholding,
+                memo: normalizedOptionalString(request.memo)
+            )
+        }
 
         return PostingCandidate(
             evidenceId: evidenceId,
@@ -247,17 +294,41 @@ struct ReceiptEvidenceIntakeUseCase {
             confidenceScore: request.receiptData.confidence,
             status: .needsReview,
             source: .ocr,
-            memo: normalizedOptionalString(request.memo)
+            memo: normalizedOptionalString(request.memo),
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: request.transactionType,
+                categoryId: categoryId,
+                recurringId: nil,
+                paymentAccountId: request.paymentAccountId,
+                transferToAccountId: request.transferToAccountId,
+                taxDeductibleRate: request.transactionType == .expense ? request.taxDeductibleRate : nil,
+                taxAmount: resolvedTaxAmount(for: request),
+                taxCodeId: resolvedTaxCode?.rawValue,
+                taxRate: resolvedTaxCode?.taxRatePercent,
+                isTaxIncluded: request.isTaxIncluded,
+                taxCategory: resolvedTaxCode?.legacyCategory,
+                receiptImagePath: nil,
+                lineItems: request.lineItems.map {
+                    ReceiptLineItem(
+                        name: $0.name,
+                        quantity: $0.quantity,
+                        unitPrice: $0.unitPrice,
+                        subtotal: $0.subtotal
+                    )
+                },
+                counterpartyName: normalizedOptionalString(request.counterpartyName)
+            )
         )
     }
 
     private func makePostingCandidateLines(
         request: ReceiptEvidenceIntakeRequest,
-        businessId: UUID
+        businessId: UUID,
+        categoryId: String
     ) async throws -> [PostingCandidateLine] {
         let amount = request.reviewedAmount
         let taxAmount = resolvedTaxAmount(for: request)
-        let taxCodeId = resolvedTaxCodeId(for: request)
+        let taxCodeId = resolvedTaxCode(for: request)?.rawValue
         let primaryMemo = normalizedOptionalString(request.memo)
 
         switch request.transactionType {
@@ -266,34 +337,40 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: request.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
             )
+            let paymentAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: paymentAccountId)
             let revenueAccountId = try await canonicalAccountId(
                 businessId: businessId,
                 legacyAccountId: resolveLinkedLegacyAccountId(
-                    categoryId: request.categoryId,
+                    categoryId: categoryId,
                     fallback: AccountingConstants.salesAccountId
                 )
             )
+            let revenueAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: revenueAccountId)
             if taxAmount > 0, let taxCodeId {
                 let outputTaxAccountId = try await canonicalAccountId(
                     businessId: businessId,
                     legacyAccountId: AccountingConstants.outputTaxAccountId
                 )
+                let outputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: outputTaxAccountId)
                 let netAmount = amount - taxAmount
                 return [
                     PostingCandidateLine(
                         debitAccountId: paymentAccountId,
                         amount: Decimal(amount),
+                        legalReportLineId: paymentAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                     PostingCandidateLine(
                         creditAccountId: revenueAccountId,
                         amount: Decimal(netAmount),
                         taxCodeId: taxCodeId,
+                        legalReportLineId: revenueAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                     PostingCandidateLine(
                         creditAccountId: outputTaxAccountId,
                         amount: Decimal(taxAmount),
+                        legalReportLineId: outputTaxLegalReportLineId,
                         memo: "仮受消費税"
                     ),
                 ]
@@ -313,13 +390,15 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: request.paymentAccountId ?? AccountingConstants.defaultPaymentAccountId
             )
+            let paymentAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: paymentAccountId)
             let expenseAccountId = try await canonicalAccountId(
                 businessId: businessId,
                 legacyAccountId: resolveLinkedLegacyAccountId(
-                    categoryId: request.categoryId,
+                    categoryId: categoryId,
                     fallback: AccountingConstants.miscExpenseAccountId
                 )
             )
+            let expenseAccountLegalReportLineId = try await defaultLegalReportLineId(accountId: expenseAccountId)
             let rate = min(100, max(0, request.taxDeductibleRate))
             let expenseBase = taxAmount > 0 ? (amount - taxAmount) : amount
 
@@ -329,6 +408,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         debitAccountId: expenseAccountId,
                         amount: Decimal(expenseBase),
                         taxCodeId: taxCodeId,
+                        legalReportLineId: expenseAccountLegalReportLineId,
                         memo: primaryMemo
                     ),
                 ]
@@ -337,10 +417,12 @@ struct ReceiptEvidenceIntakeUseCase {
                         businessId: businessId,
                         legacyAccountId: AccountingConstants.inputTaxAccountId
                     )
+                    let inputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: inputTaxAccountId)
                     lines.append(
                         PostingCandidateLine(
                             debitAccountId: inputTaxAccountId,
                             amount: Decimal(taxAmount),
+                            legalReportLineId: inputTaxLegalReportLineId,
                             memo: "仮払消費税"
                         )
                     )
@@ -349,6 +431,7 @@ struct ReceiptEvidenceIntakeUseCase {
                     PostingCandidateLine(
                         creditAccountId: paymentAccountId,
                         amount: Decimal(amount),
+                        legalReportLineId: paymentAccountLegalReportLineId,
                         memo: primaryMemo
                     )
                 )
@@ -373,12 +456,14 @@ struct ReceiptEvidenceIntakeUseCase {
                 businessId: businessId,
                 legacyAccountId: AccountingConstants.ownerDrawingsAccountId
             )
+            let ownerDrawingsLegalReportLineId = try await defaultLegalReportLineId(accountId: ownerDrawingsAccountId)
 
             if taxAmount > 0 {
                 let inputTaxAccountId = try await canonicalAccountId(
                     businessId: businessId,
                     legacyAccountId: AccountingConstants.inputTaxAccountId
                 )
+                let inputTaxLegalReportLineId = try await defaultLegalReportLineId(accountId: inputTaxAccountId)
                 let deductibleTax = taxAmount * rate / 100
                 let personalTax = taxAmount - deductibleTax
                 if deductibleTax > 0 {
@@ -386,6 +471,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         PostingCandidateLine(
                             debitAccountId: inputTaxAccountId,
                             amount: Decimal(deductibleTax),
+                            legalReportLineId: inputTaxLegalReportLineId,
                             memo: "仮払消費税"
                         )
                     )
@@ -396,6 +482,7 @@ struct ReceiptEvidenceIntakeUseCase {
                         PostingCandidateLine(
                             debitAccountId: ownerDrawingsAccountId,
                             amount: Decimal(ownerDrawingsAmount),
+                            legalReportLineId: ownerDrawingsLegalReportLineId,
                             memo: primaryMemo
                         )
                     )
@@ -405,6 +492,7 @@ struct ReceiptEvidenceIntakeUseCase {
                     PostingCandidateLine(
                         debitAccountId: ownerDrawingsAccountId,
                         amount: Decimal(personalAmount),
+                        legalReportLineId: ownerDrawingsLegalReportLineId,
                         memo: primaryMemo
                     )
                 )
@@ -414,6 +502,7 @@ struct ReceiptEvidenceIntakeUseCase {
                 PostingCandidateLine(
                     creditAccountId: paymentAccountId,
                     amount: Decimal(amount),
+                    legalReportLineId: paymentAccountLegalReportLineId,
                     memo: primaryMemo
                 )
             )
@@ -439,21 +528,61 @@ struct ReceiptEvidenceIntakeUseCase {
         }
     }
 
+    private func defaultLegalReportLineId(accountId: UUID) async throws -> String? {
+        let account = try await chartOfAccountsUseCase.account(accountId)
+        return account?.defaultLegalReportLineId
+    }
+
     private func resolvedTaxAmount(for request: ReceiptEvidenceIntakeRequest) -> Int {
-        guard let taxCategory = request.taxCategory, taxCategory.isTaxable else {
+        guard let taxCode = resolvedTaxCode(for: request), taxCode.isTaxable else {
             return 0
         }
         if request.isTaxIncluded {
-            return request.reviewedAmount * request.taxRate / (100 + request.taxRate)
+            let taxRate = taxCode.taxRatePercent
+            return request.reviewedAmount * taxRate / (100 + taxRate)
         }
         return max(0, request.taxAmount ?? 0)
     }
 
-    private func resolvedTaxCodeId(for request: ReceiptEvidenceIntakeRequest) -> String? {
-        TaxCode.resolve(
-            legacyCategory: request.taxCategory,
-            taxRate: request.taxCategory?.isTaxable == true ? request.taxRate : nil
-        )?.rawValue
+    private func resolvedTaxCode(for request: ReceiptEvidenceIntakeRequest) -> TaxCode? {
+        TaxCode.resolve(id: request.taxCodeId)
+    }
+
+    private func resolvedWithholdingPosting(
+        request: ReceiptEvidenceIntakeRequest,
+        counterpartyId: UUID?
+    ) throws -> ResolvedWithholdingPosting? {
+        let counterparty = counterpartyId.flatMap { classificationSupport.fetchCanonicalCounterparty(id: $0) }
+        return try WithholdingPostingSupport.resolve(
+            input: WithholdingPostingInput(
+                isEnabled: request.isWithholdingEnabled || (counterparty?.payeeInfo?.isWithholdingSubject ?? false),
+                codeId: request.withholdingTaxCodeId ?? counterparty?.payeeInfo?.withholdingCategory?.rawValue,
+                explicitAmount: request.withholdingTaxAmount,
+                totalAmount: request.reviewedAmount,
+                taxAmount: resolvedTaxAmount(for: request),
+                isTaxIncluded: request.isTaxIncluded
+            )
+        )
+    }
+
+    private func resolvedCategoryId(for request: ReceiptEvidenceIntakeRequest) -> String {
+        guard request.transactionType != .transfer else {
+            return request.categoryId
+        }
+
+        let previewCandidate = previewClassificationCandidate(for: request)
+        let previewEvidence = previewClassificationEvidence(for: request)
+        let suggestion = classificationSupport.classificationSuggestion(
+            candidate: previewCandidate,
+            evidence: previewEvidence,
+            fallbackCategoryId: request.categoryId
+        )
+
+        guard suggestion?.result.source == .userRule else {
+            return request.categoryId
+        }
+
+        return suggestion?.resolvedCategoryId ?? request.categoryId
     }
 
     private func resolveLinkedLegacyAccountId(categoryId: String, fallback: String) -> String {
@@ -484,20 +613,126 @@ struct ReceiptEvidenceIntakeUseCase {
         )
     }
 
-    private func matchedCounterpartyId(businessId: UUID, name: String?) async throws -> UUID? {
+    private func classificationMemo(for request: ReceiptEvidenceIntakeRequest) -> String {
+        normalizedOptionalString(request.memo)
+            ?? normalizedOptionalString(request.counterpartyName)
+            ?? normalizedOptionalString(request.receiptData.storeName)
+            ?? ""
+    }
+
+    private func previewClassificationCandidate(for request: ReceiptEvidenceIntakeRequest) -> PostingCandidate {
+        PostingCandidate(
+            businessId: UUID(),
+            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            candidateDate: request.reviewedDate,
+            status: .needsReview,
+            source: .ocr,
+            memo: normalizedOptionalString(request.memo),
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: request.transactionType,
+                categoryId: request.categoryId,
+                recurringId: nil,
+                paymentAccountId: request.paymentAccountId,
+                transferToAccountId: request.transferToAccountId,
+                taxDeductibleRate: request.transactionType == .expense ? request.taxDeductibleRate : nil,
+                taxAmount: resolvedTaxAmount(for: request),
+                taxCodeId: resolvedTaxCode(for: request)?.rawValue,
+                taxRate: resolvedTaxCode(for: request)?.taxRatePercent,
+                isTaxIncluded: request.isTaxIncluded,
+                taxCategory: resolvedTaxCode(for: request)?.legacyCategory,
+                receiptImagePath: nil,
+                lineItems: request.lineItems.map {
+                    ReceiptLineItem(
+                        name: $0.name,
+                        quantity: $0.quantity,
+                        unitPrice: $0.unitPrice,
+                        subtotal: $0.subtotal
+                    )
+                },
+                counterpartyName: normalizedOptionalString(request.counterpartyName)
+            )
+        )
+    }
+
+    private func previewClassificationEvidence(for request: ReceiptEvidenceIntakeRequest) -> EvidenceDocument {
+        EvidenceDocument(
+            businessId: UUID(),
+            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            sourceType: request.sourceType,
+            legalDocumentType: canonicalLegalDocumentType(for: request.receiptData.documentType),
+            storageCategory: storageCategory(for: request.sourceType),
+            issueDate: request.reviewedDate,
+            originalFilename: request.originalFileName,
+            mimeType: request.mimeType,
+            fileHash: "preview",
+            originalFilePath: request.originalFileName,
+            ocrText: normalizedOptionalString(request.ocrText),
+            extractionVersion: "classification-preview",
+            searchTokens: makeSearchTokens(from: request),
+            structuredFields: makeStructuredFields(from: request),
+            linkedProjectIds: Array(Set(request.linkedProjectIds)),
+            complianceStatus: .pendingReview
+        )
+    }
+
+    private func matchedCounterpartyId(
+        businessId: UUID,
+        explicitId: UUID?,
+        registrationNumber: String?,
+        name: String?,
+        defaultTaxCodeId: String?
+    ) async throws -> UUID? {
+        if let explicitId {
+            return explicitId
+        }
+
+        let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(registrationNumber)
+        if let normalizedRegistrationNumber,
+           let matchedByRegistration = try await counterpartyMasterUseCase.findByRegistrationNumber(normalizedRegistrationNumber) {
+            return matchedByRegistration.id
+        }
+
         guard let normalizedName = normalizedOptionalString(name) else { return nil }
-        let matched = try await counterpartyMasterUseCase.suggestCounterparty(
+
+        let exactMatches = try await counterpartyMasterUseCase.searchCounterparties(
+            businessId: businessId,
+            query: normalizedName
+        )
+        if let exactMatch = exactMatches.first(where: {
+            $0.displayName.compare(
+                normalizedName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }) {
+            return exactMatch.id
+        }
+
+        if let suggested = try await counterpartyMasterUseCase.suggestCounterparty(
             storeName: normalizedName,
             businessId: businessId
+        ) {
+            return suggested.id
+        }
+
+        let newCounterparty = Counterparty(
+            id: stableCounterpartyId(businessId: businessId, displayName: normalizedName),
+            businessId: businessId,
+            displayName: normalizedName,
+            invoiceRegistrationNumber: normalizedRegistrationNumber,
+            defaultTaxCodeId: defaultTaxCodeId,
+            createdAt: Date(),
+            updatedAt: Date()
         )
-        return matched?.id
+        try await counterpartyMasterUseCase.save(newCounterparty)
+        return newCounterparty.id
     }
 
     private func makeStructuredFields(from request: ReceiptEvidenceIntakeRequest) -> EvidenceStructuredFields {
         let taxAmount = Decimal(resolvedTaxAmount(for: request))
         let totalAmount = Decimal(request.reviewedAmount)
         let subtotal = max(0, request.reviewedAmount - Int(truncating: taxAmount as NSNumber))
-        let taxRateDecimal: Decimal? = request.taxCategory?.isTaxable == true ? Decimal(request.taxRate) : nil
+        let taxCode = resolvedTaxCode(for: request)
+        let taxRateDecimal: Decimal? = taxCode?.isTaxable == true ? Decimal(taxCode?.taxRatePercent ?? 0) : nil
         let evidenceLineItems = request.lineItems.map { item in
             EvidenceLineItem(
                 description: item.name,
@@ -509,12 +744,14 @@ struct ReceiptEvidenceIntakeUseCase {
             )
         }
         let normalizedCounterpartyName = normalizedOptionalString(request.counterpartyName)
+        let normalizedRegistrationNumber = RegistrationNumberNormalizer.normalize(request.registrationNumber)
         let subtotalDecimal = subtotal > 0 ? Decimal(subtotal) : nil
 
-        switch request.taxRate {
-        case 8 where taxAmount > 0:
+        switch taxCode {
+        case .some(.reduced8) where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 subtotalReducedRate: subtotalDecimal,
                 taxReducedRate: taxAmount > 0 ? taxAmount : nil,
@@ -522,9 +759,10 @@ struct ReceiptEvidenceIntakeUseCase {
                 lineItems: evidenceLineItems,
                 confidence: request.receiptData.confidence
             )
-        case 10 where taxAmount > 0:
+        case .some(.standard10) where taxAmount > 0:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 subtotalStandardRate: subtotalDecimal,
                 taxStandardRate: taxAmount > 0 ? taxAmount : nil,
@@ -535,6 +773,7 @@ struct ReceiptEvidenceIntakeUseCase {
         default:
             return EvidenceStructuredFields(
                 counterpartyName: normalizedCounterpartyName,
+                registrationNumber: normalizedRegistrationNumber,
                 transactionDate: request.reviewedDate,
                 totalAmount: totalAmount,
                 lineItems: evidenceLineItems,
@@ -544,6 +783,7 @@ struct ReceiptEvidenceIntakeUseCase {
     }
 
     private func makeSearchTokens(from request: ReceiptEvidenceIntakeRequest) -> [String] {
+        let taxRateToken = resolvedTaxCode(for: request).map { String($0.taxRatePercent) } ?? "0"
         var tokens: [String] = [
             request.originalFileName,
             request.memo,
@@ -551,7 +791,8 @@ struct ReceiptEvidenceIntakeUseCase {
             request.receiptData.itemSummary,
             request.receiptData.estimatedCategory,
             String(request.reviewedAmount),
-            String(request.taxRate),
+            taxRateToken,
+            request.registrationNumber ?? request.receiptData.registrationNumber ?? "",
         ]
         tokens.append(contentsOf: request.lineItems.map(\.name))
         tokens.append(contentsOf: request.linkedProjectIds.map(\.uuidString))
@@ -595,7 +836,7 @@ struct ReceiptEvidenceIntakeUseCase {
         switch sourceType {
         case .camera, .photoLibrary:
             return .paperScan
-        case .scannedPDF, .emailAttachment, .importedPDF, .manualNoFile:
+        case .scannedPDF, .emailAttachment, .importedPDF, .importedCSV, .manualNoFile:
             return .electronicTransaction
         }
     }
@@ -603,6 +844,36 @@ struct ReceiptEvidenceIntakeUseCase {
     private func normalizedOptionalString(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func stableCounterpartyId(businessId: UUID, displayName: String) -> UUID {
+        let normalizedName = displayName
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let seed = "\(businessId.uuidString.lowercased())|\(normalizedName)"
+        var bytes = Array(SHA256.hash(data: Data(seed.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let uuid = uuid_t(
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        )
+        return UUID(uuid: uuid)
+    }
+
+    private func existingEvidenceId(businessId: UUID, fileHash: String) throws -> UUID? {
+        let descriptor = FetchDescriptor<EvidenceRecordEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId &&
+                    $0.fileHash == fileHash &&
+                    $0.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.evidenceId
     }
 
     private func stateHash<T: Encodable>(_ value: T) -> String? {

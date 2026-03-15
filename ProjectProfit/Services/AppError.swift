@@ -11,6 +11,8 @@ enum AppError: LocalizedError {
     case invalidInput(message: String)
     case yearLocked(year: Int)
     case fixedAssetNotFound(id: UUID)
+    case legacyTransactionMutationDisabled
+    case legacyManualJournalMutationDisabled
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +36,10 @@ enum AppError: LocalizedError {
             return "\(year)年度はロックされています。変更するにはロックを解除してください"
         case .fixedAssetNotFound:
             return "固定資産が見つかりません"
+        case .legacyTransactionMutationDisabled:
+            return "canonical正本へ移行済みのため、この画面からの取引登録・編集・削除は停止しています。証憑タブから取り込み、承認タブで仕訳を確定してください"
+        case .legacyManualJournalMutationDisabled:
+            return "canonical正本へ移行済みのため、この画面からの手動仕訳登録・削除は停止しています。証憑タブと承認タブを利用し、決算整理は決算仕訳画面から実行してください"
         }
     }
 }

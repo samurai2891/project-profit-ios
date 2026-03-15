@@ -3,7 +3,6 @@ import SwiftUI
 import UIKit
 
 struct EvidenceInboxView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var evidences: [EvidenceDocument] = []
@@ -11,14 +10,18 @@ struct EvidenceInboxView: View {
     @State private var searchForm = EvidenceSearchFormState()
     @State private var showScanner = false
     @State private var showSearchFilters = false
+    @State private var pendingSharedImportCount = 0
+    @State private var scannerSharedImportItem: SharedImportInboxItem?
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var isReindexing = false
 
+    private var evidenceInboxUseCase: EvidenceInboxQueryUseCase {
+        EvidenceInboxQueryUseCase(modelContext: modelContext)
+    }
+
     private var isCurrentYearLocked: Bool {
-        let currentYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
-        let state = dataStore.yearLockState(for: currentYear)
-        return state != .open && !state.allowsNormalPosting
+        evidenceInboxUseCase.isCurrentYearLocked()
     }
 
     var body: some View {
@@ -87,6 +90,7 @@ struct EvidenceInboxView: View {
                     .accessibilityHint("証憑検索条件と再索引を開きます")
 
                     Button {
+                        scannerSharedImportItem = nil
                         showScanner = true
                     } label: {
                         Image(systemName: "doc.text.viewfinder")
@@ -94,11 +98,26 @@ struct EvidenceInboxView: View {
                     .accessibilityLabel("書類読取")
                     .accessibilityHint("新しい証憑を取り込みます")
                     .disabled(isCurrentYearLocked)
+
+                    if pendingSharedImportCount > 0 {
+                        Button {
+                            openSharedImportScanner()
+                        } label: {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                        }
+                        .accessibilityLabel("共有取り込み")
+                        .accessibilityHint("共有されたファイルを証憑取込へ追加")
+                        .disabled(isCurrentYearLocked)
+                    }
                 }
             }
         }
         .task(id: reloadKey) {
             await loadEvidence()
+            refreshSharedImportBadge()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            refreshSharedImportBadge()
         }
         .searchable(
             text: Binding(
@@ -109,14 +128,16 @@ struct EvidenceInboxView: View {
             prompt: "ファイル名 / OCR / 取引先 / ハッシュ"
         )
         .sheet(isPresented: $showScanner, onDismiss: {
+            scannerSharedImportItem = nil
             Task { await loadEvidence() }
+            refreshSharedImportBadge()
         }) {
-            ReceiptScannerView()
+            ReceiptScannerView(sharedImportItem: scannerSharedImportItem)
         }
         .sheet(isPresented: $showSearchFilters) {
             EvidenceSearchFilterSheet(
                 form: $searchForm,
-                projects: dataStore.projects
+                projects: evidenceInboxUseCase.availableProjects()
             )
         }
         .alert("読み込みエラー", isPresented: Binding(
@@ -130,11 +151,10 @@ struct EvidenceInboxView: View {
     }
 
     private var reloadKey: String {
-        [
-            dataStore.businessProfile?.id.uuidString ?? "none",
-            selectedStatus?.rawValue ?? "all",
-            searchForm.reloadToken,
-        ].joined(separator: ":")
+        evidenceInboxUseCase.reloadKey(
+            selectedStatus: selectedStatus,
+            searchReloadToken: searchForm.reloadToken
+        )
     }
 
     @ViewBuilder
@@ -181,42 +201,48 @@ struct EvidenceInboxView: View {
     }
 
     private func loadEvidence() async {
-        guard let businessId = dataStore.businessProfile?.id else {
-            evidences = []
-            return
-        }
-
         isLoading = true
         defer { isLoading = false }
 
         do {
-            let criteria = searchForm.makeCriteria(
-                businessId: businessId,
-                complianceStatus: selectedStatus
+            evidences = try await evidenceInboxUseCase.searchEvidence(
+                form: searchForm,
+                selectedStatus: selectedStatus
             )
-            evidences = try await EvidenceCatalogUseCase(modelContext: modelContext).search(criteria)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func rebuildEvidenceIndex() async {
-        guard let businessId = dataStore.businessProfile?.id else { return }
         isReindexing = true
         defer { isReindexing = false }
 
         do {
-            try SearchIndexRebuilder(modelContext: modelContext)
-                .rebuildEvidenceIndex(businessId: businessId)
+            try await evidenceInboxUseCase.rebuildEvidenceIndex()
             await loadEvidence()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    private func refreshSharedImportBadge() {
+        pendingSharedImportCount = ShareImportInboxService.pendingCount()
+    }
+
+    private func openSharedImportScanner() {
+        guard !isCurrentYearLocked else { return }
+        guard let item = ShareImportInboxService.oldestItem() else {
+            refreshSharedImportBadge()
+            return
+        }
+        scannerSharedImportItem = item
+        showScanner = true
+        refreshSharedImportBadge()
+    }
+
     private func projectLabels(for ids: [UUID]) -> String {
-        ids.compactMap { dataStore.getProject(id: $0)?.name }
-            .joined(separator: " / ")
+        evidenceInboxUseCase.projectNames(ids: ids).joined(separator: " / ")
     }
 
     private func formatAmount(_ amount: Decimal) -> String {
@@ -238,6 +264,7 @@ struct EvidenceInboxView: View {
         case .scannedPDF: "スキャンPDF"
         case .emailAttachment: "メール添付"
         case .importedPDF: "PDF取込"
+        case .importedCSV: "CSV取込"
         case .manualNoFile: "手入力"
         }
     }
@@ -262,7 +289,6 @@ struct EvidenceInboxView: View {
 }
 
 private struct EvidenceDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     let evidence: EvidenceDocument
@@ -283,6 +309,10 @@ private struct EvidenceDetailView: View {
 
     private var documentURL: URL? {
         ReceiptImageStore.documentFileURL(fileName: evidence.originalFilePath)
+    }
+
+    private var evidenceInboxUseCase: EvidenceInboxQueryUseCase {
+        EvidenceInboxQueryUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -440,9 +470,8 @@ private struct EvidenceDetailView: View {
 
     private func loadRelatedRecords() async {
         do {
-            let workflow = PostingWorkflowUseCase(modelContext: modelContext)
-            candidates = try await workflow.candidates(evidenceId: evidence.id)
-            journals = dataStore.canonicalJournalEntries(evidenceId: evidence.id)
+            candidates = try await evidenceInboxUseCase.candidates(evidenceId: evidence.id)
+            journals = try await evidenceInboxUseCase.journals(evidenceId: evidence.id)
         } catch {
             relatedRecordsError = error.localizedDescription
         }

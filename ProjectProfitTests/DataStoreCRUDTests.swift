@@ -26,7 +26,7 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Project CRUD
 
     func testAddProject() {
-        let project = dataStore.addProject(name: "Test Project", description: "A test project")
+        let project = mutations(dataStore).addProject(name: "Test Project", description: "A test project")
 
         XCTAssertEqual(project.name, "Test Project")
         XCTAssertEqual(project.projectDescription, "A test project")
@@ -36,8 +36,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddMultipleProjects() {
-        let project1 = dataStore.addProject(name: "Project A", description: "First")
-        let project2 = dataStore.addProject(name: "Project B", description: "Second")
+        let project1 = mutations(dataStore).addProject(name: "Project A", description: "First")
+        let project2 = mutations(dataStore).addProject(name: "Project B", description: "Second")
 
         XCTAssertEqual(dataStore.projects.count, 2)
         XCTAssertTrue(dataStore.projects.contains(where: { $0.id == project1.id }))
@@ -45,8 +45,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateProjectName() {
-        let project = dataStore.addProject(name: "Original", description: "Desc")
-        dataStore.updateProject(id: project.id, name: "Updated")
+        let project = mutations(dataStore).addProject(name: "Original", description: "Desc")
+        mutations(dataStore).updateProject(id: project.id, name: "Updated")
 
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertEqual(fetched?.name, "Updated")
@@ -54,8 +54,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateProjectDescription() {
-        let project = dataStore.addProject(name: "Name", description: "Original")
-        dataStore.updateProject(id: project.id, description: "Updated description")
+        let project = mutations(dataStore).addProject(name: "Name", description: "Original")
+        mutations(dataStore).updateProject(id: project.id, description: "Updated description")
 
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertEqual(fetched?.name, "Name")
@@ -63,23 +63,23 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateProjectStatus() {
-        let project = dataStore.addProject(name: "Name", description: "Desc")
+        let project = mutations(dataStore).addProject(name: "Name", description: "Desc")
         XCTAssertEqual(project.status, .active)
 
-        dataStore.updateProject(id: project.id, status: .completed)
+        mutations(dataStore).updateProject(id: project.id, status: .completed)
         XCTAssertEqual(dataStore.getProject(id: project.id)?.status, .completed)
 
-        dataStore.updateProject(id: project.id, status: .paused)
+        mutations(dataStore).updateProject(id: project.id, status: .paused)
         XCTAssertEqual(dataStore.getProject(id: project.id)?.status, .paused)
     }
 
     func testUpdateProjectMultipleFields() {
-        let project = dataStore.addProject(name: "Old", description: "Old desc")
+        let project = mutations(dataStore).addProject(name: "Old", description: "Old desc")
         let originalUpdatedAt = project.updatedAt
 
         // Small delay so updatedAt differs
         Thread.sleep(forTimeInterval: 0.01)
-        dataStore.updateProject(id: project.id, name: "New", description: "New desc", status: .paused)
+        mutations(dataStore).updateProject(id: project.id, name: "New", description: "New desc", status: .paused)
 
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertEqual(fetched?.name, "New")
@@ -89,22 +89,22 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateNonExistentProjectIsNoOp() {
-        dataStore.updateProject(id: UUID(), name: "Ghost")
+        mutations(dataStore).updateProject(id: UUID(), name: "Ghost")
         XCTAssertEqual(dataStore.projects.count, 0)
     }
 
     func testDeleteProject() {
-        let project = dataStore.addProject(name: "To Delete", description: "")
+        let project = mutations(dataStore).addProject(name: "To Delete", description: "")
         XCTAssertEqual(dataStore.projects.count, 1)
 
-        dataStore.deleteProject(id: project.id)
+        mutations(dataStore).deleteProject(id: project.id)
         XCTAssertEqual(dataStore.projects.count, 0)
         XCTAssertNil(dataStore.getProject(id: project.id))
     }
 
     func testDeleteNonExistentProjectIsNoOp() {
-        let project = dataStore.addProject(name: "Keep", description: "")
-        dataStore.deleteProject(id: UUID())
+        let project = mutations(dataStore).addProject(name: "Keep", description: "")
+        mutations(dataStore).deleteProject(id: UUID())
         XCTAssertEqual(dataStore.projects.count, 1)
         XCTAssertNotNil(dataStore.getProject(id: project.id))
     }
@@ -114,8 +114,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testGetProjectReturnsCorrectProject() {
-        let project1 = dataStore.addProject(name: "First", description: "")
-        let project2 = dataStore.addProject(name: "Second", description: "")
+        let project1 = mutations(dataStore).addProject(name: "First", description: "")
+        let project2 = mutations(dataStore).addProject(name: "Second", description: "")
 
         let fetched = dataStore.getProject(id: project2.id)
         XCTAssertEqual(fetched?.id, project2.id)
@@ -126,8 +126,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Transaction CRUD
 
     func testAddTransaction() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -149,9 +149,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionWithMultipleAllocations() {
-        let project1 = dataStore.addProject(name: "Proj A", description: "")
-        let project2 = dataStore.addProject(name: "Proj B", description: "")
-        let transaction = dataStore.addTransaction(
+        let project1 = mutations(dataStore).addProject(name: "Proj A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "Proj B", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -176,8 +176,8 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testAddTransactionWithRecurringId() {
         let recurringId = UUID()
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -191,8 +191,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionType() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 5000,
             date: Date(),
@@ -201,14 +201,14 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(id: transaction.id, type: .expense)
+        mutations(dataStore).updateTransaction(id: transaction.id, type: .expense)
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.type, .expense)
     }
 
     func testUpdateTransactionAmount() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 5000,
             date: Date(),
@@ -217,7 +217,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(id: transaction.id, amount: 8000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 8000)
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.amount, 8000)
         // Allocations should be recalculated with new amount
@@ -225,9 +225,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionAmountRecalculatesMultipleAllocations() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let transaction = dataStore.addTransaction(
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -239,7 +239,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.updateTransaction(id: transaction.id, amount: 20000)
+        mutations(dataStore).updateTransaction(id: transaction.id, amount: 20000)
         let fetched = dataStore.getTransaction(id: transaction.id)
         let alloc1 = fetched?.allocations.first(where: { $0.projectId == project1.id })
         let alloc2 = fetched?.allocations.first(where: { $0.projectId == project2.id })
@@ -248,9 +248,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionDate() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let originalDate = Date()
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: originalDate,
@@ -260,7 +260,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         let newDate = Calendar.current.date(byAdding: .day, value: -7, to: originalDate)!
-        dataStore.updateTransaction(id: transaction.id, date: newDate)
+        mutations(dataStore).updateTransaction(id: transaction.id, date: newDate)
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(
             Calendar.current.startOfDay(for: fetched!.date),
@@ -269,8 +269,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionCategory() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -279,14 +279,14 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(id: transaction.id, categoryId: "cat-tools")
+        mutations(dataStore).updateTransaction(id: transaction.id, categoryId: "cat-tools")
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.categoryId, "cat-tools")
     }
 
     func testUpdateTransactionMemo() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -295,15 +295,15 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(id: transaction.id, memo: "Updated memo")
+        mutations(dataStore).updateTransaction(id: transaction.id, memo: "Updated memo")
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.memo, "Updated memo")
     }
 
     func testUpdateTransactionAllocations() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let transaction = dataStore.addTransaction(
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -312,7 +312,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project1.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: transaction.id,
             allocations: [
                 (projectId: project1.id, ratio: 50),
@@ -331,9 +331,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionAmountAndAllocations() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let transaction = dataStore.addTransaction(
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -342,7 +342,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project1.id, ratio: 100)]
         )
 
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: transaction.id,
             amount: 20000,
             allocations: [
@@ -360,8 +360,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionSetsUpdatedAt() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -372,19 +372,19 @@ final class DataStoreCRUDTests: XCTestCase {
         let originalUpdatedAt = transaction.updatedAt
 
         Thread.sleep(forTimeInterval: 0.01)
-        dataStore.updateTransaction(id: transaction.id, memo: "Changed")
+        mutations(dataStore).updateTransaction(id: transaction.id, memo: "Changed")
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertGreaterThan(fetched!.updatedAt, originalUpdatedAt)
     }
 
     func testUpdateNonExistentTransactionIsNoOp() {
-        dataStore.updateTransaction(id: UUID(), amount: 999)
+        mutations(dataStore).updateTransaction(id: UUID(), amount: 999)
         XCTAssertEqual(dataStore.transactions.count, 0)
     }
 
     func testDeleteTransaction() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -394,14 +394,14 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(dataStore.transactions.count, 1)
 
-        dataStore.deleteTransaction(id: transaction.id)
+        mutations(dataStore).deleteTransaction(id: transaction.id)
         XCTAssertEqual(dataStore.transactions.count, 0)
         XCTAssertNil(dataStore.getTransaction(id: transaction.id))
     }
 
     func testDeleteNonExistentTransactionIsNoOp() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -409,15 +409,15 @@ final class DataStoreCRUDTests: XCTestCase {
             memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.deleteTransaction(id: UUID())
+        mutations(dataStore).deleteTransaction(id: UUID())
         XCTAssertEqual(dataStore.transactions.count, 1)
     }
 
     // MARK: - Transaction with Receipt & Line Items
 
     func testAddTransactionWithReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1500,
             date: Date(),
@@ -433,12 +433,12 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionWithLineItems() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let items = [
             ReceiptLineItem(name: "コーヒー", unitPrice: 350),
             ReceiptLineItem(name: "サンドイッチ", quantity: 2, unitPrice: 480),
         ]
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1310,
             date: Date(),
@@ -457,9 +457,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionWithReceiptAndLineItems() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let items = [ReceiptLineItem(name: "ペン", quantity: 3, unitPrice: 100)]
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 300,
             date: Date(),
@@ -476,8 +476,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionDefaultsNoReceiptNoLineItems() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 5000,
             date: Date(),
@@ -491,8 +491,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -502,14 +502,14 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertNil(transaction.receiptImagePath)
 
-        dataStore.updateTransaction(id: transaction.id, receiptImagePath: "new-receipt.jpg")
+        mutations(dataStore).updateTransaction(id: transaction.id, receiptImagePath: "new-receipt.jpg")
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.receiptImagePath, "new-receipt.jpg")
     }
 
     func testUpdateTransactionClearReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -519,14 +519,14 @@ final class DataStoreCRUDTests: XCTestCase {
             receiptImagePath: "old-receipt.jpg"
         )
 
-        dataStore.updateTransaction(id: transaction.id, receiptImagePath: .some(nil))
+        mutations(dataStore).updateTransaction(id: transaction.id, receiptImagePath: .some(nil))
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertNil(fetched?.receiptImagePath)
     }
 
     func testUpdateTransactionLineItems() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 500,
             date: Date(),
@@ -540,7 +540,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ReceiptLineItem(name: "ノート", unitPrice: 200),
             ReceiptLineItem(name: "ペン", unitPrice: 300),
         ]
-        dataStore.updateTransaction(id: transaction.id, lineItems: newItems)
+        mutations(dataStore).updateTransaction(id: transaction.id, lineItems: newItems)
         let fetched = dataStore.getTransaction(id: transaction.id)
         XCTAssertEqual(fetched?.lineItems.count, 2)
         XCTAssertEqual(fetched?.lineItems[0].name, "ノート")
@@ -548,8 +548,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testRemoveReceiptImage() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -675,9 +675,9 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Recurring CRUD
 
     func testAddRecurringMonthly() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         // Use dayOfMonth 28 to avoid auto-generation (CRUD property test, not processing test)
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly hosting",
             type: .expense,
             amount: 3000,
@@ -705,8 +705,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddRecurringYearly() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Annual license",
             type: .expense,
             amount: 12000,
@@ -724,9 +724,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddRecurringWithMultipleAllocations() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let recurring = dataStore.addRecurring(
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Shared expense",
             type: .expense,
             amount: 10000,
@@ -748,8 +748,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddRecurringClampsDayOfMonth() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Clamped",
             type: .expense,
             amount: 1000,
@@ -765,8 +765,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringName() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Original",
             type: .expense,
             amount: 1000,
@@ -777,14 +777,14 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, name: "Renamed")
+        mutations(dataStore).updateRecurring(id: recurring.id, name: "Renamed")
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.name, "Renamed")
     }
 
     func testUpdateRecurringType() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -795,13 +795,13 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, type: .income)
+        mutations(dataStore).updateRecurring(id: recurring.id, type: .income)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.type, .income)
     }
 
     func testUpdateRecurringAmount() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 5000,
@@ -812,15 +812,15 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, amount: 8000)
+        mutations(dataStore).updateRecurring(id: recurring.id, amount: 8000)
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.amount, 8000)
         XCTAssertEqual(fetched?.allocations.first?.amount, 8000)
     }
 
     func testUpdateRecurringCategoryId() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -831,13 +831,13 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, categoryId: "cat-tools")
+        mutations(dataStore).updateRecurring(id: recurring.id, categoryId: "cat-tools")
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.categoryId, "cat-tools")
     }
 
     func testUpdateRecurringMemo() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -848,14 +848,14 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, memo: "New memo")
+        mutations(dataStore).updateRecurring(id: recurring.id, memo: "New memo")
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.memo, "New memo")
     }
 
     func testUpdateRecurringAllocations() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let recurring = dataStore.addRecurring(
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 10000,
@@ -866,7 +866,7 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(
+        mutations(dataStore).updateRecurring(
             id: recurring.id,
             allocations: [
                 (projectId: project1.id, ratio: 50),
@@ -883,8 +883,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringFrequencyToMonthly() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -897,7 +897,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(recurring.monthOfYear, 6)
 
-        dataStore.updateRecurring(id: recurring.id, frequency: .monthly)
+        mutations(dataStore).updateRecurring(id: recurring.id, frequency: .monthly)
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.frequency, .monthly)
         // monthOfYear should be cleared when switching to monthly
@@ -905,8 +905,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringFrequencyToYearly() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -917,15 +917,15 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, frequency: .yearly, monthOfYear: 3)
+        mutations(dataStore).updateRecurring(id: recurring.id, frequency: .yearly, monthOfYear: 3)
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.frequency, .yearly)
         XCTAssertEqual(fetched?.monthOfYear, 3)
     }
 
     func testUpdateRecurringDayOfMonth() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -936,13 +936,13 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, dayOfMonth: 25)
+        mutations(dataStore).updateRecurring(id: recurring.id, dayOfMonth: 25)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.dayOfMonth, 25)
     }
 
     func testUpdateRecurringDayOfMonthClamps() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -953,16 +953,16 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        dataStore.updateRecurring(id: recurring.id, dayOfMonth: 31)
+        mutations(dataStore).updateRecurring(id: recurring.id, dayOfMonth: 31)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.dayOfMonth, 28)
 
-        dataStore.updateRecurring(id: recurring.id, dayOfMonth: 0)
+        mutations(dataStore).updateRecurring(id: recurring.id, dayOfMonth: 0)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.dayOfMonth, 1)
     }
 
     func testUpdateRecurringIsActive() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -974,16 +974,16 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertTrue(recurring.isActive)
 
-        dataStore.updateRecurring(id: recurring.id, isActive: false)
+        mutations(dataStore).updateRecurring(id: recurring.id, isActive: false)
         XCTAssertFalse(dataStore.getRecurring(id: recurring.id)!.isActive)
 
-        dataStore.updateRecurring(id: recurring.id, isActive: true)
+        mutations(dataStore).updateRecurring(id: recurring.id, isActive: true)
         XCTAssertTrue(dataStore.getRecurring(id: recurring.id)!.isActive)
     }
 
     func testUpdateRecurringNotificationTiming() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -995,19 +995,19 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(recurring.notificationTiming, .none)
 
-        dataStore.updateRecurring(id: recurring.id, notificationTiming: .sameDay)
+        mutations(dataStore).updateRecurring(id: recurring.id, notificationTiming: .sameDay)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .sameDay)
 
-        dataStore.updateRecurring(id: recurring.id, notificationTiming: .dayBefore)
+        mutations(dataStore).updateRecurring(id: recurring.id, notificationTiming: .dayBefore)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .dayBefore)
 
-        dataStore.updateRecurring(id: recurring.id, notificationTiming: .both)
+        mutations(dataStore).updateRecurring(id: recurring.id, notificationTiming: .both)
         XCTAssertEqual(dataStore.getRecurring(id: recurring.id)?.notificationTiming, .both)
     }
 
     func testUpdateRecurringSkipDates() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -1020,15 +1020,15 @@ final class DataStoreCRUDTests: XCTestCase {
 
         let skipDate1 = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 1))!
         let skipDate2 = Calendar.current.date(from: DateComponents(year: 2026, month: 4, day: 1))!
-        dataStore.updateRecurring(id: recurring.id, skipDates: [skipDate1, skipDate2])
+        mutations(dataStore).updateRecurring(id: recurring.id, skipDates: [skipDate1, skipDate2])
 
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.skipDates.count, 2)
     }
 
     func testUpdateRecurringSetsUpdatedAt() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -1041,19 +1041,19 @@ final class DataStoreCRUDTests: XCTestCase {
         let originalUpdatedAt = recurring.updatedAt
 
         Thread.sleep(forTimeInterval: 0.01)
-        dataStore.updateRecurring(id: recurring.id, name: "Changed")
+        mutations(dataStore).updateRecurring(id: recurring.id, name: "Changed")
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertGreaterThan(fetched!.updatedAt, originalUpdatedAt)
     }
 
     func testUpdateNonExistentRecurringIsNoOp() {
-        dataStore.updateRecurring(id: UUID(), name: "Ghost")
+        mutations(dataStore).updateRecurring(id: UUID(), name: "Ghost")
         XCTAssertEqual(dataStore.recurringTransactions.count, 0)
     }
 
     func testDeleteRecurring() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Test",
             type: .expense,
             amount: 1000,
@@ -1065,14 +1065,14 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(dataStore.recurringTransactions.count, 1)
 
-        dataStore.deleteRecurring(id: recurring.id)
+        mutations(dataStore).deleteRecurring(id: recurring.id)
         XCTAssertEqual(dataStore.recurringTransactions.count, 0)
         XCTAssertNil(dataStore.getRecurring(id: recurring.id))
     }
 
     func testDeleteNonExistentRecurringIsNoOp() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        mutations(dataStore).addRecurring(
             name: "Keep",
             type: .expense,
             amount: 1000,
@@ -1082,7 +1082,7 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
-        dataStore.deleteRecurring(id: UUID())
+        mutations(dataStore).deleteRecurring(id: UUID())
         XCTAssertEqual(dataStore.recurringTransactions.count, 1)
     }
 
@@ -1093,10 +1093,10 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Delete Project Cascade
 
     func testDeleteProjectArchivesWhenTransactionReferencesExist() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
 
-        let transaction = dataStore.addTransaction(
+        let transaction = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -1108,7 +1108,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.deleteProject(id: project1.id)
+        mutations(dataStore).deleteProject(id: project1.id)
 
         // Project should be archived, not deleted
         let archivedProject = dataStore.getProject(id: project1.id)
@@ -1124,8 +1124,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProjectArchivesWhenSoleAllocation() {
-        let project = dataStore.addProject(name: "Solo", description: "")
-        let transaction = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Solo", description: "")
+        let transaction = mutations(dataStore).addTransaction(
             type: .income,
             amount: 5000,
             date: Date(),
@@ -1134,7 +1134,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)]
         )
 
-        dataStore.deleteProject(id: project.id)
+        mutations(dataStore).deleteProject(id: project.id)
 
         // Project should be archived, not deleted
         let archivedProject = dataStore.getProject(id: project.id)
@@ -1150,10 +1150,10 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProjectRemovesAllocationsFromRecurring() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Shared",
             type: .expense,
             amount: 10000,
@@ -1166,9 +1166,10 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
-        // dayOfMonth: 1 auto-generates transactions → project1 has tx refs → archived
-        dataStore.deleteProject(id: project1.id)
+        // processRecurringTransactions() 後は project1 has tx refs → archived
+        mutations(dataStore).deleteProject(id: project1.id)
 
         // Project should be archived (has transaction references)
         let archivedProject = dataStore.getProject(id: project1.id)
@@ -1183,8 +1184,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProjectDeletesRecurringWhenSoleAllocation() {
-        let project = dataStore.addProject(name: "Solo", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Solo", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Solo recurring",
             type: .expense,
             amount: 5000,
@@ -1194,9 +1195,10 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
-        // dayOfMonth: 1 auto-generates transactions → project has tx refs → archived
-        dataStore.deleteProject(id: project.id)
+        // processRecurringTransactions() 後は project has tx refs → archived
+        mutations(dataStore).deleteProject(id: project.id)
 
         // Project should be archived (has transaction references)
         let archivedProject = dataStore.getProject(id: project.id)
@@ -1209,10 +1211,10 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProjectCascadeDoesNotAffectUnrelatedTransactions() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
 
-        let relatedTx = dataStore.addTransaction(
+        let relatedTx = mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -1220,7 +1222,7 @@ final class DataStoreCRUDTests: XCTestCase {
             memo: "",
             allocations: [(projectId: project1.id, ratio: 100)]
         )
-        let unrelated = dataStore.addTransaction(
+        let unrelated = mutations(dataStore).addTransaction(
             type: .income,
             amount: 2000,
             date: Date(),
@@ -1229,7 +1231,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project2.id, ratio: 100)]
         )
 
-        dataStore.deleteProject(id: project1.id)
+        mutations(dataStore).deleteProject(id: project1.id)
 
         // Project1 should be archived (has transaction references)
         let archivedProject = dataStore.getProject(id: project1.id)
@@ -1250,11 +1252,11 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProjectCascadeWithMixedTransactionsAndRecurring() {
-        let projectToDelete = dataStore.addProject(name: "Delete Me", description: "")
-        let projectToKeep = dataStore.addProject(name: "Keep Me", description: "")
+        let projectToDelete = mutations(dataStore).addProject(name: "Delete Me", description: "")
+        let projectToKeep = mutations(dataStore).addProject(name: "Keep Me", description: "")
 
         // Transaction with only the deleted project
-        let txSolo = dataStore.addTransaction(
+        let txSolo = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -1264,7 +1266,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // Transaction shared between both projects
-        let txShared = dataStore.addTransaction(
+        let txShared = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 2000,
             date: Date(),
@@ -1277,7 +1279,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // Recurring with only the deleted project
-        let recSolo = dataStore.addRecurring(
+        let recSolo = mutations(dataStore).addRecurring(
             name: "Solo rec",
             type: .expense,
             amount: 3000,
@@ -1289,7 +1291,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // Recurring shared between both projects
-        let recShared = dataStore.addRecurring(
+        let recShared = mutations(dataStore).addRecurring(
             name: "Shared rec",
             type: .expense,
             amount: 4000,
@@ -1303,7 +1305,7 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 15
         )
 
-        dataStore.deleteProject(id: projectToDelete.id)
+        mutations(dataStore).deleteProject(id: projectToDelete.id)
 
         // Project should be archived (has transaction references)
         let archivedProject = dataStore.getProject(id: projectToDelete.id)
@@ -1341,17 +1343,17 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Delete All Data
 
     func testDeleteAllDataClearsProjects() {
-        dataStore.addProject(name: "A", description: "")
-        dataStore.addProject(name: "B", description: "")
+        mutations(dataStore).addProject(name: "A", description: "")
+        mutations(dataStore).addProject(name: "B", description: "")
         XCTAssertEqual(dataStore.projects.count, 2)
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
         XCTAssertEqual(dataStore.projects.count, 0)
     }
 
     func testDeleteAllDataClearsTransactions() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        mutations(dataStore).addTransaction(
             type: .income,
             amount: 1000,
             date: Date(),
@@ -1361,13 +1363,13 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(dataStore.transactions.count, 1)
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
         XCTAssertEqual(dataStore.transactions.count, 0)
     }
 
     func testDeleteAllDataClearsRecurring() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        mutations(dataStore).addRecurring(
             name: "Rec",
             type: .expense,
             amount: 1000,
@@ -1379,7 +1381,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(dataStore.recurringTransactions.count, 1)
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
         XCTAssertEqual(dataStore.recurringTransactions.count, 0)
     }
 
@@ -1388,7 +1390,7 @@ final class DataStoreCRUDTests: XCTestCase {
         dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
         XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count + 1)
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
 
         // Only default categories should remain
         XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count)
@@ -1402,18 +1404,18 @@ final class DataStoreCRUDTests: XCTestCase {
     func testDeleteAllDataCustomCategoriesAreRemoved() {
         let custom = dataStore.addCategory(name: "Custom", type: .income, icon: "star")
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
 
         XCTAssertNil(dataStore.getCategory(id: custom.id))
     }
 
     func testDeleteAllDataComprehensive() {
         // Set up a full data scenario
-        let project1 = dataStore.addProject(name: "P1", description: "")
-        let project2 = dataStore.addProject(name: "P2", description: "")
+        let project1 = mutations(dataStore).addProject(name: "P1", description: "")
+        let project2 = mutations(dataStore).addProject(name: "P2", description: "")
         dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -1421,7 +1423,7 @@ final class DataStoreCRUDTests: XCTestCase {
             memo: "Sale",
             allocations: [(projectId: project1.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -1432,7 +1434,7 @@ final class DataStoreCRUDTests: XCTestCase {
                 (projectId: project2.id, ratio: 50),
             ]
         )
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Monthly bill",
             type: .expense,
             amount: 3000,
@@ -1443,13 +1445,13 @@ final class DataStoreCRUDTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        // 2 manual transactions + 1 auto-generated by addRecurring (dayOfMonth 1 is in the past)
+        // 2 manual transactions + 1 recurring definition
         XCTAssertEqual(dataStore.projects.count, 2)
-        XCTAssertEqual(dataStore.transactions.count, 3)
+        XCTAssertEqual(dataStore.transactions.count, 2)
         XCTAssertEqual(dataStore.recurringTransactions.count, 1)
         XCTAssertGreaterThan(dataStore.categories.count, DEFAULT_CATEGORIES.count)
 
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
 
         XCTAssertEqual(dataStore.projects.count, 0)
         XCTAssertEqual(dataStore.transactions.count, 0)
@@ -1468,8 +1470,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteAllDataIsIdempotent() {
-        dataStore.deleteAllData()
-        dataStore.deleteAllData()
+        mutations(dataStore).deleteAllData()
+        mutations(dataStore).deleteAllData()
 
         XCTAssertEqual(dataStore.projects.count, 0)
         XCTAssertEqual(dataStore.transactions.count, 0)
@@ -1481,7 +1483,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testAddProjectWithStartDate() {
         let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
-        let project = dataStore.addProject(name: "Started", description: "desc", startDate: startDate)
+        let project = mutations(dataStore).addProject(name: "Started", description: "desc", startDate: startDate)
 
         XCTAssertNotNil(project.startDate)
         let fetched = dataStore.getProject(id: project.id)
@@ -1489,16 +1491,16 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddProjectWithoutStartDate() {
-        let project = dataStore.addProject(name: "No Start", description: "desc")
+        let project = mutations(dataStore).addProject(name: "No Start", description: "desc")
         XCTAssertNil(project.startDate)
     }
 
     func testUpdateProjectStartDate() {
-        let project = dataStore.addProject(name: "Test", description: "desc")
+        let project = mutations(dataStore).addProject(name: "Test", description: "desc")
         XCTAssertNil(project.startDate)
 
         let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
-        dataStore.updateProject(id: project.id, startDate: startDate)
+        mutations(dataStore).updateProject(id: project.id, startDate: startDate)
 
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertNotNil(fetched?.startDate)
@@ -1506,10 +1508,10 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testUpdateProjectClearStartDate() {
         let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
-        let project = dataStore.addProject(name: "Test", description: "desc", startDate: startDate)
+        let project = mutations(dataStore).addProject(name: "Test", description: "desc", startDate: startDate)
         XCTAssertNotNil(project.startDate)
 
-        dataStore.updateProject(id: project.id, startDate: .some(nil))
+        mutations(dataStore).updateProject(id: project.id, startDate: .some(nil))
 
         let fetched = dataStore.getProject(id: project.id)
         XCTAssertNil(fetched?.startDate, "startDate should be nil after clearing")
@@ -1517,7 +1519,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testStartDatePersistsAfterReload() {
         let startDate = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 15))!
-        let project = dataStore.addProject(name: "Persist", description: "", startDate: startDate)
+        let project = mutations(dataStore).addProject(name: "Persist", description: "", startDate: startDate)
 
         dataStore.loadData()
         let fetched = dataStore.getProject(id: project.id)
@@ -1528,11 +1530,11 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProject_archivesAndPreservesAllocations() {
         // 3プロジェクト(50/30/20)のうち1つ削除→tx参照あり→アーカイブ、アロケーション保持
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
-        let projectC = dataStore.addProject(name: "C", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
+        let projectC = mutations(dataStore).addProject(name: "C", description: "")
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -1545,7 +1547,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.deleteProject(id: projectA.id)
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         // Project A should be archived
         let archivedA = dataStore.getProject(id: projectA.id)
@@ -1568,10 +1570,10 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProject_archivesAndPreserves_twoProjects() {
         // 2プロジェクト(60/40)のうち1つ削除→tx参照あり→アーカイブ、アロケーション保持
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -1583,7 +1585,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.deleteProject(id: projectA.id)
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         // Project A should be archived
         let archivedA = dataStore.getProject(id: projectA.id)
@@ -1604,11 +1606,11 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProject_redistributes_preservesTotal() {
         // 端数が出るケース: 33/33/34 → 33/34 → 49/51 (or similar)
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
-        let projectC = dataStore.addProject(name: "C", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
+        let projectC = mutations(dataStore).addProject(name: "C", description: "")
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -1621,7 +1623,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.deleteProject(id: projectA.id)
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         let fetched = dataStore.getTransaction(id: tx.id)!
         let totalAmount = fetched.allocations.reduce(0) { $0 + $1.amount }
@@ -1632,11 +1634,11 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProject_archivesAndRedistributesRecurringManual() {
         // 定期取引(manual)のアロケーション再分配 (定期取引は除外、トランザクションは保持)
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
-        let projectC = dataStore.addProject(name: "C", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
+        let projectC = mutations(dataStore).addProject(name: "C", description: "")
 
-        let rec = dataStore.addRecurring(
+        let rec = mutations(dataStore).addRecurring(
             name: "Test recurring",
             type: .expense,
             amount: 12000,
@@ -1651,9 +1653,10 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
-        // dayOfMonth: 1 auto-generates transactions → projectA has tx refs → archived
-        dataStore.deleteProject(id: projectA.id)
+        // processRecurringTransactions() 後は projectA has tx refs → archived
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         // Project A should be archived
         let archivedA = dataStore.getProject(id: projectA.id)
@@ -1674,11 +1677,11 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProjects_batch_archivesWithTransactionRefs() {
         // バッチ削除: tx参照ありのプロジェクトはアーカイブ
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
-        let projectC = dataStore.addProject(name: "C", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
+        let projectC = mutations(dataStore).addProject(name: "C", description: "")
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 9000,
             date: Date(),
@@ -1714,12 +1717,12 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteProject_archivesPreservesRoundingCase() {
         // 端数処理のケース: tx参照ありのプロジェクトはアーカイブ、アロケーション保持
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
-        let projectC = dataStore.addProject(name: "C", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
+        let projectC = mutations(dataStore).addProject(name: "C", description: "")
 
         // 各プロジェクト: ratio=25, 25, 50 → amount=2500, 2500, 5001
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10001,
             date: Date(),
@@ -1732,7 +1735,7 @@ final class DataStoreCRUDTests: XCTestCase {
             ]
         )
 
-        dataStore.deleteProject(id: projectC.id)
+        mutations(dataStore).deleteProject(id: projectC.id)
 
         // Project C should be archived
         let archivedC = dataStore.getProject(id: projectC.id)
@@ -1753,8 +1756,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Recurring Receipt Image
 
     func testAddRecurringWithReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Server",
             type: .expense,
             amount: 5000,
@@ -1772,8 +1775,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddRecurringDefaultsNoReceiptImage() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Fee",
             type: .expense,
             amount: 3000,
@@ -1788,8 +1791,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Fee",
             type: .expense,
             amount: 1000,
@@ -1801,14 +1804,14 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertNil(recurring.receiptImagePath)
 
-        dataStore.updateRecurring(id: recurring.id, receiptImagePath: "new-scan.jpg")
+        mutations(dataStore).updateRecurring(id: recurring.id, receiptImagePath: "new-scan.jpg")
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertEqual(fetched?.receiptImagePath, "new-scan.jpg")
     }
 
     func testUpdateRecurringClearReceiptImagePath() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Fee",
             type: .expense,
             amount: 1000,
@@ -1820,7 +1823,7 @@ final class DataStoreCRUDTests: XCTestCase {
             receiptImagePath: "old-scan.jpg"
         )
 
-        dataStore.updateRecurring(id: recurring.id, receiptImagePath: .some(nil))
+        mutations(dataStore).updateRecurring(id: recurring.id, receiptImagePath: .some(nil))
         let fetched = dataStore.getRecurring(id: recurring.id)
         XCTAssertNil(fetched?.receiptImagePath)
     }
@@ -1843,8 +1846,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - C6: deleteRecurring Clears recurringId
 
     func testDeleteRecurring_clearsRecurringId() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Fee",
             type: .expense,
             amount: 1000,
@@ -1862,7 +1865,7 @@ final class DataStoreCRUDTests: XCTestCase {
         if let tx = generatedTx {
             txId = tx.id
         } else {
-            let tx = dataStore.addTransaction(
+            let tx = mutations(dataStore).addTransaction(
                 type: .expense,
                 amount: 1000,
                 date: Date(),
@@ -1877,7 +1880,7 @@ final class DataStoreCRUDTests: XCTestCase {
         // Verify recurringId is set before deletion
         XCTAssertEqual(dataStore.getTransaction(id: txId)?.recurringId, recurring.id)
 
-        dataStore.deleteRecurring(id: recurring.id)
+        mutations(dataStore).deleteRecurring(id: recurring.id)
 
         // After deletion, recurringId should be nil
         let updatedTx = dataStore.getTransaction(id: txId)
@@ -1886,8 +1889,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteRecurring_transactionStillExists() {
-        let project = dataStore.addProject(name: "Proj", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -1896,7 +1899,7 @@ final class DataStoreCRUDTests: XCTestCase {
             allocations: [(projectId: project.id, ratio: 100)],
             recurringId: UUID()
         )
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Fee",
             type: .expense,
             amount: 1000,
@@ -1908,7 +1911,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         let countBefore = dataStore.transactions.count
-        dataStore.deleteRecurring(id: recurring.id)
+        mutations(dataStore).deleteRecurring(id: recurring.id)
 
         // Transactions should not be deleted
         XCTAssertTrue(dataStore.transactions.count >= countBefore - 0)
@@ -1918,9 +1921,9 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - C3: Category Deletion Migrates References
 
     func testDeleteCategory_migratesExpenseTransactions() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let category = dataStore.addCategory(name: "Custom Expense", type: .expense, icon: "star")
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 500,
             date: Date(),
@@ -1936,9 +1939,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteCategory_migratesIncomeTransactions() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let category = dataStore.addCategory(name: "Custom Income", type: .income, icon: "star")
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .income,
             amount: 500,
             date: Date(),
@@ -1954,9 +1957,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteCategory_migratesRecurring() {
-        let project = dataStore.addProject(name: "Proj", description: "")
+        let project = mutations(dataStore).addProject(name: "Proj", description: "")
         let category = dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Fee",
             type: .expense,
             amount: 1000,
@@ -1986,11 +1989,11 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - C2: Allocation Rounding
 
     func testAddTransaction_allocationTotalMatchesAmount() {
-        let project1 = dataStore.addProject(name: "A", description: "")
-        let project2 = dataStore.addProject(name: "B", description: "")
-        let project3 = dataStore.addProject(name: "C", description: "")
+        let project1 = mutations(dataStore).addProject(name: "A", description: "")
+        let project2 = mutations(dataStore).addProject(name: "B", description: "")
+        let project3 = mutations(dataStore).addProject(name: "C", description: "")
 
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 999,
             date: Date(),
@@ -2010,8 +2013,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - C8: Frequency Change Tests
 
     func testUpdateRecurringFrequencyChangeResetsLastGeneratedDate_MonthlyToYearly() {
-        let project = dataStore.addProject(name: "C8 Test", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "C8 Test", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Test",
             type: .expense,
             amount: 1000,
@@ -2023,7 +2026,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // Change frequency to yearly
-        dataStore.updateRecurring(id: recurring.id, frequency: .yearly, monthOfYear: 6)
+        mutations(dataStore).updateRecurring(id: recurring.id, frequency: .yearly, monthOfYear: 6)
 
         let updated = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(updated?.frequency, .yearly)
@@ -2032,8 +2035,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringFrequencyChangeResetsLastGeneratedDate_YearlyToMonthly() {
-        let project = dataStore.addProject(name: "C8 Test", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "C8 Test", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Yearly Test",
             type: .expense,
             amount: 12000,
@@ -2051,7 +2054,7 @@ final class DataStoreCRUDTests: XCTestCase {
         // Change frequency to monthly
         // Note: updateRecurring calls processRecurringTransactions() at the end,
         // which will generate a new monthly transaction if dayOfMonth has passed
-        dataStore.updateRecurring(id: recurring.id, frequency: .monthly)
+        mutations(dataStore).updateRecurring(id: recurring.id, frequency: .monthly)
 
         let updated = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(updated?.frequency, .monthly)
@@ -2062,8 +2065,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateRecurringSameFrequencyDoesNotResetLastGeneratedDate() {
-        let project = dataStore.addProject(name: "C8 Test", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "C8 Test", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "No Change Test",
             type: .expense,
             amount: 1000,
@@ -2077,7 +2080,7 @@ final class DataStoreCRUDTests: XCTestCase {
         let originalLastGenDate = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })?.lastGeneratedDate
 
         // Update with same frequency
-        dataStore.updateRecurring(id: recurring.id, name: "Updated Name", frequency: .monthly)
+        mutations(dataStore).updateRecurring(id: recurring.id, name: "Updated Name", frequency: .monthly)
 
         let updated = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(updated?.lastGeneratedDate, originalLastGenDate, "lastGeneratedDate should NOT be reset when frequency hasn't changed")
@@ -2086,10 +2089,10 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - H7: refresh*() retains data on success
 
     func testRefreshRetainsDataAfterOperations() {
-        let project = dataStore.addProject(name: "H7 Test", description: "desc")
+        let project = mutations(dataStore).addProject(name: "H7 Test", description: "desc")
         XCTAssertFalse(dataStore.projects.isEmpty, "projects should not be empty after addProject")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -2114,8 +2117,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - C4: Deferred image deletion (functional)
 
     func testDeleteTransactionCallsSuccessfully() {
-        let project = dataStore.addProject(name: "C4 Test", description: "desc")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "C4 Test", description: "desc")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -2126,13 +2129,13 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(dataStore.transactions.count, 1)
 
-        dataStore.deleteTransaction(id: tx.id)
+        mutations(dataStore).deleteTransaction(id: tx.id)
         XCTAssertTrue(dataStore.transactions.isEmpty, "transaction should be deleted")
     }
 
     func testRemoveReceiptImageClearsPath() {
-        let project = dataStore.addProject(name: "C4 Remove", description: "desc")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "C4 Remove", description: "desc")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 3000,
             date: Date(),
@@ -2161,11 +2164,11 @@ final class DataStoreCRUDTests: XCTestCase {
 
         // Project A: starts mid-month (active half the month)
         let midMonthDate = calendar.date(from: DateComponents(year: year, month: month, day: max(totalDays / 2, 2)))!
-        let projectA = dataStore.addProject(name: "ProRata A", description: "", startDate: midMonthDate)
-        let projectB = dataStore.addProject(name: "ProRata B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "ProRata A", description: "", startDate: midMonthDate)
+        let projectB = mutations(dataStore).addProject(name: "ProRata B", description: "")
 
         // Create transaction with both projects, 50/50 ratio
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: today,
@@ -2178,7 +2181,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // Now update the amount
-        dataStore.updateTransaction(id: tx.id, amount: 20000)
+        mutations(dataStore).updateTransaction(id: tx.id, amount: 20000)
 
         let updated = dataStore.getTransaction(id: tx.id)!
         let allocSum = updated.allocations.reduce(0) { $0 + $1.amount }
@@ -2197,12 +2200,12 @@ final class DataStoreCRUDTests: XCTestCase {
         let comps = calendar.dateComponents([.year, .month, .day], from: today)
         let day = comps.day!
 
-        let projectA = dataStore.addProject(name: "EqA", description: "")
-        let projectB = dataStore.addProject(name: "EqB", description: "")
-        let projectC = dataStore.addProject(name: "EqC", description: "")
+        _ = mutations(dataStore).addProject(name: "EqA", description: "")
+        _ = mutations(dataStore).addProject(name: "EqB", description: "")
+        let projectC = mutations(dataStore).addProject(name: "EqC", description: "")
 
         // Create monthly recurring with equalAll
-        _ = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Monthly Equal",
             type: .expense,
             amount: 90000,
@@ -2213,22 +2216,23 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: max(day - 1, 1)
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
-        // Should have generated a transaction with 3-way split
-        let txBefore = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
-        guard let generated = txBefore.last else {
-            XCTFail("Should have generated a transaction")
+        // Should have generated a canonical recurring posting with 3-way split
+        let postingsBefore = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        guard let generated = postingsBefore.last else {
+            XCTFail("Should have generated a recurring posting")
             return
         }
         XCTAssertEqual(generated.allocations.count, 3, "Should allocate to 3 projects")
 
         // Delete one project
-        dataStore.deleteProject(id: projectC.id)
+        mutations(dataStore).deleteProject(id: projectC.id)
 
-        // After deletion, the equalAll transaction should be recalculated to 2-way split
-        let txAfter = fetchAllTransactions().filter { $0.memo.contains("[定期]") }
-        guard let recalculated = txAfter.last else {
-            XCTFail("Transaction should still exist after project deletion")
+        // After deletion, the equalAll posting should be recalculated to 2-way split
+        let postingsAfter = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        guard let recalculated = postingsAfter.last else {
+            XCTFail("Posting should still exist after project deletion")
             return
         }
         XCTAssertEqual(recalculated.allocations.count, 2, "Should reallocate to 2 projects")
@@ -2244,50 +2248,15 @@ final class DataStoreCRUDTests: XCTestCase {
 
     // MARK: - H10: equalAll reprocess user edit protection
 
-    func testReprocessEqualAll_skipsManuallyEditedTransaction() {
-        let projectA = dataStore.addProject(name: "A", description: "")
-
-        // equalAll定期取引を作成（dayOfMonth=1で今月分が自動生成される）
-        let recurring = dataStore.addRecurring(
-            name: "EqualAll Monthly",
-            type: .expense,
-            amount: 10000,
-            categoryId: "cat-hosting",
-            memo: "",
-            allocationMode: .equalAll,
-            allocations: [],
-            frequency: .monthly,
-            dayOfMonth: 1
-        )
-
-        // 生成されたトランザクションを取得
-        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
-        XCTAssertNotNil(generatedTx, "equalAllトランザクションが生成されるべき")
-
-        // ユーザーがアロケーションを手動編集
-        dataStore.updateTransaction(
-            id: generatedTx!.id,
-            allocations: [(projectId: projectA.id, ratio: 100)]
-        )
-
-        // 手動編集フラグを確認
-        let edited = dataStore.getTransaction(id: generatedTx!.id)
-        XCTAssertEqual(edited?.isManuallyEdited, true, "equalAll配分の手動編集でフラグが立つべき")
-
-        // 新プロジェクト追加 → reprocessEqualAll が呼ばれる
-        _ = dataStore.addProject(name: "B", description: "")
-
-        // 手動編集済みトランザクションは上書きされないべき
-        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
-        XCTAssertEqual(afterReprocess?.allocations.count, 1, "手動編集済みトランザクションはスキップされるべき")
-        XCTAssertEqual(afterReprocess?.allocations.first?.projectId, projectA.id, "元の配分が保持されるべき")
+    func testReprocessEqualAll_skipsManuallyEditedTransaction() throws {
+        throw XCTSkip("recurring equalAll no longer materializes editable legacy transactions")
     }
 
     func testReprocessEqualAll_updatesNonEditedTransaction() {
-        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
 
         // equalAll定期取引を作成
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "EqualAll Monthly",
             type: .expense,
             amount: 10000,
@@ -2298,18 +2267,18 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
-        // 生成されたトランザクションを取得
-        let generatedTx = fetchAllTransactions().first { $0.recurringId == recurring.id }
-        XCTAssertNotNil(generatedTx)
-        XCTAssertEqual(generatedTx?.allocations.count, 1, "1プロジェクトのみに配分")
-        XCTAssertNil(generatedTx?.isManuallyEdited, "手動編集フラグは未設定")
+        // 生成された canonical recurring posting を取得
+        let generatedPosting = fetchRecurringGeneratedPostings().first { $0.recurringId == recurring.id }
+        XCTAssertNotNil(generatedPosting)
+        XCTAssertEqual(generatedPosting?.allocations.count, 1, "1プロジェクトのみに配分")
 
         // 新プロジェクト追加 → reprocessEqualAll で再計算される
-        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
 
-        // 未編集トランザクションは再処理されるべき
-        let afterReprocess = dataStore.getTransaction(id: generatedTx!.id)
+        // canonical posting は再処理されるべき
+        let afterReprocess = fetchRecurringGeneratedPostings().first { $0.recurringId == recurring.id }
         XCTAssertEqual(afterReprocess?.allocations.count, 2, "2プロジェクトに再分配されるべき")
         let hasA = afterReprocess?.allocations.contains { $0.projectId == projectA.id } ?? false
         let hasB = afterReprocess?.allocations.contains { $0.projectId == projectB.id } ?? false
@@ -2322,11 +2291,11 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - H9: Archive / Soft Delete
 
     func testArchiveProject_preservesHistoricalTransactions() {
-        let projectA = dataStore.addProject(name: "A", description: "")
-        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
 
         // プロジェクトAに紐づくトランザクションを作成
-        let tx = dataStore.addTransaction(
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: Date(),
@@ -2339,7 +2308,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // deleteProject → トランザクション参照ありのためアーカイブされるべき
-        dataStore.deleteProject(id: projectA.id)
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         // プロジェクトは削除されずアーカイブされる
         let archivedProject = dataStore.getProject(id: projectA.id)
@@ -2355,21 +2324,21 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteProject_noTransactions_actuallyDeletes() {
-        let projectA = dataStore.addProject(name: "A", description: "")
-        _ = dataStore.addProject(name: "B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
+        _ = mutations(dataStore).addProject(name: "B", description: "")
 
         // トランザクションなしで削除 → ハードデリートされるべき
-        dataStore.deleteProject(id: projectA.id)
+        mutations(dataStore).deleteProject(id: projectA.id)
 
         XCTAssertNil(dataStore.getProject(id: projectA.id), "トランザクション参照なしのプロジェクトは完全に削除されるべき")
         XCTAssertEqual(dataStore.projects.count, 1)
     }
 
     func testArchivedProject_excludedFromEqualAllReprocess() {
-        let projectA = dataStore.addProject(name: "A", description: "")
+        let projectA = mutations(dataStore).addProject(name: "A", description: "")
 
         // equalAll定期取引を作成
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "EqualAll",
             type: .expense,
             amount: 10000,
@@ -2380,9 +2349,10 @@ final class DataStoreCRUDTests: XCTestCase {
             frequency: .monthly,
             dayOfMonth: 1
         )
+        _ = mutations(dataStore).processRecurringTransactions()
 
         // プロジェクトAにトランザクション参照を作成してアーカイブ可能にする
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: Date(),
@@ -2392,26 +2362,92 @@ final class DataStoreCRUDTests: XCTestCase {
         )
 
         // プロジェクトAをアーカイブ
-        dataStore.archiveProject(id: projectA.id)
+        mutations(dataStore).archiveProject(id: projectA.id)
 
         // 新プロジェクト追加
-        let projectB = dataStore.addProject(name: "B", description: "")
+        let projectB = mutations(dataStore).addProject(name: "B", description: "")
 
-        // equalAllの定期取引で生成されたトランザクションを確認
-        let recurringTxs = fetchAllTransactions().filter { $0.recurringId == recurring.id }
-        if let latestTx = recurringTxs.sorted(by: { $0.date > $1.date }).first {
-            let hasArchived = latestTx.allocations.contains { $0.projectId == projectA.id }
+        // equalAll の定期取引で生成された canonical posting を確認
+        let recurringPostings = fetchRecurringGeneratedPostings().filter { $0.recurringId == recurring.id }
+        if let latestPosting = recurringPostings.sorted(by: { $0.date > $1.date }).first {
+            let hasArchived = latestPosting.allocations.contains { $0.projectId == projectA.id }
             XCTAssertFalse(hasArchived, "アーカイブ済みプロジェクトはequalAll再処理から除外されるべき")
-            let hasB = latestTx.allocations.contains { $0.projectId == projectB.id }
+            let hasB = latestPosting.allocations.contains { $0.projectId == projectB.id }
             XCTAssertTrue(hasB, "新プロジェクトBが含まれるべき")
         }
     }
 
     // MARK: - Helpers for Wave 2 tests
 
+    private struct GeneratedRecurringPosting {
+        let journalId: UUID
+        let candidateId: UUID
+        let date: Date
+        let recurringId: UUID?
+        let allocations: [Allocation]
+    }
+
     private func fetchAllTransactions() -> [PPTransaction] {
         let descriptor = FetchDescriptor<PPTransaction>()
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func fetchRecurringGeneratedPostings() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(0) { partialResult, line in
+                partialResult + NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocationAmounts = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = allocationAmounts.map { projectId, allocationAmount in
+                Allocation(
+                    projectId: projectId,
+                    ratio: amount == 0 ? 0 : Int((Double(allocationAmount) / Double(amount) * 100.0).rounded()),
+                    amount: allocationAmount
+                )
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                journalId: journal.id,
+                candidateId: candidate.id,
+                date: journal.journalDate,
+                recurringId: snapshot.recurringId,
+                allocations: allocations
+            )
+        }
     }
 
     // MARK: - M15: Date Validation
@@ -2421,7 +2457,7 @@ final class DataStoreCRUDTests: XCTestCase {
         let futureDate = calendar.date(byAdding: .month, value: 2, to: Date())!
         let pastDate = calendar.date(byAdding: .month, value: -1, to: Date())!
 
-        let project = dataStore.addProject(
+        let project = mutations(dataStore).addProject(
             name: "M15 Test",
             description: "",
             startDate: futureDate,
@@ -2435,12 +2471,12 @@ final class DataStoreCRUDTests: XCTestCase {
     func testUpdateProject_startDateAfterCompletedAt_clearsCompletedAt() {
         let calendar = Calendar.current
         let pastDate = calendar.date(byAdding: .month, value: -2, to: Date())!
-        let project = dataStore.addProject(name: "M15 Update Test", description: "", startDate: pastDate)
+        let project = mutations(dataStore).addProject(name: "M15 Update Test", description: "", startDate: pastDate)
 
         let lateDate = calendar.date(byAdding: .month, value: 1, to: Date())!
         let earlyDate = calendar.date(byAdding: .month, value: -3, to: Date())!
 
-        dataStore.updateProject(
+        mutations(dataStore).updateProject(
             id: project.id,
             status: .completed,
             startDate: .some(lateDate),
@@ -2483,9 +2519,9 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - M4: Empty CategoryId Fallback
 
     func testAddTransaction_emptyCategoryId_fallsBackToDefault() {
-        let project = dataStore.addProject(name: "M4 Test", description: "")
+        let project = mutations(dataStore).addProject(name: "M4 Test", description: "")
 
-        let expenseTx = dataStore.addTransaction(
+        let expenseTx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1000,
             date: Date(),
@@ -2495,7 +2531,7 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(expenseTx.categoryId, "cat-other-expense", "空の経費categoryIdはcat-other-expenseにフォールバックすべき")
 
-        let incomeTx = dataStore.addTransaction(
+        let incomeTx = mutations(dataStore).addTransaction(
             type: .income,
             amount: 2000,
             date: Date(),
@@ -2507,9 +2543,9 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddRecurring_emptyCategoryId_fallsBackToDefault() {
-        let project = dataStore.addProject(name: "M4 Recurring Test", description: "")
+        let project = mutations(dataStore).addProject(name: "M4 Recurring Test", description: "")
 
-        let recurring = dataStore.addRecurring(
+        let recurring = mutations(dataStore).addRecurring(
             name: "Empty Cat Recurring",
             type: .expense,
             amount: 500,
@@ -2525,8 +2561,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - M6: monthOfYear Range Validation
 
     func testUpdateRecurring_invalidMonthOfYear_ignored() {
-        let project = dataStore.addProject(name: "M6 Test", description: "")
-        let recurring = dataStore.addRecurring(
+        let project = mutations(dataStore).addProject(name: "M6 Test", description: "")
+        let recurring = mutations(dataStore).addRecurring(
             name: "Yearly Test",
             type: .expense,
             amount: 1000,
@@ -2539,15 +2575,15 @@ final class DataStoreCRUDTests: XCTestCase {
         )
         XCTAssertEqual(recurring.monthOfYear, 6)
 
-        dataStore.updateRecurring(id: recurring.id, monthOfYear: 13)
+        mutations(dataStore).updateRecurring(id: recurring.id, monthOfYear: 13)
         let fetched = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(fetched?.monthOfYear, 6, "Invalid monthOfYear (13) should be ignored")
 
-        dataStore.updateRecurring(id: recurring.id, monthOfYear: 0)
+        mutations(dataStore).updateRecurring(id: recurring.id, monthOfYear: 0)
         let fetched2 = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(fetched2?.monthOfYear, 6, "Invalid monthOfYear (0) should be ignored")
 
-        dataStore.updateRecurring(id: recurring.id, monthOfYear: -1)
+        mutations(dataStore).updateRecurring(id: recurring.id, monthOfYear: -1)
         let fetched3 = dataStore.recurringTransactions.first(where: { $0.id == recurring.id })
         XCTAssertEqual(fetched3?.monthOfYear, 6, "Invalid monthOfYear (-1) should be ignored")
     }
@@ -2555,8 +2591,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - Phase 4C: Accounting Parameters in CRUD
 
     func testAddTransactionWithPaymentAccountId() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense, amount: 5000, date: Date(),
             categoryId: "cat-tools", memo: "Test",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -2566,8 +2602,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionWithTransferToAccountId() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .transfer, amount: 10000, date: Date(),
             categoryId: "cat-tools", memo: "Transfer test",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -2579,8 +2615,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddTransactionWithTaxDeductibleRate() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense, amount: 20000, date: Date(),
             categoryId: "cat-hosting", memo: "Server",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -2592,8 +2628,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionAccountingFields() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense, amount: 10000, date: Date(),
             categoryId: "cat-tools", memo: "Before",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -2601,7 +2637,7 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertNil(tx.paymentAccountId)
         XCTAssertNil(tx.taxDeductibleRate)
 
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: tx.id,
             paymentAccountId: "acct-cc",
             taxDeductibleRate: 50
@@ -2614,8 +2650,8 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateTransactionClearAccountingFields() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense, amount: 8000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -2625,7 +2661,7 @@ final class DataStoreCRUDTests: XCTestCase {
         XCTAssertEqual(tx.paymentAccountId, "acct-bank")
 
         // Clear paymentAccountId by setting to nil
-        dataStore.updateTransaction(
+        mutations(dataStore).updateTransaction(
             id: tx.id,
             paymentAccountId: .some(nil),
             taxDeductibleRate: .some(nil)
@@ -2639,46 +2675,53 @@ final class DataStoreCRUDTests: XCTestCase {
 
     // MARK: - CSV Import Contract
 
-    func testImportTransactionsTransferWithoutCategorySucceeds() {
+    func testImportTransactionsTransferWithoutCategorySucceeds() async throws {
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ,支払口座,振替先口座
         2026-01-10,振替,5000,,,口座間移動,acct-cash,acct-bank
         """
 
-        let result = dataStore.importTransactions(from: csv)
+        let result = await mutations(dataStore).importTransactions(from: csv)
         XCTAssertEqual(result.successCount, 1)
         XCTAssertEqual(result.errorCount, 0)
-        XCTAssertEqual(dataStore.transactions.count, 1)
+        XCTAssertEqual(result.evidenceCount, 1)
+        XCTAssertEqual(result.candidateCount, 1)
+        XCTAssertTrue(dataStore.transactions.isEmpty)
 
-        let tx = dataStore.transactions[0]
-        XCTAssertEqual(tx.type, .transfer)
-        XCTAssertEqual(tx.categoryId, "")
-        XCTAssertTrue(tx.allocations.isEmpty)
-        XCTAssertEqual(tx.paymentAccountId, "acct-cash")
-        XCTAssertEqual(tx.transferToAccountId, "acct-bank")
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let journals = try await workflow.journals(
+            businessId: businessId,
+            taxYear: 2026
+        )
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
+        XCTAssertEqual(journals.count, 0)
+        XCTAssertTrue(pending.contains(where: {
+            $0.memo == "口座間移動" && $0.status == .needsReview && $0.source == .importFile
+        }))
     }
 
-    func testImportTransactionsRejectsRatioNotEqual100() {
+    func testImportTransactionsRejectsRatioNotEqual100() async {
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ
         2026-01-10,経費,5000,ツール,ProjectA(80%),比率不足
         """
 
-        let result = dataStore.importTransactions(from: csv)
+        let result = await mutations(dataStore).importTransactions(from: csv)
         XCTAssertEqual(result.successCount, 0)
         XCTAssertEqual(result.errorCount, 1)
         XCTAssertTrue(result.errors.contains(where: { $0.contains("配分比率が不正") }))
         XCTAssertTrue(dataStore.transactions.isEmpty)
     }
 
-    func testImportTransactionsDoesNotCountYearLockedFailureAsSuccess() {
-        dataStore.lockFiscalYear(2026)
+    func testImportTransactionsDoesNotCountYearLockedFailureAsSuccess() async {
+        mutations(dataStore).lockFiscalYear(2026)
         let csv = """
         日付,種類,金額,カテゴリ,プロジェクト,メモ
         2026-01-10,経費,5000,ツール,LockedProject(100%),ロック年度
         """
 
-        let result = dataStore.importTransactions(from: csv)
+        let result = await mutations(dataStore).importTransactions(from: csv)
         XCTAssertEqual(result.successCount, 0)
         XCTAssertEqual(result.errorCount, 1)
         XCTAssertTrue(result.errors.contains(where: { $0.contains("ロック") }))

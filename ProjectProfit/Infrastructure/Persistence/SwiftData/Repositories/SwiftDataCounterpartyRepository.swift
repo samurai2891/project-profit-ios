@@ -77,8 +77,7 @@ final class SwiftDataCounterpartyRepository: CounterpartyRepository {
     }
 
     nonisolated func findByRegistrationNumber(_ number: String) async throws -> Counterparty? {
-        let normalizedNumber = number.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedNumber.isEmpty else { return nil }
+        guard let normalizedNumber = RegistrationNumberNormalizer.normalize(number) else { return nil }
 
         return try await MainActor.run {
             let descriptor = FetchDescriptor<CounterpartyEntity>(
@@ -87,7 +86,8 @@ final class SwiftDataCounterpartyRepository: CounterpartyRepository {
             return try modelContext.fetch(descriptor)
                 .map(CounterpartyEntityMapper.toDomain)
                 .first {
-                    $0.corporateNumber == normalizedNumber || $0.invoiceRegistrationNumber == normalizedNumber
+                    RegistrationNumberNormalizer.normalize($0.corporateNumber) == normalizedNumber
+                        || RegistrationNumberNormalizer.normalize($0.invoiceRegistrationNumber) == normalizedNumber
                 }
         }
     }

@@ -94,22 +94,140 @@ enum TaxYearDefinitionLoader {
     }
 
     /// 指定年度の全フィールド定義をロードする
+    /// filing pack のみを正本として組み立てる
     static func loadDefinition(for fiscalYear: Int) -> TaxYearDefinition? {
         if let cached = cache[fiscalYear] { return cached }
 
-        let fileName = "TaxYear\(fiscalYear)"
-        guard let url = Bundle.main.url(forResource: fileName, withExtension: "json") else {
+        if let packDefinition = loadDefinitionFromPack(for: fiscalYear) {
+            cache[fiscalYear] = packDefinition
+            return packDefinition
+        }
+        return nil
+    }
+
+    /// パック内の filing/*.json からフィールド定義を組み立てる
+    private static func loadDefinitionFromPack(for fiscalYear: Int) -> TaxYearDefinition? {
+        guard let filingDir = packFilingDirectoryURL(for: fiscalYear) else {
             return nil
         }
 
-        do {
-            let data = try Data(contentsOf: url)
-            let definition = try JSONDecoder().decode(TaxYearDefinition.self, from: data)
-            cache[fiscalYear] = definition
-            return definition
-        } catch {
-            return nil
+        let filingFiles: [(formKey: String, fileName: String)] = [
+            (commonFormKey, "common.json"),
+            ("blue_general", "blue_general.json"),
+            ("blue_cash_basis", "blue_cash_basis.json"),
+            ("white_shushi", "white_shushi.json")
+        ]
+
+        var allFields: [TaxFieldDefinition] = []
+        var forms: [String: TaxFormDefinition] = [:]
+        var foundAny = false
+
+        for filing in filingFiles {
+            let fileURL = filingDir.appendingPathComponent(filing.fileName)
+            guard FileManager.default.fileExists(atPath: fileURL.path),
+                  let data = try? Data(contentsOf: fileURL),
+                  let parsed = try? JSONDecoder().decode(PackFilingDefinition.self, from: data)
+            else {
+                continue
+            }
+            foundAny = true
+
+            forms[filing.formKey] = TaxFormDefinition(
+                formId: parsed.formId,
+                formVer: parsed.formVer,
+                rootTag: parsed.rootTag,
+                mappingFile: nil
+            )
+
+            for section in parsed.sections {
+                for field in section.fields {
+                    let taxFieldDef = TaxFieldDefinition(
+                        internalKey: field.internalKey,
+                        fieldLabel: field.fieldLabel,
+                        xmlTag: field.xmlTag,
+                        taxLineRawValue: field.taxLineRawValue ?? resolveTaxLineRawValue(for: field.internalKey),
+                        section: section.id,
+                        dataType: EtaxFieldDataType(rawValue: field.dataType),
+                        form: filing.formKey,
+                        idref: field.idref,
+                        format: field.format,
+                        requiredRule: field.requiredRule
+                    )
+                    allFields.append(taxFieldDef)
+                }
+            }
         }
+
+        guard foundAny else { return nil }
+
+        return TaxYearDefinition(
+            fiscalYear: fiscalYear,
+            forms: forms,
+            fields: allFields
+        )
+    }
+
+    /// パック内の filing ディレクトリ URL を返す
+    private static func packFilingDirectoryURL(for fiscalYear: Int) -> URL? {
+        // バンドルリソース内のフォルダ型パス
+        if let bundledRoot = Bundle.main.resourceURL {
+            let filingDir = bundledRoot
+                .appendingPathComponent("TaxYearPacks", isDirectory: true)
+                .appendingPathComponent(String(fiscalYear), isDirectory: true)
+                .appendingPathComponent("filing", isDirectory: true)
+            if FileManager.default.fileExists(atPath: filingDir.path) {
+                return filingDir
+            }
+        }
+
+        // ソースツリーからのフォールバック（テスト時）
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Services
+            .deletingLastPathComponent() // ProjectProfit
+        let sourceFiling = sourceRoot
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("TaxYearPacks", isDirectory: true)
+            .appendingPathComponent(String(fiscalYear), isDirectory: true)
+            .appendingPathComponent("filing", isDirectory: true)
+        return FileManager.default.fileExists(atPath: sourceFiling.path) ? sourceFiling : nil
+    }
+
+    /// internalKey から TaxLine.rawValue を逆引きする
+    private static func resolveTaxLineRawValue(for internalKey: String) -> String? {
+        // pack filing フィールドの internalKey と TaxLine.rawValue のマッピング
+        let mappings: [String: String] = [
+            "revenue_sales_revenue": "sales_revenue",
+            "revenue_other_income": "other_income",
+            "expense_rent": "rent",
+            "expense_utilities": "utilities",
+            "expense_travel": "travel",
+            "expense_communication": "communication",
+            "expense_advertising": "advertising",
+            "expense_entertainment": "entertainment",
+            "expense_depreciation": "depreciation",
+            "expense_insurance": "insurance",
+            "expense_interest": "interest",
+            "expense_supplies": "supplies",
+            "expense_taxes": "taxes",
+            "expense_outsourcing": "outsourcing",
+            "expense_misc": "misc",
+            "shushi_revenue_total": "sales_revenue",
+            "shushi_expense_rent": "rent",
+            "shushi_expense_utilities": "utilities",
+            "shushi_expense_travel": "travel",
+            "shushi_expense_communication": "communication",
+            "shushi_expense_advertising": "advertising",
+            "shushi_expense_entertainment": "entertainment",
+            "shushi_expense_depreciation": "depreciation",
+            "shushi_expense_insurance": "insurance",
+            "shushi_expense_interest": "interest",
+            "shushi_expense_supplies": "supplies",
+            "shushi_expense_taxes": "taxes",
+            "shushi_expense_outsourcing": "outsourcing",
+            "shushi_expense_misc": "misc",
+            "shushi_rent_breakdown": "rent"
+        ]
+        return mappings[internalKey]
     }
 
     /// 対応済み年分かどうかを返す
@@ -139,10 +257,7 @@ enum TaxYearDefinitionLoader {
 
     /// 指定様式で利用可能な対応年分一覧を返す
     static func supportedYears(formType: EtaxFormType?) -> [Int] {
-        var years = jsonSupportedYears()
-        years.formUnion(supportedPackYears())
-
-        let sorted = years.sorted()
+        let sorted = supportedPackYears().sorted()
         guard let formType else {
             return sorted
         }
@@ -184,25 +299,6 @@ enum TaxYearDefinitionLoader {
         return "blue_general"
     }
 
-    private static func jsonSupportedYears() -> Set<Int> {
-        let filePaths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
-        let prefix = "TaxYear"
-        let suffix = ".json"
-
-        var years = Set(cache.keys)
-        for path in filePaths {
-            let fileName = URL(fileURLWithPath: path).lastPathComponent
-            guard fileName.hasPrefix(prefix), fileName.hasSuffix(suffix) else { continue }
-            let raw = fileName
-                .replacingOccurrences(of: prefix, with: "")
-                .replacingOccurrences(of: suffix, with: "")
-            if let year = Int(raw) {
-                years.insert(year)
-            }
-        }
-        return years
-    }
-
     private static func supportedPackYears() -> [Int] {
         if let cached = packYearsCache {
             return cached
@@ -211,4 +307,35 @@ enum TaxYearDefinitionLoader {
         packYearsCache = years
         return years
     }
+}
+
+// MARK: - Pack Filing Definition (Decode-only)
+
+/// パック内 filing/*.json のデコード用構造体
+private struct PackFilingDefinition: Decodable {
+    let formType: String
+    let taxYear: Int
+    let formId: String
+    let formVer: String
+    let rootTag: String
+    let displayName: String
+    let filingDeadline: String
+    let sections: [PackFilingSection]
+}
+
+private struct PackFilingSection: Decodable {
+    let id: String
+    let label: String
+    let fields: [PackFilingField]
+}
+
+private struct PackFilingField: Decodable {
+    let internalKey: String
+    let fieldLabel: String
+    let xmlTag: String?
+    let dataType: String
+    let taxLineRawValue: String?
+    let format: String?
+    let requiredRule: String?
+    let idref: String?
 }

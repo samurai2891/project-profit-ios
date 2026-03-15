@@ -62,6 +62,7 @@ extension RestoreService {
                 existing.paymentAccountId = snapshot.paymentAccountId
                 existing.transferToAccountId = snapshot.transferToAccountId
                 existing.taxDeductibleRate = snapshot.taxDeductibleRate
+                existing.counterpartyId = snapshot.counterpartyId
                 existing.counterparty = snapshot.counterparty
                 existing.createdAt = snapshot.createdAt
                 existing.updatedAt = snapshot.updatedAt
@@ -94,6 +95,7 @@ extension RestoreService {
                 existing.taxRate = snapshot.taxRate
                 existing.isTaxIncluded = snapshot.isTaxIncluded
                 existing.taxCategory = snapshot.taxCategory
+                existing.counterpartyId = snapshot.counterpartyId
                 existing.counterparty = snapshot.counterparty
                 existing.deletedAt = snapshot.deletedAt
                 existing.createdAt = snapshot.createdAt
@@ -152,35 +154,6 @@ extension RestoreService {
                 existing.credit = snapshot.credit
                 existing.memo = snapshot.memo
                 existing.displayOrder = snapshot.displayOrder
-                existing.createdAt = snapshot.createdAt
-                existing.updatedAt = snapshot.updatedAt
-            } else {
-                modelContext.insert(snapshot.toModel())
-            }
-        }
-    }
-
-    func upsertLegacyAccountingProfiles(_ snapshots: [LegacyAccountingProfileSnapshot]) throws {
-        for snapshot in snapshots {
-            let descriptor = FetchDescriptor<PPAccountingProfile>(predicate: #Predicate { $0.id == snapshot.id })
-            if let existing = try modelContext.fetch(descriptor).first {
-                existing.fiscalYear = snapshot.fiscalYear
-                existing.bookkeepingMode = snapshot.bookkeepingMode
-                existing.businessName = snapshot.businessName
-                existing.ownerName = snapshot.ownerName
-                existing.taxOfficeCode = snapshot.taxOfficeCode
-                existing.isBlueReturn = snapshot.isBlueReturn
-                existing.defaultPaymentAccountId = snapshot.defaultPaymentAccountId
-                existing.openingDate = snapshot.openingDate
-                existing.lockedAt = snapshot.lockedAt
-                existing.lockedYears = snapshot.lockedYears
-                existing.ownerNameKana = snapshot.ownerNameKana
-                existing.postalCode = snapshot.postalCode
-                existing.address = snapshot.address
-                existing.phoneNumber = snapshot.phoneNumber
-                existing.dateOfBirth = snapshot.dateOfBirth
-                existing.businessCategory = snapshot.businessCategory
-                existing.myNumberFlag = snapshot.myNumberFlag
                 existing.createdAt = snapshot.createdAt
                 existing.updatedAt = snapshot.updatedAt
             } else {
@@ -351,6 +324,59 @@ extension RestoreService {
                 modelContext.insert(TaxYearProfileEntityMapper.toEntity(profile))
             }
         }
+    }
+
+    func restoreCanonicalProfilesFromLegacySnapshots(
+        _ snapshots: [LegacyAccountingProfileSnapshot]
+    ) throws -> [String: String] {
+        guard !snapshots.isEmpty else {
+            return [:]
+        }
+
+        // Old archives may only contain legacy profile snapshots. Reconstruct canonical profiles once, then normalize secure IDs.
+        let businessDescriptor = FetchDescriptor<BusinessProfileEntity>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        let existingBusiness = try modelContext.fetch(businessDescriptor).first
+        let canonicalBusinessId = existingBusiness?.businessId ?? UUID()
+
+        if existingBusiness == nil,
+           let primary = snapshots.sorted(by: { legacyProfileSnapshotSort(lhs: $0, rhs: $1) }).first {
+            let businessProfile = primary.toBusinessProfile(
+                existingId: canonicalBusinessId,
+                sensitivePayload: ProfileSecureStore.load(profileId: primary.id)
+            )
+            modelContext.insert(BusinessProfileEntityMapper.toEntity(businessProfile))
+        }
+
+        let taxYearDescriptor = FetchDescriptor<TaxYearProfileEntity>()
+        let existingTaxYears = try modelContext.fetch(taxYearDescriptor)
+        var resolvedYears = Set(
+            existingTaxYears
+                .filter { $0.businessId == canonicalBusinessId }
+                .map(\.taxYear)
+        )
+
+        for snapshot in snapshots.sorted(by: { legacyProfileSnapshotSort(lhs: $0, rhs: $1) }) {
+            guard !resolvedYears.contains(snapshot.fiscalYear) else {
+                continue
+            }
+            let taxYearProfile = snapshot.toTaxYearProfile(businessId: canonicalBusinessId)
+            modelContext.insert(TaxYearProfileEntityMapper.toEntity(taxYearProfile))
+            resolvedYears.insert(snapshot.fiscalYear)
+        }
+
+        return Dictionary(uniqueKeysWithValues: snapshots.map { ($0.id, canonicalBusinessId.uuidString) })
+    }
+
+    private func legacyProfileSnapshotSort(
+        lhs: LegacyAccountingProfileSnapshot,
+        rhs: LegacyAccountingProfileSnapshot
+    ) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.fiscalYear < rhs.fiscalYear
     }
 
     func upsertEvidenceDocuments(_ evidenceDocuments: [EvidenceDocument]) throws {

@@ -3,9 +3,10 @@ import SwiftData
 
 // MARK: - PPAccountingProfile
 
-/// 会計設定プロファイル（1レコードのみ、id = "profile-default" で固定）
-/// ブートストラップ時に存在チェック → 未作成なら初期値で生成する。
-/// NOTE: modelContainer への登録は 4A-8 で一括で行う。
+/// レガシー会計設定プロファイル（migration-only compat）
+/// SwiftData @Model として残し、旧ストア読込と旧スナップショット互換の移行入口だけに使う。
+/// 現行の正本は BusinessProfile / TaxYearProfile。
+@available(*, deprecated, message: "Use BusinessProfile / TaxYearProfile instead. Migration-only legacy model.")
 @Model
 final class PPAccountingProfile {
     @Attribute(.unique) var id: String        // "profile-default" 固定
@@ -17,8 +18,7 @@ final class PPAccountingProfile {
     var isBlueReturn: Bool                     // 青色申告かどうか
     var defaultPaymentAccountId: String        // デフォルト入出金口座（"acct-cash" 等）
     var openingDate: Date?                     // 開業日
-    var lockedAt: Date?                        // 年度ロック日時（nil = 未ロック、T5対応基盤）
-    var lockedYears: [Int]?                    // ロック済み年度リスト（T5: 複数年度対応）
+    var lockedAt: Date?                        // レガシー互換の単年度ロック日時（nil = 未ロック）
     // e-Tax 申告者情報フィールド
     var ownerNameKana: String?               // 氏名カナ
     var postalCode: String?                  // 郵便番号（ハイフンなし7桁）
@@ -41,7 +41,6 @@ final class PPAccountingProfile {
         defaultPaymentAccountId: String = "acct-cash",
         openingDate: Date? = nil,
         lockedAt: Date? = nil,
-        lockedYears: [Int]? = [],
         ownerNameKana: String? = nil,
         postalCode: String? = nil,
         address: String? = nil,
@@ -62,7 +61,6 @@ final class PPAccountingProfile {
         self.defaultPaymentAccountId = defaultPaymentAccountId
         self.openingDate = openingDate
         self.lockedAt = lockedAt
-        self.lockedYears = lockedYears
         self.ownerNameKana = ownerNameKana
         self.postalCode = postalCode
         self.address = address
@@ -78,27 +76,26 @@ final class PPAccountingProfile {
 // MARK: - Computed Properties
 
 extension PPAccountingProfile {
-    /// 年度がロック済みかどうか（レガシー: lockedAt基盤）
+    /// レガシー互換の単年度 lockedAt 読み替え。runtime year lock の正本ではない。
     var isLocked: Bool { lockedAt != nil }
 
-    /// 解決済みロック年度リスト
-    private var resolvedLockedYears: [Int] { lockedYears ?? [] }
-
-    /// 指定年度がロック済みかどうか
+    /// 旧データ読取用の互換判定。現行の年度状態は TaxYearProfile.yearLockState を参照する。
     func isYearLocked(_ year: Int) -> Bool {
-        resolvedLockedYears.contains(year)
+        fiscalYear == year && lockedAt != nil
     }
 
-    /// 年度をロックする
+    /// 旧プロフィール互換のための補助 API。production の年度ロック更新には使わない。
     func lockYear(_ year: Int) {
         guard !isYearLocked(year) else { return }
-        lockedYears = resolvedLockedYears + [year]
+        guard fiscalYear == year else { return }
+        lockedAt = Date()
         updatedAt = Date()
     }
 
-    /// 年度のロックを解除する
+    /// 旧プロフィール互換のための補助 API。production の年度ロック更新には使わない。
     func unlockYear(_ year: Int) {
-        lockedYears = resolvedLockedYears.filter { $0 != year }
+        guard fiscalYear == year else { return }
+        lockedAt = nil
         updatedAt = Date()
     }
 }

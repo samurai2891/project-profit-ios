@@ -283,6 +283,64 @@ enum PDFExportService {
         )
     }
 
+    // MARK: - Export: Withholding Statements
+
+    static func exportWithholdingStatementAnnualPDF(summary: WithholdingStatementAnnualSummary) -> Data {
+        let columns: [Column] = [
+            Column(title: "支払先", width: 150, alignment: .left),
+            Column(title: "源泉区分", width: 90, alignment: .left),
+            Column(title: "件数", width: 40, alignment: .right),
+            Column(title: "支払総額", width: 90, alignment: .right),
+            Column(title: "源泉税額", width: 90, alignment: .right),
+            Column(title: "実支払額", width: 95, alignment: .right),
+        ]
+
+        let rows = summary.documents.map { document in
+            [
+                document.counterpartyName,
+                document.withholdingTaxCode.displayName,
+                String(document.paymentCount),
+                formatDecimalCurrency(document.totalGrossAmount),
+                formatDecimalCurrency(document.totalWithholdingTaxAmount),
+                formatDecimalCurrency(document.totalNetAmount),
+            ]
+        }
+
+        return renderPDF(
+            title: "支払調書一覧",
+            subtitle: "\(summary.fiscalYear)年分",
+            columns: columns,
+            rows: rows
+        )
+    }
+
+    static func exportWithholdingStatementPayeePDF(document: WithholdingStatementDocument) -> Data {
+        let columns: [Column] = [
+            Column(title: "支払日", width: 70, alignment: .left),
+            Column(title: "摘要", width: 185, alignment: .left),
+            Column(title: "支払総額", width: 85, alignment: .right),
+            Column(title: "源泉税額", width: 85, alignment: .right),
+            Column(title: "実支払額", width: 90, alignment: .right),
+        ]
+
+        let rows = document.rows.map { row in
+            [
+                makeDateFormatter().string(from: row.date),
+                row.description,
+                formatDecimalCurrency(row.grossAmount),
+                formatDecimalCurrency(row.withholdingTaxAmount),
+                formatDecimalCurrency(row.netAmount),
+            ]
+        }
+
+        return renderPDF(
+            title: "支払調書 — \(document.counterpartyName)",
+            subtitle: "\(document.fiscalYear)年分 / \(document.withholdingTaxCode.displayName)",
+            columns: columns,
+            rows: rows
+        )
+    }
+
     // MARK: - Internal: Column Definition
 
     private struct Column {
@@ -298,6 +356,19 @@ enum PDFExportService {
         formatter.locale = Locale(identifier: "ja_JP")
         formatter.dateFormat = "yyyy/MM/dd"
         return formatter
+    }
+
+    private static let decimalCurrencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    private static func formatDecimalCurrency(_ value: Decimal) -> String {
+        let number = NSDecimalNumber(decimal: value)
+        return decimalCurrencyFormatter.string(from: number) ?? number.stringValue
     }
 
     // MARK: - Internal: PDF Rendering

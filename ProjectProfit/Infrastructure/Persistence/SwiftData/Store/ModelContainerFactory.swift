@@ -5,6 +5,7 @@ import SwiftData
 enum ModelContainerFactory {
 
     /// 現行アプリが依存する legacy schema
+    /// PPAccountingProfile は旧DB migration compat 用として残す（現行の正本ではない）
     static var legacySchema: [any PersistentModel.Type] {
         [
             PPProject.self,
@@ -14,7 +15,7 @@ enum ModelContainerFactory {
             PPAccount.self,
             PPJournalEntry.self,
             PPJournalLine.self,
-            PPAccountingProfile.self,
+            PPAccountingProfile.self, // migration-only legacy compat
             PPUserRule.self,
             PPFixedAsset.self,
             PPInventoryRecord.self,
@@ -38,10 +39,14 @@ enum ModelContainerFactory {
             JournalLineEntity.self,
             JournalSearchIndexEntity.self,
             PostingCandidateEntity.self,
+            ApprovalRequestEntity.self,
+            FormDraftEntity.self,
             CounterpartyEntity.self,
             CanonicalAccountEntity.self,
             DistributionRuleEntity.self,
             AuditEventEntity.self,
+            StatementImportEntity.self,
+            StatementLineEntity.self,
         ]
     }
 

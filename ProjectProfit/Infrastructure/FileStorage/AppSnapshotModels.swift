@@ -91,6 +91,7 @@ struct LegacySnapshotSection: Codable, Equatable, Sendable {
     var accounts: [LegacyAccountSnapshot]
     var journalEntries: [LegacyJournalEntrySnapshot]
     var journalLines: [LegacyJournalLineSnapshot]
+    /// Decode/restore compatibility only. New backups must keep this empty and use canonical profiles instead.
     var accountingProfiles: [LegacyAccountingProfileSnapshot]
     var userRules: [LegacyUserRuleSnapshot]
     var fixedAssets: [LegacyFixedAssetSnapshot]
@@ -210,6 +211,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
     let paymentAccountId: String?
     let transferToAccountId: String?
     let taxDeductibleRate: Int?
+    let counterpartyId: UUID?
     let counterparty: String?
     let createdAt: Date
     let updatedAt: Date
@@ -237,6 +239,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
         self.paymentAccountId = recurring.paymentAccountId
         self.transferToAccountId = recurring.transferToAccountId
         self.taxDeductibleRate = recurring.taxDeductibleRate
+        self.counterpartyId = recurring.counterpartyId
         self.counterparty = recurring.counterparty
         self.createdAt = recurring.createdAt
         self.updatedAt = recurring.updatedAt
@@ -266,6 +269,7 @@ struct LegacyRecurringTransactionSnapshot: Codable, Equatable, Sendable {
             paymentAccountId: paymentAccountId,
             transferToAccountId: transferToAccountId,
             taxDeductibleRate: taxDeductibleRate,
+            counterpartyId: counterpartyId,
             counterparty: counterparty,
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -291,9 +295,14 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     let bookkeepingMode: BookkeepingMode?
     let journalEntryId: UUID?
     let taxAmount: Int?
+    let taxCodeId: String?
+    /// Restore compatibility only. Canonical tax input is `taxCodeId`.
     let taxRate: Int?
+    /// Restore compatibility only. Canonical tax identity is still `taxCodeId`.
     let isTaxIncluded: Bool?
+    /// Restore compatibility only. Canonical tax input is `taxCodeId`.
     let taxCategory: TaxCategory?
+    let counterpartyId: UUID?
     let counterparty: String?
     let deletedAt: Date?
     let createdAt: Date
@@ -317,9 +326,11 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
         self.bookkeepingMode = transaction.bookkeepingMode
         self.journalEntryId = transaction.journalEntryId
         self.taxAmount = transaction.taxAmount
+        self.taxCodeId = transaction.taxCodeId
         self.taxRate = transaction.taxRate
         self.isTaxIncluded = transaction.isTaxIncluded
         self.taxCategory = transaction.taxCategory
+        self.counterpartyId = transaction.counterpartyId
         self.counterparty = transaction.counterparty
         self.deletedAt = transaction.deletedAt
         self.createdAt = transaction.createdAt
@@ -327,7 +338,7 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
     }
 
     func toModel() -> PPTransaction {
-        PPTransaction(
+        PPTransaction.makeCompatibilityTransaction(
             id: id,
             type: type,
             amount: amount,
@@ -345,9 +356,11 @@ struct LegacyTransactionSnapshot: Codable, Equatable, Sendable {
             bookkeepingMode: bookkeepingMode,
             journalEntryId: journalEntryId,
             taxAmount: taxAmount,
+            taxCodeId: taxCodeId,
             taxRate: taxRate,
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
             counterparty: counterparty,
             deletedAt: deletedAt,
             createdAt: createdAt,
@@ -476,6 +489,7 @@ struct LegacyJournalLineSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+@available(*, deprecated, message: "Legacy profile snapshots are restore-compat only. New backups must use canonical profiles.")
 struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
     let id: String
     let fiscalYear: Int
@@ -486,8 +500,8 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
     let isBlueReturn: Bool
     let defaultPaymentAccountId: String
     let openingDate: Date?
+    /// Old archive compatibility only. Current-format snapshots must use canonical taxYearProfiles.
     let lockedAt: Date?
-    let lockedYears: [Int]?
     let ownerNameKana: String?
     let postalCode: String?
     let address: String?
@@ -509,7 +523,6 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         self.defaultPaymentAccountId = profile.defaultPaymentAccountId
         self.openingDate = profile.openingDate
         self.lockedAt = profile.lockedAt
-        self.lockedYears = profile.lockedYears
         self.ownerNameKana = profile.ownerNameKana
         self.postalCode = profile.postalCode
         self.address = profile.address
@@ -521,6 +534,75 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
         self.updatedAt = profile.updatedAt
     }
 
+    /// Restore compatibility only. New snapshots should persist BusinessProfile instead.
+    func toBusinessProfile(
+        existingId: UUID? = nil,
+        sensitivePayload: ProfileSensitivePayload? = nil
+    ) -> BusinessProfile {
+        BusinessProfile(
+            id: existingId ?? UUID(),
+            ownerName: ownerName,
+            ownerNameKana: normalized(sensitivePayload?.ownerNameKana ?? ownerNameKana),
+            businessName: businessName,
+            defaultPaymentAccountId: defaultPaymentAccountId,
+            businessAddress: normalized(sensitivePayload?.address ?? address),
+            postalCode: normalized(sensitivePayload?.postalCode ?? postalCode),
+            phoneNumber: normalized(sensitivePayload?.phoneNumber ?? phoneNumber),
+            openingDate: openingDate,
+            taxOfficeCode: normalized(taxOfficeCode),
+            invoiceRegistrationNumber: nil,
+            invoiceIssuerStatus: .unknown,
+            defaultCurrency: "JPY",
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    /// Restore compatibility only. New snapshots should persist TaxYearProfile instead.
+    func toTaxYearProfile(
+        businessId: UUID,
+        taxPackVersion: String = "legacy-restored",
+        existingId: UUID? = nil
+    ) -> TaxYearProfile {
+        let bookkeepingBasis: BookkeepingBasis = switch bookkeepingMode {
+        case .singleEntry:
+            .singleEntry
+        case .doubleEntry, .auto, .locked:
+            .doubleEntry
+        }
+        let blueDeductionLevel: BlueDeductionLevel = {
+            guard isBlueReturn else {
+                return .none
+            }
+            switch bookkeepingMode {
+            case .singleEntry:
+                return .ten
+            case .doubleEntry, .auto, .locked:
+                return .sixtyFive
+            }
+        }()
+
+        return TaxYearProfile(
+            id: existingId ?? UUID(),
+            businessId: businessId,
+            taxYear: fiscalYear,
+            filingStyle: isBlueReturn ? .blueGeneral : .white,
+            blueDeductionLevel: blueDeductionLevel,
+            bookkeepingBasis: bookkeepingBasis,
+            vatStatus: .exempt,
+            vatMethod: .general,
+            simplifiedBusinessCategory: nil,
+            invoiceIssuerStatusAtYear: .unknown,
+            electronicBookLevel: .none,
+            etaxSubmissionPlanned: false,
+            yearLockState: lockedAt == nil ? .open : .finalLock,
+            taxPackVersion: taxPackVersion,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    @available(*, deprecated, message: "Legacy profile snapshots are restore-compat only. Convert to canonical profiles instead.")
     func toModel() -> PPAccountingProfile {
         PPAccountingProfile(
             id: id,
@@ -533,7 +615,6 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
             defaultPaymentAccountId: defaultPaymentAccountId,
             openingDate: openingDate,
             lockedAt: lockedAt,
-            lockedYears: lockedYears,
             ownerNameKana: ownerNameKana,
             postalCode: postalCode,
             address: address,
@@ -544,6 +625,10 @@ struct LegacyAccountingProfileSnapshot: Codable, Equatable, Sendable {
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private func normalized(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }
 

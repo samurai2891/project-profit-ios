@@ -31,7 +31,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testCashBookEntry_HasCounterAccountId() {
         // Dr cash 10000 / Cr sales 10000 → 現金帳の相手勘定は売上高
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "現金売上",
             lines: [
@@ -50,7 +50,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     func testCashBookEntry_CounterAccountId_MaxAmountHeuristic() {
         // Dr cash 10000 / Cr sales 7000 + Cr other-income 3000
         // → 相手勘定は最大金額の売上高（acct-sales）
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 2),
             memo: "複合売上",
             lines: [
@@ -72,8 +72,8 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 3. counterparty（取引から伝播）
 
     func testTransactionCounterparty_PropagatesFromTransaction() {
-        let project = dataStore.addProject(name: "テストPJ", description: "取引先テスト")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "テストPJ", description: "取引先テスト")
+        let _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: date(2025, 7, 1),
@@ -93,8 +93,8 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 4. taxCategory（軽減税率）
 
     func testTransactionTaxCategory_PropagatesFromTransaction() {
-        let project = dataStore.addProject(name: "税率PJ", description: "軽減税率テスト")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "税率PJ", description: "軽減税率テスト")
+        let _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1080,
             date: date(2025, 7, 2),
@@ -112,8 +112,8 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 5. taxCategory（標準税率）
 
     func testTransactionTaxCategory_StandardRate() {
-        let project = dataStore.addProject(name: "標準税率PJ", description: "標準税率テスト")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "標準税率PJ", description: "標準税率テスト")
+        let _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 11000,
             date: date(2025, 7, 3),
@@ -132,7 +132,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 6. 手動仕訳は counterparty が nil
 
     func testManualJournalEntry_CounterpartyIsNil() {
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 8, 1),
             memo: "手動仕訳",
             lines: [
@@ -152,7 +152,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 7. 手動仕訳は taxCategory が nil
 
     func testManualJournalEntry_TaxCategoryIsNil() {
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 8, 2),
             memo: "手動仕訳（税区分なし）",
             lines: [
@@ -173,7 +173,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testCashBookRunningBalance_DebitNormal() {
         // 1件目: 借方 10000（残高 +10000）
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 1),
             memo: "入金1",
             lines: [
@@ -182,7 +182,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
             ]
         )
         // 2件目: 貸方 3000（残高 +7000）
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 2),
             memo: "出金1",
             lines: [
@@ -191,7 +191,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
             ]
         )
         // 3件目: 借方 5000（残高 +12000）
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 3),
             memo: "入金2",
             lines: [
@@ -213,7 +213,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testExpenseBookRunningBalance_DebitNormal() {
         // 同一経費科目に2件の借方仕訳
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 10, 1),
             memo: "消耗品1",
             lines: [
@@ -221,7 +221,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
                 (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 2000, memo: "")
             ]
         )
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 10, 2),
             memo: "消耗品2",
             lines: [
@@ -244,7 +244,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     func testCashBook_OnlyFiltersCashAccountLines() {
         // 仕訳: Dr rent 50000 / Cr cash 50000
         // → 現金帳には cash 行のみ表示、rent 行は表示されない
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 11, 1),
             memo: "家賃支払",
             lines: [
@@ -273,7 +273,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testExpenseBook_FiltersAllActiveExpenseAccounts() {
         // 複数の費用科目に仕訳を作成
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 11, 10),
             memo: "通信費",
             lines: [
@@ -281,7 +281,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
                 (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 8000, memo: "")
             ]
         )
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 11, 11),
             memo: "旅費交通費",
             lines: [
@@ -289,7 +289,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
                 (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 12000, memo: "")
             ]
         )
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 11, 12),
             memo: "広告宣伝費",
             lines: [
@@ -312,7 +312,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 12. accountCode と accountName の検証
 
     func testSubLedgerEntry_AccountCodeAndName() {
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 12, 1),
             memo: "科目コードテスト",
             lines: [
@@ -334,7 +334,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testCashBook_DateFiltering() {
         // 3件の仕訳を異なる日付で作成
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 1),
             memo: "3月",
             lines: [
@@ -342,7 +342,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
                 (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 1000, memo: "")
             ]
         )
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "6月",
             lines: [
@@ -350,7 +350,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
                 (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 2000, memo: "")
             ]
         )
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 12, 31),
             memo: "12月",
             lines: [
@@ -378,7 +378,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testAccountsReceivableBook_FiltersCorrectly() {
         // Dr ar 30000 / Cr sales 30000
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 1),
             memo: "売掛計上",
             lines: [
@@ -398,7 +398,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testAccountsPayableBook_FiltersCorrectly() {
         // Dr purchases 20000 / Cr ap 20000
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 10),
             memo: "買掛計上",
             lines: [
@@ -417,8 +417,8 @@ final class SubLedgerEnrichmentTests: XCTestCase {
     // MARK: - 16. 取引の counterparty と taxCategory が同時に伝播
 
     func testTransactionEnrichment_BothCounterpartyAndTaxCategory() {
-        let project = dataStore.addProject(name: "統合テストPJ", description: "両方伝播")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "統合テストPJ", description: "両方伝播")
+        let _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 100000,
             date: date(2025, 8, 15),
@@ -442,7 +442,7 @@ final class SubLedgerEnrichmentTests: XCTestCase {
 
     func testUnpostedEntries_AreExcludedFromSubLedger() {
         // 借方・貸方が不一致の仕訳は isPosted = false のまま
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 1),
             memo: "不正仕訳（不一致）",
             lines: [

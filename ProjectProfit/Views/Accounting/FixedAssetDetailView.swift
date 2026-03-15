@@ -1,7 +1,8 @@
+import SwiftData
 import SwiftUI
 
 struct FixedAssetDetailView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let assetId: UUID
@@ -10,9 +11,20 @@ struct FixedAssetDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showPostConfirmation = false
     @State private var showDisposeConfirmation = false
+    @State private var reloadToken = 0
+    @State private var errorMessage: String?
+
+    private var queryUseCase: FixedAssetQueryUseCase {
+        FixedAssetQueryUseCase(modelContext: modelContext)
+    }
+
+    private var snapshot: FixedAssetDetailSnapshot {
+        _ = reloadToken
+        return queryUseCase.detailSnapshot(assetId: assetId, currentYear: currentYear)
+    }
 
     private var asset: PPFixedAsset? {
-        dataStore.fixedAssets.first { $0.id == assetId }
+        snapshot.asset
     }
 
     private var currentYear: Int {
@@ -20,28 +32,23 @@ struct FixedAssetDetailView: View {
     }
 
     private var isAssetFiscalYearLocked: Bool {
-        guard let asset else { return false }
-        let year = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        return dataStore.isYearLocked(year)
+        snapshot.isAssetFiscalYearLocked
     }
 
     private var isCurrentYearLocked: Bool {
-        dataStore.isYearLocked(currentYear)
+        snapshot.isCurrentYearLocked
+    }
+
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(modelContext: modelContext)
     }
 
     private var schedule: [DepreciationCalculation] {
-        guard let asset else { return [] }
-        return dataStore.previewDepreciationSchedule(asset: asset)
+        snapshot.schedule
     }
 
     private var relatedEntries: [PPJournalEntry] {
-        guard let asset else { return [] }
-        let calendar = Calendar(identifier: .gregorian)
-        let acquisitionYear = calendar.component(.year, from: asset.acquisitionDate)
-        return (acquisitionYear...currentYear).compactMap { year in
-            let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: assetId, year: year)
-            return dataStore.journalEntries.first { $0.sourceKey == sourceKey }
-        }
+        snapshot.relatedEntries
     }
 
     var body: some View {
@@ -96,10 +103,18 @@ struct FixedAssetDetailView: View {
                 FixedAssetFormView(editingAsset: asset)
             }
         }
+        .onChange(of: showEditForm) { _, isPresented in
+            if !isPresented {
+                reloadToken += 1
+            }
+        }
         .alert("固定資産を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                if dataStore.deleteFixedAsset(id: assetId) {
+                do {
+                    try fixedAssetWorkflowUseCase.deleteAsset(id: assetId)
                     dismiss()
+                } catch {
+                    errorMessage = error.localizedDescription
                 }
             }
             Button("キャンセル", role: .cancel) {}
@@ -108,7 +123,12 @@ struct FixedAssetDetailView: View {
         }
         .alert("減価償却を計上しますか？", isPresented: $showPostConfirmation) {
             Button("計上") {
-                dataStore.postDepreciation(assetId: assetId, fiscalYear: currentYear)
+                do {
+                    _ = try fixedAssetWorkflowUseCase.postDepreciation(assetId: assetId, fiscalYear: currentYear)
+                    reloadToken += 1
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -116,15 +136,26 @@ struct FixedAssetDetailView: View {
         }
         .alert("この資産を除却しますか？", isPresented: $showDisposeConfirmation) {
             Button("除却", role: .destructive) {
-                dataStore.updateFixedAsset(
-                    id: assetId,
-                    assetStatus: .disposed,
-                    disposalDate: .some(Date())
-                )
+                do {
+                    try fixedAssetWorkflowUseCase.disposeAsset(id: assetId, disposalDate: Date())
+                    reloadToken += 1
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
             Text("資産のステータスを「除却済み」に変更します。")
+        }
+        .alert("固定資産を更新できません", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 

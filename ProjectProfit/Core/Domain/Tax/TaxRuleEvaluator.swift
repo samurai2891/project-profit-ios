@@ -49,23 +49,27 @@ struct TaxRuleEvaluator: Sendable {
         transactionDate: Date,
         amount: Decimal
     ) -> InputTaxCreditMethod {
-        let calendar = Calendar(identifier: .gregorian)
-        let year = calendar.component(.year, from: transactionDate)
-        let month = calendar.component(.month, from: transactionDate)
-
         // 少額特例: 税込1万円未満（基準期間の課税売上高1億円以下）
         if amount < (pack?.smallAmountThreshold ?? 10000) {
             return .smallAmountSpecial
         }
 
-        // 経過措置80%: 2023/10/01 - 2026/09/30
-        if (year < 2026) || (year == 2026 && month <= 9) {
-            return .transitional80
-        }
-
-        // 経過措置50%: 2026/10/01 - 2029/09/30
-        if (year < 2029) || (year == 2029 && month <= 9) {
-            return .transitional50
+        let measures = (pack?.transitionalMeasures ?? TransitionalTaxCreditMeasure.defaultMeasures)
+            .sorted { $0.periodStart < $1.periodStart }
+        for measure in measures where measure.periodStart <= transactionDate && transactionDate <= measure.periodEnd {
+            switch measure.id {
+            case "transitional_80":
+                return .transitional80
+            case "transitional_50":
+                return .transitional50
+            default:
+                if measure.creditRate == Decimal(string: "0.8") {
+                    return .transitional80
+                }
+                if measure.creditRate == Decimal(string: "0.5") {
+                    return .transitional50
+                }
+            }
         }
 
         // 経過措置終了後: 控除不可

@@ -19,6 +19,19 @@ final class SwiftDataCanonicalJournalEntryRepository: CanonicalJournalEntryRepos
         }
     }
 
+    nonisolated func findAllByBusiness(businessId: UUID) async throws -> [CanonicalJournalEntry] {
+        try await MainActor.run {
+            let descriptor = FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [
+                    SortDescriptor(\.journalDate, order: .reverse),
+                    SortDescriptor(\.voucherNo, order: .reverse)
+                ]
+            )
+            return try modelContext.fetch(descriptor).map(CanonicalJournalEntryEntityMapper.toDomain)
+        }
+    }
+
     nonisolated func findByBusinessAndYear(businessId: UUID, taxYear: Int) async throws -> [CanonicalJournalEntry] {
         try await MainActor.run {
             let descriptor = FetchDescriptor<JournalEntryEntity>(

@@ -4,21 +4,43 @@ import Foundation
 /// 白色申告の場合、青色と異なりフィールド構成がシンプル
 @MainActor
 enum ShushiNaiyakushoBuilder {
-
-    /// 白色申告 収支内訳書用のEtaxFormを生成
+    /// 白色申告 収支内訳書用のEtaxFormを生成（canonical profile ベース）
     static func build(
-        fiscalYear: Int,
-        profitLoss: ProfitLossReport,
-        accounts: [PPAccount],
-        profile: PPAccountingProfile? = nil,
-        fixedAssets: [PPFixedAsset] = [],
-        journalLines: [PPJournalLine] = [],
-        journalEntries: [PPJournalEntry] = []
+        canonicalProfitLoss: CanonicalProfitLossReport,
+        input: FormEngine.BuildInput
     ) -> EtaxForm {
+        let fields = buildFields(
+            canonicalProfitLoss: canonicalProfitLoss,
+            input: input
+        )
+
+        var allFields = fields
+        if let businessProfile = input.businessProfile {
+            allFields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: input.sensitivePayload
+            ))
+        }
+
+        return EtaxForm(
+            fiscalYear: input.fiscalYear,
+            formType: .whiteReturn,
+            fields: allFields,
+            generatedAt: Date()
+        )
+    }
+
+    // MARK: - Private
+
+    /// 共通のフィールド生成ロジック（申告者情報を除く）
+    private static func buildFields(
+        canonicalProfitLoss: CanonicalProfitLossReport,
+        input: FormEngine.BuildInput
+    ) -> [EtaxField] {
         var fields: [EtaxField] = []
 
         // 収入 — 売上のみ（白色は簡易）
-        let totalRevenue = profitLoss.totalRevenue
+        let totalRevenue = decimalInt(canonicalProfitLoss.totalRevenue)
         fields.append(EtaxField(
             id: "shushi_revenue_total",
             fieldLabel: "収入金額",
@@ -29,12 +51,9 @@ enum ShushiNaiyakushoBuilder {
 
         // 経費 — e-Tax 12区分でマッピング（同じTaxLineは合算）
         var expenseByTaxLine: [TaxLine: Int] = [:]
-        for item in profitLoss.expenseItems {
-            if let account = accounts.first(where: { $0.id == item.id }),
-               let subtype = account.subtype,
-               let taxLine = TaxLine.allCases.first(where: { $0.accountSubtype == subtype })
-            {
-                expenseByTaxLine[taxLine, default: 0] += item.amount
+        for item in canonicalProfitLoss.expenseItems {
+            if let taxLine = taxLine(for: item.id, canonicalAccountsById: input.canonicalAccountsById) {
+                expenseByTaxLine[taxLine, default: 0] += decimalInt(item.amount)
             }
         }
         for (taxLine, amount) in expenseByTaxLine.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
@@ -43,7 +62,7 @@ enum ShushiNaiyakushoBuilder {
                 fieldLabel: TaxYearDefinitionLoader.fieldLabel(
                     for: taxLine,
                     formType: .whiteReturn,
-                    fiscalYear: fiscalYear
+                    fiscalYear: input.fiscalYear
                 ),
                 taxLine: taxLine,
                 value: amount,
@@ -52,7 +71,7 @@ enum ShushiNaiyakushoBuilder {
         }
 
         // 経費合計
-        let totalExpenses = profitLoss.totalExpenses
+        let totalExpenses = decimalInt(canonicalProfitLoss.totalExpenses)
         fields.append(EtaxField(
             id: "shushi_expense_total",
             fieldLabel: "経費合計",
@@ -71,8 +90,11 @@ enum ShushiNaiyakushoBuilder {
         ))
 
         // 付表: 減価償却明細
-        if !fixedAssets.isEmpty {
-            let scheduleRows = DepreciationScheduleBuilder.build(assets: fixedAssets, fiscalYear: fiscalYear)
+        if !input.fixedAssets.isEmpty {
+            let scheduleRows = DepreciationScheduleBuilder.build(
+                assets: input.fixedAssets,
+                fiscalYear: input.fiscalYear
+            )
             for (index, row) in scheduleRows.enumerated() {
                 fields.append(EtaxField(
                     id: "shushi_depreciation_\(index)",
@@ -85,36 +107,51 @@ enum ShushiNaiyakushoBuilder {
         }
 
         // 付表: 地代家賃内訳
-        let rentAccountId = AccountingConstants.defaultAccountsById["acct-rent"]?.id ?? "acct-rent"
-        let postedEntryIds = Set(
-            journalEntries
-                .filter { $0.isPosted }
-                .map(\.id)
-        )
-        let rentLines = journalLines.filter { line in
-            line.accountId == rentAccountId && postedEntryIds.contains(line.entryId)
-        }
-        let rentTotal = rentLines.reduce(0) { $0 + $1.debit } - rentLines.reduce(0) { $0 + $1.credit }
-        if rentTotal > 0 {
+        let postedRentTotal = postedRentTotal(input: input)
+        if postedRentTotal > 0 {
             fields.append(EtaxField(
                 id: "shushi_rent_breakdown",
                 fieldLabel: "地代家賃合計",
                 taxLine: .rentExpense,
-                value: rentTotal,
+                value: postedRentTotal,
                 section: .deductions
             ))
         }
 
-        // 共通の申告者情報
-        if let profile {
-            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(profile: profile))
-        }
+        return fields
+    }
 
-        return EtaxForm(
-            fiscalYear: fiscalYear,
-            formType: .whiteReturn,
-            fields: fields,
-            generatedAt: Date()
+    private static func postedRentTotal(input: FormEngine.BuildInput) -> Int {
+        let rentAccountIds = Set<UUID>(
+            input.canonicalAccounts.compactMap { account in
+                TaxLine(legalReportLineId: account.defaultLegalReportLineId) == .rentExpense ? account.id : nil
+            }
         )
+
+        return input.canonicalJournals.reduce(into: 0) { partialResult, journal in
+            guard journal.approvedAt != nil else {
+                return
+            }
+            for line in journal.lines where rentAccountIds.contains(line.accountId) {
+                guard TaxLine(legalReportLineId: line.legalReportLineId) == .rentExpense
+                    || TaxLine(legalReportLineId: input.canonicalAccountsById[line.accountId]?.defaultLegalReportLineId) == .rentExpense
+                else {
+                    continue
+                }
+                partialResult += decimalInt(line.debitAmount - line.creditAmount)
+            }
+        }
+    }
+
+    private static func taxLine(
+        for accountId: UUID,
+        canonicalAccountsById: [UUID: CanonicalAccount]
+    ) -> TaxLine? {
+        guard let canonicalAccount = canonicalAccountsById[accountId] else { return nil }
+        return TaxLine(legalReportLineId: canonicalAccount.defaultLegalReportLineId)
+    }
+
+    private static func decimalInt(_ value: Decimal) -> Int {
+        NSDecimalNumber(decimal: value).intValue
     }
 }

@@ -1,7 +1,13 @@
 import SwiftUI
 
 struct EtaxExportView: View {
-    @Environment(DataStore.self) private var dataStore
+    private static let selectableFormTypes: [EtaxFormType] = [
+        .blueReturn,
+        .blueCashBasis,
+        .whiteReturn,
+    ]
+
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: EtaxExportViewModel?
     @State private var showShareSheet = false
     @State private var shareURL: URL?
@@ -17,12 +23,37 @@ struct EtaxExportView: View {
         .navigationTitle("e-Tax出力")
         .task {
             if viewModel == nil {
-                viewModel = EtaxExportViewModel(dataStore: dataStore)
+                let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: modelContext)
+                let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: modelContext)
+                viewModel = EtaxExportViewModel(
+                    modelContext: modelContext,
+                    contextProvider: { fiscalYear in
+                        contextQueryUseCase.context(fiscalYear: fiscalYear)
+                    },
+                    formBuilder: { filingStyle, fiscalYear in
+                        try FormEngine.build(
+                            filingStyle: filingStyle,
+                            input: FormEngine.BuildInput(
+                                snapshot: formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                            )
+                        )
+                    },
+                    exporter: { format, form in
+                        try ExportCoordinator.export(
+                            target: .etax,
+                            format: format,
+                            fiscalYear: form.fiscalYear,
+                            modelContext: modelContext,
+                            skipPreflightValidation: true,
+                            etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                        )
+                    }
+                )
             }
         }
         .sheet(isPresented: $showShareSheet) {
             if let url = shareURL {
-                ShareSheet(activityItems: [url])
+                ShareSheetView(activityItems: [url])
             }
         }
     }
@@ -115,11 +146,11 @@ struct EtaxExportView: View {
                         viewModel.validationErrors = []
                     }
                 )) {
-                    Text("青色申告").tag(EtaxFormType.blueReturn)
-                    Text("白色申告").tag(EtaxFormType.whiteReturn)
+                    ForEach(Self.selectableFormTypes, id: \.self) { formType in
+                        Text(formType.exportSelectionLabel).tag(formType)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
+                .pickerStyle(.menu)
             }
         }
         .padding(16)
@@ -176,7 +207,7 @@ struct EtaxExportView: View {
             } label: {
                 HStack {
                     Image(systemName: "doc.richtext")
-                    Text(".xtx (XML) エクスポート")
+                    Text(".xtx エクスポート")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -207,16 +238,4 @@ struct EtaxExportView: View {
             set: { viewModel.exportResult = $0 }
         )
     }
-}
-
-// MARK: - Share Sheet
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -3,8 +3,8 @@ import SwiftData
 import SwiftUI
 
 struct RecurringFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
+    @Environment(NotificationService.self) private var notificationService
     @Environment(\.dismiss) private var dismiss
 
     let recurring: PPRecurringTransaction?
@@ -31,7 +31,10 @@ struct RecurringFormView: View {
     @State private var transferToAccountId: String?
     @State private var taxDeductibleRate: Int
     // Phase 8: 取引先
+    @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String
+    @State private var isWithholdingEnabled: Bool
+    @State private var selectedWithholdingTaxCode: WithholdingTaxCode?
 
     @State private var showValidationError = false
     @State private var validationMessage = ""
@@ -46,6 +49,8 @@ struct RecurringFormView: View {
     @State private var isLoadingDistributionTemplates = false
     @State private var distributionTemplateErrorMessage: String?
     @State private var unavailableDistributionTemplateCount = 0
+    @State private var activeDistributionRequest: ApprovalRequest?
+    @State private var formSnapshot: RecurringFormSnapshot = .empty
 
     private var isEditMode: Bool { recurring != nil }
 
@@ -73,22 +78,41 @@ struct RecurringFormView: View {
         self._paymentAccountId = State(initialValue: recurring?.paymentAccountId)
         self._transferToAccountId = State(initialValue: recurring?.transferToAccountId)
         self._taxDeductibleRate = State(initialValue: recurring?.taxDeductibleRate ?? 100)
+        self._selectedCounterpartyId = State(initialValue: recurring?.counterpartyId)
         self._counterparty = State(initialValue: recurring?.counterparty ?? "")
+        self._isWithholdingEnabled = State(initialValue: recurring?.isWithholdingEnabled ?? false)
+        self._selectedWithholdingTaxCode = State(
+            initialValue: recurring?.withholdingTaxCodeId.flatMap(WithholdingTaxCode.resolve(id:))
+        )
     }
 
     // MARK: - Computed Properties
 
     private var filteredCategories: [PPCategory] {
-        switch type {
-        case .expense, .transfer:
-            return dataStore.activeCategories.filter { $0.type == .expense }
-        case .income:
-            return dataStore.activeCategories.filter { $0.type == .income }
-        }
+        recurringQueryUseCase.categories(for: type, snapshot: formSnapshot)
     }
 
     private var parsedAmount: Int? {
         Int(amountText)
+    }
+
+    private var counterparties: [Counterparty] {
+        formSnapshot.counterparties
+    }
+
+    private var selectedCounterparty: Counterparty? {
+        guard let selectedCounterpartyId else { return nil }
+        return counterparties.first { $0.id == selectedCounterpartyId }
+    }
+
+    private var counterpartyPickerSelection: Binding<UUID?> {
+        Binding(
+            get: { selectedCounterpartyId },
+            set: { newValue in
+                selectedCounterpartyId = newValue
+                applySelectedCounterpartyDefaults()
+            }
+        )
     }
 
     private var isFormValid: Bool {
@@ -97,6 +121,33 @@ struct RecurringFormView: View {
             && (parsedAmount ?? 0) > 0
             && dayOfMonth >= 1
             && dayOfMonth <= 28
+            && (!isWithholdingEnabled || resolvedWithholdingPosting != nil)
+    }
+
+    private var hasPendingDistributionApproval: Bool {
+        activeDistributionRequest?.status == .pending
+    }
+
+    private var withholdingInput: WithholdingPostingInput {
+        WithholdingPostingInput(
+            isEnabled: isWithholdingEnabled,
+            codeId: selectedWithholdingTaxCode?.rawValue,
+            explicitAmount: recurring?.withholdingTaxAmount,
+            totalAmount: parsedAmount ?? 0,
+            taxAmount: nil,
+            isTaxIncluded: nil
+        )
+    }
+
+    private var resolvedWithholdingPosting: ResolvedWithholdingPosting? {
+        try? WithholdingPostingSupport.resolve(input: withholdingInput)
+    }
+
+    private var recurringDraftKey: String {
+        if let recurring {
+            return "recurring:\(recurring.id.uuidString)"
+        }
+        return "recurring:new"
     }
 
     private var templateReferenceDate: Date {
@@ -108,66 +159,57 @@ struct RecurringFormView: View {
     }
 
     private var distributionTemplateLoadKey: String {
-        let businessId = dataStore.businessProfile?.id.uuidString ?? "none"
+        let businessId = formSnapshot.businessId?.uuidString ?? "none"
         let referenceDay = Int(Calendar.current.startOfDay(for: templateReferenceDate).timeIntervalSince1970)
         return "\(businessId)-\(referenceDay)"
+    }
+
+    private var allocationRevisionKey: String {
+        allocations
+            .map { "\($0.projectId.uuidString):\($0.ratio)" }
+            .joined(separator: ",")
     }
 
     private var distributionTemplateAllocationPeriod: DistributionTemplateApplicationUseCase.AllocationPeriod {
         frequency == .yearly ? .year : .month
     }
 
+    private var recurringQueryUseCase: RecurringQueryUseCase {
+        RecurringQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueWorkflowUseCase: ApprovalQueueWorkflowUseCase {
+        ApprovalQueueWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(
+            modelContext: modelContext,
+            onRecurringScheduleChanged: { recurrings in
+                Task { @MainActor in
+                    await notificationService.rescheduleAll(recurringTransactions: recurrings)
+                }
+            }
+        )
+    }
+
+    private var activeProjects: [PPProject] {
+        recurringQueryUseCase.activeProjects(snapshot: formSnapshot)
+    }
+
+    private var distributionTemplateApplicationUseCase: DistributionTemplateApplicationUseCase {
+        DistributionTemplateApplicationUseCase()
+    }
+
     // MARK: - Body
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppColors.surface
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        nameField
-                        typeToggle
-                        amountField
-                        frequencySection
-                        dayOfMonthSection
-                        if frequency == .yearly {
-                            yearlyAmortizationSection
-                        }
-                        categorySection
-                        accountingSection
-                        distributionTemplateSection
-                        allocationModeSection
-                        if allocationMode == .manual {
-                            RecurringProjectAllocationSection(
-                                dataStore: dataStore,
-                                allocations: $allocations
-                            )
-                        } else {
-                            equalAllInfoSection
-                        }
-                        counterpartyField
-                        memoField
-                        RecurringReceiptImageSection(
-                            recurring: recurring,
-                            selectedImage: $selectedImage,
-                            photoPickerItem: $photoPickerItem,
-                            showCamera: $showCamera,
-                            showReceiptPreview: $showReceiptPreview,
-                            showRemoveImageAlert: $showRemoveImageAlert,
-                            imageRemoved: imageRemoved
-                        )
-                        endDateSection
-
-                        if isEditMode {
-                            activeToggle
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-            }
+            contentView
             .navigationTitle(isEditMode ? "定期取引を編集" : "定期取引を追加")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -177,7 +219,7 @@ struct RecurringFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
                         .foregroundStyle(isFormValid ? AppColors.primary : AppColors.muted)
-                        .disabled(!isFormValid)
+                        .disabled(!isFormValid || hasPendingDistributionApproval)
                 }
             }
             .alert("入力エラー", isPresented: $showValidationError) {
@@ -200,6 +242,16 @@ struct RecurringFormView: View {
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
             }
+            .task {
+                await loadFormSnapshot()
+            }
+            .onChange(of: amountText) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: frequency) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: dayOfMonth) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: monthOfYear) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: allocationMode) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: allocationRevisionKey) { _, _ in Task { await invalidatePendingDistributionApproval() } }
+            .onChange(of: selectedDistributionTemplateId) { _, _ in Task { await invalidatePendingDistributionApproval() } }
             .task(id: distributionTemplateLoadKey) {
                 await loadDistributionTemplates()
             }
@@ -214,6 +266,66 @@ struct RecurringFormView: View {
                 Text("添付画像を削除しますか？")
             }
         }
+    }
+
+    private var contentView: some View {
+        ZStack {
+            AppColors.surface
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    nameField
+                    typeToggle
+                    amountField
+                    frequencySection
+                    dayOfMonthSection
+                    if frequency == .yearly {
+                        yearlyAmortizationSection
+                    }
+                    categorySection
+                    accountingSection
+                    distributionTemplateSection
+                    allocationModeSection
+                    allocationSection
+                    counterpartyField
+                    withholdingSection
+                    memoField
+                    receiptSection
+                    endDateSection
+
+                    if isEditMode {
+                        activeToggle
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var allocationSection: some View {
+        if allocationMode == .manual {
+            RecurringProjectAllocationSection(
+                projects: activeProjects,
+                allocations: $allocations
+            )
+        } else {
+            equalAllInfoSection
+        }
+    }
+
+    private var receiptSection: some View {
+        RecurringReceiptImageSection(
+            recurring: recurring,
+            selectedImage: $selectedImage,
+            photoPickerItem: $photoPickerItem,
+            showCamera: $showCamera,
+            showReceiptPreview: $showReceiptPreview,
+            showRemoveImageAlert: $showRemoveImageAlert,
+            imageRemoved: imageRemoved
+        )
     }
 
     // MARK: - Name Field
@@ -252,6 +364,7 @@ struct RecurringFormView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onChange(of: type) { _, _ in
             selectedCategoryId = nil
+            Task { await invalidatePendingDistributionApproval() }
         }
     }
 
@@ -411,7 +524,7 @@ struct RecurringFormView: View {
         VStack(spacing: 12) {
             AccountPickerView(
                 label: type == .income ? "入金先口座" : "支払元口座",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: $paymentAccountId,
                 filterPredicate: { $0.isPaymentAccount && $0.isActive }
             )
@@ -419,7 +532,7 @@ struct RecurringFormView: View {
             if type == .transfer {
                 AccountPickerView(
                     label: "振替先口座",
-                    accounts: dataStore.accounts,
+                    accounts: formSnapshot.accounts,
                     selectedAccountId: $transferToAccountId,
                     filterPredicate: { $0.isPaymentAccount && $0.isActive }
                 )
@@ -464,6 +577,7 @@ struct RecurringFormView: View {
             || !distributionTemplates.isEmpty
             || distributionTemplateErrorMessage != nil
             || unavailableDistributionTemplateCount > 0
+            || activeDistributionRequest != nil
         {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -486,8 +600,8 @@ struct RecurringFormView: View {
                     }
                     .pickerStyle(.menu)
 
-                    Button("テンプレートを適用") {
-                        applySelectedDistributionTemplate()
+                    Button("テンプレートをプレビュー") {
+                        Task { await previewSelectedDistributionTemplate() }
                     }
                     .disabled(selectedDistributionTemplateId == nil)
                 } else if !isLoadingDistributionTemplates {
@@ -507,10 +621,101 @@ struct RecurringFormView: View {
                         .font(.caption)
                         .foregroundStyle(AppColors.error)
                 }
+
+                if let activeDistributionRequest {
+                    distributionApprovalCard(request: activeDistributionRequest)
+                }
             }
             .padding(16)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func distributionApprovalCard(
+        request: ApprovalRequest
+    ) -> some View {
+        let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(request.status.displayName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(request.status == .approved ? AppColors.success : AppColors.primary)
+
+            Text(request.title)
+                .font(.subheadline.weight(.semibold))
+
+            if let payload {
+                distributionApprovalStateView(title: "変更前", state: payload.currentState)
+
+                distributionApprovalStateView(title: "変更後", state: payload.proposedState)
+            }
+
+            if let payload, !payload.warnings.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(payload.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+
+                NavigationLink("Approval Queue を開く") {
+                    ApprovalQueueView()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppColors.border, lineWidth: 1)
+        )
+    }
+
+    private func distributionApprovalStateView(
+        title: String,
+        state: DistributionTemplateApplicationUseCase.ApprovalState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            switch state {
+            case .equalAll:
+                Text(AllocationMode.equalAll.label)
+                    .font(.subheadline)
+            case let .manual(allocations):
+                if allocations.isEmpty {
+                    Text("未設定")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(allocations, id: \.projectId) { allocation in
+                            let name = recurringQueryUseCase.projectName(
+                                id: allocation.projectId,
+                                snapshot: formSnapshot
+                            ) ?? "不明なプロジェクト"
+                            HStack {
+                                Text(name)
+                                Spacer()
+                                Text("\(allocation.ratio)%")
+                                    .foregroundStyle(.secondary)
+                                Text(formatCurrency(allocation.amount))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -536,12 +741,83 @@ struct RecurringFormView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if !counterparties.isEmpty {
+                Picker("登録済み取引先", selection: counterpartyPickerSelection) {
+                    Text("選択しない").tag(UUID?.none)
+                    ForEach(counterparties, id: \.id) { counterparty in
+                        Text(counterparty.displayName).tag(UUID?.some(counterparty.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             TextField("取引先名（任意）", text: $counterparty)
+                .onChange(of: counterparty) { _, newValue in
+                    guard let selectedCounterparty else { return }
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty || trimmed != selectedCounterparty.displayName {
+                        selectedCounterpartyId = nil
+                    }
+                }
                 .textFieldStyle(.roundedBorder)
         }
         .padding(16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var withholdingSection: some View {
+        if type == .expense {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("源泉徴収")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("この定期支払で源泉徴収する", isOn: $isWithholdingEnabled)
+                    .font(.subheadline)
+
+                if isWithholdingEnabled {
+                    Picker("源泉区分", selection: Binding(
+                        get: { selectedWithholdingTaxCode },
+                        set: { selectedWithholdingTaxCode = $0 }
+                    )) {
+                        Text("選択してください").tag(WithholdingTaxCode?.none)
+                        ForEach(WithholdingTaxCode.allCases, id: \.self) { code in
+                            Text(code.displayName).tag(WithholdingTaxCode?.some(code))
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    if let resolvedWithholdingPosting {
+                        HStack {
+                            Text("計算基礎額")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.calculationBaseAmount).intValue))
+                                .font(.subheadline.monospacedDigit())
+                        }
+
+                        HStack {
+                            Text("源泉徴収税額")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(formatCurrency(NSDecimalNumber(decimal: resolvedWithholdingPosting.withholdingAmount).intValue))
+                                .font(.subheadline.monospacedDigit())
+                        }
+                    } else {
+                        Text("金額と源泉区分を確認してください")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+            }
+            .padding(16)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     // MARK: - Memo Field
@@ -625,8 +901,26 @@ struct RecurringFormView: View {
         }
     }
 
+    private func loadFormSnapshot() async {
+        formSnapshot = recurringQueryUseCase.formSnapshot()
+        if let draft = try? await approvalQueueWorkflowUseCase.formDraft(draftKey: recurringDraftKey),
+           let snapshot = draft.recurringSnapshot() {
+            applyRecurringDraftSnapshot(snapshot)
+            if let requestId = draft.activeApprovalRequestId {
+                activeDistributionRequest = try? await approvalQueueQueryUseCase.request(requestId)
+            } else {
+                activeDistributionRequest = nil
+            }
+        } else {
+            if counterparty.isEmpty, let selectedCounterparty {
+                counterparty = selectedCounterparty.displayName
+            }
+            activeDistributionRequest = nil
+        }
+    }
+
     private func loadDistributionTemplates() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = formSnapshot.businessId else {
             distributionTemplates = []
             selectedDistributionTemplateId = nil
             distributionTemplateErrorMessage = nil
@@ -638,18 +932,13 @@ struct RecurringFormView: View {
         defer { isLoadingDistributionTemplates = false }
 
         do {
-            let useCase = DistributionTemplateUseCase(modelContext: modelContext)
-            let applier = DistributionTemplateApplicationUseCase()
-            let activeRules = try await useCase.activeRules(businessId: businessId, at: templateReferenceDate)
-            distributionTemplates = activeRules
-                .filter {
-                    applier.isSupported($0, allocationPeriod: distributionTemplateAllocationPeriod)
-                        || applier.shouldUseDynamicEqualAll(for: $0)
-                }
-                .sorted { lhs, rhs in
-                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-                }
-            unavailableDistributionTemplateCount = activeRules.count - distributionTemplates.count
+            let templates = try await recurringQueryUseCase.activeDistributionTemplates(
+                businessId: businessId,
+                at: templateReferenceDate,
+                allocationPeriod: distributionTemplateAllocationPeriod
+            )
+            distributionTemplates = templates.supportedRules
+            unavailableDistributionTemplateCount = templates.unsupportedCount
             if let selectedDistributionTemplateId,
                distributionTemplates.contains(where: { $0.id == selectedDistributionTemplateId }) == false
             {
@@ -664,34 +953,88 @@ struct RecurringFormView: View {
         }
     }
 
-    private func applySelectedDistributionTemplate() {
+    private func previewSelectedDistributionTemplate() async {
         guard let selectedDistributionTemplateId,
-              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId })
+              let rule = distributionTemplates.first(where: { $0.id == selectedDistributionTemplateId }),
+              let businessId = formSnapshot.businessId
         else {
             return
         }
 
-        let applier = DistributionTemplateApplicationUseCase()
-        if applier.shouldUseDynamicEqualAll(for: rule) {
-            allocationMode = .equalAll
-            allocations = []
-            distributionTemplateErrorMessage = nil
+        let buildResult = distributionTemplateApplicationUseCase.makeApprovalRequestDraft(
+            businessId: businessId,
+            draftKey: recurringDraftKey,
+            draftKind: .recurring,
+            rule: rule,
+            currentState: distributionTemplateApplicationUseCase.currentApprovalState(
+                allocationMode: allocationMode,
+                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
+                totalAmount: parsedAmount ?? 0
+            ),
+            projects: formSnapshot.projects,
+            referenceDate: templateReferenceDate,
+            totalAmount: parsedAmount ?? 0,
+            allocationPeriod: distributionTemplateAllocationPeriod,
+            supportsEqualAllMode: true
+        )
+
+        guard buildResult.isApprovable, let requestDraft = buildResult.requestDraft else {
+            activeDistributionRequest = nil
+            distributionTemplateErrorMessage = buildResult.warnings.first ?? "配賦プレビューを生成できませんでした。"
             return
         }
 
         do {
-            let ratios = try applier.buildRatioAllocations(
-                rule: rule,
-                projects: dataStore.projects,
-                referenceDate: templateReferenceDate,
-                allocationPeriod: distributionTemplateAllocationPeriod
+            let request = try await approvalQueueWorkflowUseCase.queueDistributionRequest(
+                businessId: businessId,
+                draftKey: recurringDraftKey,
+                draftKind: .recurring,
+                snapshotJSON: recurringDraftSnapshotJSON(),
+                requestDraft: requestDraft
             )
-            allocationMode = .manual
-            allocations = ratios.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+            activeDistributionRequest = request
             distributionTemplateErrorMessage = nil
         } catch {
             distributionTemplateErrorMessage = error.localizedDescription
         }
+    }
+
+    private func invalidatePendingDistributionApproval() async {
+        guard let activeDistributionRequest,
+              activeDistributionRequest.kind == .distribution,
+              activeDistributionRequest.status == .pending else {
+            return
+        }
+        do {
+            try await approvalQueueWorkflowUseCase.invalidatePendingDistributionRequest(
+                draftKey: recurringDraftKey,
+                snapshotJSON: recurringDraftSnapshotJSON()
+            )
+            self.activeDistributionRequest = try await approvalQueueQueryUseCase.request(activeDistributionRequest.id)
+        } catch {
+            distributionTemplateErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applySelectedCounterpartyDefaults() {
+        guard let selectedCounterpartyId,
+              let defaults = recurringQueryUseCase.counterpartyDefaults(
+                for: selectedCounterpartyId,
+                type: type,
+                snapshot: formSnapshot
+              )
+        else {
+            return
+        }
+
+        counterparty = defaults.displayName
+        paymentAccountId = defaults.paymentAccountId
+        if type != .transfer, let defaultProjectId = defaults.projectId {
+            allocationMode = .manual
+            allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+        }
+        isWithholdingEnabled = selectedCounterparty?.payeeInfo?.isWithholdingSubject ?? false
+        selectedWithholdingTaxCode = selectedCounterparty?.payeeInfo?.withholdingCategory
     }
 
     // MARK: - Save
@@ -736,6 +1079,16 @@ struct RecurringFormView: View {
             showValidationError = true
             return
         }
+        guard !hasPendingDistributionApproval else {
+            validationMessage = "配賦承認が完了するまで保存できません"
+            showValidationError = true
+            return
+        }
+        if isWithholdingEnabled && resolvedWithholdingPosting == nil {
+            validationMessage = "源泉徴収の設定を確認してください"
+            showValidationError = true
+            return
+        }
         let resolvedMonthOfYear = frequency == .yearly ? monthOfYear : nil
         let resolvedEndDate: Date? = hasEndDate ? endDate : nil
         let resolvedAmortizationMode: YearlyAmortizationMode = frequency == .yearly ? yearlyAmortizationMode : .lumpSum
@@ -753,104 +1106,114 @@ struct RecurringFormView: View {
         let resolvedPaymentAccountId: String? = paymentAccountId
         let resolvedTransferToAccountId: String? = transferToAccountId
         let resolvedTaxDeductibleRate: Int? = taxDeductibleRate == 100 ? nil : taxDeductibleRate
-        let resolvedCounterparty: String? = counterparty.trimmingCharacters(in: .whitespaces).isEmpty ? nil : counterparty.trimmingCharacters(in: .whitespaces)
-
-        if let existing = recurring {
-            if selectedImage != nil {
-                if let oldPath = existing.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: imagePath,
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterparty: resolvedCounterparty
-                )
-            } else if imageRemoved {
-                if let oldPath = existing.receiptImagePath {
-                    ReceiptImageStore.deleteImage(fileName: oldPath)
-                }
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    receiptImagePath: .some(nil),
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterparty: resolvedCounterparty
-                )
-            } else {
-                dataStore.updateRecurring(
-                    id: existing.id,
-                    name: trimmedName,
-                    type: type,
-                    amount: amount,
-                    categoryId: categoryId,
-                    memo: memo,
-                    allocationMode: allocationMode,
-                    allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                    frequency: frequency,
-                    dayOfMonth: dayOfMonth,
-                    monthOfYear: resolvedMonthOfYear,
-                    isActive: isActive,
-                    endDate: resolvedEndDate,
-                    yearlyAmortizationMode: resolvedAmortizationMode,
-                    paymentAccountId: resolvedPaymentAccountId,
-                    transferToAccountId: resolvedTransferToAccountId,
-                    taxDeductibleRate: resolvedTaxDeductibleRate,
-                    counterparty: resolvedCounterparty
-                )
-            }
+        let resolvedCounterpartyName = selectedCounterparty?.displayName
+            ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCounterparty: String? = resolvedCounterpartyName.isEmpty ? nil : resolvedCounterpartyName
+        let resolvedReceiptImagePath: String?
+        if selectedImage != nil {
+            resolvedReceiptImagePath = imagePath
+        } else if imageRemoved {
+            resolvedReceiptImagePath = nil
         } else {
-            dataStore.addRecurring(
-                name: trimmedName,
-                type: type,
-                amount: amount,
-                categoryId: categoryId,
-                memo: memo,
-                allocationMode: allocationMode,
-                allocations: allocations.map { (projectId: $0.projectId, ratio: $0.ratio) },
-                frequency: frequency,
-                dayOfMonth: dayOfMonth,
-                monthOfYear: resolvedMonthOfYear,
-                endDate: resolvedEndDate,
-                yearlyAmortizationMode: resolvedAmortizationMode,
-                receiptImagePath: imagePath,
-                paymentAccountId: resolvedPaymentAccountId,
-                transferToAccountId: resolvedTransferToAccountId,
-                taxDeductibleRate: resolvedTaxDeductibleRate,
-                counterparty: resolvedCounterparty
-            )
+            resolvedReceiptImagePath = recurring?.receiptImagePath
         }
 
-        dismiss()
+        let input = RecurringUpsertInput(
+            name: trimmedName,
+            type: type,
+            amount: amount,
+            categoryId: categoryId,
+            memo: memo,
+            allocationMode: allocationMode,
+            allocations: allocations.map { RecurringAllocationInput(projectId: $0.projectId, ratio: $0.ratio) },
+            frequency: frequency,
+            dayOfMonth: dayOfMonth,
+            monthOfYear: resolvedMonthOfYear,
+            isActive: isActive,
+            endDate: resolvedEndDate,
+            yearlyAmortizationMode: resolvedAmortizationMode,
+            receiptImagePath: resolvedReceiptImagePath,
+            paymentAccountId: resolvedPaymentAccountId,
+            transferToAccountId: resolvedTransferToAccountId,
+            taxDeductibleRate: resolvedTaxDeductibleRate,
+            counterpartyId: selectedCounterpartyId,
+            counterparty: resolvedCounterparty,
+            isWithholdingEnabled: isWithholdingEnabled,
+            withholdingTaxCodeId: selectedWithholdingTaxCode?.rawValue,
+            withholdingTaxAmount: resolvedWithholdingPosting?.withholdingAmount
+        )
+
+        if let existing = recurring {
+            if selectedImage != nil || imageRemoved {
+                if let oldPath = existing.receiptImagePath {
+                    ReceiptImageStore.deleteImage(fileName: oldPath)
+                }
+            }
+            recurringWorkflowUseCase.updateRecurring(id: existing.id, input: input)
+        } else {
+            recurringWorkflowUseCase.createRecurring(input: input)
+        }
+
+        Task {
+            try? await approvalQueueWorkflowUseCase.clearFormDraft(draftKey: recurringDraftKey)
+            dismiss()
+        }
+    }
+
+    private func recurringDraftSnapshotJSON() -> String {
+        CanonicalJSONCoder.encode(
+            RecurringFormDraftSnapshot(
+                recurringId: recurring?.id,
+                name: name,
+                type: type,
+                amountText: amountText,
+                frequency: frequency,
+                dayOfMonth: dayOfMonth,
+                monthOfYear: monthOfYear,
+                selectedCategoryId: selectedCategoryId,
+                allocationMode: allocationMode,
+                allocations: allocations.map { DraftAllocationInput(projectId: $0.projectId, ratio: $0.ratio) },
+                memo: memo,
+                isActive: isActive,
+                hasEndDate: hasEndDate,
+                endDate: endDate,
+                yearlyAmortizationMode: yearlyAmortizationMode,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: transferToAccountId,
+                taxDeductibleRate: taxDeductibleRate,
+                selectedCounterpartyId: selectedCounterpartyId,
+                counterparty: counterparty,
+                isWithholdingEnabled: isWithholdingEnabled,
+                selectedWithholdingTaxCodeId: selectedWithholdingTaxCode?.rawValue,
+                selectedDistributionTemplateId: selectedDistributionTemplateId
+            ),
+            fallback: "{}"
+        )
+    }
+
+    private func applyRecurringDraftSnapshot(_ snapshot: RecurringFormDraftSnapshot) {
+        name = snapshot.name
+        type = snapshot.type
+        amountText = snapshot.amountText
+        frequency = snapshot.frequency
+        dayOfMonth = snapshot.dayOfMonth
+        monthOfYear = snapshot.monthOfYear
+        selectedCategoryId = snapshot.selectedCategoryId
+        allocationMode = snapshot.allocationMode
+        allocations = snapshot.allocations.map { (id: UUID(), projectId: $0.projectId, ratio: $0.ratio) }
+        memo = snapshot.memo
+        isActive = snapshot.isActive
+        hasEndDate = snapshot.hasEndDate
+        endDate = snapshot.endDate
+        yearlyAmortizationMode = snapshot.yearlyAmortizationMode
+        paymentAccountId = snapshot.paymentAccountId
+        transferToAccountId = snapshot.transferToAccountId
+        taxDeductibleRate = snapshot.taxDeductibleRate
+        selectedCounterpartyId = snapshot.selectedCounterpartyId
+        counterparty = snapshot.counterparty
+        isWithholdingEnabled = snapshot.isWithholdingEnabled
+        selectedWithholdingTaxCode = snapshot.selectedWithholdingTaxCodeId.flatMap(WithholdingTaxCode.resolve(id:))
+        selectedDistributionTemplateId = snapshot.selectedDistributionTemplateId
     }
 }
 
@@ -863,11 +1226,5 @@ struct RecurringFormView: View {
             PPRecurringTransaction.self,
             DistributionRuleEntity.self
         ))
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(
-            for: PPProject.self,
-            PPTransaction.self,
-            PPCategory.self,
-            PPRecurringTransaction.self,
-            DistributionRuleEntity.self
-        ))))
+        .environment(NotificationService())
 }

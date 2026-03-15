@@ -1,11 +1,14 @@
 import SwiftUI
+import SwiftData
 
 struct ManualJournalFormView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
     @State private var date = Date()
     @State private var memo = ""
+    @State private var saveError: String?
     @State private var lines: [JournalLineInput] = [
         JournalLineInput(),
         JournalLineInput(),
@@ -42,16 +45,24 @@ struct ManualJournalFormView: View {
         isBalanced && hasValidLines
     }
 
+    private var isLegacyEditingDisabled: Bool {
+        !formSnapshot.isLegacyTransactionEditingEnabled
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if isLegacyEditingDisabled {
+                        canonicalCutoverNotice
+                    }
                     headerSection
                     linesSection
                     balanceSection
                     addLineButton
                 }
                 .padding(16)
+                .disabled(isLegacyEditingDisabled)
             }
             .navigationTitle("手動仕訳")
             .navigationBarTitleDisplayMode(.inline)
@@ -61,9 +72,36 @@ struct ManualJournalFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
-                        .disabled(!isValid)
+                        .disabled(!isValid || isLegacyEditingDisabled)
                 }
             }
+            .alert(
+                "保存できません",
+                isPresented: Binding(
+                    get: { saveError != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            saveError = nil
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(saveError ?? "")
+            }
+            .task {
+                loadFormSnapshot()
+            }
+        }
+    }
+
+    private func loadFormSnapshot() {
+        do {
+            formSnapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+        } catch {
+            formSnapshot = .empty
+            saveError = error.localizedDescription
         }
     }
 
@@ -127,7 +165,7 @@ struct ManualJournalFormView: View {
 
             AccountPickerView(
                 label: "勘定科目",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: Binding(
                     get: { lines[index].accountId },
                     set: { lines[index].accountId = $0 }
@@ -236,25 +274,24 @@ struct ManualJournalFormView: View {
         }
     }
 
+    private var canonicalCutoverNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("手動仕訳の登録は停止中です", systemImage: "arrow.trianglehead.branch")
+                .font(.subheadline.weight(.semibold))
+            Text("canonical 正本へ切り替え済みです。証憑タブから取り込み、承認タブで仕訳を確定してください。決算整理は決算仕訳画面から実行します。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppColors.warning.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Save
 
     private func save() {
         guard isValid else { return }
-
-        let journalLines = lines.compactMap { line -> (accountId: String, debit: Int, credit: Int, memo: String)? in
-            guard let accountId = line.accountId else { return nil }
-            let debit = Int(line.debitText) ?? 0
-            let credit = Int(line.creditText) ?? 0
-            guard debit > 0 || credit > 0 else { return nil }
-            return (accountId: accountId, debit: debit, credit: credit, memo: line.memo)
-        }
-
-        dataStore.addManualJournalEntry(
-            date: date,
-            memo: memo,
-            lines: journalLines
-        )
-
-        dismiss()
+        saveError = AppError.legacyManualJournalMutationDisabled.errorDescription
     }
 }

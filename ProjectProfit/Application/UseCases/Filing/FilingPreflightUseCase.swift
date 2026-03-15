@@ -68,15 +68,25 @@ struct FilingPreflightUseCase {
         context: FilingPreflightContext
     ) throws -> FilingPreflightReport {
         let snapshot = try makeProjectedSnapshot(businessId: businessId, taxYear: taxYear)
-        let accounts = try modelContext.fetch(FetchDescriptor<PPAccount>())
+        let canonicalAccounts = try modelContext.fetch(
+            FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        ).map(CanonicalAccountEntityMapper.toDomain)
+        let canonicalJournals = try modelContext.fetch(
+            FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        ).map(CanonicalJournalEntryEntityMapper.toDomain)
 
         var issues = journalBalanceIssues(snapshot: snapshot)
 
         let trialBalance = AccountingReportService.generateTrialBalance(
             fiscalYear: taxYear,
-            accounts: accounts,
-            journalEntries: snapshot.entries,
-            journalLines: snapshot.lines,
+            accounts: canonicalAccounts,
+            journals: canonicalJournals,
             startMonth: FiscalYearSettings.startMonth
         )
         if !trialBalance.isBalanced {
@@ -89,14 +99,17 @@ struct FilingPreflightUseCase {
             )
         }
 
-        if let suspenseRow = trialBalance.rows.first(where: { $0.id == AccountingConstants.suspenseAccountId }),
-           suspenseRow.balance != 0
-        {
+        let suspenseBalance = snapshot.lines
+            .filter { $0.accountId == AccountingConstants.suspenseAccountId }
+            .reduce(0) { partialResult, line in
+                partialResult + line.debit - line.credit
+            }
+        if suspenseBalance != 0 {
             issues.append(
                 FilingPreflightIssue(
                     code: .suspenseBalanceRemaining,
                     severity: .error,
-                    message: "仮勘定の残高が残っています (\(formatCurrency(suspenseRow.balance)))"
+                    message: "仮勘定の残高が残っています (\(formatCurrency(suspenseBalance)))"
                 )
             )
         }
@@ -132,7 +145,7 @@ struct FilingPreflightUseCase {
                     FilingPreflightIssue(
                         code: .yearStateTooOpen,
                         severity: .error,
-                        message: "e-Tax 出力は税務締め以降でのみ実行できます"
+                        message: "帳票出力は税務締め以降でのみ実行できます"
                     )
                 )
             }

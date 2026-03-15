@@ -1,8 +1,20 @@
 import SwiftUI
 
 struct InventoryInputView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
+
+    private let reloadStoreState: @MainActor () -> Void
+    private let setCurrentError: @MainActor (AppError?) -> Void
+
     @State private var viewModel: InventoryViewModel?
+
+    init(
+        reloadStoreState: @escaping @MainActor () -> Void = {},
+        setCurrentError: @escaping @MainActor (AppError?) -> Void = { _ in }
+    ) {
+        self.reloadStoreState = reloadStoreState
+        self.setCurrentError = setCurrentError
+    }
 
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
@@ -25,7 +37,15 @@ struct InventoryInputView: View {
         .navigationTitle("棚卸入力")
         .onAppear {
             if viewModel == nil {
-                let vm = InventoryViewModel(dataStore: dataStore)
+                let workflowUseCase = InventoryWorkflowUseCase(
+                    modelContext: modelContext,
+                    reloadInventoryRecords: reloadStoreState,
+                    setError: setCurrentError
+                )
+                let vm = InventoryViewModel(
+                    modelContext: modelContext,
+                    workflowUseCase: workflowUseCase
+                )
                 viewModel = vm
                 vm.loadForYear()
             }

@@ -68,7 +68,6 @@ struct GoldenFixtureLoader {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fixture.businessProfile.fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         let command = SaveProfileSettingsCommand(
@@ -149,14 +148,14 @@ struct GoldenFixtureLoader {
         for fixtureProject in fixtureProjects {
             let startDate = fixtureProject.startDate.flatMap { dateFormatter.date(from: $0) }
             let completedAt = fixtureProject.completedAt.flatMap { dateFormatter.date(from: $0) }
-            let project = dataStore.addProject(
+            let project = mutations(dataStore).addProject(
                 name: fixtureProject.name,
                 description: fixtureProject.name,
                 startDate: startDate,
                 plannedEndDate: completedAt
             )
             let status = projectStatus(from: fixtureProject.status)
-            dataStore.updateProject(
+            mutations(dataStore).updateProject(
                 id: project.id,
                 status: status,
                 startDate: .some(startDate),
@@ -181,7 +180,7 @@ struct GoldenFixtureLoader {
                 return (projectId, allocation.ratio)
             }
             let date = try XCTUnwrap(GoldenSnapshotStore.dateFormatter.date(from: fixtureTransaction.date))
-            let transaction = dataStore.addTransaction(
+            let transaction = mutations(dataStore).addTransaction(
                 type: transactionType(from: fixtureTransaction.type),
                 amount: fixtureTransaction.amount,
                 date: date,
@@ -193,9 +192,10 @@ struct GoldenFixtureLoader {
                 taxRate: fixtureTransaction.taxRate,
                 isTaxIncluded: fixtureTransaction.isTaxIncluded,
                 counterparty: fixtureTransaction.counterparty,
-                candidateSource: .manual
+                candidateSource: .manual,
+                enqueueCanonicalSync: false
             )
-            _ = await dataStore.syncCanonicalArtifacts(
+            _ = await mutations(dataStore).syncCanonicalArtifacts(
                 forTransactionId: transaction.id,
                 source: .manual
             )
@@ -422,7 +422,7 @@ struct GoldenSnapshotBuilder {
     static func blueReturnSnapshot(from scenario: GoldenScenario) -> GoldenEtaxFormSnapshot {
         let fiscalYear = scenario.fixture.businessProfile.fiscalYear
         let projected = scenario.dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let profile = scenario.dataStore.etaxExportProfile(for: fiscalYear)
+        let canonical = scenario.dataStore.canonicalExportProfiles(for: fiscalYear)
         let form = EtaxFieldPopulator.populate(
             fiscalYear: fiscalYear,
             profitLoss: AccountingReportService.generateProfitLoss(
@@ -441,7 +441,9 @@ struct GoldenSnapshotBuilder {
             ),
             formType: .blueReturn,
             accounts: scenario.dataStore.accounts,
-            profile: profile,
+            businessProfile: canonical?.business,
+            taxYearProfile: canonical?.taxYear,
+            sensitivePayload: canonical?.sensitive,
             inventoryRecord: scenario.dataStore.getInventoryRecord(fiscalYear: fiscalYear)
         )
         return GoldenEtaxFormSnapshot(

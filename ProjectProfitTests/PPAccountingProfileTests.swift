@@ -75,13 +75,9 @@ final class PPAccountingProfileTests: XCTestCase {
         XCTAssertEqual(profile.bookkeepingMode, .singleEntry)
     }
 
-    // MARK: - SwiftData Persistence Tests
+    // MARK: - Migration Compat Tests
 
-    @MainActor
-    func testPersistenceRoundTrip() throws {
-        let container = try TestModelContainer.create()
-        let context = container.mainContext
-
+    func testLegacySnapshotConvertsToCanonicalBusinessProfile() {
         let profile = PPAccountingProfile(
             fiscalYear: 2026,
             businessName: "テスト事業",
@@ -89,36 +85,43 @@ final class PPAccountingProfileTests: XCTestCase {
             isBlueReturn: true,
             defaultPaymentAccountId: "acct-cash"
         )
-        context.insert(profile)
-        try context.save()
+        profile.ownerNameKana = "スズキイチロウ"
+        profile.postalCode = "1000001"
+        profile.address = "東京都千代田区1-1-1"
+        profile.phoneNumber = "0312345678"
 
-        let descriptor = FetchDescriptor<PPAccountingProfile>()
-        let fetched = try context.fetch(descriptor)
+        let snapshot = LegacyAccountingProfileSnapshot(profile)
+        let businessProfile = snapshot.toBusinessProfile(
+            existingId: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+            sensitivePayload: nil
+        )
 
-        XCTAssertEqual(fetched.count, 1)
-        let result = fetched[0]
-        XCTAssertEqual(result.id, "profile-default")
-        XCTAssertEqual(result.fiscalYear, 2026)
-        XCTAssertEqual(result.businessName, "テスト事業")
-        XCTAssertEqual(result.ownerName, "鈴木一郎")
-        XCTAssertTrue(result.isBlueReturn)
-        XCTAssertEqual(result.bookkeepingMode, .doubleEntry)
+        XCTAssertEqual(businessProfile.id.uuidString, "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")
+        XCTAssertEqual(businessProfile.ownerName, "鈴木一郎")
+        XCTAssertEqual(businessProfile.ownerNameKana, "スズキイチロウ")
+        XCTAssertEqual(businessProfile.businessName, "テスト事業")
+        XCTAssertEqual(businessProfile.postalCode, "1000001")
     }
 
-    @MainActor
-    func testUniqueIdConstraint() throws {
-        let container = try TestModelContainer.create()
-        let context = container.mainContext
+    func testLegacySnapshotConvertsToCanonicalTaxYearProfile() {
+        let lockedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let profile = PPAccountingProfile(
+            fiscalYear: 2025,
+            bookkeepingMode: .singleEntry,
+            businessName: "テスト事業",
+            ownerName: "鈴木一郎",
+            isBlueReturn: true,
+            lockedAt: lockedAt
+        )
+        let snapshot = LegacyAccountingProfileSnapshot(profile)
+        let taxYearProfile = snapshot.toTaxYearProfile(
+            businessId: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        )
 
-        let profile1 = PPAccountingProfile(fiscalYear: 2025, businessName: "最初")
-        let profile2 = PPAccountingProfile(fiscalYear: 2026, businessName: "重複")
-
-        context.insert(profile1)
-        context.insert(profile2)
-        try context.save()
-
-        let descriptor = FetchDescriptor<PPAccountingProfile>()
-        let fetched = try context.fetch(descriptor)
-        XCTAssertEqual(fetched.count, 1, "同一idのプロファイルは1件のみ保存される")
+        XCTAssertEqual(taxYearProfile.taxYear, 2025)
+        XCTAssertEqual(taxYearProfile.filingStyle, .blueGeneral)
+        XCTAssertEqual(taxYearProfile.bookkeepingBasis, .singleEntry)
+        XCTAssertEqual(taxYearProfile.blueDeductionLevel, .ten)
+        XCTAssertEqual(taxYearProfile.yearLockState, .finalLock)
     }
 }

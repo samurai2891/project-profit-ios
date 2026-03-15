@@ -53,7 +53,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_CashSale() {
         // Dr cash 100,000 / Cr sales 100,000 in January 2025
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 15),
             memo: "現金売上",
             lines: [
@@ -78,7 +78,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_CreditSale() {
         // Dr ar 80,000 / Cr sales 80,000 in February 2025
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 20),
             memo: "掛売上",
             lines: [
@@ -101,7 +101,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_SalesTotal() {
         // Cash sale 100k in January
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 10),
             memo: "現金売上",
             lines: [
@@ -111,7 +111,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // Credit sale 80k in February
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 15),
             memo: "掛売上",
             lines: [
@@ -134,7 +134,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_OtherIncome() {
         // Dr cash 5,000 / Cr other-income 5,000 in March
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 5),
             memo: "雑収入",
             lines: [
@@ -155,7 +155,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_CashPurchase() {
         // Dr purchases 50,000 / Cr cash 50,000 in April
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 10),
             memo: "現金仕入",
             lines: [
@@ -175,7 +175,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_CreditPurchase() {
         // Dr purchases 30,000 / Cr ap 30,000 in May
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 20),
             memo: "掛仕入",
             lines: [
@@ -195,7 +195,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_Expenses() {
         // Dr rent 80,000 / Cr cash 80,000 in June
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "家賃支払",
             lines: [
@@ -215,7 +215,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_ExpenseTotal() {
         // Rent 80k in June
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "家賃",
             lines: [
@@ -225,7 +225,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // Travel 15k in July
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 7, 10),
             memo: "交通費",
             lines: [
@@ -247,7 +247,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_SubtotalFlags() {
         // Create minimal entries to produce all subtotal rows
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 1),
             memo: "テスト売上",
             lines: [
@@ -280,7 +280,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_YearFilter() {
         // 2025 entry
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 15),
             memo: "2025年売上",
             lines: [
@@ -290,7 +290,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // 2026 entry
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2026, 3, 15),
             memo: "2026年売上",
             lines: [
@@ -318,7 +318,7 @@ final class MonthlySummaryTests: XCTestCase {
         // Create a cash sale entry in every month of 2025
         for month in 1...12 {
             let amount = month * 10_000
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 15),
                 memo: "\(month)月売上",
                 lines: [
@@ -347,7 +347,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_RowTotals() {
         // Jan 100k, Mar 50k, Dec 200k — cash sales
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "1月売上",
             lines: [
@@ -356,7 +356,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 10),
             memo: "3月売上",
             lines: [
@@ -365,7 +365,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 12, 25),
             memo: "12月売上",
             lines: [
@@ -388,7 +388,7 @@ final class MonthlySummaryTests: XCTestCase {
     func testMonthlySummary_AnnualBlueReturn() {
         // Monthly cash sales: 500k each month Jan-Dec
         for month in 1...12 {
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 5),
                 memo: "\(month)月現金売上",
                 lines: [
@@ -400,7 +400,7 @@ final class MonthlySummaryTests: XCTestCase {
 
         // Monthly credit sales: 300k each month Jan-Dec
         for month in 1...12 {
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 10),
                 memo: "\(month)月掛売上",
                 lines: [
@@ -412,7 +412,7 @@ final class MonthlySummaryTests: XCTestCase {
 
         // Monthly cash purchases: 200k each month Jan-Dec
         for month in 1...12 {
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 12),
                 memo: "\(month)月現金仕入",
                 lines: [
@@ -424,7 +424,7 @@ final class MonthlySummaryTests: XCTestCase {
 
         // Monthly rent: 120k each month Jan-Dec
         for month in 1...12 {
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 25),
                 memo: "\(month)月家賃",
                 lines: [
@@ -436,7 +436,7 @@ final class MonthlySummaryTests: XCTestCase {
 
         // Monthly supplies: 30k in Jan, Mar, Jun, Sep, Dec (5 months)
         for month in [1, 3, 6, 9, 12] {
-            dataStore.addManualJournalEntry(
+            mutations(dataStore).addManualJournalEntry(
                 date: date(2025, month, 20),
                 memo: "\(month)月消耗品",
                 lines: [
@@ -523,7 +523,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_OtherSales() {
         // Dr bank (not cash, not ar) / Cr sales — should classify as "other sales"
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 8, 10),
             memo: "銀行振込売上",
             lines: [
@@ -556,7 +556,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_MultipleEntriesSameMonth() {
         // Two cash sales in January
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "売上1",
             lines: [
@@ -564,7 +564,7 @@ final class MonthlySummaryTests: XCTestCase {
                 (accountId: "acct-sales", debit: 0, credit: 40_000, memo: ""),
             ]
         )
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 20),
             memo: "売上2",
             lines: [
@@ -584,7 +584,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_UnpostedEntriesExcluded() {
         // Create an unbalanced (unposted) entry
-        let entry = dataStore.addManualJournalEntry(
+        let entry = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 1),
             memo: "不均衡仕訳",
             lines: [
@@ -608,7 +608,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_PurchasesTotal() {
         // Cash purchase 50k in April
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 5),
             memo: "現金仕入",
             lines: [
@@ -618,7 +618,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // Credit purchase 30k in April
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 15),
             memo: "掛仕入",
             lines: [
@@ -639,7 +639,7 @@ final class MonthlySummaryTests: XCTestCase {
 
     func testMonthlySummary_MultipleExpenseTypes() {
         // Rent 80k in January
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "家賃",
             lines: [
@@ -649,7 +649,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // Travel 15k in January
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 10),
             memo: "交通費",
             lines: [
@@ -659,7 +659,7 @@ final class MonthlySummaryTests: XCTestCase {
         )
 
         // Supplies 10k in January
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 15),
             memo: "消耗品",
             lines: [
@@ -691,7 +691,7 @@ final class MonthlySummaryTests: XCTestCase {
     func testMonthlySummary_RowOrder() {
         // Create entries that populate all major row groups
         // Cash sale
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 1),
             memo: "現金売上",
             lines: [
@@ -700,7 +700,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
         // Credit sale
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 2),
             memo: "掛売上",
             lines: [
@@ -709,7 +709,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
         // Other income
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 3),
             memo: "雑収入",
             lines: [
@@ -718,7 +718,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
         // Cash purchase
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 4),
             memo: "現金仕入",
             lines: [
@@ -727,7 +727,7 @@ final class MonthlySummaryTests: XCTestCase {
             ]
         )
         // Expense (rent)
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "家賃",
             lines: [
@@ -769,7 +769,7 @@ final class MonthlySummaryTests: XCTestCase {
     // MARK: - 21. Amounts Array Always Has 12 Elements
 
     func testMonthlySummary_AmountsArraySize() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "テスト",
             lines: [

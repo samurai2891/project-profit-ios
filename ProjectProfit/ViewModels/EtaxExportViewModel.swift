@@ -1,11 +1,15 @@
 import Foundation
-import os
+import SwiftData
 import SwiftUI
 
 @Observable
 @MainActor
 final class EtaxExportViewModel {
-    let dataStore: DataStore
+    private let contextProvider: @MainActor (Int) -> EtaxExportContext
+    private let taxYearStateUseCase: TaxYearStateUseCase
+    private let filingPreflightUseCase: FilingPreflightUseCase
+    private let formBuilder: @MainActor (FilingStyle, Int) throws -> EtaxForm
+    private let exporter: @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
 
     var fiscalYear: Int
     var formType: EtaxFormType = .blueReturn
@@ -13,6 +17,7 @@ final class EtaxExportViewModel {
     var exportedForm: EtaxForm?
     var isExporting = false
     var exportResult: ExportResult?
+    private var lastSuccessfulExportPreflight: (fiscalYear: Int, formType: EtaxFormType)?
 
     enum ExportResult: Identifiable {
         case success(url: URL)
@@ -26,18 +31,19 @@ final class EtaxExportViewModel {
         }
     }
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(
+        modelContext: ModelContext,
+        contextProvider: @escaping @MainActor (Int) -> EtaxExportContext,
+        formBuilder: @escaping @MainActor (FilingStyle, Int) throws -> EtaxForm,
+        exporter: @escaping @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
+    ) {
+        self.contextProvider = contextProvider
+        self.taxYearStateUseCase = TaxYearStateUseCase(modelContext: modelContext)
+        self.filingPreflightUseCase = FilingPreflightUseCase(modelContext: modelContext)
+        self.formBuilder = formBuilder
+        self.exporter = exporter
         let preferredYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
         self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
-    }
-
-    private var taxYearStateUseCase: TaxYearStateUseCase {
-        TaxYearStateUseCase(modelContext: dataStore.modelContext)
-    }
-
-    private var filingPreflightUseCase: FilingPreflightUseCase {
-        FilingPreflightUseCase(modelContext: dataStore.modelContext)
     }
 
     // MARK: - Generate Preview
@@ -46,6 +52,7 @@ final class EtaxExportViewModel {
         guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
             exportedForm = nil
             validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
+            lastSuccessfulExportPreflight = nil
             return
         }
 
@@ -53,6 +60,7 @@ final class EtaxExportViewModel {
         guard preflightErrors.isEmpty else {
             exportedForm = nil
             validationErrors = preflightErrors
+            lastSuccessfulExportPreflight = nil
             return
         }
 
@@ -68,57 +76,30 @@ final class EtaxExportViewModel {
 
         let form: EtaxForm
         do {
-            form = try FormEngine.build(
-                filingStyle: filingStyle,
-                dataStore: dataStore,
-                fiscalYear: fiscalYear
-            )
+            form = try formBuilder(filingStyle, fiscalYear)
         } catch {
             exportedForm = nil
             validationErrors = [.validationFailed(reasons: [error.localizedDescription])]
+            lastSuccessfulExportPreflight = nil
             return
         }
 
         validationErrors = EtaxCharacterValidator.validateForm(Self.exportableForm(from: form))
         exportedForm = form
+        lastSuccessfulExportPreflight = (fiscalYear: fiscalYear, formType: formType)
     }
 
     // MARK: - Export
 
     func exportXtx() {
-        guard let form = exportedForm else { return }
-        guard form.fiscalYear == fiscalYear else {
-            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
-            return
-        }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
-            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
-            return
-        }
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
-            return
-        }
-        isExporting = true
-
-        let result = EtaxXtxExporter.generateXtx(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "xtx") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
-        }
-
-        isExporting = false
+        export(format: .xtx)
     }
 
     func exportCsv() {
+        export(format: .csv)
+    }
+
+    private func export(format: ExportCoordinator.ExportFormat) {
         guard let form = exportedForm else { return }
         guard form.fiscalYear == fiscalYear else {
             exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
@@ -128,24 +109,22 @@ final class EtaxExportViewModel {
             exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
             return
         }
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
-            return
+        if lastSuccessfulExportPreflight?.fiscalYear != fiscalYear || lastSuccessfulExportPreflight?.formType != formType {
+            let preflightErrors = preflightErrors(context: .export)
+            guard preflightErrors.isEmpty else {
+                validationErrors = preflightErrors
+                exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
+                return
+            }
+            lastSuccessfulExportPreflight = (fiscalYear: fiscalYear, formType: formType)
         }
         isExporting = true
 
-        let result = EtaxXtxExporter.generateCsv(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "csv") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
+        do {
+            let url = try exporter(format, form)
+            exportResult = .success(url: url)
+        } catch {
+            exportResult = .failure(message: error.localizedDescription)
         }
 
         isExporting = false
@@ -153,28 +132,12 @@ final class EtaxExportViewModel {
 
     // MARK: - File Handling
 
-    private static let logger = Logger(subsystem: "com.projectprofit", category: "EtaxExport")
-
     private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
         let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
         if years.contains(preferredYear) {
             return preferredYear
         }
         return years.last ?? preferredYear
-    }
-
-    private func saveToTempFile(data: Data, extension ext: String) -> URL? {
-        let fileName = "etax_\(fiscalYear)_\(formType.rawValue).\(ext)"
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
-
-        do {
-            try data.write(to: fileURL)
-            return fileURL
-        } catch {
-            Self.logger.error("ファイル保存失敗: \(fileURL.path), error: \(error.localizedDescription)")
-            return nil
-        }
     }
 
     private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
@@ -196,27 +159,30 @@ final class EtaxExportViewModel {
                 }
         )
 
+        let allowCashBasisDynamicExpenses = form.formType == .blueCashBasis
+
         return EtaxForm(
             fiscalYear: form.fiscalYear,
             formType: form.formType,
-            fields: form.fields.filter { exportableKeys.contains($0.id) },
+            fields: form.fields.filter {
+                exportableKeys.contains($0.id)
+                    || (allowCashBasisDynamicExpenses && $0.id.hasPrefix("cash_basis_expense_") && $0.id != "cash_basis_expense_total")
+            },
             generatedAt: form.generatedAt
         )
     }
 
     private func taxStatePreflightErrors() -> [EtaxExportError] {
-        guard let businessId = dataStore.businessProfile?.id else {
+        let context = contextProvider(fiscalYear)
+        guard let businessId = context.businessId else {
             return []
         }
 
         do {
-            let fallbackProfile = dataStore.currentTaxYearProfile?.taxYear == fiscalYear
-                ? dataStore.currentTaxYearProfile
-                : nil
             let issues = try taxYearStateUseCase.filingPreflightIssues(
                 businessId: businessId,
                 taxYear: fiscalYear,
-                fallbackProfile: fallbackProfile
+                fallbackProfile: context.fallbackTaxYearProfile
             )
             let errors = issues
                 .filter { $0.severity == .error }
@@ -231,7 +197,7 @@ final class EtaxExportViewModel {
     }
 
     private func accountingPreflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = contextProvider(fiscalYear).businessId else {
             return []
         }
 

@@ -2,9 +2,17 @@ import SwiftData
 import SwiftUI
 
 struct JournalDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
-    let entry: PPJournalEntry
+
+    let entryId: UUID
+
+    init(entryId: UUID) {
+        self.entryId = entryId
+    }
+
+    init(entry: PPJournalEntry) {
+        self.entryId = entry.id
+    }
 
     @State private var canonicalEntry: CanonicalJournalEntry?
     @State private var reversalEntry: CanonicalJournalEntry?
@@ -12,10 +20,16 @@ struct JournalDetailView: View {
     @State private var showCancelConfirmation = false
     @State private var actionErrorMessage: String?
 
-    private var lines: [PPJournalLine] {
-        dataStore.projectedCanonicalJournals().lines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
+    private var detailSnapshot: JournalDetailSnapshot {
+        JournalReadQueryUseCase(modelContext: modelContext).detailSnapshot(entryId: entryId)
+    }
+
+    private var entry: JournalListItem? {
+        detailSnapshot.entry
+    }
+
+    private var lines: [JournalLineItem] {
+        detailSnapshot.lines
     }
 
     private var debitTotal: Int {
@@ -31,17 +45,25 @@ struct JournalDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                headerSection
-                linesSection
-                totalsSection
+        Group {
+            if entry != nil {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        linesSection
+                        totalsSection
+                    }
+                    .padding(20)
+                }
+            } else {
+                Text("仕訳が見つかりません")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(20)
         }
         .navigationTitle("仕訳詳細")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: entry.id) {
+        .task(id: entryId) {
             await loadCanonicalEntry()
         }
         .toolbar {
@@ -74,15 +96,13 @@ struct JournalDetailView: View {
         }
     }
 
-    // MARK: - Header
-
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(formatDate(entry.date))
+                Text(formatDate(entry?.date ?? canonicalEntry?.journalDate ?? Date()))
                     .font(.headline)
                 Spacer()
-                Text(entry.entryType.label)
+                Text(entryTypeLabel)
                     .font(.caption)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -91,17 +111,23 @@ struct JournalDetailView: View {
                     .clipShape(Capsule())
             }
 
-            if !entry.memo.isEmpty {
-                Text(entry.memo)
+            if let memo = entry?.memo, !memo.isEmpty {
+                Text(memo)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 8) {
-                statusLabel("投稿状態", value: entry.isPosted ? "投稿済" : "未投稿",
-                           color: entry.isPosted ? AppColors.success : AppColors.warning)
-                statusLabel("貸借", value: isBalanced ? "一致" : "不一致",
-                           color: isBalanced ? AppColors.success : AppColors.error)
+                statusLabel(
+                    "投稿状態",
+                    value: (entry?.isPosted ?? false) ? "投稿済" : "未投稿",
+                    color: (entry?.isPosted ?? false) ? AppColors.success : AppColors.warning
+                )
+                statusLabel(
+                    "貸借",
+                    value: isBalanced ? "一致" : "不一致",
+                    color: isBalanced ? AppColors.success : AppColors.error
+                )
                 if canonicalEntry?.lockedAt != nil {
                     statusLabel("取消", value: "済み", color: AppColors.warning)
                 }
@@ -109,7 +135,7 @@ struct JournalDetailView: View {
 
             if let reversalEntry {
                 NavigationLink {
-                    JournalDetailView(entry: projectedEntry(for: reversalEntry))
+                    JournalDetailView(entryId: reversalEntry.id)
                 } label: {
                     Label("取消仕訳 \(reversalEntry.voucherNo)", systemImage: "arrow.uturn.backward.circle")
                         .font(.caption.weight(.medium))
@@ -130,6 +156,23 @@ struct JournalDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    private var entryTypeLabel: String {
+        if let entry {
+            return entry.entryType.label
+        }
+        guard let canonicalEntry else {
+            return JournalEntryType.auto.label
+        }
+        switch canonicalEntry.entryType {
+        case .opening:
+            return JournalEntryType.opening.label
+        case .closing:
+            return JournalEntryType.closing.label
+        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+            return JournalEntryType.auto.label
+        }
+    }
+
     private func statusLabel(_ label: String, value: String, color: Color) -> some View {
         HStack(spacing: 4) {
             Circle()
@@ -140,8 +183,6 @@ struct JournalDetailView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    // MARK: - Lines
 
     private var linesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -154,12 +195,10 @@ struct JournalDetailView: View {
         }
     }
 
-    private func lineRow(_ line: PPJournalLine) -> some View {
-        let accountName = dataStore.accounts.first(where: { $0.id == line.accountId })?.name ?? line.accountId
-
-        return HStack {
+    private func lineRow(_ line: JournalLineItem) -> some View {
+        HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(accountName)
+                Text(line.accountName)
                     .font(.subheadline)
                 if !line.memo.isEmpty {
                     Text(line.memo)
@@ -196,8 +235,6 @@ struct JournalDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Totals
-
     private var totalsSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -230,7 +267,7 @@ struct JournalDetailView: View {
 
     private func loadCanonicalEntry() async {
         do {
-            canonicalEntry = try await PostingWorkflowUseCase(modelContext: modelContext).journal(entry.id)
+            canonicalEntry = try await PostingWorkflowUseCase(modelContext: modelContext).journal(entryId)
         } catch {
             actionErrorMessage = error.localizedDescription
         }
@@ -240,27 +277,14 @@ struct JournalDetailView: View {
         do {
             let workflow = PostingWorkflowUseCase(modelContext: modelContext)
             let result = try await workflow.cancelAndReopenJournal(
-                journalId: entry.id,
-                reason: entry.memo
+                journalId: entryId,
+                reason: entry?.memo ?? ""
             )
             reversalEntry = result.reversal
             reopenedCandidate = result.reopened
-            canonicalEntry = try await workflow.journal(entry.id)
+            canonicalEntry = try await workflow.journal(entryId)
         } catch {
             actionErrorMessage = error.localizedDescription
         }
-    }
-
-    private func projectedEntry(for journal: CanonicalJournalEntry) -> PPJournalEntry {
-        PPJournalEntry(
-            id: journal.id,
-            sourceKey: "canonical:\(journal.id.uuidString)",
-            date: journal.journalDate,
-            entryType: journal.entryType == .closing ? .closing : (journal.entryType == .opening ? .opening : .auto),
-            memo: journal.description,
-            isPosted: journal.approvedAt != nil,
-            createdAt: journal.createdAt,
-            updatedAt: journal.updatedAt
-        )
     }
 }

@@ -1,8 +1,9 @@
 import Foundation
 
-/// 旧プロフィールと canonical profile の相互変換
+/// 旧プロフィールから canonical profile への変換（読み取り専用、新規作成には使用しない）
 enum LegacyAccountingProfileCanonicalMapper {
 
+    @available(*, deprecated, message: "Legacy → canonical マイグレーション専用。新規コードでは使用しない。")
     static func businessProfile(
         from legacy: PPAccountingProfile,
         sensitivePayload: ProfileSensitivePayload?,
@@ -27,6 +28,7 @@ enum LegacyAccountingProfileCanonicalMapper {
         )
     }
 
+    @available(*, deprecated, message: "Legacy → canonical マイグレーション専用。新規コードでは使用しない。")
     static func taxYearProfile(
         from legacy: PPAccountingProfile,
         businessId: UUID,
@@ -58,39 +60,6 @@ enum LegacyAccountingProfileCanonicalMapper {
             createdAt: legacy.createdAt,
             updatedAt: legacy.updatedAt
         )
-    }
-
-    static func syncLegacyProfile(
-        _ legacy: PPAccountingProfile,
-        from businessProfile: BusinessProfile,
-        taxYearProfile: TaxYearProfile
-    ) {
-        legacy.fiscalYear = taxYearProfile.taxYear
-        legacy.bookkeepingMode = bookkeepingMode(for: taxYearProfile.bookkeepingBasis)
-        legacy.businessName = businessProfile.businessName
-        legacy.ownerName = businessProfile.ownerName
-        legacy.taxOfficeCode = normalized(businessProfile.taxOfficeCode)
-        legacy.isBlueReturn = taxYearProfile.filingStyle.isBlue
-        legacy.defaultPaymentAccountId = businessProfile.defaultPaymentAccountId
-        legacy.openingDate = businessProfile.openingDate
-
-        var lockedYears = Set(legacy.lockedYears ?? [])
-        if taxYearProfile.yearLockState == .open {
-            lockedYears.remove(taxYearProfile.taxYear)
-        } else {
-            lockedYears.insert(taxYearProfile.taxYear)
-        }
-        legacy.lockedYears = lockedYears.sorted()
-        legacy.updatedAt = Date()
-    }
-
-    private static func bookkeepingMode(for basis: BookkeepingBasis) -> BookkeepingMode {
-        switch basis {
-        case .singleEntry:
-            .singleEntry
-        case .doubleEntry, .cashBasis:
-            .doubleEntry
-        }
     }
 
     private static func normalized(_ value: String?) -> String {

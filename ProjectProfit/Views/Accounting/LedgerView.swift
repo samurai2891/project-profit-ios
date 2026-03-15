@@ -1,11 +1,16 @@
+import SwiftData
 import SwiftUI
 
 struct LedgerView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedAccountId: String?
 
+    private var queryUseCase: LedgerQueryUseCase {
+        LedgerQueryUseCase(modelContext: modelContext)
+    }
+
     private var activeAccounts: [PPAccount] {
-        dataStore.accounts.filter(\.isActive).sorted { $0.displayOrder < $1.displayOrder }
+        queryUseCase.activeAccounts()
     }
 
     private var groupedAccounts: [(AccountType, [PPAccount])] {
@@ -28,12 +33,11 @@ struct LedgerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let accountId = selectedAccountId,
-               let account = dataStore.accounts.first(where: { $0.id == accountId }) {
+               let account = activeAccounts.first(where: { $0.id == accountId }) {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         target: .ledger,
                         fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
-                        dataStore: dataStore,
                         ledgerOptions: ExportCoordinator.LedgerExportOptions(
                             accountId: account.id,
                             accountName: account.name,
@@ -65,7 +69,7 @@ struct LedgerView: View {
                                     .foregroundStyle(.primary)
                                 Spacer()
 
-                                let balance = dataStore.getAccountBalance(accountId: account.id)
+                                let balance = queryUseCase.accountBalance(accountId: account.id)
                                 Text(formatCurrency(balance.balance))
                                     .font(.subheadline.weight(.medium).monospacedDigit())
                                     .foregroundStyle(balance.balance >= 0 ? .primary : AppColors.error)
@@ -81,8 +85,9 @@ struct LedgerView: View {
     // MARK: - Ledger Detail
 
     private func ledgerDetail(accountId: String) -> some View {
-        let entries = dataStore.getLedgerEntries(accountId: accountId)
-        let account = dataStore.accounts.first { $0.id == accountId }
+        let snapshot = queryUseCase.snapshot(accountId: accountId)
+        let entries = snapshot.entries
+        let account = snapshot.account
         let accountName = account.map { "\($0.code) \($0.name)" } ?? accountId
 
         return VStack(spacing: 0) {
@@ -106,7 +111,7 @@ struct LedgerView: View {
 
                 Spacer()
 
-                let balance = dataStore.getAccountBalance(accountId: accountId)
+                let balance = snapshot.balance
                 Text("残高: \(formatCurrency(balance.balance))")
                     .font(.caption.weight(.medium).monospacedDigit())
             }
@@ -165,7 +170,7 @@ struct LedgerView: View {
         }
     }
 
-    private func ledgerRow(_ entry: DataStore.LedgerEntry) -> some View {
+    private func ledgerRow(_ entry: AccountingLedgerEntry) -> some View {
         HStack {
             Text(shortDate(entry.date))
                 .font(.caption)
@@ -201,14 +206,14 @@ struct LedgerView: View {
     }
 
     /// 摘要テキスト: [取引先] メモ ※
-    private func ledgerDescription(_ entry: DataStore.LedgerEntry) -> String {
+    private func ledgerDescription(_ entry: AccountingLedgerEntry) -> String {
         var parts: [String] = []
         if let cp = entry.counterparty, !cp.isEmpty {
             parts.append("[\(cp)]")
         }
         let memo = entry.memo.isEmpty ? entry.entryType.label : entry.memo
         parts.append(memo)
-        if entry.taxCategory == .reducedRate {
+        if entry.taxCategory == TaxCategory.reducedRate {
             parts.append("※")
         }
         return parts.joined(separator: " ")

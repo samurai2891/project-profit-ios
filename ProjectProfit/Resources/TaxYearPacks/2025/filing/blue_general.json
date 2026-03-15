@@ -1,0 +1,66 @@
+{
+  "formType": "blue_general",
+  "taxYear": 2025,
+  "formId": "KOA210",
+  "formVer": "11.0",
+  "rootTag": "KOA210",
+  "displayName": "青色申告決算書（一般用）",
+  "filingDeadline": "2026-03-16",
+  "sections": [
+    {
+      "id": "revenue",
+      "label": "収入金額",
+      "fields": [
+        { "internalKey": "revenue_sales_revenue", "fieldLabel": "ア 売上（収入）金額", "xmlTag": "AMF00100", "dataType": "number" },
+        { "internalKey": "revenue_other_income", "fieldLabel": "カ 雑収入", "xmlTag": "AMF00960", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "expenses",
+      "label": "必要経費",
+      "fields": [
+        { "internalKey": "expense_rent", "fieldLabel": "地代家賃", "xmlTag": "AMF00340", "dataType": "number" },
+        { "internalKey": "expense_utilities", "fieldLabel": "水道光熱費", "xmlTag": "AMF00210", "dataType": "number" },
+        { "internalKey": "expense_travel", "fieldLabel": "旅費交通費", "xmlTag": "AMF00220", "dataType": "number" },
+        { "internalKey": "expense_communication", "fieldLabel": "通信費", "xmlTag": "AMF00230", "dataType": "number" },
+        { "internalKey": "expense_advertising", "fieldLabel": "広告宣伝費", "xmlTag": "AMF00240", "dataType": "number" },
+        { "internalKey": "expense_entertainment", "fieldLabel": "接待交際費", "xmlTag": "AMF00250", "dataType": "number" },
+        { "internalKey": "expense_depreciation", "fieldLabel": "減価償却費", "xmlTag": "AMF00290", "dataType": "number" },
+        { "internalKey": "expense_insurance", "fieldLabel": "損害保険料", "xmlTag": "AMF00260", "dataType": "number" },
+        { "internalKey": "expense_interest", "fieldLabel": "利子割引料", "xmlTag": "AMF00270", "dataType": "number" },
+        { "internalKey": "expense_supplies", "fieldLabel": "消耗品費", "xmlTag": "AMF00280", "dataType": "number" },
+        { "internalKey": "expense_taxes", "fieldLabel": "租税公課", "xmlTag": "AMF00300", "dataType": "number" },
+        { "internalKey": "expense_outsourcing", "fieldLabel": "外注工賃", "xmlTag": "AMF00320", "dataType": "number" },
+        { "internalKey": "expense_misc", "fieldLabel": "雑費", "xmlTag": "AMF00370", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "income",
+      "label": "所得金額",
+      "fields": [
+        { "internalKey": "income_total_revenue", "fieldLabel": "収入金額合計", "xmlTag": "AMF00970", "dataType": "number" },
+        { "internalKey": "income_total_expenses", "fieldLabel": "必要経費合計", "xmlTag": "AMF00380", "dataType": "number" },
+        { "internalKey": "income_net", "fieldLabel": "所得金額", "xmlTag": "AMF00530", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "inventory",
+      "label": "棚卸",
+      "fields": [
+        { "internalKey": "inventory_opening", "fieldLabel": "期首商品棚卸高", "xmlTag": "AMF00120", "dataType": "number" },
+        { "internalKey": "inventory_purchases", "fieldLabel": "仕入高", "xmlTag": "AMF00130", "dataType": "number" },
+        { "internalKey": "inventory_closing", "fieldLabel": "期末商品棚卸高", "xmlTag": "AMF00150", "dataType": "number" },
+        { "internalKey": "inventory_cogs", "fieldLabel": "売上原価", "xmlTag": "AMF00110", "dataType": "number" }
+      ]
+    },
+    {
+      "id": "balanceSheet",
+      "label": "貸借対照表",
+      "fields": [
+        { "internalKey": "bs_total_assets", "fieldLabel": "資産合計", "xmlTag": "AMG00440", "dataType": "number" },
+        { "internalKey": "bs_total_liabilities", "fieldLabel": "負債合計", "xmlTag": "AMG00760", "dataType": "number" },
+        { "internalKey": "bs_total_equity", "fieldLabel": "資本合計", "xmlTag": "AMG00740", "dataType": "number" }
+      ]
+    }
+  ]
+}

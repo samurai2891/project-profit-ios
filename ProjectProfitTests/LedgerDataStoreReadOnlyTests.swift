@@ -10,12 +10,14 @@ final class LedgerDataStoreReadOnlyTests: XCTestCase {
     override func setUp() {
         super.setUp()
         container = try! TestModelContainer.create()
+        FeatureFlags.useLegacyLedger = true
         context = container.mainContext
     }
 
     override func tearDown() {
         context = nil
         container = nil
+        FeatureFlags.clearOverrides()
         super.tearDown()
     }
 

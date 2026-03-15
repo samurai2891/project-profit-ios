@@ -1,14 +1,15 @@
 import SwiftUI
 
 struct ReceiptReviewView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     let receiptData: ReceiptData
     let ocrText: String
     let receiptImage: UIImage?
     let evidenceSourceType: EvidenceSourceType
+    let originalFileData: Data?
     let defaultProjectId: UUID?
+    let onIntakeSucceeded: (() -> Void)?
     let onDismiss: () -> Void
 
     @State private var amountText: String = ""
@@ -28,30 +29,32 @@ struct ReceiptReviewView: View {
     @State private var selectedTaxCode: TaxCode?
     @State private var isTaxIncluded: Bool = true
     @State private var taxAmountText: String = ""
+    @State private var selectedCounterpartyId: UUID?
     @State private var counterparty: String = ""
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
 
     init(
         receiptData: ReceiptData,
         ocrText: String,
         receiptImage: UIImage? = nil,
         evidenceSourceType: EvidenceSourceType = .manualNoFile,
+        originalFileData: Data? = nil,
         defaultProjectId: UUID? = nil,
+        onIntakeSucceeded: (() -> Void)? = nil,
         onDismiss: @escaping () -> Void
     ) {
         self.receiptData = receiptData
         self.ocrText = ocrText
         self.receiptImage = receiptImage
         self.evidenceSourceType = evidenceSourceType
+        self.originalFileData = originalFileData
         self.defaultProjectId = defaultProjectId
+        self.onIntakeSucceeded = onIntakeSucceeded
         self.onDismiss = onDismiss
     }
 
     private var categories: [PPCategory] {
-        let categoryType: CategoryType = switch type {
-        case .income: .income
-        case .expense, .transfer: .expense
-        }
-        return dataStore.activeCategories.filter { $0.type == categoryType }
+        transactionFormQueryUseCase.categories(for: type, snapshot: formSnapshot)
     }
 
     private var typeBadgeColor: Color {
@@ -66,6 +69,25 @@ struct ReceiptReviewView: View {
         allocations.reduce(0) { $0 + $1.ratio }
     }
 
+    private var counterparties: [Counterparty] {
+        formSnapshot.counterparties
+    }
+
+    private var selectedCounterparty: Counterparty? {
+        guard let selectedCounterpartyId else { return nil }
+        return counterparties.first { $0.id == selectedCounterpartyId }
+    }
+
+    private var counterpartyPickerSelection: Binding<UUID?> {
+        Binding(
+            get: { selectedCounterpartyId },
+            set: { newValue in
+                selectedCounterpartyId = newValue
+                applySelectedCounterpartyDefaults(preserveExternalProjectSelection: false)
+            }
+        )
+    }
+
     private var isValid: Bool {
         guard let amount = Int(amountText), amount > 0 else { return false }
         if type == .transfer {
@@ -74,6 +96,14 @@ struct ReceiptReviewView: View {
             return from != to
         }
         return !categoryId.isEmpty && !allocations.isEmpty && totalRatio == 100
+    }
+
+    private var transactionFormQueryUseCase: TransactionFormQueryUseCase {
+        TransactionFormQueryUseCase(modelContext: modelContext)
+    }
+
+    private var availableProjects: [PPProject] {
+        formSnapshot.projects
     }
 
     var body: some View {
@@ -106,7 +136,10 @@ struct ReceiptReviewView: View {
                     .accessibilityHint(isValid ? "タップして証憑を登録" : "すべての必須項目を入力してください")
             }
         }
-        .onAppear { setupFromReceiptData() }
+        .task {
+            refreshFormSnapshot()
+            setupFromReceiptData()
+        }
         .onChange(of: type) { _, _ in
             ensureValidCategorySelection()
         }
@@ -351,7 +384,7 @@ struct ReceiptReviewView: View {
         VStack(spacing: 12) {
             AccountPickerView(
                 label: type == .income ? "入金先口座" : "支払元口座",
-                accounts: dataStore.accounts,
+                accounts: formSnapshot.accounts,
                 selectedAccountId: $paymentAccountId,
                 filterPredicate: { $0.isPaymentAccount && $0.isActive }
             )
@@ -359,7 +392,7 @@ struct ReceiptReviewView: View {
             if type == .transfer {
                 AccountPickerView(
                     label: "振替先口座",
-                    accounts: dataStore.accounts,
+                    accounts: formSnapshot.accounts,
                     selectedAccountId: $transferToAccountId,
                     filterPredicate: { $0.isPaymentAccount && $0.isActive }
                 )
@@ -432,17 +465,20 @@ struct ReceiptReviewView: View {
                 allocationRow(index: index, alloc: alloc)
             }
 
-            if dataStore.projects.count > allocations.count {
+            if availableProjects.count > allocations.count {
                 addProjectButton
             }
         }
     }
 
     private func allocationRow(index: Int, alloc: (id: UUID, projectId: UUID, ratio: Int)) -> some View {
-        let projectName = dataStore.getProject(id: alloc.projectId)?.name ?? "選択"
+        let projectName = transactionFormQueryUseCase.projectName(
+            id: alloc.projectId,
+            snapshot: formSnapshot
+        ) ?? "選択"
         return HStack {
             Menu {
-                ForEach(dataStore.projects, id: \.id) { project in
+                ForEach(availableProjects, id: \.id) { project in
                     Button(project.name) {
                         allocations[index].projectId = project.id
                     }
@@ -499,7 +535,7 @@ struct ReceiptReviewView: View {
     private var addProjectButton: some View {
         Button {
             let usedIds = Set(allocations.map(\.projectId))
-            if let available = dataStore.projects.first(where: { !usedIds.contains($0.id) }) {
+            if let available = availableProjects.first(where: { !usedIds.contains($0.id) }) {
                 allocations.append((id: UUID(), projectId: available.id, ratio: 0))
             }
         } label: {
@@ -526,7 +562,23 @@ struct ReceiptReviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("取引先")
                 .font(.subheadline.weight(.medium))
+            if !counterparties.isEmpty {
+                Picker("登録済み取引先", selection: counterpartyPickerSelection) {
+                    Text("選択しない").tag(UUID?.none)
+                    ForEach(counterparties, id: \.id) { counterparty in
+                        Text(counterparty.displayName).tag(UUID?.some(counterparty.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             TextField("取引先名を入力...", text: $counterparty)
+                .onChange(of: counterparty) { _, newValue in
+                    guard let selectedCounterparty else { return }
+                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty || trimmed != selectedCounterparty.displayName {
+                        selectedCounterpartyId = nil
+                    }
+                }
                 .padding(14)
                 .background(AppColors.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -553,6 +605,44 @@ struct ReceiptReviewView: View {
 
     // MARK: - Logic
 
+    private func applySelectedCounterpartyDefaults(preserveExternalProjectSelection: Bool) {
+        guard let selectedCounterpartyId,
+              let defaults = transactionFormQueryUseCase.counterpartyDefaults(
+                for: selectedCounterpartyId,
+                type: type,
+                snapshot: formSnapshot
+              ) else {
+            return
+        }
+
+        counterparty = defaults.displayName
+        if let taxCode = defaults.taxCode {
+            selectedTaxCode = taxCode
+        }
+        if let paymentAccountId = defaults.paymentAccountId {
+            self.paymentAccountId = paymentAccountId
+        }
+        if type != .transfer,
+           !preserveExternalProjectSelection,
+           let defaultProjectId = defaults.projectId {
+            allocations = [(id: UUID(), projectId: defaultProjectId, ratio: 100)]
+        }
+    }
+
+    private func initialMatchedCounterparty() -> Counterparty? {
+        if let registrationNumber = RegistrationNumberNormalizer.normalize(receiptData.registrationNumber) {
+            return counterparties.first { $0.normalizedInvoiceRegistrationNumber == registrationNumber }
+        }
+        let normalizedStoreName = receiptData.storeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedStoreName.isEmpty else { return nil }
+        return counterparties.first {
+            $0.displayName.compare(
+                normalizedStoreName,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+            ) == .orderedSame
+        }
+    }
+
     private func setupFromReceiptData() {
         guard !isInitialized else { return }
         isInitialized = true
@@ -563,8 +653,8 @@ struct ReceiptReviewView: View {
         categoryId = receiptData.categoryId
         memo = receiptData.formattedMemo
         editableLineItems = receiptData.lineItems.map { EditableLineItem(from: $0) }
-        paymentAccountId = dataStore.defaultPaymentAccountPreference
-            ?? dataStore.accounts.first(where: { $0.isPaymentAccount && $0.isActive })?.id
+        paymentAccountId = formSnapshot.defaultPaymentAccountId
+            ?? transactionFormQueryUseCase.paymentAccounts(snapshot: formSnapshot).first?.id
         if receiptData.taxAmount > 0 {
             selectedTaxCode = .standard10
             taxAmountText = String(receiptData.taxAmount)
@@ -575,10 +665,15 @@ struct ReceiptReviewView: View {
         ensureValidCategorySelection()
 
         // Default allocation - use defaultProjectId if provided
-        if let projectId = defaultProjectId, dataStore.projects.contains(where: { $0.id == projectId }) {
+        if let projectId = defaultProjectId, availableProjects.contains(where: { $0.id == projectId }) {
             allocations = [(id: UUID(), projectId: projectId, ratio: 100)]
-        } else if let firstProject = dataStore.projects.first {
+        } else if let firstProject = availableProjects.first {
             allocations = [(id: UUID(), projectId: firstProject.id, ratio: 100)]
+        }
+
+        if let matchedCounterparty = initialMatchedCounterparty() {
+            selectedCounterpartyId = matchedCounterparty.id
+            applySelectedCounterpartyDefaults(preserveExternalProjectSelection: defaultProjectId != nil)
         }
     }
 
@@ -605,8 +700,7 @@ struct ReceiptReviewView: View {
             let linkedProjectIds = type == .transfer ? [] : allocations.map(\.projectId)
             let resolvedCategoryId = type == .transfer ? "" : categoryId
             let resolvedTransferTo: String? = type == .transfer ? transferToAccountId : nil
-            let resolvedTaxCategory: TaxCategory? = type != .transfer ? selectedTaxCode?.legacyCategory : nil
-            let resolvedTaxRate = selectedTaxCode?.isTaxable == true ? selectedTaxCode?.taxRatePercent ?? 0 : 0
+            let resolvedTaxCodeId = type != .transfer ? selectedTaxCode?.rawValue : nil
             let resolvedIsTaxIncluded = selectedTaxCode?.isTaxable == true ? isTaxIncluded : false
             let resolvedTaxAmount: Int?
             if let tc = selectedTaxCode, tc.isTaxable {
@@ -618,21 +712,35 @@ struct ReceiptReviewView: View {
             } else {
                 resolvedTaxAmount = nil
             }
-            let resolvedCounterparty = counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedCounterpartyName = selectedCounterparty?.displayName
+                ?? counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedCounterparty = resolvedCounterpartyName.trimmingCharacters(in: .whitespacesAndNewlines)
             let originalFileName = generatedOriginalFileName()
 
             do {
-                guard let receiptImage else {
-                    throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+                let isPDFSource = originalFileData != nil
+                    && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
+                let fileData: Data
+                let mimeType: String
+
+                if isPDFSource, let pdfData = originalFileData {
+                    fileData = pdfData
+                    mimeType = "application/pdf"
+                } else {
+                    guard let receiptImage else {
+                        throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+                    }
+                    fileData = try ReceiptImageStore.jpegData(for: receiptImage)
+                    mimeType = "image/jpeg"
                 }
-                let fileData = try ReceiptImageStore.jpegData(for: receiptImage)
+
                 let request = ReceiptEvidenceIntakeRequest(
                     receiptData: receiptData,
                     ocrText: ocrText,
                     sourceType: evidenceSourceType,
                     fileData: fileData,
                     originalFileName: originalFileName,
-                    mimeType: "image/jpeg",
+                    mimeType: mimeType,
                     reviewedAmount: amount,
                     reviewedDate: validDate,
                     transactionType: type,
@@ -643,18 +751,27 @@ struct ReceiptReviewView: View {
                     paymentAccountId: paymentAccountId,
                     transferToAccountId: resolvedTransferTo,
                     taxDeductibleRate: type == .expense ? taxDeductibleRate : 100,
-                    taxCategory: resolvedTaxCategory,
-                    taxRate: resolvedTaxRate,
+                    taxCodeId: resolvedTaxCodeId,
                     isTaxIncluded: resolvedIsTaxIncluded,
                     taxAmount: resolvedTaxAmount,
-                    counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty
+                    registrationNumber: receiptData.registrationNumber,
+                    counterpartyId: selectedCounterpartyId,
+                    counterpartyName: resolvedCounterparty.isEmpty ? nil : resolvedCounterparty,
+                    isWithholdingEnabled: false,
+                    withholdingTaxCodeId: nil,
+                    withholdingTaxAmount: nil
                 )
                 _ = try await ReceiptEvidenceIntakeUseCase(modelContext: modelContext).intake(request)
+                onIntakeSucceeded?()
                 onDismiss()
             } catch {
                 saveError = error.localizedDescription
             }
         }
+    }
+
+    private func refreshFormSnapshot() {
+        formSnapshot = (try? transactionFormQueryUseCase.snapshot()) ?? .empty
     }
 
     private func generatedOriginalFileName() -> String {
@@ -673,10 +790,15 @@ struct ReceiptReviewView: View {
             prefix = "mail"
         case .importedPDF:
             prefix = "import"
+        case .importedCSV:
+            prefix = "csv"
         case .manualNoFile:
             prefix = "manual"
         }
-        return "\(prefix)-receipt-\(timestamp).jpg"
+        let isPDFSource = originalFileData != nil
+            && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
+        let ext = isPDFSource ? "pdf" : "jpg"
+        return "\(prefix)-receipt-\(timestamp).\(ext)"
     }
 
     private func ensureValidCategorySelection() {

@@ -15,7 +15,7 @@ final class TransactionsViewModelTests: XCTestCase {
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
-        viewModel = TransactionsViewModel(dataStore: dataStore)
+        viewModel = TransactionsViewModel(modelContext: context)
     }
 
     override func tearDown() {
@@ -29,8 +29,8 @@ final class TransactionsViewModelTests: XCTestCase {
     // MARK: - incomeTotal without project filter uses full amount
 
     func testIncomeTotalWithoutProjectFilterUsesFullAmount() {
-        let project = dataStore.addProject(name: "Project A", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "Project A", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -38,7 +38,7 @@ final class TransactionsViewModelTests: XCTestCase {
             memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 5000,
             date: Date(),
@@ -55,11 +55,11 @@ final class TransactionsViewModelTests: XCTestCase {
     // MARK: - incomeTotal with project filter uses allocation amount
 
     func testIncomeTotalWithProjectFilterUsesAllocationAmount() {
-        let projectA = dataStore.addProject(name: "Project A", description: "")
-        let projectB = dataStore.addProject(name: "Project B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "")
 
         // Transaction allocated 60/40 across two projects (amount = 10000)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -83,10 +83,10 @@ final class TransactionsViewModelTests: XCTestCase {
     // MARK: - expenseTotal with project filter uses allocation amount
 
     func testExpenseTotalWithProjectFilterUsesAllocationAmount() {
-        let projectA = dataStore.addProject(name: "Project A", description: "")
-        let projectB = dataStore.addProject(name: "Project B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 8000,
             date: Date(),
@@ -110,11 +110,11 @@ final class TransactionsViewModelTests: XCTestCase {
     // MARK: - netTotal with project filter = income allocation - expense allocation
 
     func testNetTotalWithProjectFilterUsesAllocationAmounts() {
-        let projectA = dataStore.addProject(name: "Project A", description: "")
-        let projectB = dataStore.addProject(name: "Project B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "")
 
         // Income: 10000, allocated 60/40
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: Date(),
@@ -127,7 +127,7 @@ final class TransactionsViewModelTests: XCTestCase {
         )
 
         // Expense: 4000, allocated 50/50
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 4000,
             date: Date(),

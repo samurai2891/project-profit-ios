@@ -48,7 +48,7 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetProjectSummary_emptyTransactions() {
-        let project = dataStore.addProject(name: "Empty Project", description: "")
+        let project = mutations(dataStore).addProject(name: "Empty Project", description: "")
 
         let summary = dataStore.getProjectSummary(projectId: project.id)
 
@@ -62,19 +62,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetProjectSummary_incomeAndExpense() {
-        let project = dataStore.addProject(name: "Web App", description: "Client project")
+        let project = mutations(dataStore).addProject(name: "Web App", description: "Client project")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "Payment",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 30_000, date: Date(),
             categoryId: "cat-hosting", memo: "Server",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: Date(),
             categoryId: "cat-tools", memo: "Tools",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -91,11 +91,11 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetProjectSummary_partialAllocations() {
-        let projectA = dataStore.addProject(name: "Project A", description: "")
-        let projectB = dataStore.addProject(name: "Project B", description: "")
+        let projectA = mutations(dataStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "")
 
         // 100_000 split 60/40 between A and B
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [
@@ -112,9 +112,9 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetProjectSummary_negativeProfitMarginIsZeroWhenNoIncome() {
-        let project = dataStore.addProject(name: "Loss Project", description: "")
+        let project = mutations(dataStore).addProject(name: "Loss Project", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: Date(),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -136,21 +136,21 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetAllProjectSummaries_multipleProjects() {
-        let p1 = dataStore.addProject(name: "Alpha", description: "")
-        let p2 = dataStore.addProject(name: "Beta", description: "")
-        let p3 = dataStore.addProject(name: "Gamma", description: "")
+        let p1 = mutations(dataStore).addProject(name: "Alpha", description: "")
+        let p2 = mutations(dataStore).addProject(name: "Beta", description: "")
+        let p3 = mutations(dataStore).addProject(name: "Gamma", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: p1.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 150_000, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: p2.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 90_000, date: Date(),
             categoryId: "cat-hosting", memo: "",
             allocations: [
@@ -189,19 +189,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetOverallSummary_withoutDateFilter() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 500_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 300_000, date: makeDate(year: 2025, month: 6, day: 15),
             categoryId: "cat-service", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 200_000, date: makeDate(year: 2025, month: 4, day: 10),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -216,19 +216,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetOverallSummary_withStartDateFilter() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 1, day: 15),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: makeDate(year: 2025, month: 4, day: 1),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -242,14 +242,14 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetOverallSummary_withEndDateFilter() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 1, day: 15),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -263,27 +263,27 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetOverallSummary_withBothDateFilters() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
         // Before range
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // In range
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: makeDate(year: 2025, month: 4, day: 1),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // After range
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 90_000, date: makeDate(year: 2025, month: 12, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -307,25 +307,25 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_incomeCategories() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 300_000, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-service", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // Expense should be excluded
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: Date(),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -346,14 +346,14 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_expenseCategories() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 80_000, date: Date(),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -371,19 +371,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_sortedByAmountDescending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 10_000, date: Date(),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: Date(),
             categoryId: "cat-ads", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 30_000, date: Date(),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -398,19 +398,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_percentagesAddUpTo100() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 333_333, date: Date(),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 333_333, date: Date(),
             categoryId: "cat-service", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 333_334, date: Date(),
             categoryId: "cat-other-income", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -423,19 +423,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_withDateFilter() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 15),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 40_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: makeDate(year: 2025, month: 3, day: 20),
             categoryId: "cat-tools", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -453,9 +453,9 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetCategorySummaries_unknownCategoryShowsFallbackName() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 5_000, date: Date(),
             categoryId: "non-existent-cat", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -488,34 +488,34 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetMonthlySummaries_correctIncomeExpenseProfit() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
         // January income
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 1, day: 10),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // January expense
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 30_000, date: makeDate(year: 2025, month: 1, day: 20),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // March income
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 250_000, date: makeDate(year: 2025, month: 3, day: 5),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // March expense
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 70_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
         // December income
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 500_000, date: makeDate(year: 2025, month: 12, day: 25),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -549,14 +549,14 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetMonthlySummaries_ignoresTransactionsFromOtherYears() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2024, month: 6, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: makeDate(year: 2026, month: 6, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -578,19 +578,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetMonthlySummaries_multipleTransactionsInSameMonth() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 5, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 150_000, date: makeDate(year: 2025, month: 5, day: 15),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 40_000, date: makeDate(year: 2025, month: 5, day: 20),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -607,19 +607,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: startDate / endDate
 
     func testGetFilteredTransactions_filterByStartDate() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -633,19 +633,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetFilteredTransactions_filterByEndDate() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -659,24 +659,24 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetFilteredTransactions_filterByDateRange() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 40_000, date: makeDate(year: 2025, month: 9, day: 1),
             categoryId: "cat-sales", memo: "Sep",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -697,20 +697,20 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: projectId
 
     func testGetFilteredTransactions_filterByProjectId() {
-        let p1 = dataStore.addProject(name: "Alpha", description: "")
-        let p2 = dataStore.addProject(name: "Beta", description: "")
+        let p1 = mutations(dataStore).addProject(name: "Alpha", description: "")
+        let p2 = mutations(dataStore).addProject(name: "Beta", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "Alpha only",
             allocations: [(projectId: p1.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: Date(),
             categoryId: "cat-sales", memo: "Beta only",
             allocations: [(projectId: p2.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 300_000, date: Date(),
             categoryId: "cat-sales", memo: "Both",
             allocations: [
@@ -739,19 +739,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: categoryId
 
     func testGetFilteredTransactions_filterByCategoryId() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "Sales",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: Date(),
             categoryId: "cat-service", memo: "Service",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: Date(),
             categoryId: "cat-hosting", memo: "Hosting",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -768,19 +768,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: type
 
     func testGetFilteredTransactions_filterByIncomeType() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "Income 1",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: Date(),
             categoryId: "cat-sales", memo: "Income 2",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: Date(),
             categoryId: "cat-hosting", memo: "Expense 1",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -794,19 +794,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetFilteredTransactions_filterByExpenseType() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: Date(),
             categoryId: "cat-sales", memo: "Income",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 30_000, date: Date(),
             categoryId: "cat-hosting", memo: "Hosting",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: Date(),
             categoryId: "cat-tools", memo: "Tools",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -822,35 +822,35 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: combined filters
 
     func testGetFilteredTransactions_combinedFilters() {
-        let p1 = dataStore.addProject(name: "Alpha", description: "")
-        let p2 = dataStore.addProject(name: "Beta", description: "")
+        let p1 = mutations(dataStore).addProject(name: "Alpha", description: "")
+        let p2 = mutations(dataStore).addProject(name: "Beta", description: "")
 
         // Matches: income + cat-sales + p1 + in date range
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-sales", memo: "Match",
             allocations: [(projectId: p1.id, ratio: 100)]
         )
         // Wrong type
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 50_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-sales", memo: "Wrong type",
             allocations: [(projectId: p1.id, ratio: 100)]
         )
         // Wrong project
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 80_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-sales", memo: "Wrong project",
             allocations: [(projectId: p2.id, ratio: 100)]
         )
         // Wrong category
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 60_000, date: makeDate(year: 2025, month: 3, day: 15),
             categoryId: "cat-service", memo: "Wrong category",
             allocations: [(projectId: p1.id, ratio: 100)]
         )
         // Out of date range
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 40_000, date: makeDate(year: 2025, month: 8, day: 1),
             categoryId: "cat-sales", memo: "Out of range",
             allocations: [(projectId: p1.id, ratio: 100)]
@@ -872,14 +872,14 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: empty filter returns all
 
     func testGetFilteredTransactions_emptyFilterReturnsAll() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense, amount: 20_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-hosting", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -894,19 +894,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: sort by date
 
     func testGetFilteredTransactions_sortByDateDescending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -923,19 +923,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetFilteredTransactions_sortByDateAscending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -954,19 +954,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: sort by amount
 
     func testGetFilteredTransactions_sortByAmountDescending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "50k",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: makeDate(year: 2025, month: 2, day: 1),
             categoryId: "cat-sales", memo: "200k",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "100k",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -983,19 +983,19 @@ final class DataStoreSummaryTests: XCTestCase {
     }
 
     func testGetFilteredTransactions_sortByAmountAscending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "50k",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: makeDate(year: 2025, month: 2, day: 1),
             categoryId: "cat-sales", memo: "200k",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "100k",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -1014,19 +1014,19 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: default sort
 
     func testGetFilteredTransactions_defaultSortIsDateDescending() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: makeDate(year: 2025, month: 1, day: 1),
             categoryId: "cat-sales", memo: "Jan",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: makeDate(year: 2025, month: 6, day: 1),
             categoryId: "cat-sales", memo: "Jun",
             allocations: [(projectId: project.id, ratio: 100)]
         )
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "Mar",
             allocations: [(projectId: project.id, ratio: 100)]
@@ -1043,9 +1043,9 @@ final class DataStoreSummaryTests: XCTestCase {
     // MARK: - getFilteredTransactions: no matches
 
     func testGetFilteredTransactions_noMatchesReturnsEmpty() {
-        let project = dataStore.addProject(name: "P", description: "")
+        let project = mutations(dataStore).addProject(name: "P", description: "")
 
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: makeDate(year: 2025, month: 3, day: 1),
             categoryId: "cat-sales", memo: "",
             allocations: [(projectId: project.id, ratio: 100)]

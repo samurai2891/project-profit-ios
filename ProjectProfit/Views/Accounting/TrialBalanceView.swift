@@ -1,7 +1,8 @@
+import SwiftData
 import SwiftUI
 
 struct TrialBalanceView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: AccountingReportViewModel?
 
     var body: some View {
@@ -15,19 +16,18 @@ struct TrialBalanceView: View {
         .navigationTitle("試算表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let viewModel, let report = viewModel.trialBalance {
+            if let viewModel, viewModel.trialBalance != nil {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         target: .trialBalance,
-                        fiscalYear: viewModel.fiscalYear,
-                        dataStore: dataStore
+                        fiscalYear: viewModel.fiscalYear
                     )
                 }
             }
         }
         .task {
             if viewModel == nil {
-                viewModel = AccountingReportViewModel(dataStore: dataStore)
+                viewModel = AccountingReportViewModel(modelContext: modelContext)
             }
         }
     }

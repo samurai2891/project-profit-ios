@@ -192,9 +192,11 @@ final class PPTransaction {
     var journalEntryId: UUID?           // 対応する仕訳の ID（FK → PPJournalEntry.id）
     // Phase 5: 消費税対応フィールド
     var taxAmount: Int?                 // 消費税額（円）
+    var taxCodeId: String?              // canonical 消費税区分ID
     var taxRate: Int?                   // 税率（%: 8 or 10）
     var isTaxIncluded: Bool?            // 税込金額かどうか（true = amount は税込）
     var taxCategory: TaxCategory?       // 消費税区分
+    var counterpartyId: UUID?           // 取引先マスタID（FK -> Counterparty.id）
     var counterparty: String?            // 取引先名
     var deletedAt: Date?                 // ソフトデリート日時（nil = 有効）
     var createdAt: Date
@@ -218,9 +220,11 @@ final class PPTransaction {
         bookkeepingMode: BookkeepingMode? = nil,
         journalEntryId: UUID? = nil,
         taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
         taxRate: Int? = nil,
         isTaxIncluded: Bool? = nil,
         taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         deletedAt: Date? = nil,
         createdAt: Date = Date(),
@@ -243,13 +247,77 @@ final class PPTransaction {
         self.bookkeepingMode = bookkeepingMode
         self.journalEntryId = journalEntryId
         self.taxAmount = taxAmount
+        self.taxCodeId = TaxCode.resolve(id: taxCodeId)?.rawValue
         self.taxRate = taxRate
         self.isTaxIncluded = isTaxIncluded
         self.taxCategory = taxCategory
+        self.counterpartyId = counterpartyId
         self.counterparty = counterparty
         self.deletedAt = deletedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    /// Restore / migration / legacy test support 用の compat 生成経路。
+    static func makeCompatibilityTransaction(
+        id: UUID = UUID(),
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String = "",
+        allocations: [Allocation] = [],
+        recurringId: UUID? = nil,
+        receiptImagePath: String? = nil,
+        lineItems: [ReceiptLineItem] = [],
+        isManuallyEdited: Bool? = nil,
+        paymentAccountId: String? = nil,
+        transferToAccountId: String? = nil,
+        taxDeductibleRate: Int? = nil,
+        bookkeepingMode: BookkeepingMode? = nil,
+        journalEntryId: UUID? = nil,
+        taxAmount: Int? = nil,
+        taxCodeId: String? = nil,
+        taxRate: Int? = nil,
+        isTaxIncluded: Bool? = nil,
+        taxCategory: TaxCategory? = nil,
+        counterpartyId: UUID? = nil,
+        counterparty: String? = nil,
+        deletedAt: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) -> PPTransaction {
+        let resolvedTaxCode = TaxCode.resolve(id: taxCodeId)
+            ?? TaxCode.resolveCompatibility(legacyCategory: taxCategory, taxRate: taxRate)
+
+        return PPTransaction(
+            id: id,
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            recurringId: recurringId,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            isManuallyEdited: isManuallyEdited,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            bookkeepingMode: bookkeepingMode,
+            journalEntryId: journalEntryId,
+            taxAmount: taxAmount,
+            taxCodeId: resolvedTaxCode?.rawValue,
+            taxRate: resolvedTaxCode?.taxRatePercent ?? taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: resolvedTaxCode?.legacyCategory ?? taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            deletedAt: deletedAt,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
     }
 }
 
@@ -259,15 +327,26 @@ extension PPTransaction {
     /// 実効経費算入率（nil の場合は 100% = 全額経費）
     var effectiveTaxDeductibleRate: Int { taxDeductibleRate ?? 100 }
 
+    var resolvedTaxCode: TaxCode? {
+        guard let taxCodeId else {
+            return nil
+        }
+        return TaxCode.resolve(id: taxCodeId)
+    }
+
+    var resolvedTaxCategory: TaxCategory? {
+        resolvedTaxCode?.legacyCategory
+    }
+
     /// 経費算入後の金額（家事按分適用後）
     /// 整数除算のため端数切り捨て。例: 999円 × 50% = 499円
     var deductibleAmount: Int {
         amount * effectiveTaxDeductibleRate / 100
     }
 
-    /// 実効税率（taxCategory の rate を優先、なければ taxRate、なければ 0）
+    /// 実効税率（canonical tax code を優先、なければ legacy 値を使用）
     var effectiveTaxRate: Int {
-        taxCategory?.rate ?? taxRate ?? 0
+        resolvedTaxCode?.taxRatePercent ?? taxRate ?? 0
     }
 
     /// 税抜金額（税込の場合は逆算、税抜の場合はそのまま）
@@ -334,7 +413,11 @@ final class PPRecurringTransaction {
     var paymentAccountId: String?
     var transferToAccountId: String?
     var taxDeductibleRate: Int?
+    var counterpartyId: UUID?
     var counterparty: String?
+    var isWithholdingEnabled: Bool
+    var withholdingTaxCodeId: String?
+    var withholdingTaxAmount: Decimal?
     var createdAt: Date
     var updatedAt: Date
 
@@ -361,7 +444,11 @@ final class PPRecurringTransaction {
         paymentAccountId: String? = nil,
         transferToAccountId: String? = nil,
         taxDeductibleRate: Int? = nil,
+        counterpartyId: UUID? = nil,
         counterparty: String? = nil,
+        isWithholdingEnabled: Bool = false,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -387,7 +474,11 @@ final class PPRecurringTransaction {
         self.paymentAccountId = paymentAccountId
         self.transferToAccountId = transferToAccountId
         self.taxDeductibleRate = taxDeductibleRate.map { min(100, max(0, $0)) }
+        self.counterpartyId = counterpartyId
         self.counterparty = counterparty
+        self.isWithholdingEnabled = isWithholdingEnabled
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

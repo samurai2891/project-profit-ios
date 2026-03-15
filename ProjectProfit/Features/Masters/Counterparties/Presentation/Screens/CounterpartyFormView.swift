@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct CounterpartyFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -18,15 +17,25 @@ struct CounterpartyFormView: View {
     @State private var phone = ""
     @State private var email = ""
     @State private var notes = ""
+    @State private var selectedDefaultAccountId: UUID?
     @State private var selectedTaxCodeId: String?
+    @State private var selectedDefaultProjectId: UUID?
+    @State private var isWithholdingSubject = false
+    @State private var selectedWithholdingCategory: WithholdingTaxCode?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var registrationNumberError: String?
+    @State private var formSnapshot: TransactionFormSnapshot = .empty
+    @State private var availableAccounts: [CanonicalAccount] = []
 
     private var isEditMode: Bool { counterparty != nil }
     private var isValid: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && registrationNumberError == nil
+            && (!isWithholdingSubject || selectedWithholdingCategory != nil)
+    }
+    private var availableProjects: [PPProject] {
+        formSnapshot.projects.filter { $0.isArchived != true }
     }
 
     init(counterparty: Counterparty?, onSaved: (() -> Void)? = nil) {
@@ -74,10 +83,37 @@ struct CounterpartyFormView: View {
             }
 
             Section("デフォルト設定") {
+                Picker("勘定科目", selection: $selectedDefaultAccountId) {
+                    Text("未設定").tag(UUID?.none)
+                    ForEach(availableAccounts, id: \.id) { account in
+                        Text("\(account.code) \(account.name)").tag(UUID?.some(account.id))
+                    }
+                }
+
                 Picker("税区分", selection: $selectedTaxCodeId) {
                     Text("未設定").tag(String?.none)
                     ForEach(TaxCode.allCases, id: \.rawValue) { code in
                         Text(code.displayName).tag(String?.some(code.rawValue))
+                    }
+                }
+
+                Picker("プロジェクト", selection: $selectedDefaultProjectId) {
+                    Text("未設定").tag(UUID?.none)
+                    ForEach(availableProjects) { project in
+                        Text(project.name).tag(UUID?.some(project.id))
+                    }
+                }
+            }
+
+            Section("源泉徴収") {
+                Toggle("源泉徴収対象の支払先", isOn: $isWithholdingSubject)
+
+                if isWithholdingSubject {
+                    Picker("源泉区分", selection: $selectedWithholdingCategory) {
+                        Text("選択してください").tag(WithholdingTaxCode?.none)
+                        ForEach(WithholdingTaxCode.allCases, id: \.self) { code in
+                            Text(code.displayName).tag(WithholdingTaxCode?.some(code))
+                        }
                     }
                 }
             }
@@ -101,6 +137,9 @@ struct CounterpartyFormView: View {
             }
         }
         .onAppear { populateFields() }
+        .task {
+            await loadReferenceData()
+        }
         .alert("エラー", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -111,18 +150,44 @@ struct CounterpartyFormView: View {
         }
     }
 
+    private func loadReferenceData() async {
+        do {
+            let snapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+            formSnapshot = snapshot
+
+            guard let businessId = snapshot.businessId else {
+                availableAccounts = []
+                errorMessage = nil
+                return
+            }
+
+            availableAccounts = try await ChartOfAccountsUseCase(modelContext: modelContext)
+                .accounts(businessId: businessId)
+                .filter { $0.archivedAt == nil }
+            errorMessage = nil
+        } catch {
+            formSnapshot = .empty
+            availableAccounts = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func populateFields() {
         guard let cp = counterparty else { return }
         displayName = cp.displayName
         kana = cp.kana ?? ""
         legalName = cp.legalName ?? ""
-        invoiceRegistrationNumber = cp.invoiceRegistrationNumber ?? ""
+        invoiceRegistrationNumber = cp.normalizedInvoiceRegistrationNumber ?? cp.invoiceRegistrationNumber ?? ""
         invoiceIssuerStatus = cp.invoiceIssuerStatus
         address = cp.address ?? ""
         phone = cp.phone ?? ""
         email = cp.email ?? ""
         notes = cp.notes ?? ""
+        selectedDefaultAccountId = cp.defaultAccountId
         selectedTaxCodeId = cp.defaultTaxCodeId
+        selectedDefaultProjectId = cp.defaultProjectId
+        isWithholdingSubject = cp.payeeInfo?.isWithholdingSubject ?? false
+        selectedWithholdingCategory = cp.payeeInfo?.withholdingCategory
     }
 
     private func validateRegistrationNumber(_ value: String) {
@@ -140,7 +205,7 @@ struct CounterpartyFormView: View {
     }
 
     private func save() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = formSnapshot.businessId else {
             errorMessage = "事業者情報が未設定です"
             return
         }
@@ -150,11 +215,19 @@ struct CounterpartyFormView: View {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKana = kana.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLegalName = legalName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedRegNum = invoiceRegistrationNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRegNum = RegistrationNumberNormalizer.normalize(invoiceRegistrationNumber)
         let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payeeInfo: PayeeInfo? = isWithholdingSubject
+            ? PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: selectedWithholdingCategory
+            )
+            : selectedWithholdingCategory.map {
+                PayeeInfo(isWithholdingSubject: false, withholdingCategory: $0)
+            }
 
         let newCounterparty: Counterparty
         if let existing = counterparty {
@@ -165,17 +238,18 @@ struct CounterpartyFormView: View {
                 kana: trimmedKana.isEmpty ? nil : trimmedKana,
                 legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
                 corporateNumber: existing.corporateNumber,
-                invoiceRegistrationNumber: trimmedRegNum.isEmpty ? nil : trimmedRegNum,
+                invoiceRegistrationNumber: trimmedRegNum,
                 invoiceIssuerStatus: invoiceIssuerStatus,
                 statusEffectiveFrom: existing.statusEffectiveFrom,
                 statusEffectiveTo: existing.statusEffectiveTo,
                 address: trimmedAddress.isEmpty ? nil : trimmedAddress,
                 phone: trimmedPhone.isEmpty ? nil : trimmedPhone,
                 email: trimmedEmail.isEmpty ? nil : trimmedEmail,
-                defaultAccountId: existing.defaultAccountId,
+                defaultAccountId: selectedDefaultAccountId,
                 defaultTaxCodeId: selectedTaxCodeId,
-                defaultProjectId: existing.defaultProjectId,
+                defaultProjectId: selectedDefaultProjectId,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                payeeInfo: payeeInfo,
                 createdAt: existing.createdAt,
                 updatedAt: Date()
             )
@@ -185,13 +259,16 @@ struct CounterpartyFormView: View {
                 displayName: trimmedName,
                 kana: trimmedKana.isEmpty ? nil : trimmedKana,
                 legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
-                invoiceRegistrationNumber: trimmedRegNum.isEmpty ? nil : trimmedRegNum,
+                invoiceRegistrationNumber: trimmedRegNum,
                 invoiceIssuerStatus: invoiceIssuerStatus,
                 address: trimmedAddress.isEmpty ? nil : trimmedAddress,
                 phone: trimmedPhone.isEmpty ? nil : trimmedPhone,
                 email: trimmedEmail.isEmpty ? nil : trimmedEmail,
+                defaultAccountId: selectedDefaultAccountId,
                 defaultTaxCodeId: selectedTaxCodeId,
-                notes: trimmedNotes.isEmpty ? nil : trimmedNotes
+                defaultProjectId: selectedDefaultProjectId,
+                notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                payeeInfo: payeeInfo
             )
         }
 

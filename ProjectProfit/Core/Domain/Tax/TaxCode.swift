@@ -1,7 +1,7 @@
 import Foundation
 
 /// canonical な消費税区分マスタ
-/// legacy `TaxCategory` と既存の `defaultTaxCodeId` をこの識別子へ寄せる。
+/// production path は `rawValue` / `resolve(id:)` を正本として扱う。
 enum TaxCode: String, Codable, CaseIterable, Sendable {
     case standard10 = "TAX-10"
     case reduced8 = "TAX-8"
@@ -30,6 +30,7 @@ enum TaxCode: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Restore / migration / legacy test support 用の互換投影。
     var legacyCategory: TaxCategory {
         switch self {
         case .standard10:
@@ -89,7 +90,8 @@ enum TaxCode: String, Codable, CaseIterable, Sendable {
         return TaxCode(rawValue: id)
     }
 
-    static func resolve(legacyCategory: TaxCategory?, taxRate: Int?) -> TaxCode? {
+    /// Restore / migration / legacy test support 用の互換解決。
+    static func resolveCompatibility(legacyCategory: TaxCategory?, taxRate: Int?) -> TaxCode? {
         if let legacyCategory {
             switch legacyCategory {
             case .standardRate:
@@ -111,5 +113,10 @@ enum TaxCode: String, Codable, CaseIterable, Sendable {
         default:
             return nil
         }
+    }
+
+    /// Restore / migration / legacy test support 用の互換 API。
+    static func resolve(legacyCategory: TaxCategory?, taxRate: Int?) -> TaxCode? {
+        resolveCompatibility(legacyCategory: legacyCategory, taxRate: taxRate)
     }
 }

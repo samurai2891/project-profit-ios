@@ -1,47 +1,27 @@
+import SwiftData
 import SwiftUI
 
 struct ExportMenuButton: View {
-    let csvGenerator: () -> String
-    let pdfGenerator: () -> Data
-    let fileNamePrefix: String
+    @Environment(\.modelContext) private var modelContext
+
+    let target: ExportCoordinator.ExportTarget
+    let fiscalYear: Int
+    let ledgerOptions: ExportCoordinator.LedgerExportOptions?
 
     @State private var showShareSheet = false
     @State private var shareURL: URL?
+    @State private var errorMessage: String?
 
     /// ExportCoordinator 経由でエクスポートするコンビニエンスイニシャライザ
     @MainActor
     init(
         target: ExportCoordinator.ExportTarget,
         fiscalYear: Int,
-        dataStore: DataStore,
         ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
     ) {
-        self.fileNamePrefix = target.label
-        self.csvGenerator = {
-            guard let url = try? ExportCoordinator.export(
-                target: target,
-                format: .csv,
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                ledgerOptions: ledgerOptions
-            ),
-            let data = try? Data(contentsOf: url),
-            let text = String(data: data, encoding: .utf8)
-            else { return "" }
-            return text
-        }
-        self.pdfGenerator = {
-            guard let url = try? ExportCoordinator.export(
-                target: target,
-                format: .pdf,
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                ledgerOptions: ledgerOptions
-            ),
-            let data = try? Data(contentsOf: url)
-            else { return Data() }
-            return data
-        }
+        self.target = target
+        self.fiscalYear = fiscalYear
+        self.ledgerOptions = ledgerOptions
     }
 
     var body: some View {
@@ -64,39 +44,44 @@ struct ExportMenuButton: View {
                 ShareSheetView(activityItems: [url])
             }
         }
-    }
-
-    private func shareCSV() {
-        let csv = csvGenerator()
-        let fileName = "\(fileNamePrefix)_\(formattedDate()).csv"
-        guard let data = csv.data(using: .utf8) else { return }
-        guard let url = writeTempFile(content: data, fileName: fileName) else { return }
-        shareURL = url
-        showShareSheet = true
-    }
-
-    private func sharePDF() {
-        let data = pdfGenerator()
-        let fileName = "\(fileNamePrefix)_\(formattedDate()).pdf"
-        guard let url = writeTempFile(content: data, fileName: fileName) else { return }
-        shareURL = url
-        showShareSheet = true
-    }
-
-    private func writeTempFile(content: Data, fileName: String) -> URL? {
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
-        do {
-            try content.write(to: fileURL)
-            return fileURL
-        } catch {
-            return nil
+        .alert("出力エラー", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    errorMessage = nil
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
-    private func formattedDate() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        return formatter.string(from: Date())
+    private func shareCSV() {
+        exportAndShare(format: .csv)
+    }
+
+    private func sharePDF() {
+        exportAndShare(format: .pdf)
+    }
+
+    private func exportAndShare(format: ExportCoordinator.ExportFormat) {
+        do {
+            shareURL = try ExportCoordinator.export(
+                target: target,
+                format: format,
+                fiscalYear: fiscalYear,
+                modelContext: modelContext,
+                ledgerOptions: ledgerOptions
+            )
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            errorMessage = error.localizedDescription
+        }
     }
 }

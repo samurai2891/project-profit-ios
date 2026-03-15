@@ -1,13 +1,15 @@
+import SwiftData
 import SwiftUI
 
 struct SubLedgerView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     let type: SubLedgerType
 
     @State private var selectedYear = Calendar.current.component(.year, from: Date())
     @State private var showShareSheet = false
-    @State private var csvText = ""
+    @State private var shareURL: URL?
+    @State private var exportErrorMessage: String?
     // 経費帳: 科目フィルタ
     @State private var selectedExpenseAccountId: String?
     // 売掛帳/買掛帳: 取引先フィルタ
@@ -21,42 +23,35 @@ struct SubLedgerView: View {
     private var periodStart: Date { startOfYear(selectedYear) }
     private var periodEnd: Date { endOfYear(selectedYear) }
 
+    private var queryUseCase: SubLedgerQueryUseCase {
+        SubLedgerQueryUseCase(modelContext: modelContext)
+    }
+
     /// 全エントリ（フィルタなし） — counterparties/summary の算出元
-    private var allEntries: [SubLedgerEntry] {
-        dataStore.getSubLedgerEntries(
+    private var allSnapshot: SubLedgerSnapshot {
+        queryUseCase.snapshot(
             type: type,
-            startDate: periodStart,
-            endDate: periodEnd
+            year: selectedYear
         )
     }
 
     /// 表示用エントリ（フィルタ適用済み）
-    private var entries: [SubLedgerEntry] {
-        var result = allEntries
-
-        // 経費帳: 科目フィルタ
-        if type == .expenseBook, let accountId = selectedExpenseAccountId {
-            result = result.filter { $0.accountId == accountId }
-        }
-
-        // 売掛帳/買掛帳: 取引先フィルタ
-        if (type == .accountsReceivableBook || type == .accountsPayableBook),
-           let cp = selectedCounterparty {
-            result = result.filter { ($0.counterparty ?? "") == (cp.isEmpty ? "" : cp) }
-        }
-
-        return result
+    private var filteredSnapshot: SubLedgerSnapshot {
+        queryUseCase.snapshot(
+            type: type,
+            year: selectedYear,
+            accountFilter: selectedExpenseAccountId,
+            counterpartyFilter: selectedCounterparty
+        )
     }
 
     /// サマリー（全エントリから算出）
     private var summary: SubLedgerSummary {
-        SubLedgerSummary(
-            count: allEntries.count,
-            debitTotal: allEntries.reduce(0) { $0 + $1.debit },
-            creditTotal: allEntries.reduce(0) { $0 + $1.credit },
-            periodStart: periodStart,
-            periodEnd: periodEnd
-        )
+        allSnapshot.summary
+    }
+
+    private var entries: [SubLedgerEntry] {
+        filteredSnapshot.entries
     }
 
     var body: some View {
@@ -82,10 +77,7 @@ struct SubLedgerView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    csvText = dataStore.exportSubLedgerCSV(
-                        type: type, startDate: periodStart, endDate: periodEnd
-                    )
-                    showShareSheet = true
+                    exportSubLedger()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
@@ -94,7 +86,19 @@ struct SubLedgerView: View {
             }
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheetView(activityItems: [csvText])
+            if let shareURL {
+                ShareSheetView(activityItems: [shareURL])
+            }
+        }
+        .alert("出力エラー", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportErrorMessage = nil
+            }
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -129,6 +133,29 @@ struct SubLedgerView: View {
             arBookContent
         case .accountsPayableBook:
             apBookContent
+        }
+    }
+
+    private func exportSubLedger() {
+        do {
+            shareURL = try ExportCoordinator.export(
+                target: .subLedger,
+                format: .csv,
+                fiscalYear: selectedYear,
+                modelContext: modelContext,
+                subLedgerOptions: .init(
+                    type: type,
+                    startDate: periodStart,
+                    endDate: periodEnd,
+                    accountFilter: selectedExpenseAccountId,
+                    counterpartyFilter: selectedCounterparty
+                )
+            )
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            exportErrorMessage = error.localizedDescription
         }
     }
 }
@@ -237,9 +264,7 @@ extension SubLedgerView {
 extension SubLedgerView {
 
     private var expenseAccounts: [PPAccount] {
-        dataStore.accounts
-            .filter { $0.isActive && $0.accountType == .expense }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        allSnapshot.expenseAccounts
     }
 
     private var expenseBookContent: some View {
@@ -534,7 +559,7 @@ extension SubLedgerView {
 
     /// 取引先一覧（売掛帳/買掛帳共用）
     private var counterparties: [String] {
-        let cps = Set(allEntries.compactMap(\.counterparty).filter { !$0.isEmpty })
+        let cps = Set(allSnapshot.entries.compactMap(\.counterparty).filter { !$0.isEmpty })
         return cps.sorted()
     }
 
@@ -550,7 +575,7 @@ extension SubLedgerView {
                         selectedCounterparty = cp
                     }
                 }
-                let hasUnknown = allEntries.contains { ($0.counterparty ?? "").isEmpty }
+                let hasUnknown = allSnapshot.entries.contains { ($0.counterparty ?? "").isEmpty }
                 if hasUnknown {
                     FilterChip(label: "不明", isSelected: selectedCounterparty == "") {
                         selectedCounterparty = ""

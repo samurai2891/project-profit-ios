@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 // MARK: - TransactionGroup
@@ -32,7 +33,8 @@ struct LedgerRow: Identifiable {
 @MainActor
 @Observable
 final class TransactionsViewModel {
-    let dataStore: DataStore
+    private let transactionHistoryUseCase: TransactionHistoryUseCase
+    private var refreshVersion = 0
     var filter = TransactionFilter()
     var sort = TransactionSort()
 
@@ -51,14 +53,19 @@ final class TransactionsViewModel {
         )}
     }
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(transactionHistoryUseCase: TransactionHistoryUseCase) {
+        self.transactionHistoryUseCase = transactionHistoryUseCase
+    }
+
+    convenience init(modelContext: ModelContext) {
+        self.init(transactionHistoryUseCase: TransactionHistoryUseCase(modelContext: modelContext))
     }
 
     // MARK: - Computed Properties
 
     var filteredTransactions: [PPTransaction] {
-        dataStore.getFilteredTransactions(filter: filter, sort: sort)
+        _ = refreshVersion
+        return transactionHistoryUseCase.filteredTransactions(filter: filter, sort: sort)
     }
 
     var groupedTransactions: [TransactionGroup] {
@@ -92,6 +99,14 @@ final class TransactionsViewModel {
 
     var isTransferFilter: Bool {
         selectedType == .transfer
+    }
+
+    var canMutateLegacyTransactions: Bool {
+        transactionHistoryUseCase.canMutateLegacyTransactions
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        transactionHistoryUseCase.legacyMutationDisabledMessage
     }
 
     var hasActiveFilter: Bool {
@@ -141,12 +156,11 @@ final class TransactionsViewModel {
                 credit = 0
             }
             balance += credit - debit
-            let categoryName = dataStore.getCategory(id: t.categoryId)?.name ?? "未分類"
             return LedgerRow(
                 id: t.id,
                 date: t.date,
                 memo: t.memo,
-                categoryName: categoryName,
+                categoryName: categoryName(for: t),
                 type: t.type,
                 debit: debit,
                 credit: credit,
@@ -156,19 +170,22 @@ final class TransactionsViewModel {
         }
     }
 
-    // MARK: - Actions
-
-    func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id)
+    func exportURL(exportAll: Bool = false) throws -> URL {
+        _ = refreshVersion
+        let target = exportAll ? transactionHistoryUseCase.allTransactions() : filteredTransactions
+        return try transactionHistoryUseCase.exportCSV(transactions: target)
     }
 
-    func generateCSVText(exportAll: Bool = false) -> String {
-        let target = exportAll ? dataStore.transactions : filteredTransactions
-        return generateCSV(
-            transactions: target,
-            getCategory: { self.dataStore.getCategory(id: $0) },
-            getProject: { self.dataStore.getProject(id: $0) }
-        )
+    func categoryName(for transaction: PPTransaction) -> String {
+        transactionHistoryUseCase.categoryName(for: transaction.categoryId)
+    }
+
+    func projectNames(for transaction: PPTransaction) -> [String] {
+        transactionHistoryUseCase.projectNames(for: transaction.allocations)
+    }
+
+    func refresh() {
+        refreshVersion &+= 1
     }
 
     // MARK: - Private Helpers

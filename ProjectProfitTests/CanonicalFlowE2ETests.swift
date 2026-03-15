@@ -79,8 +79,8 @@ final class CanonicalFlowE2ETests: XCTestCase {
         XCTAssertEqual(worksheet.lines.count, 1)
         XCTAssertEqual(worksheet.rawInputTaxTotal, 10_000)
 
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: fiscalYear))
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.taxClose, for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
 
         let taxIssues = try TaxYearStateUseCase(modelContext: context).filingPreflightIssues(
             businessId: flow.businessId,
@@ -95,7 +95,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         )
         XCTAssertFalse(exportPreflight.isBlocking)
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
+        let viewModel = makeEtaxExportViewModel()
         viewModel.fiscalYear = fiscalYear
         viewModel.generatePreview()
 
@@ -107,6 +107,38 @@ final class CanonicalFlowE2ETests: XCTestCase {
             return XCTFail("e-Tax CSV export should succeed after preflight passes")
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    private func makeEtaxExportViewModel() -> EtaxExportViewModel {
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        return EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { fiscalYear in
+                EtaxExportContext(
+                    businessId: self.dataStore.businessProfile?.id,
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
+                        ? self.dataStore.currentTaxYearProfile
+                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
+                )
+            },
+            formBuilder: { filingStyle, fiscalYear in
+                try FormEngine.build(
+                    filingStyle: filingStyle,
+                    dataStore: self.dataStore,
+                    fiscalYear: fiscalYear
+                )
+            },
+            exporter: { format, form in
+                try ExportCoordinator.export(
+                    target: .etax,
+                    format: format,
+                    fiscalYear: form.fiscalYear,
+                    modelContext: self.context,
+                    skipPreflightValidation: true,
+                    etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                )
+            }
+        )
     }
 
     func testBackupRestoreRoundTripRestoresSearchableCanonicalArtifacts() async throws {
@@ -195,6 +227,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
                 subtotalAmount: amount - (amount / 11),
                 date: "\(fiscalYear)-04-10",
                 storeName: counterpartyName,
+                registrationNumber: nil,
                 estimatedCategory: "tools",
                 itemSummary: "監査証憑"
             ),
@@ -213,11 +246,15 @@ final class CanonicalFlowE2ETests: XCTestCase {
             paymentAccountId: AccountingConstants.cashAccountId,
             transferToAccountId: nil,
             taxDeductibleRate: 100,
-            taxCategory: .standardRate,
-            taxRate: 10,
+            taxCodeId: TaxCode.standard10.rawValue,
             isTaxIncluded: false,
             taxAmount: amount / 11,
-            counterpartyName: counterpartyName
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: counterpartyName,
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let intakeResult = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(request)
@@ -250,7 +287,6 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         dataStore.loadData()

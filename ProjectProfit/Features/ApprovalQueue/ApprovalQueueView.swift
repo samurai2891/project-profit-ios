@@ -21,25 +21,63 @@ private enum ApprovalQueueFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private struct WithholdingCandidateSummary {
+    let code: WithholdingTaxCode
+    let totalAmount: Decimal
+    let lineCount: Int
+}
+
+private func withholdingSummary(for candidate: PostingCandidate) -> WithholdingCandidateSummary? {
+    let lines = candidate.proposedLines.filter {
+        $0.withholdingTaxAmount != nil && $0.withholdingTaxCodeId != nil
+    }
+    guard let first = lines.first,
+          let codeId = first.withholdingTaxCodeId,
+          let code = WithholdingTaxCode.resolve(id: codeId) else {
+        return nil
+    }
+    let totalAmount = lines.reduce(Decimal.zero) { partialResult, line in
+        partialResult + (line.withholdingTaxAmount ?? .zero)
+    }
+    return WithholdingCandidateSummary(
+        code: code,
+        totalAmount: totalAmount,
+        lineCount: lines.count
+    )
+}
+
 struct ApprovalQueueView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
-    @State private var candidates: [PostingCandidate] = []
+    @State private var queueItems: [ApprovalQueueItem] = []
     @State private var counterpartiesById: [UUID: Counterparty] = [:]
     @State private var selectedFilter: ApprovalQueueFilter = .pending
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private var filteredCandidates: [PostingCandidate] {
+    private var filteredItems: [ApprovalQueueItem] {
         switch selectedFilter {
         case .pending:
-            return candidates
+            return queueItems
         case .draft:
-            return candidates.filter { $0.status == .draft }
+            return queueItems.filter {
+                if case .candidate(let candidate) = $0 {
+                    return candidate.status == .draft
+                }
+                return false
+            }
         case .needsReview:
-            return candidates.filter { $0.status == .needsReview }
+            return queueItems.filter {
+                if case .candidate(let candidate) = $0 {
+                    return candidate.status == .needsReview
+                }
+                return false
+            }
         }
+    }
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -53,25 +91,24 @@ struct ApprovalQueueView: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("承認待ち (\(filteredCandidates.count))") {
+            Section("承認待ち (\(filteredItems.count))") {
                 if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, alignment: .center)
-                } else if filteredCandidates.isEmpty {
+                } else if filteredItems.isEmpty {
                     ContentUnavailableView(
                         "承認待ち候補はありません",
                         systemImage: "checkmark.seal",
                         description: Text("Evidence から作成された候補がここに表示されます")
                     )
                 } else {
-                    ForEach(filteredCandidates, id: \.id) { candidate in
+                    ForEach(filteredItems, id: \.id) { item in
                         NavigationLink {
-                            ApprovalCandidateDetailView(candidateId: candidate.id) {
-                                Task { await loadCandidates() }
-                            }
+                            destinationView(for: item)
                         } label: {
-                            candidateRow(candidate)
+                            queueItemRow(item)
                         }
+                        .accessibilityIdentifier(navigationIdentifier(for: item))
                     }
                 }
             }
@@ -79,10 +116,13 @@ struct ApprovalQueueView: View {
         .navigationTitle("Approval Queue")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: reloadKey) {
-            await loadCandidates()
+            await loadQueueItems()
+        }
+        .onAppear {
+            Task { await loadQueueItems() }
         }
         .refreshable {
-            await loadCandidates()
+            await loadQueueItems()
         }
         .alert("読み込みエラー", isPresented: Binding(
             get: { errorMessage != nil },
@@ -95,15 +135,45 @@ struct ApprovalQueueView: View {
     }
 
     private var reloadKey: String {
-        [
-            dataStore.businessProfile?.id.uuidString ?? "none",
-            selectedFilter.rawValue,
-        ].joined(separator: ":")
+        approvalQueueQueryUseCase.reloadKey(selectedFilterRawValue: selectedFilter.rawValue)
     }
 
     @ViewBuilder
+    private func destinationView(for item: ApprovalQueueItem) -> some View {
+        switch item {
+        case .candidate(let candidate):
+            ApprovalCandidateDetailView(candidateId: candidate.id) {
+                Task { await loadQueueItems() }
+            }
+        case .request(let request):
+            ApprovalRequestDetailView(requestId: request.id) {
+                Task { await loadQueueItems() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func queueItemRow(_ item: ApprovalQueueItem) -> some View {
+        switch item {
+        case .candidate(let candidate):
+            candidateRow(candidate)
+        case .request(let request):
+            requestRow(request)
+        }
+    }
+
+    private func navigationIdentifier(for item: ApprovalQueueItem) -> String {
+        switch item {
+        case .candidate(let candidate):
+            return "approval.candidate.row.\(candidate.id.uuidString)"
+        case .request(let request):
+            return "approval.request.row.\(request.id.uuidString)"
+        }
+    }
+
     private func candidateRow(_ candidate: PostingCandidate) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let withholding = withholdingSummary(for: candidate)
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(candidate.counterpartyId.flatMap { counterpartiesById[$0]?.displayName } ?? candidate.memo ?? "摘要なし")
@@ -129,6 +199,11 @@ struct ApprovalQueueView: View {
                 if candidate.proposedLines.contains(where: { $0.projectAllocationId != nil }) {
                     Label("配賦あり", systemImage: "square.split.2x2")
                 }
+                if let withholding {
+                    Label("源泉あり \(withholding.code.displayName)", systemImage: "doc.text.magnifyingglass")
+                    .accessibilityLabel("源泉あり \(withholding.code.displayName)")
+                    .accessibilityIdentifier("approval.candidate.withholdingBadge")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -136,9 +211,49 @@ struct ApprovalQueueView: View {
         .padding(.vertical, 4)
     }
 
-    private func loadCandidates() async {
-        guard let businessId = dataStore.businessProfile?.id else {
-            candidates = []
+    @ViewBuilder
+    private func requestRow(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(request.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    if let subtitle = request.subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text(request.status.displayName)
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppColors.primary.opacity(0.12))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 12) {
+                Label(request.kind.displayName, systemImage: "checklist")
+                if let recurringPayload = request.payload(RecurringApprovalPayload.self) {
+                    Label(formatDate(recurringPayload.scheduledDate), systemImage: "calendar")
+                    Label(formatAmount(Decimal(recurringPayload.amount)), systemImage: "yensign")
+                } else {
+                    Label(formatDate(request.updatedAt), systemImage: "clock")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func loadQueueItems() async {
+        guard let businessId = approvalQueueQueryUseCase.currentBusinessId() else {
+            queueItems = []
+            counterpartiesById = [:]
             return
         }
 
@@ -146,9 +261,7 @@ struct ApprovalQueueView: View {
         defer { isLoading = false }
 
         do {
-            let workflow = PostingWorkflowUseCase(modelContext: modelContext)
-            candidates = try await workflow
-                .pendingCandidates(businessId: businessId)
+            queueItems = try await approvalQueueQueryUseCase.pendingItems()
             let counterparties = try await CounterpartyMasterUseCase(modelContext: modelContext)
                 .loadCounterparties(businessId: businessId)
             counterpartiesById = Dictionary(uniqueKeysWithValues: counterparties.map { ($0.id, $0) })
@@ -189,37 +302,129 @@ struct ApprovalQueueView: View {
 
 private struct CandidateLineDraft: Identifiable {
     let id: UUID
-    var debitLegacyAccountId: String?
-    var creditLegacyAccountId: String?
+    var debitAccountId: UUID?
+    var creditAccountId: UUID?
     var amountText: String
     var taxCodeId: String?
     var projectAllocationId: UUID?
     var memo: String
+    var withholdingTaxCodeId: String?
+    var withholdingTaxAmountText: String
+    var withholdingTaxBaseAmount: Decimal?
 
-    @MainActor
-    init(line: PostingCandidateLine, dataStore: DataStore) {
+    init(line: PostingCandidateLine) {
         self.id = line.id
-        self.debitLegacyAccountId = line.debitAccountId.flatMap { dataStore.legacyAccountId(for: $0) }
-        self.creditLegacyAccountId = line.creditAccountId.flatMap { dataStore.legacyAccountId(for: $0) }
+        self.debitAccountId = line.debitAccountId
+        self.creditAccountId = line.creditAccountId
         self.amountText = NSDecimalNumber(decimal: line.amount).stringValue
         self.taxCodeId = line.taxCodeId
         self.projectAllocationId = line.projectAllocationId
         self.memo = line.memo ?? ""
+        self.withholdingTaxCodeId = line.withholdingTaxCodeId
+        self.withholdingTaxAmountText = line.withholdingTaxAmount.map { NSDecimalNumber(decimal: $0).stringValue } ?? ""
+        self.withholdingTaxBaseAmount = line.withholdingTaxBaseAmount
     }
 
     init() {
         self.id = UUID()
-        self.debitLegacyAccountId = nil
-        self.creditLegacyAccountId = nil
+        self.debitAccountId = nil
+        self.creditAccountId = nil
         self.amountText = ""
         self.taxCodeId = nil
         self.projectAllocationId = nil
         self.memo = ""
+        self.withholdingTaxCodeId = nil
+        self.withholdingTaxAmountText = ""
+        self.withholdingTaxBaseAmount = nil
+    }
+}
+
+private struct CanonicalAccountPickerView: View {
+    let label: String
+    let accounts: [CanonicalAccount]
+    @Binding var selectedAccountId: UUID?
+
+    private var activeAccounts: [CanonicalAccount] {
+        accounts
+            .filter { $0.archivedAt == nil }
+            .sorted {
+                if $0.displayOrder == $1.displayOrder {
+                    return $0.code < $1.code
+                }
+                return $0.displayOrder < $1.displayOrder
+            }
+    }
+
+    private var groupedAccounts: [(CanonicalAccountType, [CanonicalAccount])] {
+        let grouped = Dictionary(grouping: activeAccounts, by: \.accountType)
+        return CanonicalAccountType.allCases.compactMap { type in
+            guard let items = grouped[type], !items.isEmpty else {
+                return nil
+            }
+            return (type, items)
+        }
+    }
+
+    private var selectedAccountName: String {
+        guard let selectedAccountId,
+              let account = activeAccounts.first(where: { $0.id == selectedAccountId }) else {
+            return "選択してください"
+        }
+        return "\(account.code) \(account.name)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Menu {
+                Button("未設定") {
+                    selectedAccountId = nil
+                }
+
+                ForEach(groupedAccounts, id: \.0) { accountType, items in
+                    Section(accountType.displayName) {
+                        ForEach(items, id: \.id) { account in
+                            Button {
+                                selectedAccountId = account.id
+                            } label: {
+                                HStack {
+                                    Text("\(account.code) \(account.name)")
+                                    if selectedAccountId == account.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedAccountName)
+                        .font(.subheadline)
+                        .foregroundStyle(selectedAccountId != nil ? .primary : .secondary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(AppColors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppColors.border, lineWidth: 1)
+                )
+            }
+            .accessibilityLabel(label)
+            .accessibilityValue(selectedAccountName)
+        }
     }
 }
 
 struct ApprovalCandidateDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -236,6 +441,10 @@ struct ApprovalCandidateDetailView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         Group {
@@ -289,15 +498,18 @@ struct ApprovalCandidateDetailView: View {
 
     private var isCandidateYearLocked: Bool {
         guard let candidate else { return false }
-        let year = fiscalYear(for: candidate.candidateDate, startMonth: FiscalYearSettings.startMonth)
-        return !dataStore.yearLockState(for: year).allowsNormalPosting
+        return approvalQueueQueryUseCase.isYearLocked(date: candidate.candidateDate)
     }
 
     private var hasSavableLines: Bool {
         lineDrafts.contains { draft in
-            (draft.debitLegacyAccountId != nil || draft.creditLegacyAccountId != nil)
+            (draft.debitAccountId != nil || draft.creditAccountId != nil)
                 && ((Decimal(string: draft.amountText) ?? 0) > 0)
         }
+    }
+
+    private var canonicalAccounts: [CanonicalAccount] {
+        approvalQueueQueryUseCase.canonicalAccounts()
     }
 
     @ViewBuilder
@@ -350,7 +562,8 @@ struct ApprovalCandidateDetailView: View {
     }
 
     private func candidateMetaSection(_ candidate: PostingCandidate) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let withholding = withholdingSummary(for: candidate)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("候補情報")
                 .font(.subheadline.weight(.medium))
 
@@ -389,6 +602,19 @@ struct ApprovalCandidateDetailView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+
+            if let withholding {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("源泉徴収")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(withholding.code.displayName) / \(formatAmount(withholding.totalAmount)) / 対象\(withholding.lineCount)行")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("approval.candidate.withholdingSummary")
             }
         }
         .padding(16)
@@ -433,24 +659,22 @@ struct ApprovalCandidateDetailView: View {
                 }
             }
 
-            AccountPickerView(
+            CanonicalAccountPickerView(
                 label: "借方科目",
-                accounts: dataStore.accounts,
+                accounts: canonicalAccounts,
                 selectedAccountId: Binding(
-                    get: { lineDrafts[index].debitLegacyAccountId },
-                    set: { lineDrafts[index].debitLegacyAccountId = $0 }
-                ),
-                filterPredicate: { $0.isActive }
+                    get: { lineDrafts[index].debitAccountId },
+                    set: { lineDrafts[index].debitAccountId = $0 }
+                )
             )
 
-            AccountPickerView(
+            CanonicalAccountPickerView(
                 label: "貸方科目",
-                accounts: dataStore.accounts,
+                accounts: canonicalAccounts,
                 selectedAccountId: Binding(
-                    get: { lineDrafts[index].creditLegacyAccountId },
-                    set: { lineDrafts[index].creditLegacyAccountId = $0 }
-                ),
-                filterPredicate: { $0.isActive }
+                    get: { lineDrafts[index].creditAccountId },
+                    set: { lineDrafts[index].creditAccountId = $0 }
+                )
             )
 
             HStack(spacing: 12) {
@@ -491,7 +715,7 @@ struct ApprovalCandidateDetailView: View {
                 Button("未設定") {
                     lineDrafts[index].projectAllocationId = nil
                 }
-                ForEach(dataStore.projects, id: \.id) { project in
+                ForEach(approvalQueueQueryUseCase.availableProjects(), id: \.id) { project in
                     Button(project.name) {
                         lineDrafts[index].projectAllocationId = project.id
                     }
@@ -499,9 +723,7 @@ struct ApprovalCandidateDetailView: View {
             } label: {
                 metaRow(
                     title: "プロジェクト",
-                    value: lineDrafts[index].projectAllocationId.flatMap { id in
-                        dataStore.getProject(id: id)?.name
-                    } ?? "未設定"
+                    value: approvalQueueQueryUseCase.projectName(id: lineDrafts[index].projectAllocationId) ?? "未設定"
                 )
             }
 
@@ -511,6 +733,38 @@ struct ApprovalCandidateDetailView: View {
             ))
             .textFieldStyle(.roundedBorder)
             .font(.caption)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("源泉徴収")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Menu {
+                    Button("未設定") {
+                        lineDrafts[index].withholdingTaxCodeId = nil
+                        lineDrafts[index].withholdingTaxAmountText = ""
+                    }
+                    ForEach(WithholdingTaxCode.allCases, id: \.rawValue) { code in
+                        Button(code.displayName) {
+                            lineDrafts[index].withholdingTaxCodeId = code.rawValue
+                        }
+                    }
+                } label: {
+                    pickerLabel(
+                        lineDrafts[index].withholdingTaxCodeId.flatMap { WithholdingTaxCode.resolve(id: $0)?.displayName } ?? "未設定"
+                    )
+                }
+
+                if lineDrafts[index].withholdingTaxCodeId != nil {
+                    TextField("源泉徴収税額", text: Binding(
+                        get: { lineDrafts[index].withholdingTaxAmountText },
+                        set: { lineDrafts[index].withholdingTaxAmountText = $0 }
+                    ))
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                }
+            }
         }
         .padding(12)
         .background(AppColors.surface)
@@ -598,14 +852,14 @@ struct ApprovalCandidateDetailView: View {
             } else {
                 evidence = nil
             }
-            if let businessId = dataStore.businessProfile?.id {
+            if let businessId = approvalQueueQueryUseCase.currentBusinessId() {
                 counterparties = try await CounterpartyMasterUseCase(modelContext: modelContext)
                     .loadCounterparties(businessId: businessId)
             } else {
                 counterparties = []
             }
             if let candidate {
-                lineDrafts = candidate.proposedLines.map { CandidateLineDraft(line: $0, dataStore: dataStore) }
+                lineDrafts = candidate.proposedLines.map(CandidateLineDraft.init(line:))
                 memo = candidate.memo ?? ""
                 selectedCounterpartyId = candidate.counterpartyId
             } else {
@@ -651,11 +905,15 @@ struct ApprovalCandidateDetailView: View {
             try await workflow.saveCandidate(updated)
             self.candidate = updated
             if approveAfterSave {
-                generatedJournal = try await workflow.approveCandidate(
+                let journal = try await workflow.approveCandidate(
                     candidateId: updated.id,
                     description: normalizedOptionalString(memo)
                 )
-                self.candidate = try await workflow.candidate(updated.id)
+                guard let approvedCandidate = try await workflow.candidate(updated.id) else {
+                    throw AppError.invalidInput(message: "承認後の候補を再取得できませんでした")
+                }
+                generatedJournal = journal
+                self.candidate = approvedCandidate
                 onStatusChanged?()
             } else {
                 onStatusChanged?()
@@ -672,8 +930,8 @@ struct ApprovalCandidateDetailView: View {
                 return nil
             }
 
-            let debitAccountId = draft.debitLegacyAccountId.flatMap { dataStore.canonicalAccountId(for: $0) }
-            let creditAccountId = draft.creditLegacyAccountId.flatMap { dataStore.canonicalAccountId(for: $0) }
+            let debitAccountId = draft.debitAccountId
+            let creditAccountId = draft.creditAccountId
             guard debitAccountId != nil || creditAccountId != nil else {
                 return nil
             }
@@ -687,7 +945,11 @@ struct ApprovalCandidateDetailView: View {
                 legalReportLineId: nil,
                 projectAllocationId: draft.projectAllocationId,
                 memo: normalizedOptionalString(draft.memo),
-                evidenceLineReferenceId: nil
+                evidenceLineReferenceId: nil,
+                withholdingTaxCodeId: normalizedOptionalString(draft.withholdingTaxCodeId),
+                withholdingTaxAmount: normalizedOptionalString(draft.withholdingTaxAmountText)
+                    .flatMap { Decimal(string: $0) },
+                withholdingTaxBaseAmount: draft.withholdingTaxBaseAmount
             )
         }
 
@@ -752,6 +1014,296 @@ struct ApprovalCandidateDetailView: View {
         case .rejected:
             return AppColors.error
         }
+    }
+}
+
+struct ApprovalRequestDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let requestId: UUID
+    var onStatusChanged: (() -> Void)?
+
+    @State private var request: ApprovalRequest?
+    @State private var formDraft: FormDraft?
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var approvalQueueQueryUseCase: ApprovalQueueQueryUseCase {
+        ApprovalQueueQueryUseCase(modelContext: modelContext)
+    }
+
+    private var approvalQueueWorkflowUseCase: ApprovalQueueWorkflowUseCase {
+        ApprovalQueueWorkflowUseCase(modelContext: modelContext)
+    }
+
+    var body: some View {
+        Group {
+            if let request {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection(request)
+                        detailSection(request)
+                    }
+                    .padding(16)
+                }
+                .navigationTitle("承認依頼")
+                .navigationBarTitleDisplayMode(.inline)
+                .safeAreaInset(edge: .bottom) {
+                    actionBar(request)
+                }
+            } else if isLoading {
+                ProgressView()
+            } else {
+                ContentUnavailableView("承認依頼が見つかりません", systemImage: "exclamationmark.triangle")
+            }
+        }
+        .task(id: requestId) {
+            await load()
+        }
+        .alert("処理エラー", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func headerSection(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(request.kind.displayName)
+                    .font(.headline)
+                Spacer()
+                Text(request.status.displayName)
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(AppColors.primary.opacity(0.12))
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+
+            Text(request.title)
+                .font(.subheadline.weight(.semibold))
+
+            if let subtitle = request.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(AppColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func detailSection(_ request: ApprovalRequest) -> some View {
+        switch request.kind {
+        case .distribution:
+            distributionRequestSection(request)
+        case .recurring:
+            recurringRequestSection(request)
+        }
+    }
+
+    @ViewBuilder
+    private func distributionRequestSection(_ request: ApprovalRequest) -> some View {
+        if let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("配賦内容")
+                    .font(.subheadline.weight(.medium))
+
+                distributionStateSection(title: "変更前", state: payload.currentState)
+                distributionStateSection(title: "変更後", state: payload.proposedState)
+
+                if !payload.warnings.isEmpty {
+                    ForEach(payload.warnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.warning)
+                    }
+                }
+
+                if let formDraft {
+                    Text("対象草案: \(formDraft.draftKey)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            Text("配賦承認データを読み込めませんでした。")
+                .font(.caption)
+                .foregroundStyle(AppColors.error)
+        }
+    }
+
+    @ViewBuilder
+    private func recurringRequestSection(_ request: ApprovalRequest) -> some View {
+        if let payload = request.payload(RecurringApprovalPayload.self) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("定期取引内容")
+                    .font(.subheadline.weight(.medium))
+
+                HStack {
+                    Text("予定日")
+                    Spacer()
+                    Text(formatDate(payload.scheduledDate))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                HStack {
+                    Text("金額")
+                    Spacer()
+                    Text(formatAmount(Decimal(payload.amount)))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                if let projectName = payload.projectName {
+                    HStack {
+                        Text("プロジェクト")
+                        Spacer()
+                        Text(projectName)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+
+                HStack {
+                    Text("配分方式")
+                    Spacer()
+                    Text(payload.allocationMode.label)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+            .padding(16)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            Text("定期取引承認データを読み込めませんでした。")
+                .font(.caption)
+                .foregroundStyle(AppColors.error)
+        }
+    }
+
+    private func distributionStateSection(
+        title: String,
+        state: DistributionTemplateApplicationUseCase.ApprovalState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            switch state {
+            case .equalAll:
+                Text(AllocationMode.equalAll.label)
+                    .font(.subheadline)
+            case .manual(let allocations):
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(allocations, id: \.projectId) { allocation in
+                        HStack {
+                            Text(approvalQueueQueryUseCase.projectName(id: allocation.projectId) ?? "不明なプロジェクト")
+                            Spacer()
+                            Text("\(allocation.ratio)%")
+                                .foregroundStyle(.secondary)
+                            Text(formatAmount(Decimal(allocation.amount)))
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionBar(_ request: ApprovalRequest) -> some View {
+        if request.status == .pending {
+            HStack(spacing: 12) {
+                Button("却下", role: .destructive) {
+                    Task { await rejectRequest() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSaving)
+
+                Button("承認") {
+                    Task { await approveRequest() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaving)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            .background(.ultraThinMaterial)
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            request = try await approvalQueueQueryUseCase.request(requestId)
+            if let request,
+               request.kind == .distribution,
+               let payload = request.payload(DistributionTemplateApplicationUseCase.DistributionApprovalPayload.self) {
+                formDraft = try await approvalQueueQueryUseCase.formDraft(draftKey: payload.draftKey)
+            } else {
+                formDraft = nil
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func approveRequest() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            request = try await approvalQueueWorkflowUseCase.approveRequest(requestId)
+            onStatusChanged?()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func rejectRequest() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            request = try await approvalQueueWorkflowUseCase.rejectRequest(requestId)
+            onStatusChanged?()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func formatAmount(_ amount: Decimal) -> String {
+        let number = NSDecimalNumber(decimal: amount)
+        return NumberFormatter.currency.string(from: number) ?? number.stringValue
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.locale = Locale(identifier: "ja_JP")
+        return formatter.string(from: date)
     }
 }
 

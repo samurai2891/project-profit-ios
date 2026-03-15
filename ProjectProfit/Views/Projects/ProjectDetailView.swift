@@ -6,22 +6,23 @@ import SwiftUI
 struct ProjectDetailView: View {
     let projectId: UUID
 
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ProjectDetailViewModel?
     @State private var showEditSheet = false
     @State private var showAddTransactionSheet = false
     @State private var showReceiptScanner = false
     @State private var selectedTransaction: PPTransaction?
-    @State private var transactionToDelete: PPTransaction?
-    @State private var showDeleteConfirmation = false
 
     private var resolvedViewModel: ProjectDetailViewModel {
-        viewModel ?? ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
+        viewModel ?? ProjectDetailViewModel(modelContext: modelContext, projectId: projectId)
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if !resolvedViewModel.canMutateLegacyTransactions {
+                    canonicalCutoverNotice
+                }
                 if let project = resolvedViewModel.currentProject {
                     headerCard(project: project)
                     descriptionSection(project: project)
@@ -43,28 +44,33 @@ struct ProjectDetailView: View {
                 addTransactionButton
             }
         }
-        .sheet(isPresented: $showEditSheet) {
+        .sheet(isPresented: $showEditSheet, onDismiss: {
+            viewModel?.reload()
+        }) {
             if let project = resolvedViewModel.currentProject {
                 ProjectFormView(project: project)
             }
         }
-        .sheet(isPresented: $showAddTransactionSheet) {
+        .sheet(isPresented: $showAddTransactionSheet, onDismiss: {
+            viewModel?.reload()
+        }) {
             TransactionFormView(defaultProjectId: projectId)
         }
-        .sheet(isPresented: $showReceiptScanner) {
+        .sheet(isPresented: $showReceiptScanner, onDismiss: {
+            viewModel?.reload()
+        }) {
             ReceiptScannerView(defaultProjectId: projectId)
         }
-        .sheet(item: $selectedTransaction) { transaction in
+        .sheet(item: $selectedTransaction, onDismiss: {
+            viewModel?.reload()
+        }) { transaction in
             TransactionDetailView(transaction: transaction)
-        }
-        .alert("取引を削除", isPresented: $showDeleteConfirmation) {
-            deleteAlertActions
-        } message: {
-            Text("この取引を削除しますか？この操作は取り消せません。")
         }
         .task {
             if viewModel == nil {
-                viewModel = ProjectDetailViewModel(dataStore: dataStore, projectId: projectId)
+                viewModel = ProjectDetailViewModel(modelContext: modelContext, projectId: projectId)
+            } else {
+                viewModel?.reload()
             }
         }
     }
@@ -380,15 +386,17 @@ private extension ProjectDetailView {
                 .accessibilityLabel("書類読取")
                 .accessibilityHint("タップして書類を読み取り取引を自動入力")
 
-                Button {
-                    showAddTransactionSheet = true
-                } label: {
-                    Label("手動で追加", systemImage: "plus")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                if resolvedViewModel.canMutateLegacyTransactions {
+                    Button {
+                        showAddTransactionSheet = true
+                    } label: {
+                        Label("手動で追加", systemImage: "plus")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .accessibilityLabel("取引を追加")
+                    .accessibilityHint("タップして新しい取引を作成")
                 }
-                .accessibilityLabel("取引を追加")
-                .accessibilityHint("タップして新しい取引を作成")
             }
         }
         .frame(maxWidth: .infinity)
@@ -405,11 +413,7 @@ private extension ProjectDetailView {
                     TransactionRow(
                         transaction: transaction,
                         projectId: projectId,
-                        viewModel: resolvedViewModel,
-                        onDelete: {
-                            transactionToDelete = transaction
-                            showDeleteConfirmation = true
-                        }
+                        viewModel: resolvedViewModel
                     )
                 }
                 .buttonStyle(.plain)
@@ -434,32 +438,40 @@ private extension ProjectDetailView {
         .accessibilityHint("タップして書類を読み取り取引を自動入力")
     }
 
-    var addTransactionButton: some View {
-        Button {
-            showAddTransactionSheet = true
-        } label: {
-            Image(systemName: "plus.circle.fill")
-                .font(.title3)
-                .foregroundStyle(AppColors.primary)
+    var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引入力は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(resolvedViewModel.legacyTransactionMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
         }
-        .accessibilityLabel("取引を追加")
-        .accessibilityHint("タップして新しい取引を作成")
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder
-    var deleteAlertActions: some View {
-        Button("キャンセル", role: .cancel) {
-            transactionToDelete = nil
-        }
-        Button("削除", role: .destructive) {
-            if let transaction = transactionToDelete {
-                withAnimation {
-                    viewModel?.deleteTransaction(id: transaction.id)
-                    transactionToDelete = nil
-                }
+    var addTransactionButton: some View {
+        if resolvedViewModel.canMutateLegacyTransactions {
+            Button {
+                showAddTransactionSheet = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppColors.primary)
             }
+            .accessibilityLabel("取引を追加")
+            .accessibilityHint("タップして新しい取引を作成")
         }
     }
+
 }
 
 // MARK: - TransactionRow
@@ -468,7 +480,6 @@ private struct TransactionRow: View {
     let transaction: PPTransaction
     let projectId: UUID
     let viewModel: ProjectDetailViewModel
-    let onDelete: () -> Void
 
     private var typeColor: Color {
         switch transaction.type {
@@ -510,7 +521,7 @@ private struct TransactionRow: View {
             typeIndicator
             transactionDetails
             Spacer()
-            amountAndDelete
+            amountSummary
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .contain)
@@ -570,7 +581,7 @@ private extension TransactionRow {
         .accessibilityHidden(true)
     }
 
-    var amountAndDelete: some View {
+    var amountSummary: some View {
         HStack(spacing: 12) {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatCurrency(allocationAmount ?? transaction.amount))
@@ -591,17 +602,6 @@ private extension TransactionRow {
                 }
             }
             .accessibilityHidden(true)
-
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.error.opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("削除")
-            .accessibilityHint("タップして取引を削除")
         }
     }
 }

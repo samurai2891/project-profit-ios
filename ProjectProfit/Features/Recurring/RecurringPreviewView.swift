@@ -2,13 +2,17 @@ import SwiftUI
 
 /// 定期取引の生成プレビュー+一括承認UI
 struct RecurringPreviewView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var previewItems: [RecurringPreviewItem] = []
     @State private var selectedIds: Set<UUID> = []
     @State private var isProcessing = false
     @State private var processedCount: Int?
+
+    private var recurringWorkflowUseCase: RecurringWorkflowUseCase {
+        RecurringWorkflowUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         NavigationStack {
@@ -38,14 +42,19 @@ struct RecurringPreviewView: View {
             )) {
                 Button("OK") {
                     processedCount = nil
-                    dismiss()
+                    Task {
+                        await loadPreview()
+                        if previewItems.isEmpty {
+                            dismiss()
+                        }
+                    }
                 }
             } message: {
                 Text("\(processedCount ?? 0)件の取引を登録しました")
             }
         }
         .task {
-            loadPreview()
+            await loadPreview()
         }
     }
 
@@ -201,8 +210,8 @@ struct RecurringPreviewView: View {
 
     // MARK: - Actions
 
-    private func loadPreview() {
-        previewItems = dataStore.previewRecurringTransactions()
+    private func loadPreview() async {
+        previewItems = await recurringWorkflowUseCase.previewRecurringTransactions()
         selectedIds = Set(previewItems.map(\.id))
     }
 
@@ -210,7 +219,7 @@ struct RecurringPreviewView: View {
         guard !isProcessing else { return }
         isProcessing = true
         Task {
-            let count = dataStore.approveRecurringItems(selectedIds, from: previewItems)
+            let count = await recurringWorkflowUseCase.approveRecurringItems(selectedIds)
             isProcessing = false
             processedCount = count
         }

@@ -15,7 +15,10 @@ enum JournalLineEntityMapper {
             projectAllocationId: entity.projectAllocationId,
             genreTagIds: CanonicalJSONCoder.decode([UUID].self, from: entity.genreTagIdsJSON, fallback: []),
             evidenceReferenceId: entity.evidenceReferenceId,
-            sortOrder: entity.sortOrder
+            sortOrder: entity.sortOrder,
+            withholdingTaxCodeId: entity.withholdingTaxCodeId,
+            withholdingTaxAmount: entity.withholdingTaxAmount,
+            withholdingTaxBaseAmount: entity.withholdingTaxBaseAmount
         )
     }
 
@@ -31,7 +34,10 @@ enum JournalLineEntityMapper {
             projectAllocationId: domain.projectAllocationId,
             genreTagIdsJSON: CanonicalJSONCoder.encode(domain.genreTagIds, fallback: "[]"),
             evidenceReferenceId: domain.evidenceReferenceId,
-            sortOrder: domain.sortOrder
+            sortOrder: domain.sortOrder,
+            withholdingTaxCodeId: domain.withholdingTaxCodeId,
+            withholdingTaxAmount: domain.withholdingTaxAmount,
+            withholdingTaxBaseAmount: domain.withholdingTaxBaseAmount
         )
     }
 }

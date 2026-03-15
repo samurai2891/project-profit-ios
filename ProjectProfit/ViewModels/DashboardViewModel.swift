@@ -1,20 +1,33 @@
+import SwiftData
 import SwiftUI
 
 @MainActor
 @Observable
 final class DashboardViewModel {
-    let dataStore: DataStore
-    var viewMode: ViewMode = .monthly
-    var selectedFiscalYear: Int
-    var selectedMonth: Int
+    private let reportingUseCase: ReportingQueryUseCase
+    private var refreshVersion = 0
+
+    var viewMode: ViewMode = .monthly {
+        didSet { refresh() }
+    }
+    var selectedFiscalYear: Int {
+        didSet { refresh() }
+    }
+    var selectedMonth: Int {
+        didSet { refresh() }
+    }
     private(set) var startMonth: Int
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(reportingUseCase: ReportingQueryUseCase) {
+        self.reportingUseCase = reportingUseCase
         let sm = FiscalYearSettings.startMonth
         self.startMonth = sm
         self.selectedFiscalYear = currentFiscalYear(startMonth: sm)
         self.selectedMonth = Calendar.current.component(.month, from: Date())
+    }
+
+    convenience init(modelContext: ModelContext) {
+        self.init(reportingUseCase: ReportingQueryUseCase(modelContext: modelContext))
     }
 
     /// Reload when fiscal year setting changes.
@@ -25,6 +38,7 @@ final class DashboardViewModel {
         selectedFiscalYear = currentFiscalYear(startMonth: sm)
         let currentMonth = Calendar.current.component(.month, from: Date())
         selectedMonth = currentMonth
+        refresh()
     }
 
     var fiscalYearLabelText: String {
@@ -111,19 +125,22 @@ final class DashboardViewModel {
     // MARK: - Summary Data
 
     var summary: OverallSummary {
-        dataStore.getOverallSummary(startDate: dateRange.start, endDate: dateRange.end)
+        _ = refreshVersion
+        return reportingUseCase.overallSummary(startDate: dateRange.start, endDate: dateRange.end)
     }
 
     var activeProjects: [ProjectSummary] {
+        _ = refreshVersion
         let range = dateRange
-        return dataStore.getAllProjectSummaries(startDate: range.start, endDate: range.end)
+        return reportingUseCase.projectSummaries(startDate: range.start, endDate: range.end)
             .filter { $0.status == .active }
             .sorted { $0.profit > $1.profit }
     }
 
     var expenseCategories: [CategorySummary] {
-        Array(
-            dataStore.getCategorySummaries(
+        _ = refreshVersion
+        return Array(
+            reportingUseCase.categorySummaries(
                 type: .expense,
                 startDate: dateRange.start,
                 endDate: dateRange.end
@@ -132,7 +149,8 @@ final class DashboardViewModel {
     }
 
     var monthlySummaries: [MonthlySummary] {
-        dataStore.getMonthlySummaries(fiscalYear: selectedFiscalYear, startMonth: startMonth)
+        _ = refreshVersion
+        return reportingUseCase.monthlySummaries(fiscalYear: selectedFiscalYear, startMonth: startMonth)
     }
 
     // MARK: - Display
@@ -149,6 +167,6 @@ final class DashboardViewModel {
     // MARK: - Actions
 
     func refresh() {
-        dataStore.loadData()
+        refreshVersion &+= 1
     }
 }
