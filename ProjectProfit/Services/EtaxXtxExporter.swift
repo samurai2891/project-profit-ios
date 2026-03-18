@@ -10,6 +10,12 @@ enum EtaxXtxExporter {
         let xmlTag: String
     }
 
+    private struct BalanceSheetAdditionalEntry {
+        let slot: Int
+        let name: MappedEtaxField?
+        let closing: MappedEtaxField?
+    }
+
     // MARK: - Public API
 
     /// e-Tax .xtx 形式のXMLデータを生成
@@ -141,7 +147,7 @@ enum EtaxXtxExporter {
         let amgFields = mappedByPrefix["AMG"] ?? []
 
         lines.append("  <KOA210-1>")
-        lines.append("    <AMA00000>\(xmlEscape(String(form.fiscalYear)))</AMA00000>")
+        lines.append("    <AMA00000 IDREF=\"NENBUN\"/>")
         appendDeclarantBlock(
             to: &lines,
             fields: fields,
@@ -155,14 +161,14 @@ enum EtaxXtxExporter {
             phoneTag: "AMB00070",
             businessCategoryTag: "AMB00090",
             businessNameTag: "AMB00100",
-            indent: "    "
+            indent: "    ",
+            useReferenceElements: true,
+            useStructuredPhone: true
         )
         if !amfFields.isEmpty {
             lines.append("    <AMF00000>")
             lines.append("      <AMF00010>")
-            lines.append("        <AMF00090>")
-            lines.append(contentsOf: xmlElementLines(for: amfFields, indent: "          "))
-            lines.append("        </AMF00090>")
+            lines.append(contentsOf: blueProfitAndLossLines(for: amfFields, indent: "        "))
             lines.append("      </AMF00010>")
             lines.append("    </AMF00000>")
         }
@@ -173,16 +179,14 @@ enum EtaxXtxExporter {
         let unknown = fields.filter { prefix(of: $0.xmlTag) != "AMG" && !handledTags.contains($0.xmlTag) && prefix(of: $0.xmlTag) != "AMF" }
         lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
         lines.append("  </KOA210-1>")
+        lines.append("  <KOA210-2>")
+        lines.append("  </KOA210-2>")
+        lines.append("  <KOA210-3>")
+        lines.append("  </KOA210-3>")
 
         if !amgFields.isEmpty {
             lines.append("  <KOA210-4>")
-            lines.append("    <AMG00000>")
-            lines.append("      <AMG00020>")
-            lines.append("        <AMG00240>")
-            lines.append(contentsOf: xmlElementLines(for: amgFields, indent: "          "))
-            lines.append("        </AMG00240>")
-            lines.append("      </AMG00020>")
-            lines.append("    </AMG00000>")
+            lines.append(contentsOf: blueBalanceSheetLines(for: amgFields, indent: "    "))
             lines.append("  </KOA210-4>")
         }
 
@@ -351,7 +355,9 @@ enum EtaxXtxExporter {
         phoneTag: String,
         businessCategoryTag: String,
         businessNameTag: String,
-        indent: String
+        indent: String,
+        useReferenceElements: Bool = false,
+        useStructuredPhone: Bool = false
     ) {
         let addressField = fields.first(where: { $0.xmlTag == addressTag })
         let kanaField = fields.first(where: { $0.xmlTag == kanaTag })
@@ -376,10 +382,16 @@ enum EtaxXtxExporter {
         if kanaField != nil || nameField != nil {
             lines.append("\(indent)  <\(kanaContainerTag)>")
             if let kanaField {
-                lines.append(xmlElementLine(for: kanaField, indent: "\(indent)    "))
+                let line = useReferenceElements
+                    ? xmlReferenceElementLine(for: kanaField, indent: "\(indent)    ")
+                    : xmlElementLine(for: kanaField, indent: "\(indent)    ")
+                lines.append(line)
             }
             if let nameField {
-                lines.append(xmlElementLine(for: nameField, indent: "\(indent)    "))
+                let line = useReferenceElements
+                    ? xmlReferenceElementLine(for: nameField, indent: "\(indent)    ")
+                    : xmlElementLine(for: nameField, indent: "\(indent)    ")
+                lines.append(line)
             }
             lines.append("\(indent)  </\(kanaContainerTag)>")
         }
@@ -390,16 +402,28 @@ enum EtaxXtxExporter {
 
         if let phoneField {
             lines.append("\(indent)  <\(phoneContainerTag)>")
-            lines.append(xmlElementLine(for: phoneField, indent: "\(indent)    "))
+            if useStructuredPhone {
+                lines.append("\(indent)    <\(phoneTag)>")
+                lines.append(contentsOf: xmlPhoneElementLines(for: phoneField, indent: "\(indent)      "))
+                lines.append("\(indent)    </\(phoneTag)>")
+            } else {
+                lines.append(xmlElementLine(for: phoneField, indent: "\(indent)    "))
+            }
             lines.append("\(indent)  </\(phoneContainerTag)>")
         }
 
         if let businessCategoryField {
-            lines.append(xmlElementLine(for: businessCategoryField, indent: "\(indent)  "))
+            let line = useReferenceElements
+                ? xmlReferenceElementLine(for: businessCategoryField, indent: "\(indent)  ")
+                : xmlElementLine(for: businessCategoryField, indent: "\(indent)  ")
+            lines.append(line)
         }
 
         if let businessNameField {
-            lines.append(xmlElementLine(for: businessNameField, indent: "\(indent)  "))
+            let line = useReferenceElements
+                ? xmlReferenceElementLine(for: businessNameField, indent: "\(indent)  ")
+                : xmlElementLine(for: businessNameField, indent: "\(indent)  ")
+            lines.append(line)
         }
 
         lines.append("\(indent)</\(containerTag)>")
@@ -408,6 +432,161 @@ enum EtaxXtxExporter {
     private static func xmlElementLine(for mapped: MappedEtaxField, indent: String) -> String {
         let value = xmlEscape(EtaxCharacterValidator.sanitize(mapped.field.value.exportText))
         return "\(indent)<\(mapped.xmlTag)>\(value)</\(mapped.xmlTag)>"
+    }
+
+    private static func blueProfitAndLossLines(for fields: [MappedEtaxField], indent: String) -> [String] {
+        let inventoryTags = Set(["AMF00120", "AMF00130", "AMF00140", "AMF00150", "AMF00160"])
+        let inventoryFields = fields.filter { inventoryTags.contains($0.xmlTag) }
+        let amountFields = fields.filter { !inventoryTags.contains($0.xmlTag) }
+
+        var lines: [String] = []
+        if !amountFields.isEmpty || !inventoryFields.isEmpty {
+            lines.append("\(indent)<AMF00090>")
+            lines.append(contentsOf: xmlElementLines(for: amountFields, indent: "\(indent)  "))
+            if !inventoryFields.isEmpty {
+                lines.append("\(indent)  <AMF00110>")
+                lines.append(contentsOf: xmlElementLines(for: inventoryFields, indent: "\(indent)    "))
+                lines.append("\(indent)  </AMF00110>")
+            }
+            lines.append("\(indent)</AMF00090>")
+        }
+        return lines
+    }
+
+    private static func blueBalanceSheetLines(for fields: [MappedEtaxField], indent: String) -> [String] {
+        let assetClosingTags = Set([
+            "AMG00260", "AMG00270", "AMG00280", "AMG00290", "AMG00300", "AMG00310",
+            "AMG00320", "AMG00330", "AMG00340", "AMG00350", "AMG00360", "AMG00370",
+            "AMG00380", "AMG00390", "AMG00400", "AMG00410", "AMG00430", "AMG00440"
+        ])
+        let liabilityEquityClosingTags = Set([
+            "AMG00640", "AMG00650", "AMG00660", "AMG00670", "AMG00680", "AMG00690",
+            "AMG00710", "AMG00720", "AMG00730", "AMG00740", "AMG00750", "AMG00760"
+        ])
+        let assetClosingFields = fields.filter { assetClosingTags.contains($0.xmlTag) }
+        let liabilityEquityClosingFields = fields.filter { liabilityEquityClosingTags.contains($0.xmlTag) }
+        let assetAdditionalEntries = balanceSheetAdditionalEntries(
+            from: fields,
+            prefix: "bs_asset_additional_",
+            nameTag: "AMG00030",
+            closingTag: "AMG00420"
+        )
+        let liabilityAdditionalEntries = balanceSheetAdditionalEntries(
+            from: fields,
+            prefix: "bs_liability_additional_",
+            nameTag: "AMG00470",
+            closingTag: "AMG00700"
+        )
+        let equityAdditionalEntries = balanceSheetAdditionalEntries(
+            from: fields,
+            prefix: "bs_equity_additional_",
+            nameTag: "AMG00480",
+            closingTag: "AMG00720"
+        )
+
+        var lines: [String] = []
+        lines.append("\(indent)<AMG00000>")
+        if !assetClosingFields.isEmpty || !assetAdditionalEntries.isEmpty {
+            lines.append("\(indent)  <AMG00020>")
+            for entry in assetAdditionalEntries {
+                lines.append("\(indent)    <AMG00025>")
+                if let nameField = entry.name {
+                    lines.append(xmlElementLine(for: nameField, indent: "\(indent)      "))
+                }
+                if let closingField = entry.closing {
+                    lines.append(xmlElementLine(for: closingField, indent: "\(indent)      "))
+                }
+                lines.append("\(indent)    </AMG00025>")
+            }
+            if !assetClosingFields.isEmpty {
+                lines.append("\(indent)    <AMG00240>")
+                lines.append(contentsOf: xmlElementLines(for: assetClosingFields, indent: "\(indent)      "))
+                lines.append("\(indent)    </AMG00240>")
+            }
+            lines.append("\(indent)  </AMG00020>")
+        }
+        if !liabilityEquityClosingFields.isEmpty || !liabilityAdditionalEntries.isEmpty || !equityAdditionalEntries.isEmpty {
+            lines.append("\(indent)  <AMG00450>")
+            if !liabilityAdditionalEntries.isEmpty || !equityAdditionalEntries.isEmpty {
+                lines.append("\(indent)    <AMG00460>")
+                for entry in liabilityAdditionalEntries {
+                    lines.append("\(indent)      <AMG00465>")
+                    if let nameField = entry.name {
+                        lines.append(xmlElementLine(for: nameField, indent: "\(indent)        "))
+                    }
+                    if let closingField = entry.closing {
+                        lines.append(xmlElementLine(for: closingField, indent: "\(indent)        "))
+                    }
+                    lines.append("\(indent)      </AMG00465>")
+                }
+                for entry in equityAdditionalEntries {
+                    lines.append("\(indent)      <AMG00475>")
+                    if let nameField = entry.name {
+                        lines.append(xmlElementLine(for: nameField, indent: "\(indent)        "))
+                    }
+                    if let closingField = entry.closing {
+                        lines.append(xmlElementLine(for: closingField, indent: "\(indent)        "))
+                    }
+                    lines.append("\(indent)      </AMG00475>")
+                }
+                lines.append("\(indent)    </AMG00460>")
+            }
+            if !liabilityEquityClosingFields.isEmpty {
+                lines.append("\(indent)    <AMG00620>")
+                lines.append(contentsOf: xmlElementLines(for: liabilityEquityClosingFields, indent: "\(indent)      "))
+                lines.append("\(indent)    </AMG00620>")
+            }
+            lines.append("\(indent)  </AMG00450>")
+        }
+        lines.append("\(indent)</AMG00000>")
+        return lines
+    }
+
+    private static func balanceSheetAdditionalEntries(
+        from fields: [MappedEtaxField],
+        prefix: String,
+        nameTag: String,
+        closingTag: String
+    ) -> [BalanceSheetAdditionalEntry] {
+        let relevant = fields.filter { $0.field.id.hasPrefix(prefix) }
+        let grouped = Dictionary(grouping: relevant) { field in
+            let suffix = field.field.id.replacingOccurrences(of: prefix, with: "")
+            let slotString = suffix.split(separator: "_").first.flatMap { Int(String($0)) } ?? 0
+            return slotString
+        }
+
+        return grouped.keys.sorted().compactMap { slot in
+            let slotFields = grouped[slot] ?? []
+            let nameField = slotFields.first { $0.xmlTag == nameTag }
+            let closingField = slotFields.first { $0.xmlTag == closingTag }
+            guard nameField != nil || closingField != nil else {
+                return nil
+            }
+            return BalanceSheetAdditionalEntry(slot: slot, name: nameField, closing: closingField)
+        }
+    }
+
+    private static func xmlReferenceElementLine(for mapped: MappedEtaxField, indent: String) -> String {
+        let idref = xmlReferenceID(for: mapped.xmlTag) ?? mapped.field.value.exportText
+        return "\(indent)<\(mapped.xmlTag) IDREF=\"\(xmlEscape(idref))\"/>"
+    }
+
+    private static func xmlPhoneElementLines(for mapped: MappedEtaxField, indent: String) -> [String] {
+        let digits = mapped.field.value.exportText.filter(\.isNumber)
+        guard !digits.isEmpty else {
+            return []
+        }
+
+        let parts = splitPhoneNumber(digits)
+        var lines: [String] = []
+        if let tel1 = parts.tel1 {
+            lines.append("\(indent)<gen:tel1>\(xmlEscape(tel1))</gen:tel1>")
+        }
+        if let tel2 = parts.tel2 {
+            lines.append("\(indent)<gen:tel2>\(xmlEscape(tel2))</gen:tel2>")
+        }
+        lines.append("\(indent)<gen:tel3>\(xmlEscape(parts.tel3))</gen:tel3>")
+        return lines
     }
 
     private static func resolveMappedFields(
@@ -605,5 +784,47 @@ enum EtaxXtxExporter {
         formatter.locale = Locale(identifier: "ja_JP_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+
+    private static func xmlReferenceID(for xmlTag: String) -> String? {
+        let ids: [String: String] = [
+            "AMA00000": "NENBUN",
+            "AMB00030": "NOZEISHA_NM_KN",
+            "AMB00040": "NOZEISHA_NM",
+            "AMB00090": "SHOKUGYO",
+            "AMB00100": "NOZEISHA_YAGO"
+        ]
+        return ids[xmlTag]
+    }
+
+    private static func splitPhoneNumber(_ digits: String) -> (tel1: String?, tel2: String?, tel3: String) {
+        let suffixLength = min(4, digits.count)
+        let tel3 = String(digits.suffix(suffixLength))
+        let prefix = String(digits.dropLast(suffixLength))
+
+        guard !prefix.isEmpty else {
+            return (nil, nil, tel3)
+        }
+
+        let tel1Length: Int
+        if digits.count == 10, digits.hasPrefix("03") || digits.hasPrefix("06") {
+            tel1Length = 2
+        } else if digits.count >= 11 && (digits.hasPrefix("050") || digits.hasPrefix("070") || digits.hasPrefix("080") || digits.hasPrefix("090")) {
+            tel1Length = 3
+        } else {
+            switch digits.count {
+            case ...9:
+                tel1Length = min(2, prefix.count)
+            case 10:
+                tel1Length = min(3, prefix.count)
+            default:
+                tel1Length = min(4, prefix.count)
+            }
+        }
+
+        let tel1 = String(prefix.prefix(tel1Length))
+        let tel2Digits = String(prefix.dropFirst(tel1Length))
+        let tel2 = tel2Digits.isEmpty ? nil : tel2Digits
+        return (tel1.isEmpty ? nil : tel1, tel2, tel3)
     }
 }

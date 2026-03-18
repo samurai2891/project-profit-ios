@@ -5,6 +5,17 @@ import Security
 @MainActor
 enum EtaxFieldPopulator {
 
+    private enum BalanceSheetCategory {
+        case asset
+        case liability
+        case equity
+    }
+
+    private struct BalanceSheetAdditionalSlot {
+        let nameKey: String
+        let closingKey: String
+    }
+
     /// P&Lレポートからe-Taxフォームを生成（canonical profile ベース）
     static func populate(
         fiscalYear: Int,
@@ -311,37 +322,27 @@ enum EtaxFieldPopulator {
     static func populateBalanceSheet(balanceSheet: BalanceSheetReport) -> [EtaxField] {
         var fields: [EtaxField] = []
 
-        for item in balanceSheet.assetItems {
-            fields.append(EtaxField(
-                id: "bs_asset_\(item.id)", fieldLabel: item.name,
-                taxLine: nil, value: item.balance, section: .balanceSheet
-            ))
-        }
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.assetItems.map { ($0.name, $0.balance) },
+            category: .asset
+        ))
         fields.append(EtaxField(
             id: "bs_total_assets", fieldLabel: "資産合計",
             taxLine: nil, value: balanceSheet.totalAssets, section: .balanceSheet
         ))
 
-        for item in balanceSheet.liabilityItems {
-            fields.append(EtaxField(
-                id: "bs_liability_\(item.id)", fieldLabel: item.name,
-                taxLine: nil, value: item.balance, section: .balanceSheet
-            ))
-        }
-        fields.append(EtaxField(
-            id: "bs_total_liabilities", fieldLabel: "負債合計",
-            taxLine: nil, value: balanceSheet.totalLiabilities, section: .balanceSheet
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.liabilityItems.map { ($0.name, $0.balance) },
+            category: .liability
         ))
 
-        for item in balanceSheet.equityItems {
-            fields.append(EtaxField(
-                id: "bs_equity_\(item.id)", fieldLabel: item.name,
-                taxLine: nil, value: item.balance, section: .balanceSheet
-            ))
-        }
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.equityItems.map { ($0.name, $0.balance) },
+            category: .equity
+        ))
         fields.append(EtaxField(
-            id: "bs_total_equity", fieldLabel: "資本合計",
-            taxLine: nil, value: balanceSheet.totalEquity, section: .balanceSheet
+            id: "bs_total_liabilities_and_equity", fieldLabel: "負債資本合計",
+            taxLine: nil, value: balanceSheet.liabilitiesAndEquity, section: .balanceSheet
         ))
 
         return fields
@@ -350,15 +351,10 @@ enum EtaxFieldPopulator {
     static func populateBalanceSheet(balanceSheet: CanonicalBalanceSheetReport) -> [EtaxField] {
         var fields: [EtaxField] = []
 
-        for item in balanceSheet.assetItems {
-            fields.append(EtaxField(
-                id: "bs_asset_\(item.id.uuidString)",
-                fieldLabel: item.name,
-                taxLine: nil,
-                value: decimalInt(item.balance),
-                section: .balanceSheet
-            ))
-        }
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.assetItems.map { ($0.name, decimalInt($0.balance)) },
+            category: .asset
+        ))
         fields.append(EtaxField(
             id: "bs_total_assets",
             fieldLabel: "資産合計",
@@ -367,41 +363,153 @@ enum EtaxFieldPopulator {
             section: .balanceSheet
         ))
 
-        for item in balanceSheet.liabilityItems {
-            fields.append(EtaxField(
-                id: "bs_liability_\(item.id.uuidString)",
-                fieldLabel: item.name,
-                taxLine: nil,
-                value: decimalInt(item.balance),
-                section: .balanceSheet
-            ))
-        }
-        fields.append(EtaxField(
-            id: "bs_total_liabilities",
-            fieldLabel: "負債合計",
-            taxLine: nil,
-            value: decimalInt(balanceSheet.totalLiabilities),
-            section: .balanceSheet
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.liabilityItems.map { ($0.name, decimalInt($0.balance)) },
+            category: .liability
         ))
 
-        for item in balanceSheet.equityItems {
-            fields.append(EtaxField(
-                id: "bs_equity_\(item.id.uuidString)",
-                fieldLabel: item.name,
-                taxLine: nil,
-                value: decimalInt(item.balance),
-                section: .balanceSheet
-            ))
-        }
+        fields.append(contentsOf: mappedBalanceSheetFields(
+            items: balanceSheet.equityItems.map { ($0.name, decimalInt($0.balance)) },
+            category: .equity
+        ))
         fields.append(EtaxField(
-            id: "bs_total_equity",
-            fieldLabel: "資本合計",
+            id: "bs_total_liabilities_and_equity",
+            fieldLabel: "負債資本合計",
             taxLine: nil,
-            value: decimalInt(balanceSheet.totalEquity),
+            value: decimalInt(balanceSheet.liabilitiesAndEquity),
             section: .balanceSheet
         ))
 
         return fields
+    }
+
+    private static func mappedBalanceSheetFields(
+        items: [(name: String, balance: Int)],
+        category: BalanceSheetCategory
+    ) -> [EtaxField] {
+        let fixedKeys = fixedBalanceSheetKeys(for: category)
+        let additionalSlots = additionalBalanceSheetSlots(for: category)
+
+        var fixedAmounts: [String: Int] = [:]
+        var additionalEntries: [(name: String, balance: Int)] = []
+
+        for item in items {
+            let normalizedName = normalizedBalanceSheetName(item.name)
+            if let key = fixedKeys[normalizedName] {
+                fixedAmounts[key, default: 0] += item.balance
+            } else if additionalEntries.count < additionalSlots.count {
+                additionalEntries.append(item)
+            }
+        }
+
+        var fields: [EtaxField] = fixedAmounts
+            .sorted(by: { $0.key < $1.key })
+            .map { key, amount in
+                EtaxField(
+                    id: key,
+                    fieldLabel: key,
+                    taxLine: nil,
+                    value: amount,
+                    section: .balanceSheet
+                )
+            }
+
+        for (index, entry) in additionalEntries.enumerated() {
+            let slot = additionalSlots[index]
+            fields.append(EtaxField(
+                id: slot.nameKey,
+                fieldLabel: entry.name,
+                taxLine: nil,
+                value: entry.name,
+                section: .balanceSheet
+            ))
+            fields.append(EtaxField(
+                id: slot.closingKey,
+                fieldLabel: entry.name,
+                taxLine: nil,
+                value: entry.balance,
+                section: .balanceSheet
+            ))
+        }
+
+        return fields
+    }
+
+    private static func fixedBalanceSheetKeys(for category: BalanceSheetCategory) -> [String: String] {
+        switch category {
+        case .asset:
+            return [
+                "現金": "bs_asset_cash",
+                "当座預金": "bs_asset_checking_deposit",
+                "定期預金": "bs_asset_time_deposit",
+                "その他の預金": "bs_asset_other_deposit",
+                "その他預金": "bs_asset_other_deposit",
+                "受取手形": "bs_asset_notes_receivable",
+                "売掛金": "bs_asset_accounts_receivable",
+                "有価証券": "bs_asset_securities",
+                "棚卸資産": "bs_asset_inventory",
+                "前払金": "bs_asset_prepayments",
+                "貸付金": "bs_asset_loans_receivable",
+                "建物": "bs_asset_buildings",
+                "建物附属設備": "bs_asset_building_attachments",
+                "機械装置": "bs_asset_machinery",
+                "車両運搬具": "bs_asset_vehicles",
+                "工具器具備品": "bs_asset_tools_fixtures_equipment",
+                "土地": "bs_asset_land",
+                "事業主貸": "bs_asset_owner_draw"
+            ]
+        case .liability:
+            return [
+                "支払手形": "bs_liability_notes_payable",
+                "買掛金": "bs_liability_accounts_payable",
+                "借入金": "bs_liability_loans_payable",
+                "未払金": "bs_liability_unpaid_amount",
+                "前受金": "bs_liability_advance_receipts",
+                "預り金": "bs_liability_deposits_received",
+                "貸倒引当金": "bs_liability_allowance_bad_debts"
+            ]
+        case .equity:
+            return [
+                "事業主借": "bs_equity_owner_borrowings",
+                "元入金": "bs_equity_owner_capital",
+                "青色申告特別控除前の所得金額": "bs_equity_income_before_blue_deduction",
+                "青色申告特別控除前所得金額": "bs_equity_income_before_blue_deduction"
+            ]
+        }
+    }
+
+    private static func additionalBalanceSheetSlots(for category: BalanceSheetCategory) -> [BalanceSheetAdditionalSlot] {
+        switch category {
+        case .asset:
+            return (1...7).map {
+                BalanceSheetAdditionalSlot(
+                    nameKey: "bs_asset_additional_\($0)_name",
+                    closingKey: "bs_asset_additional_\($0)_closing"
+                )
+            }
+        case .liability:
+            return (1...7).map {
+                BalanceSheetAdditionalSlot(
+                    nameKey: "bs_liability_additional_\($0)_name",
+                    closingKey: "bs_liability_additional_\($0)_closing"
+                )
+            }
+        case .equity:
+            return (1...7).map {
+                BalanceSheetAdditionalSlot(
+                    nameKey: "bs_equity_additional_\($0)_name",
+                    closingKey: "bs_equity_additional_\($0)_closing"
+                )
+            }
+        }
+    }
+
+    private static func normalizedBalanceSheetName(_ name: String) -> String {
+        name
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "　", with: "")
+            .replacingOccurrences(of: "・", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Helpers

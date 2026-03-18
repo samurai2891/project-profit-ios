@@ -31,9 +31,13 @@ final class EtaxXtxExporterTests: XCTestCase {
 
     private func sampleBlueBalanceSheetFields() -> [EtaxField] {
         [
+            EtaxField(id: "bs_asset_cash", fieldLabel: "現金", taxLine: nil, value: 3_000_000, section: .balanceSheet),
+            EtaxField(id: "bs_asset_additional_1_name", fieldLabel: "資産追加科目1", taxLine: nil, value: "仮払金", section: .balanceSheet),
+            EtaxField(id: "bs_asset_additional_1_closing", fieldLabel: "資産追加科目1金額", taxLine: nil, value: 5_000_000, section: .balanceSheet),
             EtaxField(id: "bs_total_assets", fieldLabel: "資産合計", taxLine: nil, value: 8_000_000, section: .balanceSheet),
-            EtaxField(id: "bs_total_liabilities", fieldLabel: "負債合計", taxLine: nil, value: 2_500_000, section: .balanceSheet),
-            EtaxField(id: "bs_total_equity", fieldLabel: "資本合計", taxLine: nil, value: 5_500_000, section: .balanceSheet),
+            EtaxField(id: "bs_liability_accounts_payable", fieldLabel: "買掛金", taxLine: nil, value: 2_500_000, section: .balanceSheet),
+            EtaxField(id: "bs_equity_owner_capital", fieldLabel: "元入金", taxLine: nil, value: 5_500_000, section: .balanceSheet),
+            EtaxField(id: "bs_total_liabilities_and_equity", fieldLabel: "負債資本合計", taxLine: nil, value: 8_000_000, section: .balanceSheet),
         ]
     }
 
@@ -125,7 +129,14 @@ final class EtaxXtxExporterTests: XCTestCase {
             XCTAssertTrue(xml.contains("<AMF00260>60000</AMF00260>"))
             XCTAssertTrue(xml.contains("<AMF00530>4740000</AMF00530>"))
             XCTAssertTrue(xml.contains("<KOA210-4>"))
+            XCTAssertTrue(xml.contains("<AMG00025>"))
+            XCTAssertTrue(xml.contains("<AMG00030>仮払金</AMG00030>"))
+            XCTAssertTrue(xml.contains("<AMG00420>5000000</AMG00420>"))
+            XCTAssertTrue(xml.contains("<AMG00260>3000000</AMG00260>"))
             XCTAssertTrue(xml.contains("<AMG00440>8000000</AMG00440>"))
+            XCTAssertTrue(xml.contains("<AMG00650>2500000</AMG00650>"))
+            XCTAssertTrue(xml.contains("<AMG00740>5500000</AMG00740>"))
+            XCTAssertTrue(xml.contains("<AMG00760>8000000</AMG00760>"))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }
@@ -195,18 +206,30 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA210 "))
-            XCTAssertTrue(xml.contains("<AMA00000>2025</AMA00000>"))
+            XCTAssertTrue(xml.contains("<AMA00000 IDREF=\"NENBUN\"/>"))
             XCTAssertTrue(xml.contains("<AMB00010>東京都千代田区1-2-3</AMB00010>"))
-            XCTAssertTrue(xml.contains("<AMB00030>ヤマダタロウ</AMB00030>"))
-            XCTAssertTrue(xml.contains("<AMB00040>山田太郎</AMB00040>"))
+            XCTAssertTrue(xml.contains("<AMB00030 IDREF=\"NOZEISHA_NM_KN\"/>"))
+            XCTAssertTrue(xml.contains("<AMB00040 IDREF=\"NOZEISHA_NM\"/>"))
             XCTAssertTrue(xml.contains("<AMB00050>1234567</AMB00050>"))
-            XCTAssertTrue(xml.contains("<AMB00070>0312345678</AMB00070>"))
-            XCTAssertTrue(xml.contains("<AMB00090>小売業</AMB00090>"))
-            XCTAssertTrue(xml.contains("<AMB00100>山田商店</AMB00100>"))
+            XCTAssertTrue(xml.contains("<AMB00070>"))
+            XCTAssertTrue(xml.contains("<gen:tel1>03</gen:tel1>"))
+            XCTAssertTrue(xml.contains("<gen:tel2>1234</gen:tel2>"))
+            XCTAssertTrue(xml.contains("<gen:tel3>5678</gen:tel3>"))
+            XCTAssertTrue(xml.contains("<AMB00090 IDREF=\"SHOKUGYO\"/>"))
+            XCTAssertTrue(xml.contains("<AMB00100 IDREF=\"NOZEISHA_YAGO\"/>"))
             XCTAssertFalse(xml.contains("<ABA"))
             XCTAssertTrue(xml.contains("<AMF00100>5000000</AMF00100>"))
             XCTAssertTrue(xml.contains("<KOA210-4>"))
+            XCTAssertTrue(xml.contains("<AMG00025>"))
+            XCTAssertTrue(xml.contains("<AMG00030>仮払金</AMG00030>"))
+            XCTAssertTrue(xml.contains("<AMG00420>5000000</AMG00420>"))
+            XCTAssertTrue(xml.contains("<AMG00260>3000000</AMG00260>"))
             XCTAssertTrue(xml.contains("<AMG00440>8000000</AMG00440>"))
+            XCTAssertTrue(xml.contains("<AMG00450>"))
+            XCTAssertTrue(xml.contains("<AMG00620>"))
+            XCTAssertTrue(xml.contains("<AMG00650>2500000</AMG00650>"))
+            XCTAssertTrue(xml.contains("<AMG00740>5500000</AMG00740>"))
+            XCTAssertTrue(xml.contains("<AMG00760>8000000</AMG00760>"))
             emitFixturePayloadForCI(data, marker: "BLUE")
             try writeFixtureIfRequested(data, envKey: "ETAX_XSD_BLUE_EXPORT_XML")
         case .failure(let error):
@@ -345,18 +368,52 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             guard let page1Range = xml.range(of: "<KOA210-1>"),
+                  let page2Range = xml.range(of: "<KOA210-2>"),
+                  let page3Range = xml.range(of: "<KOA210-3>"),
                   let page4Range = xml.range(of: "<KOA210-4>"),
                   let amfRange = xml.range(of: "<AMF00100>5000000</AMF00100>"),
-                  let amgRange = xml.range(of: "<AMG00440>8000000</AMG00440>")
+                  let amgRange = xml.range(of: "<AMG00440>8000000</AMG00440>"),
+                  let amgContainerRange = xml.range(of: "<AMG00000>")
             else {
                 return XCTFail("Expected KOA210 page structure and blue tags")
             }
 
             XCTAssertLessThan(page1Range.lowerBound, amfRange.lowerBound)
+            XCTAssertLessThan(page1Range.lowerBound, page2Range.lowerBound)
+            XCTAssertLessThan(page2Range.lowerBound, page3Range.lowerBound)
+            XCTAssertLessThan(page3Range.lowerBound, page4Range.lowerBound)
             XCTAssertLessThan(page4Range.lowerBound, amgRange.lowerBound)
+            XCTAssertLessThan(page4Range.lowerBound, amgContainerRange.lowerBound)
             XCTAssertFalse(xml.contains("<ABA"))
+            XCTAssertTrue(xml.contains("<AMA00000 IDREF=\"NENBUN\"/>"))
+            XCTAssertTrue(xml.contains("<AMB00030 IDREF=\"NOZEISHA_NM_KN\"/>"))
+            XCTAssertTrue(xml.contains("<AMB00040 IDREF=\"NOZEISHA_NM\"/>"))
+            XCTAssertTrue(xml.contains("<KOA210-2>\n  </KOA210-2>"))
+            XCTAssertTrue(xml.contains("<KOA210-3>\n  </KOA210-3>"))
+            XCTAssertTrue(xml.contains("<AMG00025>"))
+            XCTAssertTrue(xml.contains("<AMG00030>仮払金</AMG00030>"))
+            XCTAssertTrue(xml.contains("<AMG00450>"))
+            XCTAssertTrue(xml.contains("<AMG00620>"))
+            XCTAssertTrue(xml.contains("<KOA210-4>\n    <AMG00000>"))
+            XCTAssertTrue(xml.contains("<AMG00740>5500000</AMG00740>"))
+            XCTAssertTrue(xml.contains("<AMG00760>8000000</AMG00760>"))
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testBlueGeneralPackUsesOfficialMappingsFor2025And2026() {
+        for fiscalYear in [2025, 2026] {
+            let definitions = TaxYearDefinitionLoader.fieldDefinitions(for: .blueReturn, fiscalYear: fiscalYear)
+            let definitionsByKey = Dictionary(uniqueKeysWithValues: definitions.map { ($0.internalKey, $0) })
+
+            XCTAssertEqual(definitionsByKey["expense_interest"]?.xmlTag, "AMF00330")
+            XCTAssertEqual(definitionsByKey["expense_taxes"]?.xmlTag, "AMF00190")
+            XCTAssertNil(definitionsByKey["income_total_revenue"]?.xmlTag)
+            XCTAssertNil(definitionsByKey["inventory_cogs"]?.xmlTag)
+            XCTAssertEqual(definitionsByKey["bs_equity_owner_capital"]?.xmlTag, "AMG00740")
+            XCTAssertEqual(definitionsByKey["bs_total_liabilities_and_equity"]?.xmlTag, "AMG00760")
         }
     }
 
@@ -447,6 +504,25 @@ final class EtaxXtxExporterTests: XCTestCase {
             XCTAssertEqual(lines.count, 7)
         } else {
             XCTFail("Expected success")
+        }
+    }
+
+    @MainActor
+    func testGenerateCsvBlueReturnKeepsBalanceSheetDetailKeys() {
+        let form = makeForm(fields: sampleBlueBalanceSheetFields())
+        let result = EtaxXtxExporter.generateCsv(form: form)
+
+        switch result {
+        case .success(let data):
+            let csv = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(csv.contains("\"bs_asset_cash\",\"AMG00260\",\"blue_general\""))
+            XCTAssertTrue(csv.contains("\"bs_asset_additional_1_name\",\"AMG00030\",\"blue_general\""))
+            XCTAssertTrue(csv.contains("\"bs_asset_additional_1_closing\",\"AMG00420\",\"blue_general\""))
+            XCTAssertTrue(csv.contains("\"bs_liability_accounts_payable\",\"AMG00650\",\"blue_general\""))
+            XCTAssertTrue(csv.contains("\"bs_equity_owner_capital\",\"AMG00740\",\"blue_general\""))
+            XCTAssertTrue(csv.contains("\"bs_total_liabilities_and_equity\",\"AMG00760\",\"blue_general\""))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
         }
     }
 
