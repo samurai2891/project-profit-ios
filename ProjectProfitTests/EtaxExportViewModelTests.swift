@@ -195,6 +195,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testGeneratePreviewBuildsCashBasisFormWhenBlueCashBasisSelected() {
         var capturedStyle: FilingStyle?
+        let snapshot = makeSnapshot(fiscalYear: 2025)
         let expectedForm = EtaxForm(
             fiscalYear: 2025,
             formType: .blueCashBasis,
@@ -225,6 +226,7 @@ final class EtaxExportViewModelTests: XCTestCase {
                     fallbackTaxYearProfile: nil
                 )
             },
+            snapshotProvider: { _ in snapshot },
             formBuilder: { filingStyle, _ in
                 capturedStyle = filingStyle
                 return expectedForm
@@ -248,6 +250,163 @@ final class EtaxExportViewModelTests: XCTestCase {
             viewModel.exportedForm?.fields.first { $0.id == "cash_basis_expense_total" }?.value.numberValue,
             80_000
         )
+    }
+
+    func testExportRebuildsPreviewWhenDataRevisionChanges() {
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                yearLockState: .taxClose,
+                taxPackVersion: "2025-v1"
+            )
+        )
+
+        var buildCount = 0
+        var exportedRevenue: Int?
+        let snapshotProvider = { [unowned self] (fiscalYear: Int) in
+            self.makeSnapshot(fiscalYear: fiscalYear)
+        }
+        let viewModel = EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { [unowned self] fiscalYear in
+                EtaxExportContextQueryUseCase(modelContext: self.context).context(fiscalYear: fiscalYear)
+            },
+            snapshotProvider: snapshotProvider,
+            formBuilder: { filingStyle, snapshot in
+                buildCount += 1
+                return try FormEngine.build(
+                    filingStyle: filingStyle,
+                    input: FormEngine.BuildInput(snapshot: snapshot)
+                )
+            },
+            exporter: { _, form in
+                exportedRevenue = form.fields.first { $0.id == "revenue_sales_revenue" }?.value.numberValue
+                return URL(fileURLWithPath: "/tmp/mock-export.csv")
+            }
+        )
+        viewModel.formType = .blueReturn
+        viewModel.fiscalYear = 2025
+
+        seedCanonicalJournal(
+            businessId: businessId,
+            date: makeDate(year: 2025, month: 4, day: 1),
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 100_000
+        )
+
+        viewModel.generatePreview()
+        XCTAssertEqual(buildCount, 1)
+        XCTAssertEqual(
+            viewModel.exportedForm?.fields.first { $0.id == "revenue_sales_revenue" }?.value.numberValue,
+            100_000
+        )
+
+        seedCanonicalJournal(
+            businessId: businessId,
+            date: makeDate(year: 2025, month: 4, day: 2),
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 40_000
+        )
+
+        viewModel.exportCsv()
+
+        XCTAssertEqual(buildCount, 2)
+        XCTAssertEqual(exportedRevenue, 140_000)
+        XCTAssertEqual(
+            viewModel.exportedForm?.fields.first { $0.id == "revenue_sales_revenue" }?.value.numberValue,
+            140_000
+        )
+        guard case .success? = viewModel.exportResult else {
+            return XCTFail("revision change should rebuild and export latest form")
+        }
+    }
+
+    func testExportFailsWhenCurrentDataPreflightBecomesInvalidAfterPreview() {
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                filingStyle: .blueGeneral,
+                vatStatus: .exempt,
+                vatMethod: .general,
+                yearLockState: .taxClose,
+                taxPackVersion: "2025-v1"
+            )
+        )
+
+        let viewModel = makeViewModel()
+        viewModel.formType = .blueReturn
+        viewModel.fiscalYear = 2025
+
+        viewModel.generatePreview()
+        XCTAssertNotNil(viewModel.exportedForm)
+        XCTAssertTrue(viewModel.validationErrors.isEmpty)
+
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                filingStyle: .blueGeneral,
+                vatStatus: .taxable,
+                vatMethod: .simplified,
+                simplifiedBusinessCategory: nil,
+                yearLockState: .taxClose,
+                taxPackVersion: "2025-v2"
+            )
+        )
+
+        viewModel.exportXtx()
+
+        guard case .failure(let message)? = viewModel.exportResult else {
+            return XCTFail("current preflight failure should block export")
+        }
+        XCTAssertTrue(message.contains("業種区分"))
+    }
+
+    func testWhitePreviewAndExportUseSameFieldSet() {
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        seedTaxYearProfile(
+            TaxYearProfile(
+                businessId: businessId,
+                taxYear: 2025,
+                filingStyle: .white,
+                bookkeepingBasis: .singleEntry,
+                yearLockState: .taxClose,
+                taxPackVersion: "2025-v1"
+            )
+        )
+        seedCanonicalJournal(
+            businessId: businessId,
+            date: makeDate(year: 2025, month: 4, day: 5),
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 88_000
+        )
+
+        var exportedFieldIDs: [String] = []
+        let viewModel = makeViewModel(
+            exporter: { _, form in
+                exportedFieldIDs = form.fields.map(\.id)
+                return URL(fileURLWithPath: "/tmp/mock-white-parity.csv")
+            }
+        )
+        viewModel.formType = .whiteReturn
+        viewModel.fiscalYear = 2025
+
+        viewModel.generatePreview()
+        let previewFieldIDs = viewModel.exportedForm?.fields.map(\.id)
+
+        viewModel.exportCsv()
+
+        guard case .success? = viewModel.exportResult else {
+            return XCTFail("white export should succeed for field parity")
+        }
+        XCTAssertEqual(previewFieldIDs, exportedFieldIDs)
     }
 
     func testExportableFormDropsPreviewOnlyBalanceSheetFieldsBeforeValidation() {
@@ -428,7 +587,9 @@ final class EtaxExportViewModelTests: XCTestCase {
         return calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }
 
-    private func makeViewModel() -> EtaxExportViewModel {
+    private func makeViewModel(
+        exporter customExporter: (@MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL)? = nil
+    ) -> EtaxExportViewModel {
         let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
         let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
@@ -436,15 +597,18 @@ final class EtaxExportViewModelTests: XCTestCase {
             contextProvider: { fiscalYear in
                 contextQueryUseCase.context(fiscalYear: fiscalYear)
             },
-            formBuilder: { filingStyle, fiscalYear in
+            snapshotProvider: { fiscalYear in
+                formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+            },
+            formBuilder: { filingStyle, snapshot in
                 try FormEngine.build(
                     filingStyle: filingStyle,
                     input: FormEngine.BuildInput(
-                        snapshot: formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                        snapshot: snapshot
                     )
                 )
             },
-            exporter: { format, form in
+            exporter: customExporter ?? { format, form in
                 try ExportCoordinator.export(
                     target: .etax,
                     format: format,
@@ -457,7 +621,15 @@ final class EtaxExportViewModelTests: XCTestCase {
         )
     }
 
+    private func makeSnapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
+        EtaxFormBuildQueryUseCase(modelContext: context).snapshot(fiscalYear: fiscalYear)
+    }
+
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {
+        let existing = try! context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        existing
+            .filter { $0.businessId == profile.businessId && $0.taxYear == profile.taxYear }
+            .forEach(context.delete)
         context.insert(TaxYearProfileEntityMapper.toEntity(profile))
         try! context.save()
     }

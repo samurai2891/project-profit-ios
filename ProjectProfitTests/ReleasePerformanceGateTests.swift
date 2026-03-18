@@ -122,6 +122,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
 
     private func makeEtaxExportViewModel() -> EtaxExportViewModel {
         let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
             modelContext: context,
             contextProvider: { fiscalYear in
@@ -132,11 +133,13 @@ final class ReleasePerformanceGateTests: XCTestCase {
                         : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
                 )
             },
-            formBuilder: { filingStyle, fiscalYear in
+            snapshotProvider: { fiscalYear in
+                formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+            },
+            formBuilder: { filingStyle, snapshot in
                 try FormEngine.build(
                     filingStyle: filingStyle,
-                    dataStore: self.dataStore,
-                    fiscalYear: fiscalYear
+                    input: FormEngine.BuildInput(snapshot: snapshot)
                 )
             },
             exporter: { format, form in

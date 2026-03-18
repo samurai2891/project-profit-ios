@@ -18,16 +18,16 @@
 - `P0-10`
 - `P0-11`
 - `P0-12`（現金主義部分）
+- `P0-12`
+- `P1-03`
+- `P1-04`
 
 ## 未完のタスク ID
 
 - `P0-02`
 - `P0-06`
-- `P0-12`
 - `P1-01`
 - `P1-02`
-- `P1-03`
-- `P1-04`
 - `P1-05`
 - `P1-06`
 
@@ -50,6 +50,9 @@
 - `scripts/etax_validate_xsd.sh`
 - `scripts/run_etax_unit_lane.sh`
 - `ProjectProfitTests/TaxYearDefinitionLoaderTests.swift`
+- `ProjectProfit/Services/TaxYearDefinitionLoader.swift`
+- `scripts/etax_validate_tags.py`
+- `tools/etax/tests/test_etax_tag_pipeline.py`
 - `Docs/release/codex_batch_state.md`
 
 ## 実行した検証コマンド
@@ -89,6 +92,10 @@
 - `python3` により `/tmp/projectprofit-batch5b-dd/KOA110.export.xml` を一時加工した `/tmp/projectprofit-batch5b-dd/KOA110.manual2.xml` を作成し、`bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch5b-dd/KOA110.manual2.xml --form-key white_shushi` を実行
 - `ETAX_XSD_WHITE_EXPORT_XML=/tmp/projectprofit-batch5b-dd/KOA110.export.xml xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,id=F14C12AF-7F90-4311-BECD-E70E3031CE9B' -derivedDataPath /tmp/projectprofit-batch5b-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet test 2>&1 | tee /tmp/projectprofit-batch5b-white-artifact.log`
 - `python3` により `/tmp/projectprofit-batch5b-white-artifact.log` の `ETAX_EXPORT_WHITE_BASE64_*` から一時 XML を復元し、`bash scripts/etax_validate_xsd.sh --xml <temp-xml> --form-key white_shushi` を実行
+- `python3 -m unittest tools.etax.tests.test_etax_tag_pipeline`
+- `xcodebuild -quiet -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch6-loader-dd -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests test`
+- `xcodebuild -quiet -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch6-exporter-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesCashFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueCashBasisProducesXmlForCurrentOfficialXsdValidation test`
+- `bash scripts/run_etax_unit_lane.sh`
 
 ## 検証結果
 
@@ -185,15 +192,35 @@
 - latest white XML では `AIG00350` が `AIG00210` 配下、`AIG00360` が `AIG00140` 直下であることを確認済み
 - white の正式検証経路は host 側固定パスではなく、latest xcodebuild log の base64 payload から representative XML を復元する方式に確定
 - このため `P0-09`（white側）/ `P0-10` は完了
+- `TaxYearDefinitionLoader.validatePackCoverage(for:)` を追加し、`common` / `blue_general` / `white_shushi` / `blue_cash_basis` の form existence、pack coverage、white page 2、requiredRule、leaf-only mapping を検査可能にした
+- `TaxYearDefinitionLoaderTests` に `blue_cash_basis` を含む pack coverage テストを追加し、2025/2026 とも loader coverage が clean であることを確認した
+- `scripts/etax_validate_tags.py --filing-dir ProjectProfit/Resources/TaxYearPacks/2025/filing` を追加し、builder dynamic key / pack coverage / leaf-only mapping lint を CI 必須化した
+- `tools.etax.tests.test_etax_tag_pipeline` で filing pack lint の正常系、leaf-only 違反検知、`blue_cash_basis` coverage 欠落検知を追加し pass
+- `EtaxXtxExporterTests` に青色一般の generated XML representative test を追加し、blue / white / cash の 3 フォームすべてで base64 artifact を lane から復元できる状態に揃えた
+- `EtaxXtxExporter.swift` の `KOA230` 経路を official XSD に合わせて `AOA00000` と `AOB00030/40/90/100` を `IDREF` 参照化し、電話番号も structured phone で出力するよう修正した
+- `scripts/run_etax_unit_lane.sh` は `ETAX_XSD_REQUIRE_GENERATED_XML=true` を既定値に変更し、blue / white fallback と cash skip を禁止した
+- `bash scripts/run_etax_unit_lane.sh` pass
+- lane 内で recovered generated XML (`KOA210.export.xml` / `KOA110.export.xml` / `KOA230.export.xml`) に対する official XSD 検証が 3 フォームとも pass
+- このため `P0-12` / `P1-03` / `P1-04` は完了
+
+## CI で必須になった検証一覧
+
+- `python3 -m unittest tools.etax.tests.test_etax_tag_pipeline`
+- `python3 scripts/etax_validate_tags.py --filing-dir ProjectProfit/Resources/TaxYearPacks/2025/filing`
+- `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests test`
+- `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueReturnProducesXmlForCurrentOfficialXsdValidation -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnProducesXmlForCurrentOfficialXsdValidation -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueCashBasisProducesXmlForCurrentOfficialXsdValidation test`
+- `bash scripts/run_etax_unit_lane.sh`
 
 ## 残っている blocker
 
-- なし（Batch 5B のスコープは解消済み）
+- なし（Batch 6 のスコープは解消済み）
 
 ## 次バッチ向けメモ
 
 - white representative XML の検証は host 側固定パスではなく、`ETAX_EXPORT_WHITE_BASE64_*` から復元した latest XML を正本にする
 - simulator 実行では `ETAX_XSD_WHITE_EXPORT_XML` の host 反映が不安定なため、state 判定や XSD 確認は log payload 基準で行う
+- generated XML の official XSD 検証は blue / white / cash の 3 フォームすべて base64 artifact 復元を正本とし、fixture fallback は使用しない
+- `scripts/run_etax_unit_lane.sh` は `ETAX_XSD_REQUIRE_GENERATED_XML=true` を既定値にし、generated XML が無い場合は CI failure として扱う
 
 ## 次バッチが読むべき最小ファイル一覧
 

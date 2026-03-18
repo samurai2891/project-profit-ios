@@ -209,7 +209,7 @@ enum EtaxXtxExporter {
         lines.append("<\(rootTag) xmlns=\"http://xml.e-tax.nta.go.jp/XSD/shotoku\" xmlns:gen=\"http://xml.e-tax.nta.go.jp/XSD/general\" VR=\"\(xmlEscape(vr))\" softNM=\"ProjectProfit\" sakuseiNM=\"Project Profit iOS\" sakuseiDay=\"\(formDate)\">")
         lines.append("  <KOA230-1>")
 
-        lines.append("    <AOA00000>\(xmlEscape(String(form.fiscalYear)))</AOA00000>")
+        lines.append("    <AOA00000 IDREF=\"NENBUN\"/>")
 
         appendDeclarantBlock(
             to: &lines,
@@ -224,7 +224,9 @@ enum EtaxXtxExporter {
             phoneTag: "AOB00070",
             businessCategoryTag: "AOB00090",
             businessNameTag: "AOB00100",
-            indent: "    "
+            indent: "    ",
+            useReferenceElements: true,
+            useStructuredPhone: true
         )
 
         lines.append("    <AOF00000>")
@@ -1089,6 +1091,11 @@ enum EtaxXtxExporter {
             "AMB00040": "NOZEISHA_NM",
             "AMB00090": "SHOKUGYO",
             "AMB00100": "NOZEISHA_YAGO",
+            "AOA00000": "NENBUN",
+            "AOB00030": "NOZEISHA_NM_KN",
+            "AOB00040": "NOZEISHA_NM",
+            "AOB00090": "SHOKUGYO",
+            "AOB00100": "NOZEISHA_YAGO",
             "AIA00000": "NENBUN",
             "AIB00030": "NOZEISHA_NM_KN",
             "AIB00040": "NOZEISHA_NM",

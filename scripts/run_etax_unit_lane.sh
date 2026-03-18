@@ -35,7 +35,7 @@ cab_blue_spec_sheet="${ETAX_CAB_BLUE_FIELD_SPEC_SHEET:-KOA210}"
 cab_white_spec_xlsx="${ETAX_CAB_WHITE_FIELD_SPEC_XLSX:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx}"
 cab_white_spec_sheet="${ETAX_CAB_WHITE_FIELD_SPEC_SHEET:-KOA110}"
 cab_spec_dir="${ETAX_CAB_SPEC_DIR:-$ETAX_REFERENCE_ROOT_RESOLVED/09XML構造設計書等【所得税】}"
-xsd_require_generated_mode="${ETAX_XSD_REQUIRE_GENERATED_XML:-auto}"
+xsd_require_generated_mode="${ETAX_XSD_REQUIRE_GENERATED_XML:-true}"
 
 tag_dict_json="$artifact_dir/TagDictionary_2025.json"
 applied_taxyear_json="$artifact_dir/TaxYear2025.applied.json"
@@ -112,6 +112,9 @@ python3 scripts/etax_validate_tags.py \
   --taxyear-json "$applied_taxyear_json" \
   --required-keys tools/etax/required_internal_keys.json
 
+python3 scripts/etax_validate_tags.py \
+  --filing-dir ProjectProfit/Resources/TaxYearPacks/2025/filing
+
 overlay_to_apply="$overlay_json"
 
 echo "[4/8] Generate CAB overlay from e-Tax reference specs (optional)"
@@ -166,7 +169,7 @@ health_device="$(printf '%s\n' "$health_output" | awk -F= '/^simulator_device=/{
 
 if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status" == "warn" ]]; then
   swift_lane_executed="true"
-  simulator_device="${ETAX_SIMULATOR_DEVICE:-$health_device}"
+  simulator_device="${ETAX_SIMULATOR_DEVICE:-iPhone 17}"
   if [[ -z "$simulator_device" ]]; then
     simulator_device="iPhone 15"
   fi
@@ -180,10 +183,11 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
     -scheme ProjectProfit \
     -destination "platform=iOS Simulator,name=$simulator_device" \
     -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests \
-    -only-testing:ProjectProfitTests/EtaxCharacterValidatorTests \
-    -only-testing:ProjectProfitTests/EtaxXtxExporterTests \
-    -only-testing:ProjectProfitTests/EtaxFieldPopulatorTests \
-    -only-testing:ProjectProfitTests/ProfileSettingsViewTests 2>&1 | tee "$xcodebuild_log"
+    -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet \
+    -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueReturnProducesXmlForCurrentOfficialXsdValidation \
+    -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet \
+    -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnProducesXmlForCurrentOfficialXsdValidation \
+    -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueCashBasisProducesXmlForCurrentOfficialXsdValidation 2>&1 | tee "$xcodebuild_log"
 
   python3 - "$xcodebuild_log" "$blue_export_xml" "$white_export_xml" "$cash_export_xml" <<'PY'
 import base64

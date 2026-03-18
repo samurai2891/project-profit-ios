@@ -55,7 +55,7 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
     func testFieldLabel_whiteReturnReturnsWhiteLabel() {
         let label = TaxYearDefinitionLoader.fieldLabel(for: .salesRevenue, formType: .whiteReturn, fiscalYear: 2025)
-        XCTAssertEqual(label, "収入金額")
+        XCTAssertEqual(label, "売上（収入）金額")
     }
 
     func testFieldLabel_fallbackForUnknownYear() {
@@ -70,7 +70,7 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
     func testXmlTag_whiteTag() {
         let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "shushi_revenue_total", formType: .whiteReturn, fiscalYear: 2025)
-        XCTAssertEqual(xmlTag, "AIG00020")
+        XCTAssertEqual(xmlTag, "AIG00060")
     }
 
     func testBlueCashBasisMetadata_2025UsesKOA230CurrentSpec() {
@@ -114,7 +114,7 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
     func testXmlTag_commonDeclarantFieldComesFromPack() {
         let xmlTag = TaxYearDefinitionLoader.xmlTag(for: "declarant_name", formType: .blueReturn, fiscalYear: 2025)
-        XCTAssertEqual(xmlTag, "ABA00140")
+        XCTAssertEqual(xmlTag, "AMB00040")
     }
 
     func testIsSupportedYear() {
@@ -225,7 +225,7 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         let label = TaxYearDefinitionLoader.fieldLabel(
             for: .salesRevenue, formType: .whiteReturn, fiscalYear: 2026
         )
-        XCTAssertEqual(label, "収入金額")
+        XCTAssertEqual(label, "売上（収入）金額")
     }
 
     func testXmlTag_2026_blueReturnSalesRevenue() {
@@ -259,5 +259,35 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
     func testAllTaxLinesCovered_2026() {
         let uncovered = TaxYearDefinitionLoader.validateCoverage(for: 2026)
         XCTAssertTrue(uncovered.isEmpty, "All TaxLines should be covered in the 2026 filing pack. Missing: \(uncovered.map(\.rawValue))")
+    }
+
+    func testPackCoverage_2025IncludesBlueCashBasisAndBuilderCoverage() {
+        let report = TaxYearDefinitionLoader.validatePackCoverage(for: 2025)
+
+        XCTAssertTrue(report.missingForms.isEmpty, "Missing forms: \(report.missingForms)")
+        XCTAssertTrue(report.missingPackKeysByForm["blue_cash_basis", default: []].isEmpty)
+        XCTAssertTrue(report.unresolvedBuilderKeysByForm["blue_cash_basis", default: []].isEmpty)
+    }
+
+    func testPackCoverage_2025WhitePage2AndRequiredRulesArePresent() {
+        let report = TaxYearDefinitionLoader.validatePackCoverage(for: 2025)
+
+        XCTAssertTrue(report.whitePage2MissingKeys.isEmpty, "Missing white page2 keys: \(report.whitePage2MissingKeys)")
+        XCTAssertTrue(report.missingRequiredRulesByForm["white_shushi", default: []].isEmpty)
+        XCTAssertTrue(report.whiteLeafOnlyMappingViolations.isEmpty, "Leaf-only mapping violations: \(report.whiteLeafOnlyMappingViolations)")
+        XCTAssertTrue(report.unresolvedBuilderKeysByForm["white_shushi", default: []].isEmpty)
+    }
+
+    func testPackCoverage_2026RemainsClean() {
+        let report = TaxYearDefinitionLoader.validatePackCoverage(for: 2026)
+
+        XCTAssertTrue(report.isClean, """
+        missingForms=\(report.missingForms)
+        missingPackKeys=\(report.missingPackKeysByForm)
+        unresolvedBuilderKeys=\(report.unresolvedBuilderKeysByForm)
+        missingRequiredRules=\(report.missingRequiredRulesByForm)
+        whitePage2MissingKeys=\(report.whitePage2MissingKeys)
+        whiteLeafOnlyMappingViolations=\(report.whiteLeafOnlyMappingViolations)
+        """)
     }
 }

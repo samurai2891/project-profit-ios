@@ -3,6 +3,7 @@ import XCTest
 
 final class EtaxXtxExporterTests: XCTestCase {
 
+    private let blueXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA210-011.xsd"
     private let cashBasisXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA230-010.xsd"
     private let whiteXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA110-012.xsd"
 
@@ -404,6 +405,25 @@ final class EtaxXtxExporterTests: XCTestCase {
     }
 
     @MainActor
+    func testGenerateXtxBlueReturnProducesXmlForCurrentOfficialXsdValidation() throws {
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blueXsdPath), "blue XSD should exist at \(blueXsdPath)")
+
+        let form = makeForm(fields: sampleDeclarantFields() + sampleFields() + sampleBlueBalanceSheetFields(), formType: .blueReturn)
+        let result = EtaxXtxExporter.generateXtx(form: form)
+
+        switch result {
+        case .success(let data):
+            let xml = String(data: data, encoding: .utf8)!
+            XCTAssertTrue(xml.contains("<KOA210 "))
+            XCTAssertTrue(xml.contains("<KOA210-1>"))
+            XCTAssertTrue(xml.contains("<KOA210-4>"))
+            XCTAssertTrue(xml.contains("<AMG00000>"))
+        case .failure(let error):
+            XCTFail("Expected success, got error: \(error)")
+        }
+    }
+
+    @MainActor
     func testGenerateXtxBlueCashBasisUsesDedicatedKOA230Route() {
         let form = makeForm(fields: sampleCashBasisFields(), formType: .blueCashBasis)
         let result = EtaxXtxExporter.generateXtx(form: form)
@@ -436,14 +456,16 @@ final class EtaxXtxExporterTests: XCTestCase {
         case .success(let data):
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA230 "))
-            XCTAssertTrue(xml.contains("<AOA00000>2025</AOA00000>"))
+            XCTAssertTrue(xml.contains("<AOA00000 IDREF=\"NENBUN\"/>"))
             XCTAssertTrue(xml.contains("<AOB00010>東京都千代田区1-2-3</AOB00010>"))
-            XCTAssertTrue(xml.contains("<AOB00030>ヤマダタロウ</AOB00030>"))
-            XCTAssertTrue(xml.contains("<AOB00040>山田太郎</AOB00040>"))
+            XCTAssertTrue(xml.contains("<AOB00030 IDREF=\"NOZEISHA_NM_KN\"/>"))
+            XCTAssertTrue(xml.contains("<AOB00040 IDREF=\"NOZEISHA_NM\"/>"))
             XCTAssertTrue(xml.contains("<AOB00050>1234567</AOB00050>"))
-            XCTAssertTrue(xml.contains("<AOB00070>0312345678</AOB00070>"))
-            XCTAssertTrue(xml.contains("<AOB00090>小売業</AOB00090>"))
-            XCTAssertTrue(xml.contains("<AOB00100>山田商店</AOB00100>"))
+            XCTAssertTrue(xml.contains("<gen:tel1>03</gen:tel1>"))
+            XCTAssertTrue(xml.contains("<gen:tel2>1234</gen:tel2>"))
+            XCTAssertTrue(xml.contains("<gen:tel3>5678</gen:tel3>"))
+            XCTAssertTrue(xml.contains("<AOB00090 IDREF=\"SHOKUGYO\"/>"))
+            XCTAssertTrue(xml.contains("<AOB00100 IDREF=\"NOZEISHA_YAGO\"/>"))
             XCTAssertFalse(xml.contains("<ABA"))
             XCTAssertTrue(xml.contains("<AOF00180>120000</AOF00180>"))
             XCTAssertTrue(xml.contains("<AOF00190>130000</AOF00190>"))
@@ -466,6 +488,8 @@ final class EtaxXtxExporterTests: XCTestCase {
             let xml = String(data: data, encoding: .utf8)!
             XCTAssertTrue(xml.contains("<KOA230 "))
             XCTAssertTrue(xml.contains("<AOF00110>3000000</AOF00110>"))
+            emitFixturePayloadForCI(data, marker: "CASH")
+            try writeFixtureIfRequested(data, envKey: "ETAX_XSD_CASH_EXPORT_XML")
         case .failure(let error):
             XCTFail("Expected success, got error: \(error)")
         }

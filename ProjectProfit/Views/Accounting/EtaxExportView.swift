@@ -30,11 +30,14 @@ struct EtaxExportView: View {
                     contextProvider: { fiscalYear in
                         contextQueryUseCase.context(fiscalYear: fiscalYear)
                     },
-                    formBuilder: { filingStyle, fiscalYear in
+                    snapshotProvider: { fiscalYear in
+                        formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                    },
+                    formBuilder: { filingStyle, snapshot in
                         try FormEngine.build(
                             filingStyle: filingStyle,
                             input: FormEngine.BuildInput(
-                                snapshot: formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                                snapshot: snapshot
                             )
                         )
                     },
