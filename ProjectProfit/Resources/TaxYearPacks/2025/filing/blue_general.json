@@ -38,7 +38,6 @@
       "id": "income",
       "label": "所得金額",
       "fields": [
-        { "internalKey": "income_total_revenue", "fieldLabel": "収入金額合計", "xmlTag": "AMF00970", "dataType": "number" },
         { "internalKey": "income_total_expenses", "fieldLabel": "必要経費合計", "xmlTag": "AMF00380", "dataType": "number" },
         { "internalKey": "income_net", "fieldLabel": "所得金額", "xmlTag": "AMF00530", "dataType": "number" }
       ]
@@ -49,8 +48,7 @@
       "fields": [
         { "internalKey": "inventory_opening", "fieldLabel": "期首商品棚卸高", "xmlTag": "AMF00120", "dataType": "number" },
         { "internalKey": "inventory_purchases", "fieldLabel": "仕入高", "xmlTag": "AMF00130", "dataType": "number" },
-        { "internalKey": "inventory_closing", "fieldLabel": "期末商品棚卸高", "xmlTag": "AMF00150", "dataType": "number" },
-        { "internalKey": "inventory_cogs", "fieldLabel": "売上原価", "xmlTag": "AMF00110", "dataType": "number" }
+        { "internalKey": "inventory_closing", "fieldLabel": "期末商品棚卸高", "xmlTag": "AMF00150", "dataType": "number" }
       ]
     },
     {

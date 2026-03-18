@@ -222,9 +222,7 @@ enum EtaxFieldPopulator {
         let postalCode = sensitivePayload?.postalCode ?? nonEmpty(businessProfile.postalCode)
         let address = sensitivePayload?.address ?? nonEmpty(businessProfile.businessAddress)
         let phoneNumber = sensitivePayload?.phoneNumber ?? nonEmpty(businessProfile.phoneNumber)
-        let dateOfBirth = sensitivePayload?.dateOfBirth
         let businessCategory = sensitivePayload?.businessCategory
-        let myNumberFlag = sensitivePayload?.myNumberFlag
 
         var fields: [EtaxField] = []
 
@@ -268,18 +266,6 @@ enum EtaxFieldPopulator {
             fields.append(EtaxField(
                 id: "declarant_business_category", fieldLabel: "事業種類",
                 taxLine: nil, value: category, section: .declarantInfo
-            ))
-        }
-        if includeSensitive, let birthDate = dateOfBirth {
-            fields.append(EtaxField(
-                id: "declarant_birth_date", fieldLabel: "生年月日",
-                taxLine: nil, value: birthDateEtaxString(from: birthDate), section: .declarantInfo
-            ))
-        }
-        if includeSensitive, let myNumberFlag {
-            fields.append(EtaxField(
-                id: "declarant_my_number_flag", fieldLabel: "マイナンバー提出有無",
-                taxLine: nil, value: myNumberFlag, section: .declarantInfo
             ))
         }
 

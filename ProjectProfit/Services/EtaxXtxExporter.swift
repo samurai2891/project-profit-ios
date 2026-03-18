@@ -135,12 +135,29 @@ enum EtaxXtxExporter {
         var lines: [String] = []
         lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         lines.append("<\(rootTag) xmlns=\"http://xml.e-tax.nta.go.jp/XSD/shotoku\" xmlns:gen=\"http://xml.e-tax.nta.go.jp/XSD/general\" VR=\"\(xmlEscape(vr))\" softNM=\"ProjectProfit\" sakuseiNM=\"Project Profit iOS\" sakuseiDay=\"\(formDate)\">")
-        lines.append("  <KOA210-1>")
 
         let mappedByPrefix = Dictionary(grouping: fields, by: { prefix(of: $0.xmlTag) })
+        let amfFields = mappedByPrefix["AMF"] ?? []
+        let amgFields = mappedByPrefix["AMG"] ?? []
 
-        // 損益計算書セクション（AMF系）
-        if let amfFields = mappedByPrefix["AMF"], !amfFields.isEmpty {
+        lines.append("  <KOA210-1>")
+        lines.append("    <AMA00000>\(xmlEscape(String(form.fiscalYear)))</AMA00000>")
+        appendDeclarantBlock(
+            to: &lines,
+            fields: fields,
+            containerTag: "AMB00000",
+            addressTag: "AMB00010",
+            kanaContainerTag: "AMB00020",
+            kanaTag: "AMB00030",
+            nameTag: "AMB00040",
+            businessLocationTag: "AMB00050",
+            phoneContainerTag: "AMB00060",
+            phoneTag: "AMB00070",
+            businessCategoryTag: "AMB00090",
+            businessNameTag: "AMB00100",
+            indent: "    "
+        )
+        if !amfFields.isEmpty {
             lines.append("    <AMF00000>")
             lines.append("      <AMF00010>")
             lines.append("        <AMF00090>")
@@ -149,9 +166,16 @@ enum EtaxXtxExporter {
             lines.append("      </AMF00010>")
             lines.append("    </AMF00000>")
         }
+        let handledTags = Set([
+            "AMA00000",
+            "AMB00010", "AMB00030", "AMB00040", "AMB00050", "AMB00070", "AMB00090", "AMB00100"
+        ])
+        let unknown = fields.filter { prefix(of: $0.xmlTag) != "AMG" && !handledTags.contains($0.xmlTag) && prefix(of: $0.xmlTag) != "AMF" }
+        lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
+        lines.append("  </KOA210-1>")
 
-        // 貸借対照表セクション（AMG系）
-        if let amgFields = mappedByPrefix["AMG"], !amgFields.isEmpty {
+        if !amgFields.isEmpty {
+            lines.append("  <KOA210-4>")
             lines.append("    <AMG00000>")
             lines.append("      <AMG00020>")
             lines.append("        <AMG00240>")
@@ -159,21 +183,9 @@ enum EtaxXtxExporter {
             lines.append("        </AMG00240>")
             lines.append("      </AMG00020>")
             lines.append("    </AMG00000>")
+            lines.append("  </KOA210-4>")
         }
 
-        // 共通情報（ABA系）は現行TaxYearマッピングを維持して出力
-        if let abaFields = mappedByPrefix["ABA"], !abaFields.isEmpty {
-            lines.append("    <ABA00000>")
-            lines.append(contentsOf: xmlElementLines(for: abaFields, indent: "      "))
-            lines.append("    </ABA00000>")
-        }
-
-        // 未知プレフィックスはKOA210-1直下に出力
-        let handled = Set(["AMF", "AMG", "ABA"])
-        let unknown = fields.filter { !handled.contains(prefix(of: $0.xmlTag)) }
-        lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
-
-        lines.append("  </KOA210-1>")
         lines.append("</\(rootTag)>")
         return lines.joined(separator: "\n")
     }
@@ -192,6 +204,25 @@ enum EtaxXtxExporter {
         lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         lines.append("<\(rootTag) xmlns=\"http://xml.e-tax.nta.go.jp/XSD/shotoku\" xmlns:gen=\"http://xml.e-tax.nta.go.jp/XSD/general\" VR=\"\(xmlEscape(vr))\" softNM=\"ProjectProfit\" sakuseiNM=\"Project Profit iOS\" sakuseiDay=\"\(formDate)\">")
         lines.append("  <KOA230-1>")
+
+        lines.append("    <AOA00000>\(xmlEscape(String(form.fiscalYear)))</AOA00000>")
+
+        appendDeclarantBlock(
+            to: &lines,
+            fields: fields,
+            containerTag: "AOB00000",
+            addressTag: "AOB00010",
+            kanaContainerTag: "AOB00020",
+            kanaTag: "AOB00030",
+            nameTag: "AOB00040",
+            businessLocationTag: "AOB00050",
+            phoneContainerTag: "AOB00060",
+            phoneTag: "AOB00070",
+            businessCategoryTag: "AOB00090",
+            businessNameTag: "AOB00100",
+            indent: "    "
+        )
+
         lines.append("    <AOF00000>")
 
         let representativeExpense = fields.first(where: { isCashBasisDynamicExpense($0.field.id) })
@@ -254,6 +285,24 @@ enum EtaxXtxExporter {
 
         let mappedByPrefix = Dictionary(grouping: fields, by: { prefix(of: $0.xmlTag) })
 
+        lines.append("    <AIA00000>\(xmlEscape(String(form.fiscalYear)))</AIA00000>")
+
+        appendDeclarantBlock(
+            to: &lines,
+            fields: fields,
+            containerTag: "AIB00000",
+            addressTag: "AIB00010",
+            kanaContainerTag: "AIB00020",
+            kanaTag: "AIB00030",
+            nameTag: "AIB00040",
+            businessLocationTag: "AIB00050",
+            phoneContainerTag: "AIB00060",
+            phoneTag: "AIB00070",
+            businessCategoryTag: "AIB00090",
+            businessNameTag: "AIB00100",
+            indent: "    "
+        )
+
         if let aigFields = mappedByPrefix["AIG"], !aigFields.isEmpty {
             lines.append("    <AIG00000>")
             lines.append(contentsOf: xmlElementLines(for: aigFields, indent: "      "))
@@ -268,7 +317,11 @@ enum EtaxXtxExporter {
 
         // 未知プレフィックスはKOA110-1直下に出力
         let handled = Set(["AIG", "AIN"])
-        let unknown = fields.filter { !handled.contains(prefix(of: $0.xmlTag)) }
+        let handledTags = Set([
+            "AIA00000",
+            "AIB00010", "AIB00030", "AIB00040", "AIB00050", "AIB00070", "AIB00090", "AIB00100"
+        ])
+        let unknown = fields.filter { !handled.contains(prefix(of: $0.xmlTag)) && !handledTags.contains($0.xmlTag) }
         lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
 
         lines.append("  </KOA110-1>")
@@ -285,6 +338,78 @@ enum EtaxXtxExporter {
             }
     }
 
+    private static func appendDeclarantBlock(
+        to lines: inout [String],
+        fields: [MappedEtaxField],
+        containerTag: String,
+        addressTag: String,
+        kanaContainerTag: String,
+        kanaTag: String,
+        nameTag: String,
+        businessLocationTag: String,
+        phoneContainerTag: String,
+        phoneTag: String,
+        businessCategoryTag: String,
+        businessNameTag: String,
+        indent: String
+    ) {
+        let addressField = fields.first(where: { $0.xmlTag == addressTag })
+        let kanaField = fields.first(where: { $0.xmlTag == kanaTag })
+        let nameField = fields.first(where: { $0.xmlTag == nameTag })
+        let businessLocationField = fields.first(where: { $0.xmlTag == businessLocationTag })
+        let phoneField = fields.first(where: { $0.xmlTag == phoneTag })
+        let businessCategoryField = fields.first(where: { $0.xmlTag == businessCategoryTag })
+        let businessNameField = fields.first(where: { $0.xmlTag == businessNameTag })
+
+        guard addressField != nil || kanaField != nil || nameField != nil || businessLocationField != nil
+                || phoneField != nil || businessCategoryField != nil || businessNameField != nil
+        else {
+            return
+        }
+
+        lines.append("\(indent)<\(containerTag)>")
+
+        if let addressField {
+            lines.append(xmlElementLine(for: addressField, indent: "\(indent)  "))
+        }
+
+        if kanaField != nil || nameField != nil {
+            lines.append("\(indent)  <\(kanaContainerTag)>")
+            if let kanaField {
+                lines.append(xmlElementLine(for: kanaField, indent: "\(indent)    "))
+            }
+            if let nameField {
+                lines.append(xmlElementLine(for: nameField, indent: "\(indent)    "))
+            }
+            lines.append("\(indent)  </\(kanaContainerTag)>")
+        }
+
+        if let businessLocationField {
+            lines.append(xmlElementLine(for: businessLocationField, indent: "\(indent)  "))
+        }
+
+        if let phoneField {
+            lines.append("\(indent)  <\(phoneContainerTag)>")
+            lines.append(xmlElementLine(for: phoneField, indent: "\(indent)    "))
+            lines.append("\(indent)  </\(phoneContainerTag)>")
+        }
+
+        if let businessCategoryField {
+            lines.append(xmlElementLine(for: businessCategoryField, indent: "\(indent)  "))
+        }
+
+        if let businessNameField {
+            lines.append(xmlElementLine(for: businessNameField, indent: "\(indent)  "))
+        }
+
+        lines.append("\(indent)</\(containerTag)>")
+    }
+
+    private static func xmlElementLine(for mapped: MappedEtaxField, indent: String) -> String {
+        let value = xmlEscape(EtaxCharacterValidator.sanitize(mapped.field.value.exportText))
+        return "\(indent)<\(mapped.xmlTag)>\(value)</\(mapped.xmlTag)>"
+    }
+
     private static func resolveMappedFields(
         form: EtaxForm,
         definition: TaxYearDefinition
@@ -298,10 +423,11 @@ enum EtaxXtxExporter {
             return .failure(.unsupportedTaxYear(year: form.fiscalYear))
         }
 
-        let definitionsByKey = Dictionary(uniqueKeysWithValues: definitions.map { ($0.internalKey, $0) })
-
         var mapped: [MappedEtaxField] = []
         for field in form.fields {
+            if shouldSkipDirectCompositeField(field.id, formType: form.formType) {
+                continue
+            }
             if form.formType == .blueCashBasis, isCashBasisDynamicExpense(field.id) {
                 let syntheticTag = cashBasisDynamicExpenseXmlTag(for: field.id)
                 let definitionField = TaxFieldDefinition(
@@ -320,7 +446,15 @@ enum EtaxXtxExporter {
                 continue
             }
 
-            guard let definitionField = definitionsByKey[field.id] else {
+            let definitionField = matchingDefinition(
+                for: field.id,
+                formKey: form.formType.definitionFormKey,
+                definitions: definitions
+            ) ?? syntheticDeclarantDefinition(
+                for: field.id,
+                formType: form.formType
+            )
+            guard let definitionField else {
                 return .failure(.validationFailed(reasons: ["未定義internalKey: \(field.id)"]))
             }
             guard let xmlTag = definitionField.xmlTag?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -338,6 +472,75 @@ enum EtaxXtxExporter {
         return .success(mapped)
     }
 
+    private static func matchingDefinition(
+        for internalKey: String,
+        formKey: String,
+        definitions: [TaxFieldDefinition]
+    ) -> TaxFieldDefinition? {
+        if internalKey.hasPrefix("declarant_") {
+            return nil
+        }
+        return definitions.first {
+            $0.internalKey == internalKey && ($0.form == nil || $0.form == formKey)
+        }
+    }
+
+    private static func syntheticDeclarantDefinition(
+        for internalKey: String,
+        formType: EtaxFormType
+    ) -> TaxFieldDefinition? {
+        let xmlTagByInternalKey: [String: String]
+        switch formType {
+        case .blueReturn:
+            xmlTagByInternalKey = [
+                "declarant_address": "AMB00010",
+                "declarant_name_kana": "AMB00030",
+                "declarant_name": "AMB00040",
+                "declarant_postal_code": "AMB00050",
+                "declarant_phone": "AMB00070",
+                "declarant_business_category": "AMB00090",
+                "declarant_business_name": "AMB00100"
+            ]
+        case .whiteReturn:
+            xmlTagByInternalKey = [
+                "declarant_address": "AIB00010",
+                "declarant_name_kana": "AIB00030",
+                "declarant_name": "AIB00040",
+                "declarant_postal_code": "AIB00050",
+                "declarant_phone": "AIB00070",
+                "declarant_business_category": "AIB00090",
+                "declarant_business_name": "AIB00100"
+            ]
+        case .blueCashBasis:
+            xmlTagByInternalKey = [
+                "declarant_address": "AOB00010",
+                "declarant_name_kana": "AOB00030",
+                "declarant_name": "AOB00040",
+                "declarant_postal_code": "AOB00050",
+                "declarant_phone": "AOB00070",
+                "declarant_business_category": "AOB00090",
+                "declarant_business_name": "AOB00100"
+            ]
+        }
+
+        guard let xmlTag = xmlTagByInternalKey[internalKey] else {
+            return nil
+        }
+
+        return TaxFieldDefinition(
+            internalKey: internalKey,
+            fieldLabel: internalKey,
+            xmlTag: xmlTag,
+            taxLineRawValue: nil,
+            section: EtaxSection.declarantInfo.rawValue,
+            dataType: .text,
+            form: formType.definitionFormKey,
+            idref: nil,
+            format: nil,
+            requiredRule: nil
+        )
+    }
+
     // MARK: - Utilities
 
     private static func prefix(of xmlTag: String) -> String {
@@ -348,10 +551,22 @@ enum EtaxXtxExporter {
         for formType: EtaxFormType,
         mappedFields: [MappedEtaxField]
     ) -> [EtaxField] {
-        if formType == .blueCashBasis {
-            return mappedFields.map(\.field).filter { !isCashBasisDynamicExpense($0.id) }
+        mappedFields.map(\.field).filter { field in
+            if field.section == .declarantInfo {
+                return false
+            }
+            if formType == .blueCashBasis, isCashBasisDynamicExpense(field.id) {
+                return false
+            }
+            return true
         }
-        return mappedFields.map(\.field)
+    }
+
+    private static func shouldSkipDirectCompositeField(_ internalKey: String, formType: EtaxFormType) -> Bool {
+        guard formType == .blueReturn else {
+            return false
+        }
+        return internalKey == "income_total_revenue" || internalKey == "inventory_cogs"
     }
 
     private static func isCashBasisDynamicExpense(_ internalKey: String) -> Bool {
