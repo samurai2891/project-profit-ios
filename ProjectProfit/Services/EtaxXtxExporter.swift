@@ -286,10 +286,9 @@ enum EtaxXtxExporter {
         lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         lines.append("<\(rootTag) xmlns=\"http://xml.e-tax.nta.go.jp/XSD/shotoku\" xmlns:gen=\"http://xml.e-tax.nta.go.jp/XSD/general\" VR=\"\(xmlEscape(vr))\" softNM=\"ProjectProfit\" sakuseiNM=\"Project Profit iOS\" sakuseiDay=\"\(formDate)\">")
         lines.append("  <KOA110-1>")
+        let mappedById = Dictionary(uniqueKeysWithValues: fields.map { ($0.field.id, $0) })
 
-        let mappedByPrefix = Dictionary(grouping: fields, by: { prefix(of: $0.xmlTag) })
-
-        lines.append("    <AIA00000>\(xmlEscape(String(form.fiscalYear)))</AIA00000>")
+        lines.append("    <AIA00000 IDREF=\"NENBUN\"/>")
 
         appendDeclarantBlock(
             to: &lines,
@@ -305,32 +304,329 @@ enum EtaxXtxExporter {
             businessCategoryTag: "AIB00090",
             businessNameTag: "AIB00100",
             indent: "    "
+            ,
+            useReferenceElements: true,
+            useStructuredPhone: true
         )
 
-        if let aigFields = mappedByPrefix["AIG"], !aigFields.isEmpty {
-            lines.append("    <AIG00000>")
-            lines.append(contentsOf: xmlElementLines(for: aigFields, indent: "      "))
-            lines.append("    </AIG00000>")
-        }
-
-        if let ainFields = mappedByPrefix["AIN"], !ainFields.isEmpty {
-            lines.append("    <AIN00000>")
-            lines.append(contentsOf: xmlElementLines(for: ainFields, indent: "      "))
-            lines.append("    </AIN00000>")
-        }
-
-        // 未知プレフィックスはKOA110-1直下に出力
-        let handled = Set(["AIG", "AIN"])
-        let handledTags = Set([
-            "AIA00000",
-            "AIB00010", "AIB00030", "AIB00040", "AIB00050", "AIB00070", "AIB00090", "AIB00100"
-        ])
-        let unknown = fields.filter { !handled.contains(prefix(of: $0.xmlTag)) && !handledTags.contains($0.xmlTag) }
-        lines.append(contentsOf: xmlElementLines(for: unknown, indent: "    "))
+        lines.append(contentsOf: whiteIncomeStatementLines(mappedById: mappedById, indent: "    "))
 
         lines.append("  </KOA110-1>")
+        lines.append("  <KOA110-2>")
+        lines.append(contentsOf: whitePage2Lines(mappedById: mappedById, indent: "    "))
+        lines.append("  </KOA110-2>")
+
         lines.append("</\(rootTag)>")
         return lines.joined(separator: "\n")
+    }
+
+    private static func whiteIncomeStatementLines(
+        mappedById: [String: MappedEtaxField],
+        indent: String
+    ) -> [String] {
+        var lines: [String] = []
+        lines.append("\(indent)<AIG00000>")
+
+        let revenueFields = whiteMappedFields(
+            ids: [
+                "shushi_revenue_sales",
+                "shushi_revenue_home_consumption",
+                "shushi_revenue_other",
+                "shushi_revenue_total"
+            ],
+            mappedById: mappedById
+        )
+        lines.append("\(indent)  <AIG00020>")
+        lines.append(contentsOf: xmlElementLines(for: revenueFields, indent: "\(indent)    "))
+        lines.append("\(indent)  </AIG00020>")
+
+        let inventoryFields = whiteMappedFields(
+            ids: [
+                "shushi_inventory_opening",
+                "shushi_inventory_purchases",
+                "shushi_inventory_subtotal",
+                "shushi_inventory_closing",
+                "shushi_inventory_cogs"
+            ],
+            mappedById: mappedById
+        )
+        lines.append("\(indent)  <AIG00070>")
+        lines.append(contentsOf: xmlElementLines(for: inventoryFields, indent: "\(indent)    "))
+        lines.append("\(indent)  </AIG00070>")
+
+        if let gross = mappedById["shushi_income_gross"] {
+            lines.append(xmlElementLine(for: gross, indent: "\(indent)  "))
+        }
+
+        lines.append("\(indent)  <AIG00140>")
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: [
+                "shushi_expense_salary",
+                "shushi_expense_outsourcing",
+                "shushi_expense_depreciation",
+                "shushi_expense_bad_debt",
+                "shushi_expense_rent",
+                "shushi_expense_interest"
+            ],
+            mappedById: mappedById
+        ), indent: "\(indent)    "))
+        lines.append("\(indent)    <AIG00210>")
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: [
+                "shushi_expense_taxes",
+                "shushi_expense_shipping",
+                "shushi_expense_utilities",
+                "shushi_expense_travel",
+                "shushi_expense_communication",
+                "shushi_expense_advertising",
+                "shushi_expense_entertainment",
+                "shushi_expense_insurance",
+                "shushi_expense_repairs",
+                "shushi_expense_supplies",
+                "shushi_expense_welfare",
+                "shushi_expense_additional_amount",
+                "shushi_expense_misc"
+            ],
+            mappedById: mappedById
+        ), indent: "\(indent)      "))
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: [
+                "shushi_expense_other_subtotal"
+            ],
+            mappedById: mappedById
+        ), indent: "\(indent)      "))
+        lines.append("\(indent)    </AIG00210>")
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: ["shushi_expense_total"],
+            mappedById: mappedById
+        ), indent: "\(indent)    "))
+        lines.append("\(indent)  </AIG00140>")
+
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: [
+                "shushi_income_before_employee_deduction",
+                "shushi_employee_deduction",
+                "shushi_income_special_label",
+                "shushi_income_net",
+                "shushi_income_note",
+                "shushi_non_deductible_loss_note"
+            ],
+            mappedById: mappedById
+        ), indent: "\(indent)  "))
+
+        lines.append("\(indent)</AIG00000>")
+        return lines
+    }
+
+    private static func whitePage2Lines(
+        mappedById: [String: MappedEtaxField],
+        indent: String
+    ) -> [String] {
+        var lines: [String] = []
+        lines.append(contentsOf: whiteRepeatingPartyBlockLines(
+            rowTag: "AIK00010",
+            otherTotalId: "shushi_sales_detail_other_total",
+            reducedTaxId: "shushi_sales_detail_reduced_tax_total",
+            totalId: "shushi_sales_detail_total",
+            rowPrefixes: [
+                "name": "shushi_sales_detail_%d_name",
+                "address": "shushi_sales_detail_%d_address",
+                "invoice": "shushi_sales_detail_%d_invoice_registration",
+                "corporate": "shushi_sales_detail_%d_corporate_number",
+                "amount": "shushi_sales_detail_%d_amount"
+            ],
+            mappedById: mappedById,
+            containerTag: "AIK00000",
+            rowCount: 4,
+            indent: indent
+        ))
+        lines.append(contentsOf: whiteRepeatingPartyBlockLines(
+            rowTag: "AIL00010",
+            otherTotalId: "shushi_purchase_detail_other_total",
+            reducedTaxId: "shushi_purchase_detail_reduced_tax_total",
+            totalId: "shushi_purchase_detail_total",
+            rowPrefixes: [
+                "name": "shushi_purchase_detail_%d_name",
+                "address": "shushi_purchase_detail_%d_address",
+                "invoice": "shushi_purchase_detail_%d_invoice_registration",
+                "corporate": "shushi_purchase_detail_%d_corporate_number",
+                "amount": "shushi_purchase_detail_%d_amount"
+            ],
+            mappedById: mappedById,
+            containerTag: "AIL00000",
+            rowCount: 4,
+            indent: indent
+        ))
+        lines.append(contentsOf: whiteDepreciationBlockLines(mappedById: mappedById, indent: indent))
+        lines.append(contentsOf: whiteRentBreakdownLines(mappedById: mappedById, indent: indent))
+        return lines
+    }
+
+    private static func whiteRepeatingPartyBlockLines(
+        rowTag: String,
+        otherTotalId: String,
+        reducedTaxId: String,
+        totalId: String,
+        rowPrefixes: [String: String],
+        mappedById: [String: MappedEtaxField],
+        containerTag: String,
+        rowCount: Int,
+        indent: String
+    ) -> [String] {
+        var lines: [String] = []
+        lines.append("\(indent)<\(containerTag)>")
+        for row in 1...rowCount {
+            let rowFields = [
+                whiteMappedField(id: String(format: rowPrefixes["name"]!, row), mappedById: mappedById),
+                whiteMappedField(id: String(format: rowPrefixes["address"]!, row), mappedById: mappedById),
+                whiteMappedField(id: String(format: rowPrefixes["invoice"]!, row), mappedById: mappedById),
+                whiteMappedField(id: String(format: rowPrefixes["corporate"]!, row), mappedById: mappedById),
+                whiteMappedField(id: String(format: rowPrefixes["amount"]!, row), mappedById: mappedById)
+            ].compactMap { $0 }
+            guard !rowFields.isEmpty else {
+                continue
+            }
+            lines.append("\(indent)  <\(rowTag)>")
+            lines.append(contentsOf: xmlElementLines(for: rowFields, indent: "\(indent)    "))
+            lines.append("\(indent)  </\(rowTag)>")
+        }
+        lines.append(contentsOf: xmlElementLines(for: whiteMappedFields(
+            ids: [otherTotalId, reducedTaxId, totalId],
+            mappedById: mappedById
+        ), indent: "\(indent)  "))
+        lines.append("\(indent)</\(containerTag)>")
+        return lines
+    }
+
+    private static func whiteDepreciationBlockLines(
+        mappedById: [String: MappedEtaxField],
+        indent: String
+    ) -> [String] {
+        var lines: [String] = []
+        lines.append("\(indent)<AIM00000>")
+        for row in 1...6 {
+            var rowFields = whiteMappedFields(
+                ids: [
+                    "shushi_depreciation_detail_\(row)_name",
+                    "shushi_depreciation_detail_\(row)_acquisition_cost",
+                    "shushi_depreciation_detail_\(row)_method",
+                    "shushi_depreciation_detail_\(row)_period_months",
+                    "shushi_depreciation_detail_\(row)_ordinary_amount",
+                    "shushi_depreciation_detail_\(row)_necessary_expense_amount",
+                    "shushi_depreciation_detail_\(row)_remaining_balance"
+                ],
+                mappedById: mappedById
+            )
+            if let acquired = mappedById["shushi_depreciation_detail_\(row)_acquired_year_month"],
+               !acquired.field.value.exportText.isEmpty
+            {
+                rowFields.insert(acquired, at: 1)
+            }
+            if let usefulLife = mappedById["shushi_depreciation_detail_\(row)_useful_life"],
+               usefulLife.field.value.numberValue ?? 0 >= 2
+            {
+                rowFields.insert(usefulLife, at: min(4, rowFields.count))
+            }
+            guard !rowFields.isEmpty else {
+                continue
+            }
+            lines.append("\(indent)  <AIM00010>")
+            lines.append(contentsOf: xmlElementLines(for: rowFields, indent: "\(indent)    "))
+            lines.append("\(indent)  </AIM00010>")
+        }
+        let nextTotalFields = whiteMappedFields(
+            ids: ["shushi_depreciation_next_total_label"],
+            mappedById: mappedById
+        )
+        if !nextTotalFields.isEmpty {
+            lines.append("\(indent)  <AIM00211>")
+            lines.append(contentsOf: xmlElementLines(for: nextTotalFields, indent: "\(indent)    "))
+            lines.append("\(indent)  </AIM00211>")
+        }
+        let totalFields = whiteMappedFields(
+            ids: [
+                "shushi_depreciation_total_ordinary",
+                "shushi_depreciation_total_special",
+                "shushi_depreciation_total_amount",
+                "shushi_depreciation_total_necessary_expense",
+                "shushi_depreciation_total_remaining_balance"
+            ],
+            mappedById: mappedById
+        )
+        if !totalFields.isEmpty {
+            lines.append("\(indent)  <AIM00220>")
+            lines.append(contentsOf: xmlElementLines(for: totalFields, indent: "\(indent)    "))
+            lines.append("\(indent)  </AIM00220>")
+        }
+        lines.append("\(indent)</AIM00000>")
+        return lines
+    }
+
+    private static func whiteRentBreakdownLines(
+        mappedById: [String: MappedEtaxField],
+        indent: String
+    ) -> [String] {
+        var lines: [String] = []
+        for row in 1...2 {
+            let address = whiteMappedField(id: "shushi_rent_detail_\(row)_address", mappedById: mappedById)
+            let name = whiteMappedField(id: "shushi_rent_detail_\(row)_name", mappedById: mappedById)
+            let property = whiteMappedField(id: "shushi_rent_detail_\(row)_property", mappedById: mappedById)
+            let keyMoney = whiteMappedField(id: "shushi_rent_detail_\(row)_key_money", mappedById: mappedById)
+            let renewalFee = whiteMappedField(id: "shushi_rent_detail_\(row)_renewal_fee", mappedById: mappedById)
+            let rent = whiteMappedField(id: "shushi_rent_detail_\(row)_rent", mappedById: mappedById)
+            let necessary = whiteMappedField(id: "shushi_rent_detail_\(row)_necessary_expense", mappedById: mappedById)
+
+            guard address != nil || name != nil || property != nil || keyMoney != nil || renewalFee != nil || rent != nil || necessary != nil else {
+                continue
+            }
+
+            lines.append("\(indent)<AIN00000>")
+            if address != nil || name != nil {
+                lines.append("\(indent)  <AIN00010>")
+                if let address {
+                    lines.append(xmlElementLine(for: address, indent: "\(indent)    "))
+                }
+                if let name {
+                    lines.append(xmlElementLine(for: name, indent: "\(indent)    "))
+                }
+                lines.append("\(indent)  </AIN00010>")
+            }
+            if let property {
+                lines.append(xmlElementLine(for: property, indent: "\(indent)  "))
+            }
+            if keyMoney != nil || renewalFee != nil || rent != nil {
+                lines.append("\(indent)  <AIN00050>")
+                if let keyMoney {
+                    lines.append(xmlElementLine(for: keyMoney, indent: "\(indent)    "))
+                }
+                if let renewalFee {
+                    lines.append(xmlElementLine(for: renewalFee, indent: "\(indent)    "))
+                }
+                if let rent {
+                    lines.append(xmlElementLine(for: rent, indent: "\(indent)    "))
+                }
+                lines.append("\(indent)  </AIN00050>")
+            }
+            if let necessary {
+                lines.append(xmlElementLine(for: necessary, indent: "\(indent)  "))
+            }
+            lines.append("\(indent)</AIN00000>")
+        }
+        return lines
+    }
+
+    private static func whiteMappedField(
+        id: String,
+        mappedById: [String: MappedEtaxField]
+    ) -> MappedEtaxField? {
+        mappedById[id]
+    }
+
+    private static func whiteMappedFields(
+        ids: [String],
+        mappedById: [String: MappedEtaxField]
+    ) -> [MappedEtaxField] {
+        ids.compactMap { mappedById[$0] }
     }
 
     private static func xmlElementLines(for fields: [MappedEtaxField], indent: String) -> [String] {
@@ -792,7 +1088,12 @@ enum EtaxXtxExporter {
             "AMB00030": "NOZEISHA_NM_KN",
             "AMB00040": "NOZEISHA_NM",
             "AMB00090": "SHOKUGYO",
-            "AMB00100": "NOZEISHA_YAGO"
+            "AMB00100": "NOZEISHA_YAGO",
+            "AIA00000": "NENBUN",
+            "AIB00030": "NOZEISHA_NM_KN",
+            "AIB00040": "NOZEISHA_NM",
+            "AIB00090": "SHOKUGYO",
+            "AIB00100": "NOZEISHA_YAGO"
         ]
         return ids[xmlTag]
     }

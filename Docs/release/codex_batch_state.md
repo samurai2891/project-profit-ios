@@ -1,6 +1,6 @@
 # Codex Batch State
 
-最終更新日: 2026-03-18
+最終更新日: 2026-03-19
 対象正本: `Docs/release/統合_修正タスク一覧_P0_P1_必要書類作成まで.md`
 対象 prompt 集: `Docs/release/Codex_バッチ実行プロンプト集_必要書類作成まで.md`
 
@@ -14,6 +14,8 @@
 - `P0-08`
 - `P0-07`
 - `P0-09`（青色一般側）
+- `P0-09`（白色側）
+- `P0-10`
 - `P0-11`
 - `P0-12`（現金主義部分）
 
@@ -21,8 +23,6 @@
 
 - `P0-02`
 - `P0-06`
-- `P0-09`（白色側）
-- `P0-10`
 - `P0-12`
 - `P1-01`
 - `P1-02`
@@ -36,11 +36,13 @@
 - `ProjectProfit/Resources/TaxYearPacks/2025/filing/common.json`
 - `ProjectProfit/Resources/TaxYearPacks/2025/filing/blue_general.json`
 - `ProjectProfit/Resources/TaxYearPacks/2025/filing/white_shushi.json`
+- `ProjectProfit/Resources/TaxYearPacks/2026/filing/white_shushi.json`
 - `ProjectProfit/Resources/TaxYearPacks/2025/filing/blue_cash_basis.json`
 - `ProjectProfit/Resources/TaxYearPacks/2026/filing/blue_general.json`
 - `ProjectProfit/Resources/TaxYearPacks/2026/filing/blue_cash_basis.json`
 - `ProjectProfit/Services/EtaxFieldPopulator.swift`
 - `ProjectProfit/Services/EtaxXtxExporter.swift`
+- `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
 - `ProjectProfit/Services/CashBasisReturnBuilder.swift`
 - `ProjectProfit/ViewModels/EtaxExportViewModel.swift`
 - `ProjectProfitTests/EtaxXtxExporterTests.swift`
@@ -65,6 +67,7 @@
 - `bash scripts/run_etax_unit_lane.sh`
 - `git diff -- ProjectProfit/Resources/TaxYearPacks/2025/filing/common.json ProjectProfit/Resources/TaxYearPacks/2026/filing/common.json ProjectProfit/Services/EtaxFieldPopulator.swift ProjectProfit/Services/EtaxXtxExporter.swift ProjectProfitTests/EtaxXtxExporterTests.swift Docs/release/codex_batch_state.md`
 - `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch3-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesCashFixtureWhenEnvIsSet test`
+- `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch5a-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnSplitsPagesAndMovesAinToPage2 test`
 - `git diff -- ProjectProfit/Resources/TaxYearPacks/2025/filing/blue_general.json ProjectProfit/Resources/TaxYearPacks/2026/filing/blue_general.json ProjectProfit/Services/EtaxXtxExporter.swift ProjectProfitTests/EtaxXtxExporterTests.swift Docs/release/codex_batch_state.md`
 - `ETAX_XSD_BLUE_EXPORT_XML=/tmp/projectprofit-batch3b-dd/KOA210.export.xml xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch3b-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxSuccess -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueReturnSplitsPagesAndKeepsBalanceSheetOnPage4 -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueReturnOmitsDirectCompositeValueTags -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateCsvSuccess -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateCsvFieldCount test`
 - `bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch3b-dd/KOA210.export.xml --form-key blue_general`
@@ -79,6 +82,13 @@
 - `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch4b-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet test 2>&1 | tee /tmp/projectprofit-batch4b-blue-xcode.log`
 - `python3` により `/tmp/projectprofit-batch4b-blue-xcode.log` の `ETAX_EXPORT_BLUE_BASE64_*` から `/tmp/projectprofit-batch4b-dd/KOA210.export.xml` を復元
 - `bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch4b-dd/KOA210.export.xml --form-key blue_general`
+- `python3 -m json.tool ProjectProfit/Resources/TaxYearPacks/2025/filing/white_shushi.json >/tmp/projectprofit-white-2025.json`
+- `python3 -m json.tool ProjectProfit/Resources/TaxYearPacks/2026/filing/white_shushi.json >/tmp/projectprofit-white-2026.json`
+- `ETAX_XSD_WHITE_EXPORT_XML=/tmp/projectprofit-batch5b-dd/KOA110.export.xml xcodebuild -quiet -scheme ProjectProfit -destination 'platform=iOS Simulator,id=F14C12AF-7F90-4311-BECD-E70E3031CE9B' -derivedDataPath /tmp/projectprofit-batch5b-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testWhitePackUsesOfficialCoverageFor2025And2026 -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testWhiteValidatorDetectsRequiredFieldsAndAcceptsDefinedDynamicKeys -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnSplitsPagesAndMovesAinToPage2 -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnProducesXmlForCurrentOfficialXsdValidation test`
+- `bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch5b-dd/KOA110.export.xml --form-key white_shushi`
+- `python3` により `/tmp/projectprofit-batch5b-dd/KOA110.export.xml` を一時加工した `/tmp/projectprofit-batch5b-dd/KOA110.manual2.xml` を作成し、`bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch5b-dd/KOA110.manual2.xml --form-key white_shushi` を実行
+- `ETAX_XSD_WHITE_EXPORT_XML=/tmp/projectprofit-batch5b-dd/KOA110.export.xml xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,id=F14C12AF-7F90-4311-BECD-E70E3031CE9B' -derivedDataPath /tmp/projectprofit-batch5b-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet test 2>&1 | tee /tmp/projectprofit-batch5b-white-artifact.log`
+- `python3` により `/tmp/projectprofit-batch5b-white-artifact.log` の `ETAX_EXPORT_WHITE_BASE64_*` から一時 XML を復元し、`bash scripts/etax_validate_xsd.sh --xml <temp-xml> --form-key white_shushi` を実行
 
 ## 検証結果
 
@@ -154,22 +164,43 @@
 - `AMG00740` は元入金、`AMG00760` は負債・資本の部 期末合計として representative XML に出力されることを確認済み
 - `/tmp/projectprofit-batch4b-dd/KOA210.export.xml` で `bash scripts/etax_validate_xsd.sh --form-key blue_general` pass
 - このため `P0-08` / `P0-11` は完了
+- Batch 5A で白色 exporter の page skeleton を `KOA110-1` / `KOA110-2` に分割済み
+- `AIN00000` は `KOA110-1` から `KOA110-2` 配下へ移動済み
+- `testGenerateXtxWritesWhiteFixtureWhenEnvIsSet` pass
+- `testGenerateXtxWhiteReturnSplitsPagesAndMovesAinToPage2` pass
+- 白色 generated XML で `KOA110-2` 出力と `AIN00090` の page 2 配置を再確認済み
+- `P0-06` は page 分割部分のみ完了、field coverage 拡張は未完
+- Batch 5B で white pack 2025/2026 に `AIG00030/40/50/60`、`AIG00140/AIG00210`、`AIK/AIL/AIM/AIN` を追加し、`AIG00020` 直値定義と `shushi_rent_breakdown` を除去済み
+- `ShushiNaiyakushoBuilder.swift` は white の収入 child、棚卸、所得計算、`AIM` 減価償却 detail/totals、`AIK/AIL` totals を生成するよう更新済み
+- `EtaxXtxExporter.swift` は white の page 1/2 block を official 構造へ寄せ、`AIN00090` を `AIN00000` row 内 child として出力する実装まで更新済み
+- `testWhitePackUsesOfficialCoverageFor2025And2026` pass
+- `testWhiteValidatorDetectsRequiredFieldsAndAcceptsDefinedDynamicKeys` pass
+- `testGenerateXtxWritesWhiteFixtureWhenEnvIsSet` pass
+- `testGenerateXtxWhiteReturnSplitsPagesAndMovesAinToPage2` pass
+- `testGenerateXtxWhiteReturnProducesXmlForCurrentOfficialXsdValidation` pass
+- `python3 -m json.tool` による 2025/2026 `white_shushi.json` 構文確認 pass
+- ただし `/tmp/projectprofit-batch5b-dd/KOA110.export.xml` は `xcodebuild` 再実行後も更新されず、実生成物に対する `bash scripts/etax_validate_xsd.sh --form-key white_shushi` は旧 `AIG00350` / `AIG00360` 並びのまま fail
+- 同 XML を current source の期待形に合わせて一時補正した `/tmp/projectprofit-batch5b-dd/KOA110.manual2.xml` では `bash scripts/etax_validate_xsd.sh --form-key white_shushi` pass
+- `/tmp/projectprofit-batch5b-white-artifact.log` の `ETAX_EXPORT_WHITE_BASE64_*` から復元した latest white XML で `bash scripts/etax_validate_xsd.sh --form-key white_shushi` pass
+- latest white XML では `AIG00350` が `AIG00210` 配下、`AIG00360` が `AIG00140` 直下であることを確認済み
+- white の正式検証経路は host 側固定パスではなく、latest xcodebuild log の base64 payload から representative XML を復元する方式に確定
+- このため `P0-09`（white側）/ `P0-10` は完了
 
 ## 残っている blocker
 
-- なし（Batch 4B のスコープは解消済み）
+- なし（Batch 5B のスコープは解消済み）
 
 ## 次バッチ向けメモ
 
-- blue の具体的誤マッピング候補: `AMF00538/AMF00540..AMF00560` を含む page 2 の declarant/year 再掲未対応
-- blue の具体的誤マッピング候補: `AMF00580` 配下の月別売上・仕入ブロックが未対応
-- blue の具体的誤マッピング候補: `AMF02220` / `AMF02320` を含む page 3 明細ブロックが未対応
+- white representative XML の検証は host 側固定パスではなく、`ETAX_EXPORT_WHITE_BASE64_*` から復元した latest XML を正本にする
+- simulator 実行では `ETAX_XSD_WHITE_EXPORT_XML` の host 反映が不安定なため、state 判定や XSD 確認は log payload 基準で行う
 
 ## 次バッチが読むべき最小ファイル一覧
 
 - `Docs/release/統合_修正タスク一覧_P0_P1_必要書類作成まで.md`
 - `Docs/release/codex_batch_state.md`
+- `ProjectProfit/Resources/TaxYearPacks/2025/filing/white_shushi.json`
+- `ProjectProfit/Resources/TaxYearPacks/2026/filing/white_shushi.json`
 - `ProjectProfit/Services/EtaxXtxExporter.swift`
-- `ProjectProfit/Resources/TaxYearPacks/2025/filing/blue_general.json`
-- `ProjectProfit/Resources/TaxYearPacks/2026/filing/blue_general.json`
+- `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
 - `ProjectProfitTests/EtaxXtxExporterTests.swift`
