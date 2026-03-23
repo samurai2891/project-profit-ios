@@ -373,6 +373,7 @@ private struct StatementImportSheet: View {
     @State private var isImporting = false
     @State private var errorMessage: String?
     @State private var showFileImporter = false
+    @State private var statementPeriodYear = Calendar.current.component(.year, from: Date())
 
     private var useCase: StatementImportUseCase {
         StatementImportUseCase(modelContext: modelContext)
@@ -387,6 +388,11 @@ private struct StatementImportSheet: View {
                 return $0.subtype == .creditCard
             }
         }
+    }
+
+    private var statementPeriodYearOptions: [Int] {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        return Array((currentYear - 5)...(currentYear + 5))
     }
 
     var body: some View {
@@ -417,6 +423,13 @@ private struct StatementImportSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    Picker("対象年", selection: $statementPeriodYear) {
+                        ForEach(statementPeriodYearOptions, id: \.self) { year in
+                            Text("\(year)年").tag(year)
+                        }
+                    }
+                    .pickerStyle(.menu)
 
                     Button {
                         showFileImporter = true
@@ -547,7 +560,8 @@ private struct StatementImportSheet: View {
                     originalFileName: url.lastPathComponent,
                     mimeType: url.pathExtension.lowercased() == "pdf" ? "application/pdf" : "text/csv",
                     statementKind: statementKind,
-                    paymentAccountId: paymentAccountId
+                    paymentAccountId: paymentAccountId,
+                    statementPeriodYear: statementPeriodYear
                 )
                 selectedRequest = request
                 errorMessage = nil

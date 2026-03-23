@@ -92,6 +92,19 @@ targets:
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/ProjectProfit/Ledger/Bridge/xlsxwriter"
         HEADER_SEARCH_PATHS: "$(BUILD_DIR)/../../SourcePackages/checkouts/libxlsxwriter/include"
 
+  ProjectProfitShareExtensionTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - ProjectProfitShareExtensionTests
+      - path: ProjectProfitShareExtension/ShareAttachmentImporter.swift
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 52PPJXD67Z
+        CODE_SIGN_STYLE: Automatic
+
   ProjectProfitUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -107,3 +120,12 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TEST_TARGET_NAME: ProjectProfit
         PRODUCT_BUNDLE_IDENTIFIER: com.projectprofit.ProjectProfitUITests
+
+schemes:
+  ProjectProfitShareExtension:
+    build:
+      targets:
+        ProjectProfitShareExtension: all
+    test:
+      targets:
+        - name: ProjectProfitShareExtensionTests

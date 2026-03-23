@@ -109,6 +109,71 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         )
     }
 
+    func testIntakeTreatsImportedImageAsElectronicTransaction() async throws {
+        let businessId = try await seedBusinessProfile()
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-supplies",
+            code: "611",
+            name: "消耗品費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+
+        let useCase = ReceiptEvidenceIntakeUseCase(modelContext: context)
+        let request = ReceiptEvidenceIntakeRequest(
+            receiptData: ReceiptData(
+                totalAmount: 2400,
+                date: "2026-03-10",
+                storeName: "ファイル取込商店",
+                registrationNumber: nil,
+                estimatedCategory: "tools",
+                itemSummary: "インク"
+            ),
+            ocrText: "ファイル取込商店\n合計 2,400円",
+            sourceType: .importedImage,
+            fileData: Data("png-file".utf8),
+            originalFileName: "files-receipt.png",
+            mimeType: "image/png",
+            reviewedAmount: 2400,
+            reviewedDate: date(2026, 3, 10),
+            transactionType: .expense,
+            categoryId: "cat-tools",
+            memo: "[レシート] ファイル取込商店 - インク",
+            lineItems: [LineItem(name: "インク", quantity: 1, unitPrice: 2400)],
+            linkedProjectIds: [],
+            paymentAccountId: "acct-cash",
+            transferToAccountId: nil,
+            taxDeductibleRate: 100,
+            taxCodeId: nil,
+            isTaxIncluded: false,
+            taxAmount: nil,
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: "ファイル取込商店",
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
+        )
+
+        let result = try await useCase.intake(request)
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        XCTAssertEqual(result.evidence.sourceType, .importedImage)
+        XCTAssertEqual(result.evidence.storageCategory, .electronicTransaction)
+        XCTAssertEqual(result.evidence.mimeType, "image/png")
+    }
+
     func testIntakeThrowsDuplicateEvidenceWhenSameFileHashAlreadyExists() async throws {
         let businessId = try await seedBusinessProfile()
         try await seedCanonicalAccount(

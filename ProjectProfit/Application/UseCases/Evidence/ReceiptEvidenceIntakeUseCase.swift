@@ -836,7 +836,7 @@ struct ReceiptEvidenceIntakeUseCase {
         switch sourceType {
         case .camera, .photoLibrary:
             return .paperScan
-        case .scannedPDF, .emailAttachment, .importedPDF, .importedCSV, .manualNoFile:
+        case .scannedPDF, .emailAttachment, .importedImage, .importedPDF, .importedCSV, .manualNoFile:
             return .electronicTransaction
         }
     }

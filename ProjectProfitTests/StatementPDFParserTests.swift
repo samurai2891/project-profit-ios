@@ -32,6 +32,19 @@ final class StatementPDFParserTests: XCTestCase {
         XCTAssertEqual(drafts.first?.direction, .outflow)
     }
 
+    func testParseAppliesFallbackYearToMonthDayRows() async throws {
+        let parser = StatementPDFParser()
+        let pdfData = makeTextPDF(pages: [
+            "01/10 ClientDeposit 120000",
+            "01/12 CoffeeShop -5500"
+        ])
+
+        let drafts = try await parser.parse(fileData: pdfData, fallbackYear: 2024)
+        let years = drafts.map { Calendar.current.component(.year, from: $0.date) }
+
+        XCTAssertEqual(years, [2024, 2024])
+    }
+
     private func makeTextPDF(pages: [String]) -> Data {
         let bounds = CGRect(x: 0, y: 0, width: 595, height: 842)
         let renderer = UIGraphicsPDFRenderer(bounds: bounds)

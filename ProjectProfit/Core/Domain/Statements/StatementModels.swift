@@ -206,6 +206,7 @@ struct StatementImportRequest: Sendable, Equatable {
     let mimeType: String
     let statementKind: StatementKind
     let paymentAccountId: String
+    let statementPeriodYear: Int
 }
 
 struct StatementImportPreview: Equatable {

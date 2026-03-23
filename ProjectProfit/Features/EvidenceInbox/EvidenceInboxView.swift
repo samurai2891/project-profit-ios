@@ -263,6 +263,7 @@ struct EvidenceInboxView: View {
         case .photoLibrary: "写真"
         case .scannedPDF: "スキャンPDF"
         case .emailAttachment: "メール添付"
+        case .importedImage: "画像取込"
         case .importedPDF: "PDF取込"
         case .importedCSV: "CSV取込"
         case .manualNoFile: "手入力"

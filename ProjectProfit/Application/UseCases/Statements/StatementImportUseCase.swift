@@ -112,8 +112,6 @@ struct StatementImportUseCase {
             importedAt: Date(),
             originalFileName: request.originalFileName
         )
-        try await statementRepository.saveImport(importRecord)
-
         let lineRecords = parseResult.drafts.map { draft in
             StatementLineRecord(
                 importId: importRecord.id,
@@ -129,23 +127,33 @@ struct StatementImportUseCase {
                 memo: draft.memo
             )
         }
-        try await statementRepository.saveLines(lineRecords)
-        let candidates = try await makeCandidates(
-            from: lineRecords,
-            businessId: businessId,
-            evidenceId: evidence.id
-        )
-        for candidate in candidates {
-            try await postingWorkflowUseCase.saveCandidate(candidate)
-        }
-        let suggestedLines = try await matchService.refreshSuggestions(for: lineRecords)
+        do {
+            try await statementRepository.saveImport(importRecord)
+            try await statementRepository.saveLines(lineRecords)
+            let candidates = try await makeCandidates(
+                from: lineRecords,
+                businessId: businessId,
+                evidenceId: evidence.id
+            )
+            for candidate in candidates {
+                try await postingWorkflowUseCase.saveCandidate(candidate)
+            }
+            let suggestedLines = try await matchService.refreshSuggestions(for: lineRecords)
 
-        return StatementImportResult(
-            importRecord: importRecord,
-            evidenceId: evidence.id,
-            lineCount: suggestedLines.count,
-            lineErrors: parseResult.lineErrors
-        )
+            return StatementImportResult(
+                importRecord: importRecord,
+                evidenceId: evidence.id,
+                lineCount: suggestedLines.count,
+                lineErrors: parseResult.lineErrors
+            )
+        } catch {
+            await rollbackImportArtifacts(
+                importId: importRecord.id,
+                evidenceId: evidence.id,
+                storedFileName: storedFileName
+            )
+            throw error
+        }
     }
 
     private func parse(request: StatementImportRequest) async throws -> StatementParseResult {
@@ -160,7 +168,7 @@ struct StatementImportUseCase {
         case .pdf:
             let drafts = try await pdfParser.parse(
                 fileData: request.fileData,
-                fallbackYear: Calendar.current.component(.year, from: Date())
+                fallbackYear: request.statementPeriodYear
             )
             return StatementParseResult(
                 fileSource: .pdf,
@@ -169,6 +177,22 @@ struct StatementImportUseCase {
                 previewText: nil
             )
         }
+    }
+
+    private func rollbackImportArtifacts(
+        importId: UUID,
+        evidenceId: UUID,
+        storedFileName: String
+    ) async {
+        if let candidates = try? await postingWorkflowUseCase.candidates(evidenceId: evidenceId) {
+            for candidate in candidates {
+                try? await postingWorkflowUseCase.deleteCandidate(candidate.id)
+            }
+        }
+        try? await statementRepository.deleteLines(importId: importId)
+        try? await statementRepository.deleteImport(importId)
+        try? await evidenceRepository.delete(evidenceId)
+        ReceiptImageStore.deleteDocumentFile(fileName: storedFileName)
     }
 
     private func parseCSV(content: String) -> StatementParseResult {

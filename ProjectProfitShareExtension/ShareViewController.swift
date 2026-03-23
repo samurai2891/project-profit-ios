@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 import UniformTypeIdentifiers
 
-private struct SharedImportQueueRecord: Codable {
+struct SharedImportQueueRecord: Codable {
     let id: UUID
     let originalFilename: String
     let storedFilename: String
@@ -10,7 +10,7 @@ private struct SharedImportQueueRecord: Codable {
     let createdAt: Date
 }
 
-private enum ShareImportError: LocalizedError {
+enum ShareImportError: LocalizedError {
     case unsupportedType
     case appGroupUnavailable
     case invalidSharedDefaults
@@ -140,26 +140,30 @@ final class ShareViewController: UIViewController {
 
         let originalName: String
         let storedFileName: String
-        let destinationURL: URL
 
-        if let sourceURL = try await loadFileURL(from: provider, typeIdentifier: typeIdentifier) {
-            let fileExtension = normalizedFileExtension(
-                pathExtension: sourceURL.pathExtension,
-                typeIdentifier: typeIdentifier
-            )
-            storedFileName = "\(UUID().uuidString).\(fileExtension)"
-            destinationURL = inboxDirectory.appendingPathComponent(storedFileName)
-            originalName = sourceURL.lastPathComponent
-            try replaceItem(at: destinationURL, with: sourceURL)
+        if let importedFile = try await ShareAttachmentImporter.importFileRepresentation(
+            loadFileRepresentation: { completion in
+                provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier, completionHandler: completion)
+            },
+            suggestedName: provider.suggestedName,
+            typeIdentifier: typeIdentifier,
+            inboxDirectory: inboxDirectory
+        ) {
+            storedFileName = importedFile.storedFilename
+            originalName = importedFile.originalFilename
         } else {
             let data = try await loadFileData(from: provider, typeIdentifier: typeIdentifier)
-            let fileExtension = normalizedFileExtension(
+            let fileExtension = ShareAttachmentImporter.normalizedFileExtension(
                 pathExtension: "",
                 typeIdentifier: typeIdentifier
             )
             storedFileName = "\(UUID().uuidString).\(fileExtension)"
-            destinationURL = inboxDirectory.appendingPathComponent(storedFileName)
-            originalName = "shared.\(fileExtension)"
+            let destinationURL = inboxDirectory.appendingPathComponent(storedFileName)
+            originalName = ShareAttachmentImporter.suggestedOriginalFilename(
+                suggestedName: provider.suggestedName,
+                pathExtension: fileExtension,
+                fallbackStem: "shared"
+            )
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
@@ -173,24 +177,6 @@ final class ShareViewController: UIViewController {
             typeIdentifier: typeIdentifier,
             createdAt: Date()
         )
-    }
-
-    private func loadFileURL(from provider: NSItemProvider, typeIdentifier: String) async throws -> URL? {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
-                if let error {
-                    let nsError = error as NSError
-                    // Some providers do not expose file representation for images; fallback to data representation.
-                    if nsError.domain == NSItemProvider.errorDomain {
-                        continuation.resume(returning: nil)
-                        return
-                    }
-                    continuation.resume(throwing: ShareImportError.loadFailed(error.localizedDescription))
-                    return
-                }
-                continuation.resume(returning: url)
-            }
-        }
     }
 
     private func loadFileData(from provider: NSItemProvider, typeIdentifier: String) async throws -> Data {
@@ -242,22 +228,5 @@ final class ShareViewController: UIViewController {
             }
         }
         return inboxURL
-    }
-
-    private func normalizedFileExtension(pathExtension: String, typeIdentifier: String) -> String {
-        if !pathExtension.isEmpty {
-            return pathExtension.lowercased()
-        }
-        if let utType = UTType(typeIdentifier), let preferredExtension = utType.preferredFilenameExtension {
-            return preferredExtension.lowercased()
-        }
-        return typeIdentifier == UTType.pdf.identifier ? "pdf" : "jpg"
-    }
-
-    private func replaceItem(at destinationURL: URL, with sourceURL: URL) throws {
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
     }
 }

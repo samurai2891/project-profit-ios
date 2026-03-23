@@ -19,7 +19,8 @@ struct ReceiptScannerView: View {
     @State private var showFileImporter = false
     @State private var selectedSourceType: EvidenceSourceType = .manualNoFile
     @State private var scannerService = ReceiptScannerService()
-    @State private var importedPDFData: Data?
+    @State private var originalImportedFileData: Data?
+    @State private var originalImportedFileMimeType: String?
     @State private var importError: String?
     @State private var hasHandledInitialSharedImport = false
 
@@ -42,7 +43,8 @@ struct ReceiptScannerView: View {
                         ocrText: output.ocrText,
                         receiptImage: selectedImage,
                         evidenceSourceType: selectedSourceType,
-                        originalFileData: importedPDFData,
+                        originalFileData: originalImportedFileData,
+                        originalFileMimeType: originalImportedFileMimeType,
                         defaultProjectId: defaultProjectId,
                         onIntakeSucceeded: consumeSharedImportIfNeeded,
                         onDismiss: { dismiss() }
@@ -68,13 +70,13 @@ struct ReceiptScannerView: View {
                 isPresented: $showPDFImporter,
                 allowedContentTypes: [.pdf]
             ) { result in
-                handleFileImport(result: result, sourceType: .importedPDF)
+                handleFileImport(result: result)
             }
             .fileImporter(
                 isPresented: $showFileImporter,
                 allowedContentTypes: [.image, .pdf]
             ) { result in
-                handleFileImport(result: result, sourceType: .importedPDF)
+                handleFileImport(result: result)
             }
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
@@ -332,7 +334,8 @@ struct ReceiptScannerView: View {
     private func resetSelection() {
         selectedImage = nil
         photoPickerItem = nil
-        importedPDFData = nil
+        originalImportedFileData = nil
+        originalImportedFileMimeType = nil
         selectedSourceType = .manualNoFile
         scannerService.reset()
         hasHandledInitialSharedImport = sharedImportItem != nil
@@ -343,7 +346,8 @@ struct ReceiptScannerView: View {
     private func loadPhoto(from item: PhotosPickerItem?) {
         guard let item else { return }
         selectedSourceType = .photoLibrary
-        importedPDFData = nil
+        originalImportedFileData = nil
+        originalImportedFileMimeType = nil
         Task {
             if let data = try? await item.loadTransferable(type: Data.self),
                let uiImage = UIImage(data: data)
@@ -355,7 +359,7 @@ struct ReceiptScannerView: View {
 
     // MARK: - File Import
 
-    private func handleFileImport(result: Result<URL, Error>, sourceType: EvidenceSourceType) {
+    private func handleFileImport(result: Result<URL, Error>) {
         switch result {
         case .success(let url):
             guard url.startAccessingSecurityScopedResource() else {
@@ -375,15 +379,20 @@ struct ReceiptScannerView: View {
                         return
                     }
                     selectedSourceType = .importedPDF
-                    importedPDFData = renderResult.originalData
+                    originalImportedFileData = renderResult.originalData
+                    originalImportedFileMimeType = "application/pdf"
                     selectedImage = renderResult.image
                 } else {
                     guard let uiImage = UIImage(data: fileData) else {
                         importError = "画像の読み込みに失敗しました。対応形式の画像を選択してください"
                         return
                     }
-                    selectedSourceType = sourceType == .importedPDF ? .photoLibrary : sourceType
-                    importedPDFData = nil
+                    selectedSourceType = .importedImage
+                    originalImportedFileData = fileData
+                    originalImportedFileMimeType = resolvedImageMimeType(
+                        fileURL: url,
+                        typeIdentifier: nil
+                    )
                     selectedImage = uiImage
                 }
             } catch {
@@ -418,7 +427,8 @@ struct ReceiptScannerView: View {
                     return
                 }
                 selectedSourceType = .importedPDF
-                importedPDFData = renderResult.originalData
+                originalImportedFileData = renderResult.originalData
+                originalImportedFileMimeType = "application/pdf"
                 selectedImage = renderResult.image
             } else {
                 guard let image = UIImage(data: fileData) else {
@@ -426,12 +436,29 @@ struct ReceiptScannerView: View {
                     return
                 }
                 selectedSourceType = .emailAttachment
-                importedPDFData = nil
+                originalImportedFileData = fileData
+                originalImportedFileMimeType = resolvedImageMimeType(
+                    fileURL: fileURL,
+                    typeIdentifier: sharedImportItem.typeIdentifier
+                )
                 selectedImage = image
             }
         } catch {
             importError = "共有ファイルの読み込みに失敗しました: \(error.localizedDescription)"
         }
+    }
+
+    private func resolvedImageMimeType(fileURL: URL, typeIdentifier: String?) -> String {
+        if let typeIdentifier,
+           let mimeType = UTType(typeIdentifier)?.preferredMIMEType,
+           mimeType.hasPrefix("image/") {
+            return mimeType
+        }
+        if let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType,
+           mimeType.hasPrefix("image/") {
+            return mimeType
+        }
+        return "image/jpeg"
     }
 
     private func consumeSharedImportIfNeeded() {

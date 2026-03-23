@@ -8,6 +8,7 @@ struct ReceiptReviewView: View {
     let receiptImage: UIImage?
     let evidenceSourceType: EvidenceSourceType
     let originalFileData: Data?
+    let originalFileMimeType: String?
     let defaultProjectId: UUID?
     let onIntakeSucceeded: (() -> Void)?
     let onDismiss: () -> Void
@@ -39,6 +40,7 @@ struct ReceiptReviewView: View {
         receiptImage: UIImage? = nil,
         evidenceSourceType: EvidenceSourceType = .manualNoFile,
         originalFileData: Data? = nil,
+        originalFileMimeType: String? = nil,
         defaultProjectId: UUID? = nil,
         onIntakeSucceeded: (() -> Void)? = nil,
         onDismiss: @escaping () -> Void
@@ -48,6 +50,7 @@ struct ReceiptReviewView: View {
         self.receiptImage = receiptImage
         self.evidenceSourceType = evidenceSourceType
         self.originalFileData = originalFileData
+        self.originalFileMimeType = originalFileMimeType
         self.defaultProjectId = defaultProjectId
         self.onIntakeSucceeded = onIntakeSucceeded
         self.onDismiss = onDismiss
@@ -718,29 +721,20 @@ struct ReceiptReviewView: View {
             let originalFileName = generatedOriginalFileName()
 
             do {
-                let isPDFSource = originalFileData != nil
-                    && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
-                let fileData: Data
-                let mimeType: String
-
-                if isPDFSource, let pdfData = originalFileData {
-                    fileData = pdfData
-                    mimeType = "application/pdf"
-                } else {
-                    guard let receiptImage else {
-                        throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
-                    }
-                    fileData = try ReceiptImageStore.jpegData(for: receiptImage)
-                    mimeType = "image/jpeg"
-                }
+                let filePayload = ReceiptReviewView.resolveFilePayload(
+                    evidenceSourceType: evidenceSourceType,
+                    originalFileData: originalFileData,
+                    originalFileMimeType: originalFileMimeType,
+                    receiptImage: receiptImage
+                )
 
                 let request = ReceiptEvidenceIntakeRequest(
                     receiptData: receiptData,
                     ocrText: ocrText,
                     sourceType: evidenceSourceType,
-                    fileData: fileData,
+                    fileData: filePayload.fileData,
                     originalFileName: originalFileName,
-                    mimeType: mimeType,
+                    mimeType: filePayload.mimeType,
                     reviewedAmount: amount,
                     reviewedDate: validDate,
                     transactionType: type,
@@ -788,6 +782,8 @@ struct ReceiptReviewView: View {
             prefix = "scan"
         case .emailAttachment:
             prefix = "mail"
+        case .importedImage:
+            prefix = "import"
         case .importedPDF:
             prefix = "import"
         case .importedCSV:
@@ -795,9 +791,11 @@ struct ReceiptReviewView: View {
         case .manualNoFile:
             prefix = "manual"
         }
-        let isPDFSource = originalFileData != nil
-            && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
-        let ext = isPDFSource ? "pdf" : "jpg"
+        let ext = ReceiptReviewView.fileExtension(
+            evidenceSourceType: evidenceSourceType,
+            originalFileData: originalFileData,
+            originalFileMimeType: originalFileMimeType
+        )
         return "\(prefix)-receipt-\(timestamp).\(ext)"
     }
 
@@ -816,5 +814,74 @@ struct ReceiptReviewView: View {
         case .income: "cat-other-income"
         case .expense, .transfer: "cat-other-expense"
         }
+    }
+}
+
+extension ReceiptReviewView {
+    struct FilePayload: Equatable {
+        let fileData: Data
+        let mimeType: String
+    }
+
+    static func resolveFilePayload(
+        evidenceSourceType: EvidenceSourceType,
+        originalFileData: Data?,
+        originalFileMimeType: String?,
+        receiptImage: UIImage?
+    ) throws -> FilePayload {
+        if let originalFileData {
+            let mimeType = normalizedMimeType(
+                evidenceSourceType: evidenceSourceType,
+                originalFileMimeType: originalFileMimeType
+            )
+            return FilePayload(fileData: originalFileData, mimeType: mimeType)
+        }
+
+        guard let receiptImage else {
+            throw ReceiptEvidenceIntakeUseCaseError.invalidFileData
+        }
+        let jpegData = try ReceiptImageStore.jpegData(for: receiptImage)
+        return FilePayload(fileData: jpegData, mimeType: "image/jpeg")
+    }
+
+    static func fileExtension(
+        evidenceSourceType: EvidenceSourceType,
+        originalFileData: Data?,
+        originalFileMimeType: String?
+    ) -> String {
+        if let mimeType = originalFileMimeType?.lowercased() {
+            switch mimeType {
+            case "application/pdf":
+                return "pdf"
+            case "image/png":
+                return "png"
+            case "image/heic":
+                return "heic"
+            case "image/heif":
+                return "heif"
+            default:
+                if mimeType == "image/jpg" || mimeType == "image/jpeg" || mimeType.hasPrefix("image/") {
+                    return "jpg"
+                }
+            }
+        }
+
+        let isPDFSource = originalFileData != nil
+            && (evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF)
+        return isPDFSource ? "pdf" : "jpg"
+    }
+
+    private static func normalizedMimeType(
+        evidenceSourceType: EvidenceSourceType,
+        originalFileMimeType: String?
+    ) -> String {
+        let trimmed = originalFileMimeType?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty {
+            return trimmed.lowercased()
+        }
+        if evidenceSourceType == .importedPDF || evidenceSourceType == .scannedPDF {
+            return "application/pdf"
+        }
+        return "image/jpeg"
     }
 }
