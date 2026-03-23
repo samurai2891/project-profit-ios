@@ -21,13 +21,13 @@
 - `P0-12`
 - `P1-03`
 - `P1-04`
+- `P1-02`
 
 ## 未完のタスク ID
 
 - `P0-02`
 - `P0-06`
 - `P1-01`
-- `P1-02`
 - `P1-05`
 - `P1-06`
 
@@ -45,7 +45,11 @@
 - `ProjectProfit/Services/ShushiNaiyakushoBuilder.swift`
 - `ProjectProfit/Services/CashBasisReturnBuilder.swift`
 - `ProjectProfit/ViewModels/EtaxExportViewModel.swift`
+- `ProjectProfit/Views/Accounting/EtaxExportView.swift`
 - `ProjectProfitTests/EtaxXtxExporterTests.swift`
+- `ProjectProfitTests/EtaxExportViewModelTests.swift`
+- `ProjectProfitTests/CanonicalFlowE2ETests.swift`
+- `ProjectProfitTests/ReleasePerformanceGateTests.swift`
 - `scripts/etax_resolve_xsd.sh`
 - `scripts/etax_validate_xsd.sh`
 - `scripts/run_etax_unit_lane.sh`
@@ -68,6 +72,9 @@
 - `bash scripts/etax_validate_xsd.sh --xml /tmp/projectprofit-batch2b-dd/KOA230.export.xml --form-key blue_cash_basis`
 - `bash scripts/etax_resolve_xsd.sh --taxyear-json ProjectProfit/Resources/TaxYear2025.json --schema-dir /Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku --form-key blue_cash_basis`
 - `bash scripts/run_etax_unit_lane.sh`
+- `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch7-final-dd build-for-testing`
+- `xcodebuild test-without-building -xctestrun /tmp/projectprofit-batch7-final-dd/Build/Products/ProjectProfit_ProjectProfit_iphonesimulator26.2-arm64.xctestrun -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/EtaxExportViewModelTests/testExportRebuildsPreviewWhenDataRevisionChanges -only-testing:ProjectProfitTests/EtaxExportViewModelTests/testExportFailsWhenCurrentDataPreflightBecomesInvalidAfterPreview -only-testing:ProjectProfitTests/EtaxExportViewModelTests/testWhitePreviewAndExportUseSameFieldSet`
+- `xcodebuild test-without-building -xctestrun /tmp/projectprofit-batch7-final-dd/Build/Products/ProjectProfit_ProjectProfit_iphonesimulator26.2-arm64.xctestrun -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/EtaxExportViewModelTests`
 - `git diff -- ProjectProfit/Resources/TaxYearPacks/2025/filing/common.json ProjectProfit/Resources/TaxYearPacks/2026/filing/common.json ProjectProfit/Services/EtaxFieldPopulator.swift ProjectProfit/Services/EtaxXtxExporter.swift ProjectProfitTests/EtaxXtxExporterTests.swift Docs/release/codex_batch_state.md`
 - `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch3-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesCashFixtureWhenEnvIsSet test`
 - `xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/projectprofit-batch5a-dd -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesWhiteFixtureWhenEnvIsSet -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWhiteReturnSplitsPagesAndMovesAinToPage2 test`
@@ -221,6 +228,11 @@
 - simulator 実行では `ETAX_XSD_WHITE_EXPORT_XML` の host 反映が不安定なため、state 判定や XSD 確認は log payload 基準で行う
 - generated XML の official XSD 検証は blue / white / cash の 3 フォームすべて base64 artifact 復元を正本とし、fixture fallback は使用しない
 - `scripts/run_etax_unit_lane.sh` は `ETAX_XSD_REQUIRE_GENERATED_XML=true` を既定値にし、generated XML が無い場合は CI failure として扱う
+- preview は snapshot 由来 `dataRevision` を保存し、export 前に current snapshot と必ず再比較する
+- `fiscalYear` / `formType` または `dataRevision` が変わったら export 前に form rebuild・preflight・文字検証を再実行する
+- preview/export とも `EtaxExportViewModel.exportableForm(from:)` を正本の field 集合として使う
+- そのため preview 後に元データが変わっても stale preview は export に使われない
+- `P1-02` は `EtaxExportView.swift` / `EtaxExportViewModel.swift` / `EtaxExportViewModelTests.swift` で完了
 
 ## 次バッチが読むべき最小ファイル一覧
 

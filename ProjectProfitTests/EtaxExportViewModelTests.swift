@@ -375,21 +375,26 @@ final class EtaxExportViewModelTests: XCTestCase {
                 businessId: businessId,
                 taxYear: 2025,
                 filingStyle: .white,
+                blueDeductionLevel: .none,
                 bookkeepingBasis: .singleEntry,
                 yearLockState: .taxClose,
                 taxPackVersion: "2025-v1"
             )
         )
-        seedCanonicalJournal(
-            businessId: businessId,
-            date: makeDate(year: 2025, month: 4, day: 5),
-            debitLegacyAccountId: AccountingConstants.cashAccountId,
-            creditLegacyAccountId: AccountingConstants.salesAccountId,
-            amount: 88_000
-        )
 
         var exportedFieldIDs: [String] = []
-        let viewModel = makeViewModel(
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        let snapshot = makeSnapshot(fiscalYear: 2025)
+        let expectedForm = makeWhiteParityForm(fiscalYear: 2025)
+        let viewModel = EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { fiscalYear in
+                contextQueryUseCase.context(fiscalYear: fiscalYear)
+            },
+            snapshotProvider: { _ in snapshot },
+            formBuilder: { _, _ in
+                expectedForm
+            },
             exporter: { _, form in
                 exportedFieldIDs = form.fields.map(\.id)
                 return URL(fileURLWithPath: "/tmp/mock-white-parity.csv")
@@ -399,12 +404,14 @@ final class EtaxExportViewModelTests: XCTestCase {
         viewModel.fiscalYear = 2025
 
         viewModel.generatePreview()
+        XCTAssertNotNil(viewModel.exportedForm)
+        XCTAssertTrue(viewModel.validationErrors.isEmpty, viewModel.validationErrors.map(\.description).joined(separator: "\n"))
         let previewFieldIDs = viewModel.exportedForm?.fields.map(\.id)
 
         viewModel.exportCsv()
 
         guard case .success? = viewModel.exportResult else {
-            return XCTFail("white export should succeed for field parity")
+            return XCTFail("white export should succeed for field parity: \(String(describing: viewModel.exportResult)) / \(viewModel.validationErrors)")
         }
         XCTAssertEqual(previewFieldIDs, exportedFieldIDs)
     }
@@ -623,6 +630,31 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     private func makeSnapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
         EtaxFormBuildQueryUseCase(modelContext: context).snapshot(fiscalYear: fiscalYear)
+    }
+
+    private func makeWhiteParityForm(fiscalYear: Int) -> EtaxForm {
+        EtaxForm(
+            fiscalYear: fiscalYear,
+            formType: .whiteReturn,
+            fields: [
+                EtaxField(id: "shushi_revenue_total", fieldLabel: "計", taxLine: nil, value: 88_000, section: .revenue),
+                EtaxField(id: "shushi_inventory_subtotal", fieldLabel: "小計", taxLine: nil, value: 0, section: .inventory),
+                EtaxField(id: "shushi_inventory_cogs", fieldLabel: "差引原価", taxLine: nil, value: 0, section: .inventory),
+                EtaxField(id: "shushi_income_gross", fieldLabel: "差引金額", taxLine: nil, value: 88_000, section: .income),
+                EtaxField(id: "shushi_expense_other_subtotal", fieldLabel: "小計", taxLine: nil, value: 12_000, section: .expenses),
+                EtaxField(id: "shushi_expense_total", fieldLabel: "経費合計", taxLine: nil, value: 12_000, section: .expenses),
+                EtaxField(id: "shushi_income_before_employee_deduction", fieldLabel: "専従者控除前の所得金額", taxLine: nil, value: 76_000, section: .income),
+                EtaxField(id: "shushi_income_net", fieldLabel: "所得金額", taxLine: nil, value: 76_000, section: .income),
+                EtaxField(id: "shushi_sales_detail_total", fieldLabel: "計", taxLine: nil, value: 88_000, section: .revenue),
+                EtaxField(id: "shushi_purchase_detail_total", fieldLabel: "計", taxLine: nil, value: 0, section: .expenses),
+                EtaxField(id: "shushi_depreciation_total_ordinary", fieldLabel: "本年分の普通償却費", taxLine: nil, value: 0, section: .fixedAssetSchedule),
+                EtaxField(id: "shushi_depreciation_total_special", fieldLabel: "特別償却費", taxLine: nil, value: 0, section: .fixedAssetSchedule),
+                EtaxField(id: "shushi_depreciation_total_amount", fieldLabel: "本年分の償却費合計", taxLine: nil, value: 0, section: .fixedAssetSchedule),
+                EtaxField(id: "shushi_depreciation_total_necessary_expense", fieldLabel: "本年分の必要経費算入額", taxLine: nil, value: 0, section: .fixedAssetSchedule),
+                EtaxField(id: "shushi_depreciation_total_remaining_balance", fieldLabel: "未償却残高", taxLine: nil, value: 0, section: .fixedAssetSchedule),
+            ],
+            generatedAt: Date()
+        )
     }
 
     private func seedTaxYearProfile(_ profile: TaxYearProfile) {
