@@ -36,6 +36,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        FeatureFlags.clearOverrides()
         if let previousFiscalYearStartMonth {
             UserDefaults.standard.set(previousFiscalYearStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
         } else {
@@ -359,7 +360,12 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     private func ensureTaxClose(for fiscalYear: Int) throws {
+        let previousUseCanonicalPosting = FeatureFlags.useCanonicalPosting
+        FeatureFlags.useCanonicalPosting = true
+        defer { FeatureFlags.useCanonicalPosting = previousUseCanonicalPosting }
+
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertNotNil(try ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear))
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
     }
 

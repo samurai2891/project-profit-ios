@@ -16,6 +16,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         previousFiscalYearStartMonth = UserDefaults.standard.object(forKey: FiscalYearSettings.userDefaultsKey)
         UserDefaults.standard.set(FiscalYearSettings.defaultStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
         container = try TestModelContainer.create()
+        FeatureFlags.useCanonicalPosting = true
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
@@ -28,6 +29,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        FeatureFlags.clearOverrides()
         ReceiptImageStore.setBaseDirectoryOverride(nil)
         if let tempDirectory {
             try? FileManager.default.removeItem(at: tempDirectory)
@@ -80,6 +82,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         XCTAssertEqual(worksheet.rawInputTaxTotal, 10_000)
 
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertNotNil(try ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear))
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
 
         let taxIssues = try TaxYearStateUseCase(modelContext: context).filingPreflightIssues(
@@ -295,6 +298,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         dataStore.loadData()
         return state.taxYearProfile
     }
+
 }
 
 private struct ApprovedReceiptFlow {

@@ -3,6 +3,8 @@ import SwiftData
 
 @MainActor
 final class LocalEvidenceSearchIndex {
+    static let indexName = "証憑検索インデックス"
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -15,7 +17,7 @@ final class LocalEvidenceSearchIndex {
         )
         return try modelContext.fetch(descriptor)
             .filter { entry in
-                matches(entry, criteria: criteria)
+                try matches(entry, criteria: criteria)
             }
             .map(\.evidenceId)
     }
@@ -100,7 +102,14 @@ final class LocalEvidenceSearchIndex {
         }.count
     }
 
-    private func matches(_ entry: EvidenceSearchIndexEntity, criteria: EvidenceSearchCriteria) -> Bool {
+    func validateIntegrity(businessId: UUID? = nil, taxYear: Int? = nil) throws {
+        let entries = try scopedEntries(businessId: businessId, taxYear: taxYear)
+        for entry in entries {
+            _ = try decodeProjectIds(from: entry)
+        }
+    }
+
+    private func matches(_ entry: EvidenceSearchIndexEntity, criteria: EvidenceSearchCriteria) throws -> Bool {
         if let businessId = criteria.businessId, entry.businessId != businessId {
             return false
         }
@@ -136,7 +145,7 @@ final class LocalEvidenceSearchIndex {
             return false
         }
         if let projectId = criteria.projectId {
-            let projectIds = Set(CanonicalJSONCoder.decode([UUID].self, from: entry.projectIdsJSON, fallback: []))
+            let projectIds = Set(try decodeProjectIds(from: entry))
             if !projectIds.contains(projectId) {
                 return false
             }
@@ -176,5 +185,30 @@ final class LocalEvidenceSearchIndex {
         entity.deletedAt = evidence.deletedAt
         entity.searchText = SearchIndexNormalizer.normalizeText(searchParts.compactMap { $0 }.joined(separator: " "))
         entity.updatedAt = evidence.updatedAt
+    }
+
+    private func scopedEntries(businessId: UUID? = nil, taxYear: Int? = nil) throws -> [EvidenceSearchIndexEntity] {
+        let descriptor = FetchDescriptor<EvidenceSearchIndexEntity>()
+        return try modelContext.fetch(descriptor).filter { entry in
+            if let businessId, entry.businessId != businessId {
+                return false
+            }
+            if let taxYear, entry.taxYear != taxYear {
+                return false
+            }
+            return true
+        }
+    }
+
+    private func decodeProjectIds(from entry: EvidenceSearchIndexEntity) throws -> [UUID] {
+        do {
+            return try CanonicalJSONCoder.decodeStrict([UUID].self, from: entry.projectIdsJSON)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexCorrupted(
+                indexName: Self.indexName,
+                recordId: entry.evidenceId,
+                field: "projectIdsJSON"
+            )
+        }
     }
 }

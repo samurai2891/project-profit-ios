@@ -14,12 +14,14 @@ final class YearLockTests: XCTestCase {
         previousFiscalStartMonth = UserDefaults.standard.integer(forKey: FiscalYearSettings.userDefaultsKey)
         UserDefaults.standard.set(1, forKey: FiscalYearSettings.userDefaultsKey)
         container = try! TestModelContainer.create()
+        FeatureFlags.useCanonicalPosting = true
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         dataStore = nil
         context = nil
         container = nil
@@ -81,6 +83,9 @@ final class YearLockTests: XCTestCase {
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .softClose)
 
+        seedClosingSourceJournals(year: 2025)
+        XCTAssertNotNil(try? ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: 2025))
+
         XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .taxClose)
 
@@ -92,14 +97,17 @@ final class YearLockTests: XCTestCase {
     }
 
     func testTransitionFiscalYearStateRejectsInvalidJump() {
+        seedClosingSourceJournals(year: 2025)
+        XCTAssertNotNil(try? ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: 2025))
+
         XCTAssertFalse(mutations(dataStore).transitionFiscalYearState(.finalLock, for: 2025))
         XCTAssertEqual(dataStore.yearLockState(for: 2025), .open)
-        guard case .saveFailed(let underlying)? = dataStore.lastError else {
-            return XCTFail("Expected saveFailed error, got \(String(describing: dataStore.lastError))")
+        guard case .invalidInput(let message)? = dataStore.lastError else {
+            return XCTFail("Expected invalidInput error, got \(String(describing: dataStore.lastError))")
         }
         XCTAssertEqual(
-            underlying as? TaxYearStateUseCaseError,
-            .validationFailed("年度状態を未締めから最終確定へ変更できません")
+            message,
+            "年度締めを進められません:\n年度状態を未締めから最終確定へ変更できません"
         )
     }
 
@@ -277,6 +285,93 @@ final class YearLockTests: XCTestCase {
         comps.month = month
         comps.day = day
         return Calendar.current.date(from: comps)!
+    }
+
+    private func createApprovedCanonicalJournal(year: Int, amount: Int) {
+        createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            year: year,
+            amount: amount
+        )
+    }
+
+    private func createApprovedCanonicalJournal(
+        debitLegacyAccountId: String,
+        creditLegacyAccountId: String,
+        year: Int,
+        amount: Int
+    ) {
+        let journalDate = dateFrom(year: year, month: 6, day: 1)
+        let journalId = UUID()
+
+        let entry = CanonicalJournalEntry(
+            id: journalId,
+            businessId: try! XCTUnwrap(dataStore.businessProfile?.id),
+            taxYear: year,
+            journalDate: journalDate,
+            voucherNo: VoucherNumber(taxYear: year, month: 6, sequence: nextVoucherSequence(for: year)).value,
+            entryType: .normal,
+            description: "YearLockTests",
+            lines: [
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(debitLegacyAccountId),
+                    debitAmount: Decimal(amount),
+                    creditAmount: 0,
+                    legalReportLineId: canonicalAccount(debitLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 0
+                ),
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(creditLegacyAccountId),
+                    debitAmount: 0,
+                    creditAmount: Decimal(amount),
+                    legalReportLineId: canonicalAccount(creditLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 1
+                )
+            ],
+            approvedAt: journalDate,
+            createdAt: journalDate,
+            updatedAt: journalDate
+        )
+
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(entry))
+        try! context.save()
+    }
+
+    private func seedClosingSourceJournals(year: Int) {
+        createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            year: year,
+            amount: 100_000
+        )
+        createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.miscExpenseAccountId,
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            year: year,
+            amount: 40_000
+        )
+    }
+
+    private func canonicalAccountId(_ legacyId: String) -> UUID {
+        try! XCTUnwrap(dataStore.canonicalAccounts().first(where: { $0.legacyAccountId == legacyId })?.id)
+    }
+
+    private func canonicalAccount(_ legacyId: String) -> CanonicalAccount {
+        let accountId = canonicalAccountId(legacyId)
+        return try! XCTUnwrap(dataStore.canonicalAccount(id: accountId))
+    }
+
+    private func nextVoucherSequence(for year: Int) -> Int {
+        let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate<JournalEntryEntity> {
+                $0.businessId == businessId && $0.taxYear == year
+            }
+        )
+        return ((try? context.fetch(descriptor)) ?? []).count + 1
     }
 
     private func persistedTaxYearProfile(_ year: Int) -> TaxYearProfileEntity? {

@@ -14,6 +14,7 @@ struct FilingPreflightIssue: Identifiable, Sendable, Equatable {
         case pendingCandidateExists
         case unmappedCategoryExists
         case closingEntryMissing
+        case taxPrerequisiteMissing
         case yearStateTooOpen
     }
 
@@ -150,6 +151,20 @@ struct FilingPreflightUseCase {
                 )
             }
         case .closing(let targetState):
+            let taxIssues = try TaxYearStateUseCase(modelContext: modelContext).filingPreflightIssues(
+                businessId: businessId,
+                taxYear: taxYear
+            )
+            issues.append(contentsOf: taxIssues.compactMap { issue in
+                guard issue.severity == .error else {
+                    return nil
+                }
+                return FilingPreflightIssue(
+                    code: .taxPrerequisiteMissing,
+                    severity: .error,
+                    message: issue.message
+                )
+            })
             if requiresClosingEntry(targetState),
                !snapshot.entries.contains(where: { $0.entryType == .closing })
             {

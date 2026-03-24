@@ -3,6 +3,8 @@ import SwiftData
 
 @MainActor
 final class LocalJournalSearchIndex {
+    static let indexName = "仕訳検索インデックス"
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -18,7 +20,7 @@ final class LocalJournalSearchIndex {
         )
         return try modelContext.fetch(descriptor)
             .filter { entry in
-                matches(entry, criteria: criteria)
+                try matches(entry, criteria: criteria)
             }
             .map(\.journalId)
     }
@@ -105,7 +107,17 @@ final class LocalJournalSearchIndex {
         }.count
     }
 
-    private func matches(_ entry: JournalSearchIndexEntity, criteria: JournalSearchCriteria) -> Bool {
+    func validateIntegrity(businessId: UUID? = nil, taxYear: Int? = nil) throws {
+        let entries = try scopedEntries(businessId: businessId, taxYear: taxYear)
+        for entry in entries {
+            _ = try decodeCounterpartyNames(from: entry)
+            _ = try decodeRegistrationNumbers(from: entry)
+            _ = try decodeProjectIds(from: entry)
+            _ = try decodeFileHashes(from: entry)
+        }
+    }
+
+    private func matches(_ entry: JournalSearchIndexEntity, criteria: JournalSearchCriteria) throws -> Bool {
         if let businessId = criteria.businessId, entry.businessId != businessId {
             return false
         }
@@ -122,24 +134,24 @@ final class LocalJournalSearchIndex {
             return false
         }
 
-        let counterparties = CanonicalJSONCoder.decode([String].self, from: entry.counterpartyNamesJSON, fallback: [])
+        let counterparties = try decodeCounterpartyNames(from: entry)
         if let counterpartyText = SearchIndexNormalizer.normalizeOptionalText(criteria.counterpartyText),
            !counterparties.contains(where: { $0.contains(counterpartyText) }) {
             return false
         }
 
-        let registrationNumbers = Set(CanonicalJSONCoder.decode([String].self, from: entry.registrationNumbersJSON, fallback: []))
+        let registrationNumbers = Set(try decodeRegistrationNumbers(from: entry))
         if let registrationNumber = SearchIndexNormalizer.normalizeIdentifier(criteria.registrationNumber),
            !registrationNumbers.contains(registrationNumber) {
             return false
         }
 
-        let projectIds = Set(CanonicalJSONCoder.decode([UUID].self, from: entry.projectIdsJSON, fallback: []))
+        let projectIds = Set(try decodeProjectIds(from: entry))
         if let projectId = criteria.projectId, !projectIds.contains(projectId) {
             return false
         }
 
-        let fileHashes = Set(CanonicalJSONCoder.decode([String].self, from: entry.fileHashesJSON, fallback: []))
+        let fileHashes = Set(try decodeFileHashes(from: entry))
         if let fileHash = SearchIndexNormalizer.normalizeIdentifier(criteria.fileHash),
            !fileHashes.contains(fileHash) {
             return false
@@ -200,5 +212,51 @@ final class LocalJournalSearchIndex {
                 .compactMap { $0 }
         )
         return ids.compactMap { evidenceById[$0] }
+    }
+
+    private func scopedEntries(businessId: UUID? = nil, taxYear: Int? = nil) throws -> [JournalSearchIndexEntity] {
+        let descriptor = FetchDescriptor<JournalSearchIndexEntity>()
+        return try modelContext.fetch(descriptor).filter { entry in
+            if let businessId, entry.businessId != businessId {
+                return false
+            }
+            if let taxYear, entry.taxYear != taxYear {
+                return false
+            }
+            return true
+        }
+    }
+
+    private func decodeCounterpartyNames(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.counterpartyNamesJSON, recordId: entry.journalId, field: "counterpartyNamesJSON")
+    }
+
+    private func decodeRegistrationNumbers(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.registrationNumbersJSON, recordId: entry.journalId, field: "registrationNumbersJSON")
+    }
+
+    private func decodeProjectIds(from entry: JournalSearchIndexEntity) throws -> [UUID] {
+        try decode([UUID].self, from: entry.projectIdsJSON, recordId: entry.journalId, field: "projectIdsJSON")
+    }
+
+    private func decodeFileHashes(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.fileHashesJSON, recordId: entry.journalId, field: "fileHashesJSON")
+    }
+
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        from json: String?,
+        recordId: UUID,
+        field: String
+    ) throws -> T {
+        do {
+            return try CanonicalJSONCoder.decodeStrict(type, from: json)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexCorrupted(
+                indexName: Self.indexName,
+                recordId: recordId,
+                field: field
+            )
+        }
     }
 }

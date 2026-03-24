@@ -86,6 +86,11 @@ struct ClosingWorkflowUseCase {
         )
 
         do {
+            try validateClosingPreflightIfNeeded(
+                businessId: businessId,
+                targetState: state,
+                year: year
+            )
             let fallbackProfile = try WorkflowPersistenceSupport.taxYearProfile(
                 modelContext: modelContext,
                 businessId: businessId,
@@ -102,6 +107,28 @@ struct ClosingWorkflowUseCase {
             modelContext.rollback()
             throw wrapped(error)
         }
+    }
+
+    private func validateClosingPreflightIfNeeded(
+        businessId: UUID,
+        targetState: YearLockState,
+        year: Int
+    ) throws {
+        guard requiresClosingPreflight(targetState) else {
+            return
+        }
+
+        let report = try FilingPreflightUseCase(modelContext: modelContext).preflightReport(
+            businessId: businessId,
+            taxYear: year,
+            context: .closing(targetState: targetState)
+        )
+        let blockingMessages = report.blockingIssues.map(\.message)
+        guard !blockingMessages.isEmpty else {
+            return
+        }
+
+        throw AppError.invalidInput(message: closingTransitionMessage(blockingMessages))
     }
 
     private func validateCanPostAdjustingEntries(for year: Int) throws {
@@ -129,9 +156,22 @@ struct ClosingWorkflowUseCase {
             return appError
         }
         if let taxError = error as? TaxYearStateUseCaseError {
-            return taxError
+            return AppError.invalidInput(message: closingTransitionMessage([taxError.localizedDescription]))
         }
         return AppError.saveFailed(underlying: error)
+    }
+
+    private func requiresClosingPreflight(_ state: YearLockState) -> Bool {
+        switch state {
+        case .taxClose, .filed, .finalLock:
+            return true
+        case .open, .softClose:
+            return false
+        }
+    }
+
+    private func closingTransitionMessage(_ reasons: [String]) -> String {
+        "年度締めを進められません:\n" + reasons.joined(separator: "\n")
     }
 
     private func deleteLegacyClosingEntryRecord(for year: Int) {

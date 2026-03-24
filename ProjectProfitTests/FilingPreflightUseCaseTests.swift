@@ -121,6 +121,28 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         XCTAssertTrue(report.issues.contains { $0.code == .unbalancedJournal })
     }
 
+    func testClosingPreflightIncludesTaxPrerequisiteFailures() throws {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            vatStatus: .taxable,
+            vatMethod: .simplified,
+            simplifiedBusinessCategory: nil,
+            taxPackVersion: "2025-v1"
+        )
+        context.insert(TaxYearProfileEntityMapper.toEntity(profile))
+        try context.save()
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: 2025,
+            context: .closing(targetState: .taxClose)
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .taxPrerequisiteMissing })
+        XCTAssertTrue(report.issues.contains { $0.message == "簡易課税では業種区分の設定が必要です" })
+    }
+
     func testExportPreflightUsesCanonicalTaxYearStateNotLegacyLockCompat() throws {
         let targetYear = 2030
         let legacy = PPAccountingProfile(
