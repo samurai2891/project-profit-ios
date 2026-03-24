@@ -1,11 +1,29 @@
 import Foundation
 import SwiftData
 
+enum ApprovalRequestTransitionAction: String, Sendable {
+    case approve
+    case reject
+    case invalidate
+
+    var denialDescription: String {
+        switch self {
+        case .approve:
+            return "承認できません。"
+        case .reject:
+            return "却下できません。"
+        case .invalidate:
+            return "失効できません。"
+        }
+    }
+}
+
 enum ApprovalQueueWorkflowError: LocalizedError {
     case approvalRequestNotFound(UUID)
     case formDraftNotFound(String)
     case invalidDistributionPayload(UUID)
     case invalidRecurringRequest(UUID)
+    case invalidStatusTransition(UUID, ApprovalRequestKind, ApprovalRequestTransitionAction, ApprovalRequestStatus)
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +35,8 @@ enum ApprovalQueueWorkflowError: LocalizedError {
             return "配賦承認データを読み込めませんでした。"
         case .invalidRecurringRequest:
             return "定期取引承認データを読み込めませんでした。"
+        case .invalidStatusTransition(_, let kind, let action, let status):
+            return "\(kind.displayName)依頼は現在 \(status.displayName) のため\(action.denialDescription)"
         }
     }
 }
@@ -169,6 +189,7 @@ struct ApprovalQueueWorkflowUseCase {
         guard let request = try await approvalRequestRepository.findById(id) else {
             throw ApprovalQueueWorkflowError.approvalRequestNotFound(id)
         }
+        try ensurePending(request, action: .approve)
 
         switch request.kind {
         case .distribution:
@@ -190,6 +211,7 @@ struct ApprovalQueueWorkflowUseCase {
         guard let request = try await approvalRequestRepository.findById(id) else {
             throw ApprovalQueueWorkflowError.approvalRequestNotFound(id)
         }
+        try ensurePending(request, action: .reject)
 
         switch request.kind {
         case .distribution:
@@ -213,6 +235,7 @@ struct ApprovalQueueWorkflowUseCase {
         guard let request = try await approvalRequestRepository.findById(id) else {
             throw ApprovalQueueWorkflowError.approvalRequestNotFound(id)
         }
+        try ensurePending(request, action: .invalidate)
         switch request.kind {
         case .distribution:
             return try await restoreDistributionRequest(
@@ -227,6 +250,20 @@ struct ApprovalQueueWorkflowUseCase {
             )
             try await approvalRequestRepository.save(invalidated)
             return invalidated
+        }
+    }
+
+    private func ensurePending(
+        _ request: ApprovalRequest,
+        action: ApprovalRequestTransitionAction
+    ) throws {
+        guard request.status == .pending else {
+            throw ApprovalQueueWorkflowError.invalidStatusTransition(
+                request.id,
+                request.kind,
+                action,
+                request.status
+            )
         }
     }
 

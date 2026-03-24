@@ -209,6 +209,132 @@ final class ApprovalQueueWorkflowUseCaseTests: XCTestCase {
         XCTAssertTrue(afterJournals.contains(where: { $0.entryType == .recurring }))
     }
 
+    func testDistributionRequestRejectsNonPendingTransitions() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let projectA = mutations(dataStore).addProject(name: "Guard A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Guard B", description: "")
+        let rule = distributionRule(projectA: projectA, projectB: projectB, businessId: businessId)
+
+        let approvedRequest = try await queueDistributionRequest(
+            businessId: businessId,
+            draftKey: "distribution:guard:approved",
+            draftKind: .transaction,
+            snapshotJSON: transactionSnapshotJSON(templateId: rule.id, projectId: projectA.id),
+            currentState: distributionUseCase.currentApprovalState(
+                allocationMode: .manual,
+                allocations: [(projectId: projectA.id, ratio: 100)],
+                totalAmount: 10_000
+            ),
+            projectA: projectA,
+            projectB: projectB
+        )
+        _ = try await workflowUseCase.approveRequest(approvedRequest.id)
+        let approvedDraftBeforeValue = try await workflowUseCase.formDraft(draftKey: "distribution:guard:approved")
+        let approvedDraftBefore = try XCTUnwrap(approvedDraftBeforeValue)
+
+        await assertInvalidStatusTransition(
+            requestId: approvedRequest.id,
+            kind: .distribution,
+            action: .approve,
+            status: .approved
+        ) {
+            _ = try await workflowUseCase.approveRequest(approvedRequest.id)
+        }
+        await assertInvalidStatusTransition(
+            requestId: approvedRequest.id,
+            kind: .distribution,
+            action: .reject,
+            status: .approved
+        ) {
+            _ = try await workflowUseCase.rejectRequest(approvedRequest.id)
+        }
+
+        let approvedDraftAfterValue = try await workflowUseCase.formDraft(draftKey: "distribution:guard:approved")
+        let approvedDraftAfter = try XCTUnwrap(approvedDraftAfterValue)
+        let approvedRequestAfterValue = try await workflowUseCase.request(approvedRequest.id)
+        let approvedRequestAfter = try XCTUnwrap(approvedRequestAfterValue)
+        XCTAssertEqual(approvedDraftAfter, approvedDraftBefore)
+        XCTAssertEqual(approvedRequestAfter.status, .approved)
+
+        let rejectedRequest = try await queueDistributionRequest(
+            businessId: businessId,
+            draftKey: "distribution:guard:rejected",
+            draftKind: .transaction,
+            snapshotJSON: transactionSnapshotJSON(templateId: rule.id, projectId: projectA.id),
+            currentState: distributionUseCase.currentApprovalState(
+                allocationMode: .manual,
+                allocations: [(projectId: projectA.id, ratio: 100)],
+                totalAmount: 10_000
+            ),
+            projectA: projectA,
+            projectB: projectB
+        )
+        _ = try await workflowUseCase.rejectRequest(rejectedRequest.id)
+
+        await assertInvalidStatusTransition(
+            requestId: rejectedRequest.id,
+            kind: .distribution,
+            action: .invalidate,
+            status: .rejected
+        ) {
+            _ = try await workflowUseCase.invalidateRequest(rejectedRequest.id)
+        }
+
+        let rejectedRequestAfterValue = try await workflowUseCase.request(rejectedRequest.id)
+        let rejectedRequestAfter = try XCTUnwrap(rejectedRequestAfterValue)
+        XCTAssertEqual(rejectedRequestAfter.status, .rejected)
+    }
+
+    func testRecurringRequestRejectsNonPendingTransitions() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let project = mutations(dataStore).addProject(name: "Recurring Guard PJ", description: "")
+        _ = mutations(dataStore).addRecurring(
+            name: "Recurring Guard",
+            type: .expense,
+            amount: 9_000,
+            categoryId: "cat-tools",
+            memo: "queue guard recurring",
+            allocationMode: .manual,
+            allocations: [(projectId: project.id, ratio: 100)],
+            frequency: .monthly,
+            dayOfMonth: 1,
+            paymentAccountId: "acct-cash"
+        )
+
+        let previewItems = await RecurringWorkflowUseCase(modelContext: context).previewRecurringTransactions()
+        let requestId = try XCTUnwrap(previewItems.first?.id)
+        _ = try await workflowUseCase.approveRequest(requestId)
+
+        await assertInvalidStatusTransition(
+            requestId: requestId,
+            kind: .recurring,
+            action: .approve,
+            status: .approved
+        ) {
+            _ = try await workflowUseCase.approveRequest(requestId)
+        }
+        await assertInvalidStatusTransition(
+            requestId: requestId,
+            kind: .recurring,
+            action: .reject,
+            status: .approved
+        ) {
+            _ = try await workflowUseCase.rejectRequest(requestId)
+        }
+        await assertInvalidStatusTransition(
+            requestId: requestId,
+            kind: .recurring,
+            action: .invalidate,
+            status: .approved
+        ) {
+            _ = try await workflowUseCase.invalidateRequest(requestId)
+        }
+
+        let requestAfterValue = try await workflowUseCase.request(requestId)
+        let requestAfter = try XCTUnwrap(requestAfterValue)
+        XCTAssertEqual(requestAfter.status, .approved)
+    }
+
     private var referenceDate: Date {
         date(2026, 4, 15)
     }
@@ -292,5 +418,31 @@ final class ApprovalQueueWorkflowUseCaseTests: XCTestCase {
         Calendar(identifier: .gregorian).date(
             from: DateComponents(year: year, month: month, day: day)
         )!
+    }
+
+    private func assertInvalidStatusTransition(
+        requestId: UUID,
+        kind: ApprovalRequestKind,
+        action: ApprovalRequestTransitionAction,
+        status: ApprovalRequestStatus,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        operation: () async throws -> Void
+    ) async {
+        do {
+            try await operation()
+            XCTFail("Expected invalidStatusTransition error", file: file, line: line)
+        } catch let error as ApprovalQueueWorkflowError {
+            guard case let .invalidStatusTransition(actualId, actualKind, actualAction, actualStatus) = error else {
+                XCTFail("Unexpected ApprovalQueueWorkflowError: \(error)", file: file, line: line)
+                return
+            }
+            XCTAssertEqual(actualId, requestId, file: file, line: line)
+            XCTAssertEqual(actualKind.rawValue, kind.rawValue, file: file, line: line)
+            XCTAssertEqual(actualAction.rawValue, action.rawValue, file: file, line: line)
+            XCTAssertEqual(actualStatus.rawValue, status.rawValue, file: file, line: line)
+        } catch {
+            XCTFail("Unexpected error: \(error)", file: file, line: line)
+        }
     }
 }
