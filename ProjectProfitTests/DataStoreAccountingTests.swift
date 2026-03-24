@@ -1283,7 +1283,7 @@ final class DataStoreAccountingTests: XCTestCase {
         try context.save()
         dataStore.loadData()
 
-        let category = dataStore.addCategory(name: "UUID経費カテゴリ", type: .expense, icon: "wrench")
+        let category = try! dataStore.addCategory(name: "UUID経費カテゴリ", type: .expense, icon: "wrench")
         dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: expenseAccountId)
         let project = mutations(dataStore).addProject(name: "UUID Project", description: "")
         return (project, paymentAccountId, category.id)

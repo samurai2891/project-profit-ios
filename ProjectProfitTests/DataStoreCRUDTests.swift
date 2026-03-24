@@ -587,7 +587,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddCategory() {
-        let category = dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
 
         XCTAssertEqual(category.name, "Custom")
         XCTAssertEqual(category.type, .expense)
@@ -597,14 +597,14 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddIncomeCategory() {
-        let category = dataStore.addCategory(name: "Freelance", type: .income, icon: "laptop")
+        let category = try! dataStore.addCategory(name: "Freelance", type: .income, icon: "laptop")
 
         XCTAssertEqual(category.type, .income)
         XCTAssertFalse(category.isDefault)
     }
 
     func testUpdateCategoryName() {
-        let category = dataStore.addCategory(name: "Original", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Original", type: .expense, icon: "star")
         dataStore.updateCategory(id: category.id, name: "Renamed")
 
         let fetched = dataStore.getCategory(id: category.id)
@@ -613,7 +613,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateCategoryType() {
-        let category = dataStore.addCategory(name: "Flexible", type: .expense, icon: "arrow.left.arrow.right")
+        let category = try! dataStore.addCategory(name: "Flexible", type: .expense, icon: "arrow.left.arrow.right")
         dataStore.updateCategory(id: category.id, type: .income)
 
         let fetched = dataStore.getCategory(id: category.id)
@@ -621,7 +621,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testUpdateCategoryIcon() {
-        let category = dataStore.addCategory(name: "Cat", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Cat", type: .expense, icon: "star")
         dataStore.updateCategory(id: category.id, icon: "heart")
 
         let fetched = dataStore.getCategory(id: category.id)
@@ -635,7 +635,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteCustomCategory() {
-        let category = dataStore.addCategory(name: "Deletable", type: .expense, icon: "trash")
+        let category = try! dataStore.addCategory(name: "Deletable", type: .expense, icon: "trash")
         let countBeforeDelete = dataStore.categories.count
 
         dataStore.deleteCategory(id: category.id)
@@ -1387,7 +1387,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteAllDataReseedsDefaultCategories() {
         // Add a custom category
-        dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
+        try! dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
         XCTAssertEqual(dataStore.categories.count, DEFAULT_CATEGORIES.count + 1)
 
         mutations(dataStore).deleteAllData()
@@ -1402,7 +1402,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteAllDataCustomCategoriesAreRemoved() {
-        let custom = dataStore.addCategory(name: "Custom", type: .income, icon: "star")
+        let custom = try! dataStore.addCategory(name: "Custom", type: .income, icon: "star")
 
         mutations(dataStore).deleteAllData()
 
@@ -1413,7 +1413,7 @@ final class DataStoreCRUDTests: XCTestCase {
         // Set up a full data scenario
         let project1 = mutations(dataStore).addProject(name: "P1", description: "")
         let project2 = mutations(dataStore).addProject(name: "P2", description: "")
-        dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
+        try! dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
 
         mutations(dataStore).addTransaction(
             type: .income,
@@ -1922,7 +1922,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteCategory_migratesExpenseTransactions() {
         let project = mutations(dataStore).addProject(name: "Proj", description: "")
-        let category = dataStore.addCategory(name: "Custom Expense", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Custom Expense", type: .expense, icon: "star")
         let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 500,
@@ -1940,7 +1940,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteCategory_migratesIncomeTransactions() {
         let project = mutations(dataStore).addProject(name: "Proj", description: "")
-        let category = dataStore.addCategory(name: "Custom Income", type: .income, icon: "star")
+        let category = try! dataStore.addCategory(name: "Custom Income", type: .income, icon: "star")
         let tx = mutations(dataStore).addTransaction(
             type: .income,
             amount: 500,
@@ -1958,7 +1958,7 @@ final class DataStoreCRUDTests: XCTestCase {
 
     func testDeleteCategory_migratesRecurring() {
         let project = mutations(dataStore).addProject(name: "Proj", description: "")
-        let category = dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Custom Cat", type: .expense, icon: "star")
         let recurring = mutations(dataStore).addRecurring(
             name: "Fee",
             type: .expense,
@@ -1977,7 +1977,7 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testDeleteCategory_noReferences() {
-        let category = dataStore.addCategory(name: "Unused", type: .expense, icon: "star")
+        let category = try! dataStore.addCategory(name: "Unused", type: .expense, icon: "star")
         let countBefore = dataStore.categories.count
 
         dataStore.deleteCategory(id: category.id)
@@ -2490,8 +2490,8 @@ final class DataStoreCRUDTests: XCTestCase {
     // MARK: - M10: Category Name Uniqueness
 
     func testAddCategory_rejectsDuplicateName() {
-        let original = dataStore.addCategory(name: "Travel", type: .expense, icon: "airplane")
-        let duplicate = dataStore.addCategory(name: "Travel", type: .expense, icon: "car")
+        let original = try! dataStore.addCategory(name: "Travel", type: .expense, icon: "airplane")
+        let duplicate = try! dataStore.addCategory(name: "Travel", type: .expense, icon: "car")
 
         XCTAssertEqual(original.id, duplicate.id, "同名・同タイプのカテゴリ追加は既存を返すべき")
         XCTAssertEqual(duplicate.icon, "airplane", "既存カテゴリのiconが返される")
@@ -2500,15 +2500,15 @@ final class DataStoreCRUDTests: XCTestCase {
     }
 
     func testAddCategory_allowsSameNameDifferentType() {
-        let expense = dataStore.addCategory(name: "Consulting", type: .expense, icon: "briefcase")
-        let income = dataStore.addCategory(name: "Consulting", type: .income, icon: "briefcase")
+        let expense = try! dataStore.addCategory(name: "Consulting", type: .expense, icon: "briefcase")
+        let income = try! dataStore.addCategory(name: "Consulting", type: .income, icon: "briefcase")
 
         XCTAssertNotEqual(expense.id, income.id)
     }
 
     func testUpdateCategory_rejectsDuplicateName() {
-        dataStore.addCategory(name: "Alpha", type: .expense, icon: "star")
-        let beta = dataStore.addCategory(name: "Beta", type: .expense, icon: "star")
+        try! dataStore.addCategory(name: "Alpha", type: .expense, icon: "star")
+        let beta = try! dataStore.addCategory(name: "Beta", type: .expense, icon: "star")
 
         dataStore.updateCategory(id: beta.id, name: "Alpha")
 

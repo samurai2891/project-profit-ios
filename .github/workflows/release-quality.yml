@@ -7,10 +7,62 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+env:
+  RELEASE_QUALITY_ARTIFACT_ROOT: ${{ github.workspace }}/artifacts/release-quality
+  RELEASE_QUALITY_EVIDENCE_DIR: ${{ github.workspace }}/Docs/release/quality
+
 jobs:
+  xcodegen-sync:
+    name: XcodeGen Sync
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        shell: bash
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Verify project.yml and xcodeproj sync
+        id: sync
+        shell: bash
+        run: |
+          chmod +x scripts/check_xcodegen_sync.sh
+          set +e
+          output="$(scripts/check_xcodegen_sync.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="xcodegen sync output parsing failed"
+          fi
+
+          {
+            echo "### xcodegen-sync"
+            echo "- status: $status"
+            echo "- reason: $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$status" == "error" || "$exit_code" -ne 0 ]]; then
+            exit 1
+          fi
+
   simulator-health:
     name: Simulator Health
     runs-on: macos-latest
+    needs: xcodegen-sync
     outputs:
       status: ${{ steps.health.outputs.status }}
       reason: ${{ steps.health.outputs.reason }}
@@ -62,6 +114,76 @@ jobs:
             exit 1
           fi
 
+  release-build:
+    name: Release Build
+    runs-on: macos-latest
+    needs: xcodegen-sync
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run release build lane
+        id: lane
+        shell: bash
+        env:
+          RELEASE_QUALITY_LANE: release-build
+          RELEASE_QUALITY_MODE: build
+          RELEASE_QUALITY_CONFIGURATION: Release
+          RELEASE_QUALITY_DESTINATION: generic/platform=iOS
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/release-build
+        run: |
+          chmod +x scripts/run_release_quality_lane.sh
+          set +e
+          output="$(scripts/run_release_quality_lane.sh 2>&1)"
+          exit_code=$?
+          set -e
+
+          printf '%s\n' "$output"
+
+          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
+          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
+          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+
+          if [[ -z "$status" ]]; then
+            status="error"
+          fi
+          if [[ -z "$reason" ]]; then
+            reason="release build lane output parsing failed"
+          fi
+          if [[ -z "$summary_path" ]]; then
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/release-build/summary.md"
+          fi
+          if [[ -z "$log_path" ]]; then
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/release-build/xcodebuild.log"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$log_path" >> "$GITHUB_OUTPUT"
+
+          if [[ "$exit_code" -ne 0 ]]; then
+            exit "$exit_code"
+          fi
+
+      - name: Append lane summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.lane.outputs.summary_path }}" ]]; then
+            cat "${{ steps.lane.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload release build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-artifacts
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/release-build
+          if-no-files-found: warn
+
   golden-baseline:
     name: Golden Baseline
     runs-on: macos-latest
@@ -76,7 +198,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: golden-baseline
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/golden-baseline
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/GoldenBaselineTests
@@ -102,13 +224,13 @@ jobs:
             reason="golden lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/golden-baseline/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/golden-baseline/golden-baseline.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline/golden-baseline.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/golden-baseline/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline/xcodebuild.log"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -134,7 +256,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-baseline-artifacts
-          path: /tmp/release-quality/golden-baseline
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline
           if-no-files-found: warn
 
   canonical-e2e:
@@ -151,7 +273,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: canonical-e2e
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/canonical-e2e
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/CanonicalFlowE2ETests
@@ -180,13 +302,13 @@ jobs:
             reason="canonical E2E lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/canonical-e2e/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/canonical-e2e/canonical-e2e.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e/canonical-e2e.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/canonical-e2e/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e/xcodebuild.log"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -212,7 +334,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: canonical-e2e-artifacts
-          path: /tmp/release-quality/canonical-e2e
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e
           if-no-files-found: warn
 
   migration-rehearsal:
@@ -229,7 +351,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: migration-rehearsal
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/migration-rehearsal
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/MigrationReportRunnerTests
@@ -258,13 +380,13 @@ jobs:
             reason="migration rehearsal lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/migration-rehearsal/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/migration-rehearsal/migration-rehearsal.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal/migration-rehearsal.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/migration-rehearsal/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal/xcodebuild.log"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -290,7 +412,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: migration-rehearsal-artifacts
-          path: /tmp/release-quality/migration-rehearsal
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal
           if-no-files-found: warn
 
   performance-gate:
@@ -307,7 +429,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: performance-gate
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/performance-gate
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ReleasePerformanceGateTests
@@ -334,16 +456,16 @@ jobs:
             reason="performance gate lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/performance-gate/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/performance-gate/performance-gate.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate/performance-gate.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/performance-gate/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate/xcodebuild.log"
           fi
           if [[ -z "$metrics_path" ]]; then
-            metrics_path="/tmp/release-quality/performance-gate/performance_metrics.txt"
+            metrics_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate/performance_metrics.txt"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -370,7 +492,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: performance-gate-artifacts
-          path: /tmp/release-quality/performance-gate
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate
           if-no-files-found: warn
 
   books:
@@ -387,7 +509,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: books
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/books
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/AccountingReportServiceTests
@@ -418,13 +540,13 @@ jobs:
             reason="books lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/books/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/books/books.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books/books.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/books/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books/xcodebuild.log"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -450,7 +572,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: books-artifacts
-          path: /tmp/release-quality/books
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books
           if-no-files-found: warn
 
   forms:
@@ -467,7 +589,7 @@ jobs:
         shell: bash
         env:
           RELEASE_QUALITY_LANE: forms
-          RELEASE_QUALITY_ARTIFACTS_DIR: /tmp/release-quality/forms
+          RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ShushiNaiyakushoBuilderTests
@@ -496,13 +618,13 @@ jobs:
             reason="forms lane output parsing failed"
           fi
           if [[ -z "$summary_path" ]]; then
-            summary_path="/tmp/release-quality/forms/summary.md"
+            summary_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms/summary.md"
           fi
           if [[ -z "$xcresult_path" ]]; then
-            xcresult_path="/tmp/release-quality/forms/forms.xcresult"
+            xcresult_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms/forms.xcresult"
           fi
           if [[ -z "$log_path" ]]; then
-            log_path="/tmp/release-quality/forms/xcodebuild.log"
+            log_path="${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms/xcodebuild.log"
           fi
 
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -528,5 +650,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: forms-artifacts
-          path: /tmp/release-quality/forms
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms
           if-no-files-found: warn

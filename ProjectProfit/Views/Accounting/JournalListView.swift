@@ -38,12 +38,16 @@ struct JournalListView: View {
             if isSearching || isReindexing {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("journal.list.loading")
             } else if visibleEntries.isEmpty {
                 emptyState
+                    .accessibilityIdentifier("journal.list.empty")
             } else {
                 journalList
+                    .accessibilityIdentifier("journal.list.entries")
             }
         }
+        .accessibilityIdentifier("journal.list.screen")
         .navigationTitle("仕訳帳")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -66,6 +70,7 @@ struct JournalListView: View {
                         Image(systemName: "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityLabel("検索条件")
+                    .accessibilityIdentifier("journal.list.filters.menu")
                     if canCreateManualJournals {
                         Button {
                             showManualEntryForm = true
@@ -73,6 +78,7 @@ struct JournalListView: View {
                             Image(systemName: "plus")
                         }
                         .accessibilityLabel("手動仕訳を追加")
+                        .accessibilityIdentifier("journal.list.add")
                     }
                 }
             }
@@ -144,6 +150,7 @@ struct JournalListView: View {
                 NavigationLink(destination: JournalDetailView(entryId: entry.id)) {
                     journalRow(entry)
                 }
+                .accessibilityIdentifier("journal.list.row.\(entry.id.uuidString)")
             }
         }
         .listStyle(.plain)

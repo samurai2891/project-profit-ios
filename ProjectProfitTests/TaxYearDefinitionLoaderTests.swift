@@ -6,6 +6,19 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
 
     private struct FilingDefinitionFixture: Decodable {
         let filingDeadline: String
+        let formId: String
+        let formVer: String
+        let rootTag: String
+    }
+
+    private struct LegacyTaxYearFixture: Decodable {
+        struct FormFixture: Decodable {
+            let formId: String
+            let formVer: String
+            let rootTag: String
+        }
+
+        let forms: [String: FormFixture]
     }
 
     private func filingDefinition(named fileName: String, fiscalYear: Int = 2025) throws -> FilingDefinitionFixture {
@@ -17,6 +30,28 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
             .appendingPathComponent(fileName)
         let data = try Data(contentsOf: fileURL)
         return try JSONDecoder().decode(FilingDefinitionFixture.self, from: data)
+    }
+
+    private func legacyFormDefinition(formKey: String, fiscalYear: Int) throws -> LegacyTaxYearFixture.FormFixture? {
+        let baseURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fileURL = baseURL
+            .appendingPathComponent("ProjectProfit/Resources/TaxYear\(fiscalYear).json")
+        let data = try Data(contentsOf: fileURL)
+        let definition = try JSONDecoder().decode(LegacyTaxYearFixture.self, from: data)
+        return definition.forms[formKey]
+    }
+
+    private func legacyFormKeys(fiscalYear: Int) throws -> Set<String> {
+        let baseURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fileURL = baseURL
+            .appendingPathComponent("ProjectProfit/Resources/TaxYear\(fiscalYear).json")
+        let data = try Data(contentsOf: fileURL)
+        let definition = try JSONDecoder().decode(LegacyTaxYearFixture.self, from: data)
+        return Set(definition.forms.keys)
     }
 
     override func setUp() {
@@ -164,6 +199,41 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(pack.transitionalMeasures.last?.id, "transitional_50")
     }
 
+    func testPackSupportedForms_2025And2026MatchExpectedSet() {
+        let expected: Set<String> = ["common", "blue_general", "blue_cash_basis", "white_shushi"]
+        for year in [2025, 2026] {
+            let definition = TaxYearDefinitionLoader.loadDefinition(for: year)
+            let actual = Set(definition?.forms?.keys.map { $0 } ?? [])
+            XCTAssertEqual(actual, expected, "supported form keys mismatch for \(year)")
+        }
+    }
+
+    func testLegacyForms_2025And2026IncludePackMajorFormKeys() throws {
+        let expected: Set<String> = ["common", "blue_general", "blue_cash_basis", "white_shushi"]
+
+        for year in [2025, 2026] {
+            let present = try legacyFormKeys(fiscalYear: year)
+            XCTAssertTrue(present.isSuperset(of: expected), "legacy forms missing keys for \(year): \(expected.subtracting(present))")
+        }
+    }
+
+    func testLegacyAndPackFormMetadataStayAlignedForBlueAndWhite_2025And2026() throws {
+        let legacyComparableForms = ["blue_general", "white_shushi"]
+
+        for year in [2025, 2026] {
+            for formKey in legacyComparableForms {
+                let fileName = "\(formKey).json"
+                let pack = try filingDefinition(named: fileName, fiscalYear: year)
+                let legacy = try legacyFormDefinition(formKey: formKey, fiscalYear: year)
+
+                XCTAssertNotNil(legacy, "legacy form is missing for \(year):\(formKey)")
+                XCTAssertEqual(legacy?.formId, pack.formId, "formId mismatch for \(year):\(formKey)")
+                XCTAssertEqual(legacy?.formVer, pack.formVer, "formVer mismatch for \(year):\(formKey)")
+                XCTAssertEqual(legacy?.rootTag, pack.rootTag, "rootTag mismatch for \(year):\(formKey)")
+            }
+        }
+    }
+
     func testFilingDeadline_2025FilingPacksAreMarch16() throws {
         let fileNames = [
             "common.json",
@@ -175,6 +245,45 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         for fileName in fileNames {
             let definition = try filingDefinition(named: fileName)
             XCTAssertEqual(definition.filingDeadline, "2026-03-16", "\(fileName) deadline should match the release task document")
+        }
+    }
+
+    func testFilingDeadline_2026FilingPacksAreMarch16() throws {
+        let fileNames = [
+            "common.json",
+            "blue_general.json",
+            "white_shushi.json",
+            "blue_cash_basis.json"
+        ]
+
+        for fileName in fileNames {
+            let definition = try filingDefinition(named: fileName, fiscalYear: 2026)
+            XCTAssertEqual(definition.filingDeadline, "2027-03-16", "\(fileName) deadline should stay aligned for 2026 pack")
+        }
+    }
+
+    func testProfileDeadlineAndFilingDeadlineStayConsistent_perTaxYear() async throws {
+        let provider = BundledTaxYearPackProvider(bundle: .main)
+        let filingFiles = ["common.json", "blue_general.json", "white_shushi.json", "blue_cash_basis.json"]
+
+        for year in [2025, 2026] {
+            let pack = try await provider.pack(for: year)
+            let expectedDeadline = String(
+                format: "%04d-%02d-%02d",
+                locale: Locale(identifier: "en_US_POSIX"),
+                year + 1,
+                pack.filingDeadlineMonth,
+                pack.filingDeadlineDay
+            )
+
+            for fileName in filingFiles {
+                let definition = try filingDefinition(named: fileName, fiscalYear: year)
+                XCTAssertEqual(
+                    definition.filingDeadline,
+                    expectedDeadline,
+                    "profile/filling deadline mismatch for \(year):\(fileName)"
+                )
+            }
         }
     }
 

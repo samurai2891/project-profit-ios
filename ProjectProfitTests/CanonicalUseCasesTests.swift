@@ -229,6 +229,131 @@ final class CanonicalUseCasesTests: XCTestCase {
         )
     }
 
+    func testPostingWorkflowUseCaseApproveCandidateRejectsAlreadyApprovedStatus() async throws {
+        let candidate = PostingCandidate(
+            businessId: UUID(),
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            status: .approved
+        )
+        let candidateRepository = InMemoryPostingCandidateRepository(initialCandidates: [candidate])
+        let useCase = PostingWorkflowUseCase(
+            postingCandidateRepository: candidateRepository,
+            journalEntryRepository: FailingCanonicalJournalEntryRepository(),
+            chartOfAccountsRepository: InMemoryChartOfAccountsRepository()
+        )
+
+        do {
+            _ = try await useCase.approveCandidate(candidateId: candidate.id)
+            XCTFail("Expected candidateNotApprovable error")
+        } catch let error as PostingWorkflowUseCaseError {
+            guard case let .candidateNotApprovable(candidateId, status) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(candidateId, candidate.id)
+            XCTAssertEqual(status, .approved)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    func testPostingWorkflowUseCaseSaveCandidateBlockedWhenYearLocked() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        try seedBusinessProfile(id: businessId)
+        try seedTaxYearProfile(businessId: businessId, taxYear: 2025, state: .taxClose)
+
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            status: .draft,
+            source: .manual,
+            memo: "年度ロック"
+        )
+
+        do {
+            try await useCase.saveCandidate(candidate)
+            XCTFail("Expected yearLocked error")
+        } catch {
+            assertYearLockedError(error, year: 2025)
+        }
+
+        let persisted = try await useCase.candidate(candidate.id)
+        XCTAssertNil(persisted)
+    }
+
+    func testPostingWorkflowUseCaseApproveCandidateBlockedWhenYearLocked() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            status: .needsReview,
+            source: .manual,
+            memo: "年度ロック"
+        )
+        try await SwiftDataPostingCandidateRepository(modelContext: context).save(candidate)
+        try seedBusinessProfile(id: businessId)
+        try seedTaxYearProfile(businessId: businessId, taxYear: 2025, state: .taxClose)
+
+        do {
+            _ = try await useCase.approveCandidate(candidateId: candidate.id)
+            XCTFail("Expected yearLocked error")
+        } catch {
+            assertYearLockedError(error, year: 2025)
+        }
+    }
+
+    func testPostingWorkflowUseCaseCancelJournalBlockedWhenYearLocked() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        let journal = makeApprovedJournalEntry(businessId: businessId, taxYear: 2025)
+        try await SwiftDataCanonicalJournalEntryRepository(modelContext: context).save(journal)
+        try seedBusinessProfile(id: businessId)
+        try seedTaxYearProfile(businessId: businessId, taxYear: 2025, state: .taxClose)
+
+        do {
+            _ = try await useCase.cancelJournal(journalId: journal.id)
+            XCTFail("Expected yearLocked error")
+        } catch {
+            assertYearLockedError(error, year: 2025)
+        }
+    }
+
+    func testPostingWorkflowUseCaseReopenCandidateBlockedWhenYearLocked() async throws {
+        let useCase = PostingWorkflowUseCase(modelContext: context)
+        let businessId = UUID()
+        let sourceCandidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            status: .approved,
+            source: .manual,
+            memo: "再レビュー"
+        )
+        try await SwiftDataPostingCandidateRepository(modelContext: context).save(sourceCandidate)
+
+        let journal = makeApprovedJournalEntry(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceCandidateId: sourceCandidate.id,
+            lockedAt: Date(timeIntervalSince1970: 1_741_565_200)
+        )
+        try await SwiftDataCanonicalJournalEntryRepository(modelContext: context).save(journal)
+        try seedBusinessProfile(id: businessId)
+        try seedTaxYearProfile(businessId: businessId, taxYear: 2025, state: .taxClose)
+
+        do {
+            _ = try await useCase.reopenCandidate(fromJournalId: journal.id)
+            XCTFail("Expected yearLocked error")
+        } catch {
+            assertYearLockedError(error, year: 2025)
+        }
+    }
+
     func testPostingWorkflowUseCaseApprovalLearnsUserRuleFromApprovedCandidate() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
@@ -652,6 +777,90 @@ final class CanonicalUseCasesTests: XCTestCase {
             defaultLegalReportLineId: defaultLegalReportLineId,
             displayOrder: 0
         )
+    }
+
+    private func seedBusinessProfile(id: UUID) throws {
+        context.insert(
+            BusinessProfileEntity(
+                businessId: id,
+                ownerName: "テスト事業者",
+                createdAt: Date(timeIntervalSince1970: 1_735_689_600),
+                updatedAt: Date(timeIntervalSince1970: 1_735_689_600)
+            )
+        )
+        try context.save()
+    }
+
+    private func seedTaxYearProfile(
+        businessId: UUID,
+        taxYear: Int,
+        state: YearLockState
+    ) throws {
+        context.insert(
+            TaxYearProfileEntity(
+                businessId: businessId,
+                taxYear: taxYear,
+                yearLockStateRaw: state.rawValue,
+                taxPackVersion: "\(taxYear)-v1",
+                createdAt: Date(timeIntervalSince1970: 1_735_689_600),
+                updatedAt: Date(timeIntervalSince1970: 1_735_689_600)
+            )
+        )
+        try context.save()
+    }
+
+    private func makeApprovedJournalEntry(
+        businessId: UUID,
+        taxYear: Int,
+        sourceCandidateId: UUID? = nil,
+        lockedAt: Date? = nil
+    ) -> CanonicalJournalEntry {
+        let journalId = UUID()
+        return CanonicalJournalEntry(
+            id: journalId,
+            businessId: businessId,
+            taxYear: taxYear,
+            journalDate: Date(timeIntervalSince1970: 1_741_478_400),
+            voucherNo: "\(taxYear)-003-00001",
+            sourceCandidateId: sourceCandidateId,
+            entryType: .normal,
+            description: "テスト仕訳",
+            lines: [
+                JournalLine(
+                    id: UUID(),
+                    journalId: journalId,
+                    accountId: UUID(),
+                    debitAmount: Decimal(string: "5000")!,
+                    creditAmount: .zero,
+                    sortOrder: 0
+                ),
+                JournalLine(
+                    id: UUID(),
+                    journalId: journalId,
+                    accountId: UUID(),
+                    debitAmount: .zero,
+                    creditAmount: Decimal(string: "5000")!,
+                    sortOrder: 1
+                )
+            ],
+            approvedAt: Date(timeIntervalSince1970: 1_741_478_460),
+            lockedAt: lockedAt,
+            createdAt: Date(timeIntervalSince1970: 1_741_478_400),
+            updatedAt: Date(timeIntervalSince1970: 1_741_478_460)
+        )
+    }
+
+    private func assertYearLockedError(
+        _ error: Error,
+        year: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard case let AppError.yearLocked(lockedYear) = error else {
+            XCTFail("Unexpected error: \(error)", file: file, line: line)
+            return
+        }
+        XCTAssertEqual(lockedYear, year, file: file, line: line)
     }
 }
 

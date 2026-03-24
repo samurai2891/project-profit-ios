@@ -113,6 +113,14 @@ final class AllocationCalculatorTests: XCTestCase {
         XCTAssertTrue(allocations.isEmpty)
     }
 
+    func testDistributionWeightValidationRejectsNonPositiveWeight() {
+        XCTAssertThrowsError(
+            try DistributionWeight(validating: UUID(), weight: 0)
+        ) { error in
+            XCTAssertEqual(error as? DistributionWeightValidationError, .nonPositiveWeight(0))
+        }
+    }
+
     // MARK: - 配賦ソース
 
     func testAllocationSourceIsFromRule() {

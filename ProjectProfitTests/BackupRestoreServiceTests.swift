@@ -97,6 +97,12 @@ final class BackupRestoreServiceTests: XCTestCase {
         XCTAssertEqual(extracted.payload.legacy.transactions.map(\.id), [included.transaction.id])
         XCTAssertEqual(extracted.payload.legacy.documentRecords.map(\.id), [included.document.id])
         XCTAssertEqual(extracted.manifest.scope, .taxYear(2025))
+        XCTAssertEqual(extracted.payload.canonical.businessProfiles.map(\.id), [included.business.id])
+        XCTAssertTrue(extracted.payload.legacy.userRules.isEmpty)
+        XCTAssertTrue(extracted.payload.legacy.fixedAssets.isEmpty)
+        XCTAssertTrue(extracted.payload.legacy.ledgerBooks.isEmpty)
+        XCTAssertTrue(extracted.payload.legacy.ledgerEntries.isEmpty)
+        XCTAssertTrue(extracted.payload.canonical.distributionRules.isEmpty)
     }
 
     func testRestoreDryRunReportsPayloadChecksumMismatch() throws {
@@ -170,6 +176,39 @@ final class BackupRestoreServiceTests: XCTestCase {
         XCTAssertFalse(ReceiptImageStore.documentFileExists(fileName: replacement.document.storedFileName))
         XCTAssertEqual(ProfileSecureStore.load(profileId: original.business.id.uuidString)?.postalCode, "5300001")
         XCTAssertNil(ProfileSecureStore.load(profileId: replacement.business.id.uuidString))
+    }
+
+    func testApplyTaxYearRestoreUsesSnapshotFiscalStartMonthToClearScope() throws {
+        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
+        let carryover = try seedSnapshotState(
+            profileId: "profile-taxyear-carryover",
+            transactionId: UUID(uuidString: "41000000-0000-0000-0000-000000000001")!,
+            transactionDate: stableDate(year: 2025, month: 2, day: 15),
+            receiptFileName: "receipt-taxyear-carryover.jpg",
+            documentId: UUID(uuidString: "41000000-0000-0000-0000-000000000002")!,
+            documentFileName: "document-taxyear-carryover.pdf",
+            securePostalCode: "5300003"
+        )
+        let inScope = try seedSnapshotState(
+            profileId: "profile-taxyear-inscope",
+            transactionId: UUID(uuidString: "41000000-0000-0000-0000-000000000003")!,
+            transactionDate: stableDate(year: 2025, month: 4, day: 15),
+            receiptFileName: "receipt-taxyear-inscope.jpg",
+            documentId: UUID(uuidString: "41000000-0000-0000-0000-000000000004")!,
+            documentFileName: "document-taxyear-inscope.pdf",
+            securePostalCode: "5300004"
+        )
+        let archive = try BackupService(modelContext: context).export(scope: .taxYear(2025)).archiveURL
+
+        UserDefaults.standard.set(1, forKey: FiscalYearSettings.userDefaultsKey)
+
+        _ = try RestoreService(modelContext: context).apply(snapshotURL: archive)
+
+        let transactions = try context.fetch(FetchDescriptor<PPTransaction>())
+        let transactionIds = Set(transactions.map(\.id))
+        XCTAssertTrue(transactionIds.contains(carryover.transaction.id))
+        XCTAssertTrue(transactionIds.contains(inScope.transaction.id))
+        XCTAssertEqual(FiscalYearSettings.startMonth, 4)
     }
 
     func testApplyLegacyProfileOnlySnapshotRestoresCanonicalProfilesAndNormalizesSecurePayloadIds() throws {

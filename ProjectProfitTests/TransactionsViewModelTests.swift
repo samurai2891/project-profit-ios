@@ -151,4 +151,13 @@ final class TransactionsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.expenseTotal, 2000)
         XCTAssertEqual(viewModel.netTotal, 2000)
     }
+
+    func testSearchTextPreservesCounterpartyFilter() {
+        viewModel.filter = TransactionFilter(counterparty: "取引先A")
+
+        viewModel.searchText = "請求"
+
+        XCTAssertEqual(viewModel.filter.counterparty, "取引先A")
+        XCTAssertEqual(viewModel.filter.searchText, "請求")
+    }
 }

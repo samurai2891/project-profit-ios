@@ -55,6 +55,24 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.disposalDate, disposalDate)
     }
 
+    func testDisposeAssetBlockedWhenDisposalFiscalYearLocked() throws {
+        let asset = try useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 4, 1)))
+        let disposalDate = date(2026, 5, 1)
+        setupProfileAndLockYear(2026)
+
+        XCTAssertThrowsError(try useCase.disposeAsset(id: asset.id, disposalDate: disposalDate)) { error in
+            guard let appError = error as? AppError,
+                  case let .yearLocked(year) = appError else {
+                XCTFail("Expected yearLocked error, got \(error)")
+                return
+            }
+            XCTAssertEqual(year, 2026)
+        }
+        dataStore.refreshFixedAssets()
+        XCTAssertEqual(dataStore.getFixedAsset(id: asset.id)?.assetStatus, .active)
+        XCTAssertNil(dataStore.getFixedAsset(id: asset.id)?.disposalDate)
+    }
+
     func testDeleteAssetCascadesDepreciationEntries() throws {
         let asset = try useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 1_000_000))
         _ = try useCase.postDepreciation(assetId: asset.id, fiscalYear: 2025)
@@ -66,6 +84,26 @@ final class FixedAssetWorkflowUseCaseTests: XCTestCase {
         let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: asset.id, year: 2025)
         XCTAssertNil(dataStore.getFixedAsset(id: asset.id))
         XCTAssertFalse(dataStore.journalEntries.contains { $0.sourceKey == sourceKey })
+    }
+
+    func testDeleteAssetBlockedWhenDepreciationYearLocked() throws {
+        let asset = try useCase.createAsset(input: makeInput(acquisitionDate: date(2025, 1, 1), acquisitionCost: 1_000_000))
+        _ = try useCase.postDepreciation(assetId: asset.id, fiscalYear: 2026)
+        let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: asset.id, year: 2026)
+        setupProfileAndLockYear(2026)
+
+        XCTAssertThrowsError(try useCase.deleteAsset(id: asset.id)) { error in
+            guard let appError = error as? AppError,
+                  case let .yearLocked(year) = appError else {
+                XCTFail("Expected yearLocked error, got \(error)")
+                return
+            }
+            XCTAssertEqual(year, 2026)
+        }
+        dataStore.refreshFixedAssets()
+        dataStore.refreshJournalEntries()
+        XCTAssertNotNil(dataStore.getFixedAsset(id: asset.id))
+        XCTAssertTrue(dataStore.journalEntries.contains { $0.sourceKey == sourceKey })
     }
 
     func testPostDepreciationCreatesEntry() throws {

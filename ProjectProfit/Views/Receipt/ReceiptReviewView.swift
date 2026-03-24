@@ -721,7 +721,7 @@ struct ReceiptReviewView: View {
             let originalFileName = generatedOriginalFileName()
 
             do {
-                let filePayload = ReceiptReviewView.resolveFilePayload(
+                let filePayload = try ReceiptReviewView.resolveFilePayload(
                     evidenceSourceType: evidenceSourceType,
                     originalFileData: originalFileData,
                     originalFileMimeType: originalFileMimeType,

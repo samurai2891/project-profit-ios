@@ -133,48 +133,61 @@ struct MainTabView: View {
         TabView {
             NavigationStack {
                 DashboardView()
+                    .accessibilityIdentifier("screen.dashboard")
             }
             .tabItem {
                 Label("ダッシュボード", systemImage: "house.fill")
+                    .accessibilityIdentifier("tab.dashboard")
             }
 
             NavigationStack {
                 EvidenceInboxView()
+                    .accessibilityIdentifier("screen.evidence.inbox")
             }
             .tabItem {
                 Label("証憑", systemImage: "doc.text.viewfinder")
+                    .accessibilityIdentifier("tab.evidence")
             }
 
             NavigationStack {
                 ApprovalQueueView()
+                    .accessibilityIdentifier("screen.approval.queue")
             }
             .tabItem {
                 Label("承認", systemImage: "checklist")
+                    .accessibilityIdentifier("tab.approval")
             }
 
             NavigationStack {
                 TransactionsView()
+                    .accessibilityIdentifier("screen.transactions")
             }
             .tabItem {
                 Label("取引履歴", systemImage: "list.bullet.rectangle")
+                    .accessibilityIdentifier("tab.transactions")
             }
 
             NavigationStack {
                 FilingDashboardView()
+                    .accessibilityIdentifier("screen.filing.dashboard")
             }
             .tabItem {
                 Label("確定申告", systemImage: "doc.text.fill")
+                    .accessibilityIdentifier("tab.filing")
             }
 
             NavigationStack {
                 SettingsMainView(reloadStoreState: {
                     appShellWorkflowUseCase.refreshAppState()
                 })
+                .accessibilityIdentifier("screen.settings.main")
             }
             .tabItem {
                 Label("設定", systemImage: "gearshape.fill")
+                    .accessibilityIdentifier("tab.settings")
             }
         }
+        .accessibilityIdentifier("main.tabview")
         .tint(AppColors.primary)
         .alert("エラー", isPresented: showErrorBinding) {
             Button("OK", role: .cancel) {

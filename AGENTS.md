@@ -17,16 +17,16 @@ Project uses **XcodeGen** to generate the Xcode project from `project.yml`.
 xcodegen generate
 
 # Build
-xcodebuild -scheme ProjectProfit -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16' build
+xcodebuild -scheme ProjectProfit -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build
 
 # Run all tests
-xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 16' test
+xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' test
 
 # Run a single test class
-xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:ProjectProfitTests/DataStoreCRUDTests test
+xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/DataStoreCRUDTests test
 
 # Run a single test method
-xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:ProjectProfitTests/DataStoreCRUDTests/testAddProject test
+xcodebuild -scheme ProjectProfit -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ProjectProfitTests/DataStoreCRUDTests/testAddProject test
 ```
 
 ## Architecture

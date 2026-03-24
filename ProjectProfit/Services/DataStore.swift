@@ -1664,12 +1664,22 @@ class DataStore {
     // MARK: - Category CRUD
 
     @discardableResult
-    func addCategory(name: String, type: CategoryType, icon: String) -> PPCategory {
-        let category = CategoryWorkflowUseCase(modelContext: modelContext).createCategory(
-            input: CategoryCreateInput(name: name, type: type, icon: icon)
-        )
-        refreshCategories()
-        return category
+    func addCategory(name: String, type: CategoryType, icon: String) throws -> PPCategory {
+        do {
+            let category = try CategoryWorkflowUseCase(modelContext: modelContext).createCategory(
+                input: CategoryCreateInput(name: name, type: type, icon: icon)
+            )
+            refreshCategories()
+            lastError = nil
+            return category
+        } catch let appError as AppError {
+            lastError = appError
+            throw appError
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            lastError = appError
+            throw appError
+        }
     }
 
     func updateCategory(id: String, name: String? = nil, type: CategoryType? = nil, icon: String? = nil) {
@@ -2923,14 +2933,18 @@ class DataStore {
 
         let sortSpec = sort ?? TransactionSort(field: .date, order: .desc)
         result.sort { a, b in
-            let comparison: Bool
             switch sortSpec.field {
             case .date:
-                comparison = a.date < b.date
+                if a.date != b.date {
+                    return sortSpec.order == .desc ? a.date > b.date : a.date < b.date
+                }
             case .amount:
-                comparison = a.amount < b.amount
+                if a.amount != b.amount {
+                    return sortSpec.order == .desc ? a.amount > b.amount : a.amount < b.amount
+                }
             }
-            return sortSpec.order == .desc ? !comparison : comparison
+
+            return a.id.uuidString < b.id.uuidString
         }
 
         return result

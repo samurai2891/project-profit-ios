@@ -151,6 +151,108 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
         XCTAssertNil(dataStore.lastError)
     }
 
+    func testSaveProfileDoesNotPersistSecurePayloadWhenCanonicalSaveFails() async throws {
+        var persistCallCount = 0
+        useCase = ProfileSettingsWorkflowUseCase(
+            modelContext: context,
+            ports: .init(
+                readSensitivePayload: { self.dataStore.profileSensitivePayload },
+                readCurrentTaxYear: { self.dataStore.currentTaxYearProfile?.taxYear },
+                applyState: { self.dataStore.applyProfileSettingsState($0) },
+                persistSensitivePayload: { _, _ in
+                    persistCallCount += 1
+                    return true
+                },
+                setLastError: { self.dataStore.lastError = $0 }
+            )
+        )
+
+        let didLoad = await useCase.loadProfile(defaultTaxYear: 2026)
+        XCTAssertTrue(didLoad)
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "ヤマダタロウ",
+            postalCode: "1500001",
+            address: "東京都渋谷区1-2-3",
+            phoneNumber: "09012345678",
+            dateOfBirth: nil,
+            businessCategory: "デザイン",
+            myNumberFlag: true,
+            includeSensitiveInExport: true
+        )
+        let invalidCommand = makeCommand(
+            vatStatus: .taxable,
+            vatMethod: .simplified,
+            simplifiedBusinessCategory: nil
+        )
+
+        let result = await useCase.saveProfile(command: invalidCommand, sensitivePayload: payload)
+
+        switch result {
+        case .success:
+            XCTFail("saveProfile should fail")
+        case .failure:
+            break
+        }
+        XCTAssertEqual(persistCallCount, 0)
+    }
+
+    func testSaveProfileSecurePayloadFailureRollsBackCanonicalState() async throws {
+        var persistCallCount = 0
+        useCase = ProfileSettingsWorkflowUseCase(
+            modelContext: context,
+            ports: .init(
+                readSensitivePayload: { self.dataStore.profileSensitivePayload },
+                readCurrentTaxYear: { self.dataStore.currentTaxYearProfile?.taxYear },
+                applyState: { self.dataStore.applyProfileSettingsState($0) },
+                persistSensitivePayload: { _, _ in
+                    persistCallCount += 1
+                    return false
+                },
+                setLastError: { self.dataStore.lastError = $0 }
+            )
+        )
+
+        let didLoad = await useCase.loadProfile(defaultTaxYear: 2026)
+        XCTAssertTrue(didLoad)
+        let beforeBusiness = try XCTUnwrap(dataStore.businessProfile)
+        let beforeTaxYear = try XCTUnwrap(dataStore.currentTaxYearProfile)
+        let payload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "ヤマダタロウ",
+            postalCode: "1500001",
+            address: "東京都渋谷区1-2-3",
+            phoneNumber: "09012345678",
+            dateOfBirth: nil,
+            businessCategory: "デザイン",
+            myNumberFlag: true,
+            includeSensitiveInExport: true
+        )
+        let command = makeCommand(
+            ownerName: "変更後オーナー",
+            businessName: "変更後屋号",
+            yearLockState: .softClose
+        )
+
+        let result = await useCase.saveProfile(command: command, sensitivePayload: payload)
+
+        switch result {
+        case .success:
+            XCTFail("saveProfile should fail when secure payload save fails")
+        case .failure:
+            break
+        }
+
+        let persistedBusinessEntity = try XCTUnwrap(try context.fetch(FetchDescriptor<BusinessProfileEntity>()).first)
+        let persistedTaxYearEntity = try XCTUnwrap(try context.fetch(FetchDescriptor<TaxYearProfileEntity>()).first)
+        let persistedBusiness = BusinessProfileEntityMapper.toDomain(persistedBusinessEntity)
+        let persistedTaxYear = TaxYearProfileEntityMapper.toDomain(persistedTaxYearEntity)
+
+        XCTAssertEqual(persistCallCount, 1)
+        XCTAssertEqual(persistedBusiness.ownerName, beforeBusiness.ownerName)
+        XCTAssertEqual(persistedBusiness.businessName, beforeBusiness.businessName)
+        XCTAssertEqual(persistedTaxYear.yearLockState, beforeTaxYear.yearLockState)
+        XCTAssertEqual(dataStore.businessProfile?.ownerName, beforeBusiness.ownerName)
+    }
+
     private static func makeDate(year: Int, month: Int, day: Int) -> Date {
         let components = DateComponents(
             calendar: Calendar(identifier: .gregorian),
@@ -166,6 +268,36 @@ final class ProfileSettingsWorkflowUseCaseTests: XCTestCase {
             modelContext: context,
             ports: ports(),
             currentDateProvider: currentDateProvider
+        )
+    }
+
+    private func makeCommand(
+        ownerName: String = "山田太郎",
+        businessName: String = "山田デザイン",
+        vatStatus: VatStatus = .taxable,
+        vatMethod: VatMethod = .simplified,
+        simplifiedBusinessCategory: Int? = 3,
+        yearLockState: YearLockState = .softClose
+    ) -> SaveProfileSettingsCommand {
+        SaveProfileSettingsCommand(
+            ownerName: ownerName,
+            ownerNameKana: "ヤマダタロウ",
+            businessName: businessName,
+            businessAddress: "東京都渋谷区1-2-3",
+            postalCode: "1500001",
+            phoneNumber: "09012345678",
+            openingDate: Date(timeIntervalSince1970: 1_700_000_000),
+            taxOfficeCode: "5678",
+            filingStyle: .blueGeneral,
+            blueDeductionLevel: .sixtyFive,
+            bookkeepingBasis: .doubleEntry,
+            vatStatus: vatStatus,
+            vatMethod: vatMethod,
+            simplifiedBusinessCategory: simplifiedBusinessCategory,
+            invoiceIssuerStatusAtYear: .registered,
+            electronicBookLevel: .superior,
+            yearLockState: yearLockState,
+            taxYear: 2026
         )
     }
 

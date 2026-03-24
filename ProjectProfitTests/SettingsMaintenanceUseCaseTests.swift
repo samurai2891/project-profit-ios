@@ -28,7 +28,7 @@ final class SettingsMaintenanceUseCaseTests: XCTestCase {
 
     func testDeleteAllDataClearsDataAndReseedsDefaultCategories() throws {
         let project = mutations(dataStore).addProject(name: "P1", description: "")
-        dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
+        try! dataStore.addCategory(name: "Custom", type: .expense, icon: "star")
         mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5_000,

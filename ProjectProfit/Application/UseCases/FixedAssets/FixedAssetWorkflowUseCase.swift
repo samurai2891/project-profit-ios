@@ -98,6 +98,8 @@ struct FixedAssetWorkflowUseCase {
 
         let acquisitionFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
         try validateYearIsOpen(acquisitionFiscalYear)
+        let disposalFiscalYear = fiscalYear(for: disposalDate, startMonth: FiscalYearSettings.startMonth)
+        try validateYearIsOpen(disposalFiscalYear)
 
         asset.assetStatus = .disposed
         asset.disposalDate = disposalDate
@@ -118,23 +120,15 @@ struct FixedAssetWorkflowUseCase {
             throw wrapped(error)
         }
 
-        let acquisitionFiscalYear = fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth)
-        try validateYearIsOpen(acquisitionFiscalYear)
+        let depreciationEntries = depreciationEntries(forAssetId: id)
+        try validateYearsOpenForDeletion(asset: asset, depreciationEntries: depreciationEntries)
 
-        let acquisitionYear = calendar.component(.year, from: asset.acquisitionDate)
-        let currentYear = calendar.component(.year, from: Date())
-
-        if acquisitionYear <= currentYear {
-            for year in acquisitionYear...currentYear {
-                let sourceKey = PPFixedAsset.depreciationSourceKey(assetId: id, year: year)
-                if let entry = journalEntries().first(where: { $0.sourceKey == sourceKey }) {
-                    let linesToDelete = journalLines().filter { $0.entryId == entry.id }
-                    for line in linesToDelete {
-                        modelContext.delete(line)
-                    }
-                    modelContext.delete(entry)
-                }
+        for entry in depreciationEntries {
+            let linesToDelete = journalLines().filter { $0.entryId == entry.id }
+            for line in linesToDelete {
+                modelContext.delete(line)
             }
+            modelContext.delete(entry)
         }
 
         fixedAssetRepository.delete(asset)
@@ -210,11 +204,46 @@ struct FixedAssetWorkflowUseCase {
         }
     }
 
+    private func validateYearsOpenForDeletion(asset: PPFixedAsset, depreciationEntries: [PPJournalEntry]) throws {
+        var affectedYears: Set<Int> = [
+            fiscalYear(for: asset.acquisitionDate, startMonth: FiscalYearSettings.startMonth),
+        ]
+        if let disposalDate = asset.disposalDate {
+            affectedYears.insert(fiscalYear(for: disposalDate, startMonth: FiscalYearSettings.startMonth))
+        }
+
+        for entry in depreciationEntries {
+            affectedYears.insert(try depreciationEntryYear(sourceKey: entry.sourceKey, assetId: asset.id))
+        }
+
+        for year in affectedYears.sorted() {
+            try validateYearIsOpen(year)
+        }
+    }
+
     private func wrapped(_ error: Error) -> AppError {
         if let appError = error as? AppError {
             return appError
         }
         return .saveFailed(underlying: error)
+    }
+
+    private func depreciationEntries(forAssetId assetId: UUID) -> [PPJournalEntry] {
+        let prefix = depreciationSourceKeyPrefix(assetId: assetId)
+        return journalEntries().filter { $0.sourceKey.hasPrefix(prefix) }
+    }
+
+    private func depreciationEntryYear(sourceKey: String, assetId: UUID) throws -> Int {
+        let prefix = depreciationSourceKeyPrefix(assetId: assetId)
+        guard sourceKey.hasPrefix(prefix),
+              let year = Int(sourceKey.dropFirst(prefix.count)) else {
+            throw AppError.invalidInput(message: "減価償却仕訳の年度キーが不正です")
+        }
+        return year
+    }
+
+    private func depreciationSourceKeyPrefix(assetId: UUID) -> String {
+        "depreciation:\(assetId.uuidString):"
     }
 
     private func fixedAssets() -> [PPFixedAsset] {

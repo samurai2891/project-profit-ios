@@ -4,6 +4,7 @@ import SwiftData
 
 enum PostingWorkflowUseCaseError: LocalizedError {
     case candidateNotFound(UUID)
+    case candidateNotApprovable(UUID, CandidateStatus)
     case candidateHasNoLines(UUID)
     case missingAccount(UUID)
     case accountNotFound(UUID)
@@ -20,6 +21,8 @@ enum PostingWorkflowUseCaseError: LocalizedError {
         switch self {
         case .candidateNotFound:
             return "仕訳候補が見つかりません"
+        case .candidateNotApprovable(_, let status):
+            return "ステータス \(status.displayName) の仕訳候補は承認できません"
         case .candidateHasNoLines:
             return "仕訳候補に明細がありません"
         case .missingAccount:
@@ -141,6 +144,7 @@ struct PostingWorkflowUseCase {
     }
 
     func saveCandidate(_ candidate: PostingCandidate) async throws {
+        try ensureNormalPostingAllowed(businessId: candidate.businessId, taxYear: candidate.taxYear)
         try await postingCandidateRepository.save(candidate)
     }
 
@@ -337,6 +341,7 @@ struct PostingWorkflowUseCase {
         else {
             throw PostingWorkflowUseCaseError.sourceCandidateNotFound(journalId)
         }
+        try ensureNormalPostingAllowed(businessId: journal.businessId, taxYear: journal.taxYear)
 
         let reopened = makeReopenedCandidate(
             from: sourceCandidate,
@@ -393,6 +398,22 @@ struct PostingWorkflowUseCase {
         try journalSearchIndex?.rebuild(businessId: businessId, taxYear: taxYear)
     }
 
+    private func ensureNormalPostingAllowed(businessId: UUID, taxYear: Int) throws {
+        guard let modelContext else {
+            return
+        }
+        let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId && $0.taxYear == taxYear
+            }
+        )
+        let rawState = try modelContext.fetch(descriptor).first?.yearLockStateRaw
+        let state = rawState.flatMap(YearLockState.init(rawValue:)) ?? .open
+        guard state.allowsNormalPosting else {
+            throw AppError.yearLocked(year: taxYear)
+        }
+    }
+
     private func validatedJournalForCancellation(_ journalId: UUID) async throws -> CanonicalJournalEntry {
         guard let journal = try await journalEntryRepository.findById(journalId) else {
             throw PostingWorkflowUseCaseError.journalNotFound(journalId)
@@ -403,6 +424,7 @@ struct PostingWorkflowUseCase {
         guard journal.lockedAt == nil else {
             throw PostingWorkflowUseCaseError.journalAlreadyCancelled(journalId)
         }
+        try ensureNormalPostingAllowed(businessId: journal.businessId, taxYear: journal.taxYear)
         return journal
     }
 
@@ -414,7 +436,11 @@ struct PostingWorkflowUseCase {
         approvedAt: Date,
         actor: String
     ) async throws -> CanonicalJournalEntry {
-        try await postingEngine.persistApprovedCandidateAsync(
+        guard candidate.status == .draft || candidate.status == .needsReview else {
+            throw PostingWorkflowUseCaseError.candidateNotApprovable(candidate.id, candidate.status)
+        }
+        try ensureNormalPostingAllowed(businessId: candidate.businessId, taxYear: candidate.taxYear)
+        return try await postingEngine.persistApprovedCandidateAsync(
             candidate,
             journalId: journalId,
             entryType: entryType,

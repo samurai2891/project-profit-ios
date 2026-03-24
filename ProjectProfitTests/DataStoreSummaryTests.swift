@@ -1011,6 +1011,70 @@ final class DataStoreSummaryTests: XCTestCase {
         XCTAssertEqual(result[2].amount, 200_000)
     }
 
+    func testGetFilteredTransactions_sortByDateDescendingBreaksTiesDeterministically() throws {
+        let sameDate = makeDate(year: 2025, month: 6, day: 1)
+        let firstId = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        let secondId = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+
+        context.insert(PPTransaction(
+            id: secondId,
+            type: .income,
+            amount: 10_000,
+            date: sameDate,
+            categoryId: "cat-sales",
+            memo: "second"
+        ))
+        context.insert(PPTransaction(
+            id: firstId,
+            type: .income,
+            amount: 20_000,
+            date: sameDate,
+            categoryId: "cat-sales",
+            memo: "first"
+        ))
+        try context.save()
+        dataStore.loadData()
+
+        let result = dataStore.getFilteredTransactions(
+            filter: TransactionFilter(),
+            sort: TransactionSort(field: .date, order: .desc)
+        )
+
+        XCTAssertEqual(result.map(\.id), [firstId, secondId])
+    }
+
+    func testGetFilteredTransactions_sortByAmountDescendingBreaksTiesDeterministically() throws {
+        let sameAmount = 10_000
+        let firstId = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        let secondId = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+
+        context.insert(PPTransaction(
+            id: secondId,
+            type: .income,
+            amount: sameAmount,
+            date: makeDate(year: 2025, month: 6, day: 2),
+            categoryId: "cat-sales",
+            memo: "second"
+        ))
+        context.insert(PPTransaction(
+            id: firstId,
+            type: .income,
+            amount: sameAmount,
+            date: makeDate(year: 2025, month: 6, day: 1),
+            categoryId: "cat-sales",
+            memo: "first"
+        ))
+        try context.save()
+        dataStore.loadData()
+
+        let result = dataStore.getFilteredTransactions(
+            filter: TransactionFilter(),
+            sort: TransactionSort(field: .amount, order: .desc)
+        )
+
+        XCTAssertEqual(result.map(\.id), [firstId, secondId])
+    }
+
     // MARK: - getFilteredTransactions: default sort
 
     func testGetFilteredTransactions_defaultSortIsDateDescending() {

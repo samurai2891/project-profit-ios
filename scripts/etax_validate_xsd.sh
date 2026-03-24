@@ -28,6 +28,7 @@ xml_path=""
 schema_path=""
 form_key=""
 taxyear_json="$REPO_ROOT/ProjectProfit/Resources/TaxYear2025.json"
+tax_year=""
 ETAX_REFERENCE_ROOT_RESOLVED="$(resolve_etax_reference_root)"
 default_schema_dir="$ETAX_REFERENCE_ROOT_RESOLVED/19XMLスキーマ/shotoku"
 if [[ ! -d "$default_schema_dir" ]]; then
@@ -42,9 +43,10 @@ Usage:
 
 Options:
   --xml <path>            XML/XTX file path to validate
-  --form-key <name>       forms key in TaxYear json or filing pack (`blue_general`, `blue_cash_basis`, `white_shushi`)
+  --form-key <name>       forms key in TaxYearPack filing (`blue_general`, `blue_cash_basis`, `white_shushi`)
   --schema <path>         explicit XSD path (optional)
-  --taxyear-json <path>   TaxYear*.json path
+  --tax-year <year>       tax year used for TaxYearPack lookup (preferred)
+  --taxyear-json <path>   Legacy TaxYear*.json path (fallback when pack form is missing)
   --schema-dir <path>     shotoku XSD directory (default: auto-detect ETAX_REFERENCE_ROOT -> tools/etax/xsd/shotoku)
 EOF
 }
@@ -87,6 +89,10 @@ while [[ $# -gt 0 ]]; do
       taxyear_json="$2"
       shift 2
       ;;
+    --tax-year)
+      tax_year="$2"
+      shift 2
+      ;;
     --schema-dir)
       schema_dir="$2"
       shift 2
@@ -121,6 +127,8 @@ resolve_status="ok"
 resolve_reason="explicit schema"
 form_id=""
 form_ver=""
+resolved_tax_year=""
+metadata_source=""
 
 if [[ -z "$schema_path" ]]; then
   if [[ -z "$form_key" ]]; then
@@ -131,6 +139,7 @@ if [[ -z "$schema_path" ]]; then
   set +e
   resolve_output="$(bash "$REPO_ROOT/scripts/etax_resolve_xsd.sh" \
     --taxyear-json "$taxyear_json" \
+    --tax-year "$tax_year" \
     --schema-dir "$schema_dir" \
     --form-key "$form_key" 2>&1)"
   resolve_exit=$?
@@ -143,6 +152,8 @@ if [[ -z "$schema_path" ]]; then
   form_id="$(printf '%s\n' "$resolve_output" | awk -F= '/^form_id=/{print $2; exit}')"
   form_ver="$(printf '%s\n' "$resolve_output" | awk -F= '/^form_ver=/{print $2; exit}')"
   schema_path="$(printf '%s\n' "$resolve_output" | awk -F= '/^schema_path=/{print $2; exit}')"
+  resolved_tax_year="$(printf '%s\n' "$resolve_output" | awk -F= '/^tax_year=/{print $2; exit}')"
+  metadata_source="$(printf '%s\n' "$resolve_output" | awk -F= '/^metadata_source=/{print $2; exit}')"
 
   if [[ "$resolve_exit" -ne 0 || -z "$schema_path" || "$resolve_status" == "error" ]]; then
     if [[ -z "$resolve_reason" ]]; then
@@ -231,6 +242,13 @@ if [[ "$resolve_status" == "warn" ]]; then
   print_result "warn" "xsd validation passed (schema resolution fallback)" "$form_key" "$schema_path" "$xml_path"
 else
   print_result "ok" "xsd validation passed" "$form_key" "$schema_path" "$xml_path"
+fi
+
+if [[ -n "$resolved_tax_year" ]]; then
+  echo "tax_year=$resolved_tax_year"
+fi
+if [[ -n "$metadata_source" ]]; then
+  echo "metadata_source=$metadata_source"
 fi
 
 exit 0

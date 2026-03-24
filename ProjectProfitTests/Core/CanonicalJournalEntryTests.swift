@@ -122,4 +122,37 @@ final class CanonicalJournalEntryTests: XCTestCase {
         XCTAssertTrue(creditLine.isCredit)
         XCTAssertEqual(creditLine.amount, 50000)
     }
+
+    func testJournalLineValidationRejectsNegativeDebit() {
+        let journalId = UUID()
+        XCTAssertThrowsError(
+            try JournalLine(
+                validating: UUID(),
+                journalId: journalId,
+                accountId: accountCash,
+                debitAmount: -1,
+                creditAmount: 0
+            )
+        ) { error in
+            XCTAssertEqual(error as? JournalLineValidationError, .negativeDebitAmount(-1))
+        }
+    }
+
+    func testJournalLineValidationRejectsBothSidesPositive() {
+        let journalId = UUID()
+        XCTAssertThrowsError(
+            try JournalLine(
+                validating: UUID(),
+                journalId: journalId,
+                accountId: accountCash,
+                debitAmount: 100,
+                creditAmount: 100
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? JournalLineValidationError,
+                .bothSidesPositive(debit: 100, credit: 100)
+            )
+        }
+    }
 }

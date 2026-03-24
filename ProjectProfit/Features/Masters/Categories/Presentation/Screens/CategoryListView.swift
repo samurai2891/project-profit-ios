@@ -330,10 +330,14 @@ struct CategoryListView: View {
             return
         }
 
-        _ = categoryWorkflowUseCase.createCategory(
-            input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
-        )
-        refreshSnapshot()
+        do {
+            _ = try categoryWorkflowUseCase.createCategory(
+                input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
+            )
+            refreshSnapshot()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func performArchive() {

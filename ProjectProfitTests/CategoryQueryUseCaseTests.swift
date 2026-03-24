@@ -24,8 +24,8 @@ final class CategoryQueryUseCaseTests: XCTestCase {
     }
 
     func testSnapshotIncludesActiveAndArchivedCategories() {
-        let active = dataStore.addCategory(name: "現役カテゴリ", type: .expense, icon: "tag")
-        let archived = dataStore.addCategory(name: "旧カテゴリ", type: .income, icon: "archivebox")
+        let active = try! dataStore.addCategory(name: "現役カテゴリ", type: .expense, icon: "tag")
+        let archived = try! dataStore.addCategory(name: "旧カテゴリ", type: .income, icon: "archivebox")
         dataStore.archiveCategory(id: archived.id)
 
         let snapshot = useCase.snapshot()
@@ -88,7 +88,7 @@ final class CategoryQueryUseCaseTests: XCTestCase {
         container.mainContext.insert(account)
         try! container.mainContext.save()
 
-        let category = dataStore.addCategory(name: "リンク先カテゴリ", type: .expense, icon: "link")
+        let category = try! dataStore.addCategory(name: "リンク先カテゴリ", type: .expense, icon: "link")
         dataStore.updateCategoryLinkedAccount(categoryId: category.id, accountId: account.id)
 
         let snapshot = useCase.snapshot()

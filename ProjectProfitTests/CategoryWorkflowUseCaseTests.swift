@@ -23,8 +23,8 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         super.tearDown()
     }
 
-    func testCreateCategoryInsertsRecord() {
-        let category = useCase.createCategory(
+    func testCreateCategoryInsertsRecord() throws {
+        let category = try useCase.createCategory(
             input: CategoryCreateInput(name: "外注費", type: .expense, icon: "wrench")
         )
         dataStore.refreshCategories()
@@ -33,12 +33,12 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getCategory(id: category.id)?.icon, "wrench")
     }
 
-    func testCreateCategoryReturnsExistingDuplicate() {
-        let original = useCase.createCategory(
+    func testCreateCategoryReturnsExistingDuplicate() throws {
+        let original = try useCase.createCategory(
             input: CategoryCreateInput(name: "旅費", type: .expense, icon: "airplane")
         )
 
-        let duplicate = useCase.createCategory(
+        let duplicate = try useCase.createCategory(
             input: CategoryCreateInput(name: "旅費", type: .expense, icon: "tram")
         )
         dataStore.refreshCategories()
@@ -48,11 +48,39 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getCategory(id: original.id)?.icon, "airplane")
     }
 
-    func testUpdateCategoryRejectsDuplicateName() {
-        _ = useCase.createCategory(
+    func testCreateCategorySaveFailureThrowsAndDoesNotPersistNewCategory() {
+        let repository = FailingSaveCategoryRepository(
+            seedCategories: [
+                PPCategory(
+                    id: "cat-other-expense",
+                    name: "その他経費",
+                    type: .expense,
+                    icon: "tray",
+                    isDefault: true
+                )
+            ]
+        )
+        let failingUseCase = CategoryWorkflowUseCase(
+            modelContext: container.mainContext,
+            categoryRepository: repository
+        )
+
+        XCTAssertThrowsError(try failingUseCase.createCategory(
+            input: CategoryCreateInput(name: "保存失敗カテゴリ", type: .expense, icon: "xmark.circle")
+        )) { error in
+            guard case .saveFailed = error as? AppError else {
+                XCTFail("Expected saveFailed error, got \(error)")
+                return
+            }
+        }
+        XCTAssertFalse(repository.containsCategory(name: "保存失敗カテゴリ", type: .expense))
+    }
+
+    func testUpdateCategoryRejectsDuplicateName() throws {
+        _ = try useCase.createCategory(
             input: CategoryCreateInput(name: "会議費", type: .expense, icon: "person.2")
         )
-        let editable = useCase.createCategory(
+        let editable = try useCase.createCategory(
             input: CategoryCreateInput(name: "雑費", type: .expense, icon: "star")
         )
 
@@ -66,8 +94,8 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getCategory(id: editable.id)?.name, "雑費")
     }
 
-    func testArchiveAndUnarchiveCategoryToggleArchivedAt() {
-        let category = useCase.createCategory(
+    func testArchiveAndUnarchiveCategoryToggleArchivedAt() throws {
+        let category = try useCase.createCategory(
             input: CategoryCreateInput(name: "アーカイブ候補", type: .expense, icon: "archivebox")
         )
 
@@ -80,7 +108,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         XCTAssertNil(dataStore.getCategory(id: category.id)?.archivedAt)
     }
 
-    func testUpdateLinkedAccountPersistsValue() {
+    func testUpdateLinkedAccountPersistsValue() throws {
         let accountId = "acct-expense-test"
         dataStore.modelContext.insert(
             PPAccount(
@@ -96,7 +124,7 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         try! dataStore.modelContext.save()
         dataStore.loadData()
 
-        let category = useCase.createCategory(
+        let category = try useCase.createCategory(
             input: CategoryCreateInput(name: "紐付カテゴリ", type: .expense, icon: "link")
         )
 
@@ -105,9 +133,9 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
         XCTAssertEqual(dataStore.getCategory(id: category.id)?.linkedAccountId, accountId)
     }
 
-    func testDeleteCategoryMigratesTransactionAndRecurringReferences() {
+    func testDeleteCategoryMigratesTransactionAndRecurringReferences() throws {
         let project = mutations(dataStore).addProject(name: "Category Workflow", description: "")
-        let category = useCase.createCategory(
+        let category = try useCase.createCategory(
             input: CategoryCreateInput(name: "削除カテゴリ", type: .expense, icon: "trash")
         )
         let transaction = mutations(dataStore).addTransaction(
@@ -142,5 +170,50 @@ final class CategoryWorkflowUseCaseTests: XCTestCase {
     func testDeleteDefaultCategoryIsBlocked() {
         XCTAssertFalse(useCase.deleteCategory(id: "cat-other-expense"))
         XCTAssertNotNil(dataStore.getCategory(id: "cat-other-expense"))
+    }
+}
+
+@MainActor
+private final class FailingSaveCategoryRepository: CategoryRepository {
+    private var categoriesStore: [PPCategory]
+    private var shouldFailNextSave = true
+
+    init(seedCategories: [PPCategory]) {
+        categoriesStore = seedCategories
+    }
+
+    func categories() throws -> [PPCategory] {
+        categoriesStore
+    }
+
+    func category(id: String) throws -> PPCategory? {
+        categoriesStore.first { $0.id == id }
+    }
+
+    func transactions(categoryId: String) throws -> [PPTransaction] {
+        []
+    }
+
+    func recurringTransactions(categoryId: String) throws -> [PPRecurringTransaction] {
+        []
+    }
+
+    func insert(_ category: PPCategory) {
+        categoriesStore.append(category)
+    }
+
+    func delete(_ category: PPCategory) {
+        categoriesStore.removeAll { $0.id == category.id }
+    }
+
+    func saveChanges() throws {
+        if shouldFailNextSave {
+            shouldFailNextSave = false
+            throw NSError(domain: "CategoryWorkflowUseCaseTests", code: 1)
+        }
+    }
+
+    func containsCategory(name: String, type: CategoryType) -> Bool {
+        categoriesStore.contains { $0.name == name && $0.type == type }
     }
 }

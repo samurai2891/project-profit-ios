@@ -25,7 +25,7 @@ struct CategoryWorkflowUseCase {
     }
 
     @discardableResult
-    func createCategory(input: CategoryCreateInput) -> PPCategory {
+    func createCategory(input: CategoryCreateInput) throws -> PPCategory {
         do {
             if let existing = try categoryRepository.categories().first(where: {
                 $0.type == input.type && $0.name == input.name
@@ -33,7 +33,7 @@ struct CategoryWorkflowUseCase {
                 return existing
             }
         } catch {
-            // Fall through and attempt insert; existing behavior did not surface lookup failures.
+            throw AppError.dataLoadFailed(underlying: error)
         }
 
         let category = PPCategory(
@@ -43,8 +43,20 @@ struct CategoryWorkflowUseCase {
             icon: input.icon
         )
         categoryRepository.insert(category)
-        try? categoryRepository.saveChanges()
-        return category
+        do {
+            try categoryRepository.saveChanges()
+            return category
+        } catch {
+            AppLogger.dataStore.error("Failed to save category create: \(error.localizedDescription)")
+            categoryRepository.delete(category)
+            do {
+                try categoryRepository.saveChanges()
+            } catch let rollbackError {
+                AppLogger.dataStore.error("Failed to rollback category create: \(rollbackError.localizedDescription)")
+                throw AppError.saveFailed(underlying: rollbackSaveError(saveError: error, rollbackError: rollbackError))
+            }
+            throw AppError.saveFailed(underlying: error)
+        }
     }
 
     @discardableResult
@@ -178,5 +190,17 @@ struct CategoryWorkflowUseCase {
             return false
         }
         return true
+    }
+
+    private func rollbackSaveError(saveError: Error, rollbackError: Error) -> NSError {
+        NSError(
+            domain: "CategoryWorkflowUseCase",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "category save failed and rollback failed",
+                NSUnderlyingErrorKey: rollbackError,
+                "saveError": saveError,
+            ]
+        )
     }
 }

@@ -132,7 +132,8 @@ final class TransactionsViewModel {
                 type: filter.type,
                 searchText: newValue,
                 amountMin: filter.amountMin,
-                amountMax: filter.amountMax
+                amountMax: filter.amountMax,
+                counterparty: filter.counterparty
             )
         }
     }

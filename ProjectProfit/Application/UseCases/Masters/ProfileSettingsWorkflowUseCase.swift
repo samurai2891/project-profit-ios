@@ -61,16 +61,32 @@ struct ProfileSettingsWorkflowUseCase {
         do {
             let state = try await profileSettingsUseCase.load(
                 defaultTaxYear: command.taxYear,
-                sensitivePayload: sensitivePayload
+                sensitivePayload: ports.readSensitivePayload() ?? sensitivePayload
             )
-            guard ports.persistSensitivePayload(sensitivePayload, state.businessProfile.id) else {
-                return .failure(AppError.saveFailed(underlying: NSError(domain: "ProfileSecureStore", code: 1)))
-            }
-
             let savedState = try await profileSettingsUseCase.save(
                 command: command,
                 currentState: state
             )
+
+            guard ports.persistSensitivePayload(sensitivePayload, savedState.businessProfile.id) else {
+                let secureStoreError = makeSecureStoreSaveError()
+                do {
+                    let rollbackState = try await profileSettingsUseCase.save(
+                        command: rollbackCommand(from: state),
+                        currentState: savedState
+                    )
+                    ports.applyState(rollbackState)
+                } catch {
+                    let rollbackError = makeSecureStoreRollbackError(rollbackError: error)
+                    ports.setLastError(.saveFailed(underlying: rollbackError))
+                    AppLogger.dataStore.error("Failed to rollback profile settings after secure payload save failure: \(error.localizedDescription)")
+                    return .failure(rollbackError)
+                }
+
+                ports.setLastError(.saveFailed(underlying: secureStoreError))
+                return .failure(secureStoreError)
+            }
+
             ports.applyState(savedState)
             ports.setLastError(nil)
             return .success(())
@@ -83,5 +99,47 @@ struct ProfileSettingsWorkflowUseCase {
 
     private func currentCalendarYear() -> Int {
         Calendar.current.component(.year, from: currentDateProvider())
+    }
+
+    private func rollbackCommand(from state: ProfileSettingsState) -> SaveProfileSettingsCommand {
+        SaveProfileSettingsCommand(
+            ownerName: state.businessProfile.ownerName,
+            ownerNameKana: state.businessProfile.ownerNameKana,
+            businessName: state.businessProfile.businessName,
+            businessAddress: state.businessProfile.businessAddress,
+            postalCode: state.businessProfile.postalCode,
+            phoneNumber: state.businessProfile.phoneNumber,
+            openingDate: state.businessProfile.openingDate,
+            taxOfficeCode: state.businessProfile.taxOfficeCode,
+            filingStyle: state.taxYearProfile.filingStyle,
+            blueDeductionLevel: state.taxYearProfile.blueDeductionLevel,
+            bookkeepingBasis: state.taxYearProfile.bookkeepingBasis,
+            vatStatus: state.taxYearProfile.vatStatus,
+            vatMethod: state.taxYearProfile.vatMethod,
+            simplifiedBusinessCategory: state.taxYearProfile.simplifiedBusinessCategory,
+            invoiceIssuerStatusAtYear: state.taxYearProfile.invoiceIssuerStatusAtYear,
+            electronicBookLevel: state.taxYearProfile.electronicBookLevel,
+            yearLockState: state.taxYearProfile.yearLockState,
+            taxYear: state.taxYearProfile.taxYear
+        )
+    }
+
+    private func makeSecureStoreSaveError() -> NSError {
+        NSError(
+            domain: "ProfileSecureStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "secure profile payload save failed"]
+        )
+    }
+
+    private func makeSecureStoreRollbackError(rollbackError: Error) -> NSError {
+        NSError(
+            domain: "ProfileSecureStore",
+            code: 2,
+            userInfo: [
+                NSLocalizedDescriptionKey: "secure profile payload save failed and canonical rollback failed",
+                NSUnderlyingErrorKey: rollbackError,
+            ]
+        )
     }
 }

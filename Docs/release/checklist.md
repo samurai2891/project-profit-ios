@@ -1,6 +1,6 @@
 # Release Checklist
 
-最終更新日: 2026年3月14日
+最終更新日: 2026年3月24日
 
 このファイルは、ProjectProfit の release 判定を行うための repo 管理チェックリストです。
 手順の説明ではなく、何を確認し、どの証跡を見れば release 可否を判定できるかの正本として扱います。
@@ -8,8 +8,9 @@
 ## 判定原則
 
 - `Release Quality` workflow の現行ジョブ構成を正本とする。
-- `golden-baseline` 以降の lane は `RELEASE_QUALITY_EVIDENCE_DIR` を設定して実行し、Markdown 証跡を残す。
-- lane の判定は `status`、`reason`、`simulator_device`、`test_summary`、artifact path で行う。
+- `xcodegen-sync` job で `project.yml` と `ProjectProfit.xcodeproj` の同期を先に検証する。
+- `release-build` を含む全 lane は `RELEASE_QUALITY_EVIDENCE_DIR` を設定して実行し、Markdown 証跡を残す。
+- lane の判定は `status`、`reason`、`mode`、`configuration`、`head_sha`、`run_id`、`run_url`、`simulator_device`、`test_summary`、artifact path で行う。
 - `Docs/release/quality/latest.md` は latest fully-green curated snapshot として保持し、current HEAD 判定のたびに必ずしも更新しない。
 - current HEAD の release 可否は、まず `Docs/release/quality/latest.md` の `head_sha` が current HEAD と一致するかで判定経路を分ける。
 - `latest.md` の `head_sha` が current HEAD と不一致の場合は、`Docs/release/quality/<lane>.md` を current HEAD の正本として扱い、lane 個票の `ok/error` 実測で release 可否を判定する。
@@ -18,7 +19,7 @@
 
 ## Repo 管理境界
 
-- repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md`、`Docs/release/quality/latest.md`、`Docs/release/quality/latest-lane.md`、`Docs/release/quality/golden-baseline.md`、`Docs/release/quality/canonical-e2e.md`、`Docs/release/quality/migration-rehearsal.md`、`Docs/release/quality/performance-gate.md`、`Docs/release/quality/books.md`、`Docs/release/quality/forms.md` とする。
+- repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md`、`Docs/release/quality/latest.md`、`Docs/release/quality/latest-lane.md`、`Docs/release/quality/release-build.md`、`Docs/release/quality/golden-baseline.md`、`Docs/release/quality/canonical-e2e.md`、`Docs/release/quality/migration-rehearsal.md`、`Docs/release/quality/performance-gate.md`、`Docs/release/quality/books.md`、`Docs/release/quality/forms.md` とする。
 - `Docs/release/quality/latest.md` は REL-P0-12 対象 4 lane の latest fully-green snapshot を保持する curated artifact とする。
 - `Docs/release/quality/latest-lane.md` は最後に実行した単一 lane の証跡とする。
 - `Docs/release/quality/<lane>.md` は lane ごとの最新証跡とする。
@@ -28,6 +29,7 @@
 
 - `.github/workflows/release-quality.yml`
 - `scripts/check_simulator_health.sh`
+- `scripts/check_xcodegen_sync.sh`
 - `scripts/run_release_quality_lane.sh`
 - `Docs/release/quality/latest.md`
 - `Docs/release/quality/latest-lane.md`
@@ -35,6 +37,7 @@
 ## 参照ドキュメント
 
 - `Docs/release/統合_修正タスク一覧_P0_P1_必要書類作成まで.md`
+- `Docs/release/リリース残課題チェックリスト_2026-03-24.md`
 - `Docs/release/Codex_バッチ実行プロンプト集_必要書類作成まで.md`
 - `Docs/release/codex_batch_state.md`
 - `Docs/vendor_package/README_最初に読む.md`
@@ -50,6 +53,19 @@
 
 ## Checklist
 
+### 0. XcodeGen Sync
+
+- job: `xcodegen-sync`
+- 確認元:
+  - `.github/workflows/release-quality.yml`
+  - `scripts/check_xcodegen_sync.sh`
+  - GitHub Actions の `xcodegen-sync` step summary
+- 確認項目:
+  - `status` が `ok`
+  - `reason` が出力されている
+- 判定:
+  - `status=error` は release 不可
+
 ### 1. Simulator Health
 
 - job: `simulator-health`
@@ -64,7 +80,21 @@
 - 判定:
   - `status=error` は release 不可
 
-### 2. Golden Baseline
+### 2. Release Build
+
+- lane: `release-build`
+- 証跡:
+  - `Docs/release/quality/release-build.md`
+- 確認項目:
+  - `status: ok`
+  - `reason` が成功理由で埋まっている
+  - `mode: build`
+  - `configuration: Release`
+  - `head_sha` / `run_id` / `run_url` が記録されている
+  - `summary_path` / `log_path` が記録されている
+  - `Docs/release/quality/release-build.md` が current HEAD で `status: error` の場合は release 不可
+
+### 3. Golden Baseline
 
 - lane: `golden-baseline`
 - 証跡:
@@ -78,7 +108,7 @@
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
   - `Docs/release/quality/golden-baseline.md` が current HEAD で `status: error` の場合は release 不可
 
-### 3. Canonical E2E
+### 4. Canonical E2E
 
 - lane: `canonical-e2e`
 - 証跡:
@@ -92,7 +122,7 @@
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
   - `Docs/release/quality/canonical-e2e.md` が current HEAD で `status: error` の場合は release 不可
 
-### 4. Migration Rehearsal
+### 5. Migration Rehearsal
 
 - lane: `migration-rehearsal`
 - 証跡:
@@ -106,7 +136,7 @@
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
   - `Docs/release/quality/migration-rehearsal.md` が current HEAD で `status: error` の場合は release 不可
 
-### 5. Performance Gate
+### 6. Performance Gate
 
 - lane: `performance-gate`
 - 証跡:
@@ -120,7 +150,7 @@
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
   - `Docs/release/quality/performance-gate.md` が current HEAD で `status: error` の場合は release 不可
 
-### 6. Books
+### 7. Books
 
 - lane: `books`
 - 証跡:
@@ -132,7 +162,7 @@
   - `test_summary` が記録されている
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
 
-### 7. Forms
+### 8. Forms
 
 - lane: `forms`
 - 証跡:
@@ -146,8 +176,10 @@
 
 ## 実行時の固定条件
 
+- `xcodegen-sync` の `status` が `ok` であることを lane 実行の前提にする。
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release/quality'` を設定する。
-- commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 6 本とする。
+- CI では `RELEASE_QUALITY_ARTIFACTS_DIR='$GITHUB_WORKSPACE/artifacts/release-quality/<lane>'` を使い、`/tmp` だけに依存しない。
+- commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 7 本とする。
 - `latest-lane.md` または lane 別 md に placeholder 値が残る場合は release 不可とする。
 - `Docs/release/quality/latest.md` は REL-P0-12 対象 gate の最新 fully-green snapshot として commit 管理する。
 - `Docs/release/quality/latest-lane.md` は最後に実行した lane の証跡として上書きされる。
@@ -155,7 +187,7 @@
 - release gate 全体の最新 green 確認には `Docs/release/quality/latest.md` を使う。
 - ただし current HEAD 判定では、`latest.md` の `head_sha` が current HEAD と不一致なら lane 個票を優先する。
 
-## 2026-03-14 Current State
+## 2026-03-14 Current State (Historical Snapshot)
 
 - current HEAD: `8b525b6811f90a99610eb4b713972478ee60fbc1`
 - `Docs/release/quality/latest.md` は 2026-03-07 / `86b7b08a52d206d5d6f0eb9903327457e7fca518` の fully-green snapshot のまま

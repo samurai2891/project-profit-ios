@@ -25,6 +25,7 @@ resolve_etax_reference_root() {
 }
 
 taxyear_json="$REPO_ROOT/ProjectProfit/Resources/TaxYear2025.json"
+tax_year=""
 form_key=""
 ETAX_REFERENCE_ROOT_RESOLVED="$(resolve_etax_reference_root)"
 default_schema_dir="$ETAX_REFERENCE_ROOT_RESOLVED/19XMLスキーマ/shotoku"
@@ -39,9 +40,10 @@ Usage:
   ./scripts/etax_resolve_xsd.sh --form-key <blue_general|blue_cash_basis|white_shushi> [options]
 
 Options:
-  --taxyear-json <path>   TaxYear*.json path (default: ProjectProfit/Resources/TaxYear2025.json)
+  --tax-year <year>       Tax year used for pack lookup (preferred)
+  --taxyear-json <path>   Legacy TaxYear*.json path (fallback when pack form is missing)
   --schema-dir <path>     shotoku XSD directory (default: auto-detect ETAX_REFERENCE_ROOT -> tools/etax/xsd/shotoku)
-  --form-key <name>       forms key in TaxYear json
+  --form-key <name>       forms key in TaxYearPack filing (`blue_general`, `blue_cash_basis`, `white_shushi`)
 EOF
 }
 
@@ -52,6 +54,8 @@ print_result() {
   local form_id="${4:-}"
   local form_ver="${5:-}"
   local schema_path="${6:-}"
+  local tax_year_value="${7:-}"
+  local metadata_source="${8:-}"
 
   echo "status=$status"
   echo "reason=$reason"
@@ -67,12 +71,22 @@ print_result() {
   if [[ -n "$schema_path" ]]; then
     echo "schema_path=$schema_path"
   fi
+  if [[ -n "$tax_year_value" ]]; then
+    echo "tax_year=$tax_year_value"
+  fi
+  if [[ -n "$metadata_source" ]]; then
+    echo "metadata_source=$metadata_source"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --taxyear-json)
       taxyear_json="$2"
+      shift 2
+      ;;
+    --tax-year)
+      tax_year="$2"
       shift 2
       ;;
     --schema-dir)
@@ -99,11 +113,6 @@ if [[ -z "$form_key" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$taxyear_json" ]]; then
-  print_result "error" "taxyear json not found: $taxyear_json" "$form_key"
-  exit 1
-fi
-
 if [[ ! -d "$schema_dir" ]]; then
   print_result "error" "schema dir not found: $schema_dir" "$form_key"
   exit 1
@@ -114,36 +123,73 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-parse_result="$(
-python3 - "$taxyear_json" "$form_key" "$REPO_ROOT" <<'PY'
+set +e
+parse_output="$(
+python3 - "$REPO_ROOT" "$form_key" "$taxyear_json" "$tax_year" 2>&1 <<'PY'
 import json
 import sys
 from pathlib import Path
 
-taxyear_json = Path(sys.argv[1])
+repo_root = Path(sys.argv[1])
 form_key = sys.argv[2]
-repo_root = Path(sys.argv[3])
+taxyear_json_path = Path(sys.argv[3])
+tax_year_raw = sys.argv[4].strip()
 
-data = json.loads(taxyear_json.read_text(encoding="utf-8"))
+if tax_year_raw:
+    if not tax_year_raw.isdigit():
+        print(f"invalid --tax-year: {tax_year_raw}", file=sys.stderr)
+        sys.exit(1)
+    tax_year = int(tax_year_raw)
+else:
+    digits = "".join(ch for ch in taxyear_json_path.stem if ch.isdigit())
+    tax_year = int(digits) if digits else 2025
+
+pack_form_path = repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / str(tax_year) / "filing" / f"{form_key}.json"
+if pack_form_path.is_file():
+    try:
+        pack_form = json.loads(pack_form_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"failed to parse pack filing json: {pack_form_path} ({exc})", file=sys.stderr)
+        sys.exit(1)
+
+    form_id = str(pack_form.get("formId", "")).strip()
+    form_ver = str(pack_form.get("formVer", "")).strip()
+    if not form_id:
+        print(f"pack formId is empty: {pack_form_path}", file=sys.stderr)
+        sys.exit(1)
+    if not form_ver:
+        print(f"pack formVer is empty: {pack_form_path}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"{form_id}\t{form_ver}\tpack\t{tax_year}")
+    sys.exit(0)
+
+if not taxyear_json_path.is_file():
+    print(
+        f"pack form not found and legacy taxyear json not found: tax_year={tax_year}, "
+        f"form_key={form_key}, path={taxyear_json_path}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+try:
+    data = json.loads(taxyear_json_path.read_text(encoding="utf-8"))
+except Exception as exc:  # noqa: BLE001
+    print(f"failed to parse legacy taxyear json: {taxyear_json_path} ({exc})", file=sys.stderr)
+    sys.exit(1)
+
 forms = data.get("forms")
 if not isinstance(forms, dict):
-    print("ERROR: `forms` is missing", file=sys.stderr)
+    print(f"`forms` is missing in legacy taxyear json: {taxyear_json_path}", file=sys.stderr)
     sys.exit(1)
 
 form = forms.get(form_key)
-if not isinstance(form, dict) and form_key == "blue_cash_basis":
-    year = "".join(ch for ch in taxyear_json.stem if ch.isdigit())
-    if year:
-        pack_path = repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / year / "filing" / "blue_cash_basis.json"
-        if pack_path.is_file():
-            pack = json.loads(pack_path.read_text(encoding="utf-8"))
-            form = {
-                "formId": pack.get("formId", ""),
-                "formVer": pack.get("formVer", ""),
-            }
-
 if not isinstance(form, dict):
-    print(f"ERROR: form key not found: {form_key}", file=sys.stderr)
+    print(
+        f"form key not found in pack and legacy taxyear json: "
+        f"tax_year={tax_year}, form_key={form_key}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 form_id = str(form.get("formId", "")).strip()
@@ -155,66 +201,28 @@ if not form_ver:
     print(f"ERROR: formVer is empty: {form_key}", file=sys.stderr)
     sys.exit(1)
 
-print(f"{form_id}\t{form_ver}")
-PY
-)" || {
-  reason="$(python3 - "$taxyear_json" "$form_key" "$REPO_ROOT" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-taxyear_json = Path(sys.argv[1])
-form_key = sys.argv[2]
-repo_root = Path(sys.argv[3])
-
-try:
-    data = json.loads(taxyear_json.read_text(encoding="utf-8"))
-except Exception as exc:  # noqa: BLE001
-    print(f"failed to parse taxyear json: {exc}")
-    raise SystemExit(0)
-
-forms = data.get("forms")
-if not isinstance(forms, dict):
-    print("`forms` is missing")
-    raise SystemExit(0)
-if form_key not in forms:
-    if form_key == "blue_cash_basis":
-        year = "".join(ch for ch in taxyear_json.stem if ch.isdigit())
-        if year:
-            pack_path = repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / year / "filing" / "blue_cash_basis.json"
-            if pack_path.is_file():
-                pack = json.loads(pack_path.read_text(encoding="utf-8"))
-                form_id = str(pack.get("formId", "")).strip()
-                form_ver = str(pack.get("formVer", "")).strip()
-                if form_id and form_ver:
-                    print("failed to parse form definition")
-                    raise SystemExit(0)
-    print(f"form key not found: {form_key}")
-    raise SystemExit(0)
-form = forms[form_key]
-if not isinstance(form, dict):
-    print(f"form definition is invalid: {form_key}")
-    raise SystemExit(0)
-form_id = str(form.get("formId", "")).strip()
-form_ver = str(form.get("formVer", "")).strip()
-if not form_id:
-    print(f"formId is empty: {form_key}")
-    raise SystemExit(0)
-if not form_ver:
-    print(f"formVer is empty: {form_key}")
-    raise SystemExit(0)
-print("failed to parse form definition")
+print(f"{form_id}\t{form_ver}\tlegacy\t{tax_year}")
 PY
 )"
-  if [[ -z "$reason" ]]; then
-    reason="failed to parse form definition"
-  fi
-  print_result "error" "$reason" "$form_key"
-  exit 1
-}
+parse_exit=$?
+set -e
 
-form_id="${parse_result%%$'\t'*}"
-form_ver="${parse_result#*$'\t'}"
+if [[ "$parse_exit" -ne 0 ]]; then
+  reason="$(printf '%s' "$parse_output" | head -n 1)"
+  if [[ -z "$reason" ]]; then
+    reason="failed to parse form metadata"
+  fi
+  print_result "error" "$reason" "$form_key" "" "" "" "$tax_year"
+  exit 1
+fi
+
+parse_result="$(printf '%s' "$parse_output" | tail -n 1)"
+IFS=$'\t' read -r form_id form_ver metadata_source resolved_tax_year <<< "$parse_result"
+
+if [[ -z "$form_id" || -z "$form_ver" || -z "$metadata_source" || -z "$resolved_tax_year" ]]; then
+  print_result "error" "failed to parse resolved form metadata" "$form_key" "" "" "" "$tax_year"
+  exit 1
+fi
 
 declare -a suffix_candidates=()
 version_trimmed="$(printf '%s' "$form_ver" | tr -d '[:space:]')"
@@ -248,7 +256,7 @@ for suffix in "${suffix_candidates[@]-}"; do
 done
 
 if [[ -n "$resolved_path" ]]; then
-  print_result "ok" "resolved from formVer" "$form_key" "$form_id" "$form_ver" "$resolved_path"
+  print_result "ok" "resolved from formVer" "$form_key" "$form_id" "$form_ver" "$resolved_path" "$resolved_tax_year" "$metadata_source"
   exit 0
 fi
 
@@ -257,7 +265,7 @@ matches=("$schema_dir/$form_id"-*.xsd)
 shopt -u nullglob
 
 if [[ "${#matches[@]}" -eq 0 ]]; then
-  print_result "error" "no schema file found for formId: $form_id" "$form_key" "$form_id" "$form_ver"
+  print_result "error" "no schema file found for formId: $form_id" "$form_key" "$form_id" "$form_ver" "" "$resolved_tax_year" "$metadata_source"
   exit 1
 fi
 
@@ -280,9 +288,9 @@ for path in "${matches[@]-}"; do
 done
 
 if [[ -z "$latest_path" ]]; then
-  print_result "error" "schema suffix parse failed for formId: $form_id" "$form_key" "$form_id" "$form_ver"
+  print_result "error" "schema suffix parse failed for formId: $form_id" "$form_key" "$form_id" "$form_ver" "" "$resolved_tax_year" "$metadata_source"
   exit 1
 fi
 
-print_result "warn" "formVer exact match not found, fallback to latest schema suffix" "$form_key" "$form_id" "$form_ver" "$latest_path"
+print_result "warn" "formVer exact match not found, fallback to latest schema suffix" "$form_key" "$form_id" "$form_ver" "$latest_path" "$resolved_tax_year" "$metadata_source"
 exit 0

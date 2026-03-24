@@ -353,16 +353,20 @@ struct CategoryManageView: View {
             return
         }
 
-        _ = categoryWorkflowUseCase.createCategory(
-            input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
-        )
-        refreshSnapshot()
+        do {
+            _ = try categoryWorkflowUseCase.createCategory(
+                input: CategoryCreateInput(name: trimmedName, type: type, icon: "tag")
+            )
+            refreshSnapshot()
 
-        switch type {
-        case .expense:
-            cancelAddExpenseCategory()
-        case .income:
-            cancelAddIncomeCategory()
+            switch type {
+            case .expense:
+                cancelAddExpenseCategory()
+            case .income:
+                cancelAddIncomeCategory()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

@@ -1,5 +1,16 @@
 import Foundation
 
+enum DistributionWeightValidationError: LocalizedError, Equatable {
+    case nonPositiveWeight(Decimal)
+
+    var errorDescription: String? {
+        switch self {
+        case .nonPositiveWeight:
+            return "配賦重みは正の値である必要があります"
+        }
+    }
+}
+
 /// 配賦ルールテンプレート
 struct DistributionRule: Identifiable, Codable, Sendable, Equatable {
     let id: UUID
@@ -44,7 +55,22 @@ struct DistributionWeight: Codable, Sendable, Equatable {
     let weight: Decimal
 
     init(projectId: UUID, weight: Decimal) {
+        do {
+            try self.init(validating: projectId, weight: weight)
+        } catch {
+            preconditionFailure("Invalid DistributionWeight: \(error.localizedDescription)")
+        }
+    }
+
+    init(validating projectId: UUID, weight: Decimal) throws {
+        try Self.validate(weight: weight)
         self.projectId = projectId
         self.weight = weight
+    }
+
+    static func validate(weight: Decimal) throws {
+        guard weight > 0 else {
+            throw DistributionWeightValidationError.nonPositiveWeight(weight)
+        }
     }
 }
