@@ -13,7 +13,21 @@
       "purchaseCreditMethod" : "notApplicable",
       "taxAmount" : 0,
       "taxCode" : "TAX-10",
-      "taxableAmount" : 110000,
+      "taxableAmount" : 55000,
+      "totalRate" : "0.1"
+    },
+    {
+      "accountId" : "acct-misc",
+      "counterpartyName" : "不動産管理株式会社",
+      "deductibleTaxAmount" : 0,
+      "direction" : "input",
+      "journalDate" : "2025-01-25",
+      "localRate" : "0.022",
+      "nationalRate" : "0.078",
+      "purchaseCreditMethod" : "notApplicable",
+      "taxAmount" : 0,
+      "taxCode" : "TAX-10",
+      "taxableAmount" : 55000,
       "totalRate" : "0.1"
     },
     {
@@ -149,7 +163,35 @@
       "purchaseCreditMethod" : "notApplicable",
       "taxAmount" : 0,
       "taxCode" : "TAX-10",
-      "taxableAmount" : 110000,
+      "taxableAmount" : 37400,
+      "totalRate" : "0.1"
+    },
+    {
+      "accountId" : "acct-misc",
+      "counterpartyName" : "不動産管理株式会社",
+      "deductibleTaxAmount" : 0,
+      "direction" : "input",
+      "journalDate" : "2025-06-25",
+      "localRate" : "0.022",
+      "nationalRate" : "0.078",
+      "purchaseCreditMethod" : "notApplicable",
+      "taxAmount" : 0,
+      "taxCode" : "TAX-10",
+      "taxableAmount" : 36300,
+      "totalRate" : "0.1"
+    },
+    {
+      "accountId" : "acct-misc",
+      "counterpartyName" : "不動産管理株式会社",
+      "deductibleTaxAmount" : 0,
+      "direction" : "input",
+      "journalDate" : "2025-06-25",
+      "localRate" : "0.022",
+      "nationalRate" : "0.078",
+      "purchaseCreditMethod" : "notApplicable",
+      "taxAmount" : 0,
+      "taxCode" : "TAX-10",
+      "taxableAmount" : 36300,
       "totalRate" : "0.1"
     },
     {

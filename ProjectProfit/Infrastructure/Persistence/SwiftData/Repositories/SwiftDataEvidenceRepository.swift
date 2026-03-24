@@ -60,7 +60,19 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
             guard !searchResultIds.isEmpty else { return [] }
 
             let order = Dictionary(uniqueKeysWithValues: searchResultIds.enumerated().map { ($1, $0) })
-            let descriptor = FetchDescriptor<EvidenceRecordEntity>()
+            if searchResultIds.count == 1, let evidenceId = searchResultIds.first {
+                let descriptor = evidenceDescriptor(criteria: criteria, evidenceId: evidenceId)
+                return try modelContext.fetch(descriptor)
+                    .map(EvidenceRecordEntityMapper.toDomain)
+                    .filter { evidence in
+                        if let counterpartyId = criteria.counterpartyId {
+                            return evidence.linkedCounterpartyId == counterpartyId
+                        }
+                        return true
+                    }
+            }
+
+            let descriptor = scopedEvidenceDescriptor(criteria: criteria)
             return try modelContext.fetch(descriptor)
                 .map(EvidenceRecordEntityMapper.toDomain)
                 .filter { evidence in
@@ -73,6 +85,68 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 .sorted {
                     (order[$0.id] ?? .max) < (order[$1.id] ?? .max)
                 }
+        }
+    }
+
+    private func evidenceDescriptor(
+        criteria: EvidenceSearchCriteria,
+        evidenceId: UUID
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (criteria.businessId, criteria.taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.businessId == businessId
+                        && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.businessId == businessId
+                }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.taxYear == taxYear
+                }
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.evidenceId == evidenceId }
+            )
+        }
+    }
+
+    private func scopedEvidenceDescriptor(
+        criteria: EvidenceSearchCriteria
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (criteria.businessId, criteria.taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
         }
     }
 

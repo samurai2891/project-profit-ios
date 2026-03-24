@@ -1,0 +1,17 @@
+## performance-gate
+- status: ok
+- reason: xcodebuild test succeeded
+- mode: test
+- configuration: Debug
+- head_sha: a2d059d9b9d71ac22148f7b641a83ab03249134d
+- run_id: local
+- run_url: local
+- test_summary: Executed 4 tests, with 0 failures
+- simulator_device: iPhone 17 Pro
+- xcresult: /Users/yutaro/project-profit-ios/artifacts/release-quality/performance-gate/performance-gate.xcresult
+- log: /Users/yutaro/project-profit-ios/artifacts/release-quality/performance-gate/xcodebuild.log
+- performance_metrics:
+  - performance.export.seconds=0.6760909557342529
+  - performance.migration.seconds=0.386821985244751
+  - performance.projection.seconds=0.4266420602798462
+  - performance.search.seconds=0.624290943145752

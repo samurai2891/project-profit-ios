@@ -4,6 +4,7 @@ import SwiftData
 enum UITestBootstrap {
     static let modeArgument = "--ui-testing"
     static let seedArgument = "--seed-withholding-flow"
+    static let lockedYearSeedArgument = "--seed-withholding-flow-locked-year"
     private static let projectName = "UI Test Project"
     private static let counterpartyName = "UIテスト税理士"
     private static let pendingMemo = "UI Test Pending Withholding"
@@ -17,13 +18,47 @@ enum UITestBootstrap {
         ProcessInfo.processInfo.arguments.contains(seedArgument)
     }
 
+    static var shouldSeedWithholdingFlowLockedYear: Bool {
+        ProcessInfo.processInfo.arguments.contains(lockedYearSeedArgument)
+    }
+
     @MainActor
     static func seedIfNeeded(modelContext: ModelContext, store: DataStore) async {
+        if shouldSeedWithholdingFlowLockedYear {
+            await seedWithholdingFlowLockedYear(modelContext: modelContext, store: store)
+            return
+        }
+
         guard shouldSeedWithholdingFlow else {
             return
         }
 
         await seedWithholdingFlow(modelContext: modelContext, store: store)
+    }
+
+    @MainActor
+    static func seedWithholdingFlowLockedYear(modelContext: ModelContext, store: DataStore) async {
+        await seedWithholdingFlow(modelContext: modelContext, store: store)
+        store.loadData()
+
+        let workflow = PostingWorkflowUseCase(modelContext: modelContext)
+        guard let businessId = store.businessProfile?.id,
+              let counterparty = await existingCounterparty(
+                  businessId: businessId,
+                  modelContext: modelContext
+              ),
+              let pendingCandidate = await pendingWithholdingCandidate(
+                  businessId: businessId,
+                  workflow: workflow,
+                  counterpartyId: counterparty.id
+              ) else {
+            return
+        }
+
+#if DEBUG
+        store.lockFiscalYear(pendingCandidate.taxYear)
+#endif
+        store.loadData()
     }
 
     @MainActor
@@ -43,11 +78,11 @@ enum UITestBootstrap {
         try? modelContext.save()
 
         let intake = PostingIntakeUseCase(modelContext: modelContext)
-        if !(await hasPendingWithholdingCandidate(
+        if (await pendingWithholdingCandidate(
             businessId: businessId,
             workflow: workflow,
             counterpartyId: counterparty.id
-        )) {
+        )) == nil {
             _ = try? await intake.saveManualCandidate(
                 input: withholdingInput(
                     amount: 100_000,
@@ -110,17 +145,17 @@ enum UITestBootstrap {
     }
 
     @MainActor
-    private static func hasPendingWithholdingCandidate(
+    private static func pendingWithholdingCandidate(
         businessId: UUID,
         workflow: PostingWorkflowUseCase,
-        counterpartyId: UUID
-    ) async -> Bool {
+        counterpartyId: UUID?
+    ) async -> PostingCandidate? {
         guard let candidates = try? await workflow.pendingCandidates(businessId: businessId) else {
-            return false
+            return nil
         }
 
-        return candidates.contains { candidate in
-            candidate.counterpartyId == counterpartyId &&
+        return candidates.first { candidate in
+            (counterpartyId == nil || candidate.counterpartyId == counterpartyId) &&
             candidate.proposedLines.contains {
                 $0.withholdingTaxCodeId == WithholdingTaxCode.professionalFee.rawValue &&
                 $0.withholdingTaxAmount != nil

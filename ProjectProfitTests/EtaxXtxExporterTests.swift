@@ -497,10 +497,16 @@ final class EtaxXtxExporterTests: XCTestCase {
 
     @MainActor
     func testGenerateXtxXmlEscaping() {
-        let fields = [
-            EtaxField(id: "declarant_name", fieldLabel: "氏名", taxLine: nil, value: "テスト<>&'\"", section: .declarantInfo)
-        ]
-        let form = makeForm(fields: fields)
+        var fields = sampleWhiteFields()
+        let index = try! XCTUnwrap(fields.firstIndex { $0.id == "shushi_rent_detail_1_name" })
+        fields[index] = EtaxField(
+            id: "shushi_rent_detail_1_name",
+            fieldLabel: "支払先氏名1",
+            taxLine: nil,
+            value: "テスト<>&'\"",
+            section: .deductions
+        )
+        let form = makeForm(fields: fields, formType: .whiteReturn)
         let result = EtaxXtxExporter.generateXtx(form: form)
 
         if case .success(let data) = result {

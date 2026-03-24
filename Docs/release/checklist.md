@@ -187,6 +187,28 @@
 - release gate 全体の最新 green 確認には `Docs/release/quality/latest.md` を使う。
 - ただし current HEAD 判定では、`latest.md` の `head_sha` が current HEAD と不一致なら lane 個票を優先する。
 
+## 2026-03-24 Current State
+
+- current HEAD: `a2d059d9b9d71ac22148f7b641a83ab03249134d`
+- `Docs/release/quality/latest.md` は current HEAD の curated fully-green snapshot に更新済み
+- `xcodegen-sync`: `status=ok`
+- `simulator-health`: `status=ok`, `simulator_device=iPhone 17 Pro`
+- current HEAD の lane 個票実測:
+  - `release-build`: `status: ok`
+  - `golden-baseline`: `status: ok`
+  - `canonical-e2e`: `status: ok`
+  - `migration-rehearsal`: `status: ok`
+  - `performance-gate`: `status: ok`
+  - `books`: `status: ok`
+  - `forms`: `status: ok`
+- `performance-gate` 実測:
+  - `performance.export.seconds=0.6760909557342529`
+  - `performance.migration.seconds=0.386821985244751`
+  - `performance.projection.seconds=0.4266420602798462`
+  - `performance.search.seconds=0.624290943145752`
+- current HEAD の release 判定は `go`
+- curated 4 lane が fully-green のため `Docs/release/quality/latest.md` を current HEAD へ更新済み
+
 ## 2026-03-14 Current State (Historical Snapshot)
 
 - current HEAD: `8b525b6811f90a99610eb4b713972478ee60fbc1`

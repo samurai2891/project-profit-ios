@@ -741,12 +741,10 @@ enum ExportCoordinator {
             throw ExportError.dataUnavailable
         }
 
-        let support = AccountingReadSupport(modelContext: modelContext)
-        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
-        let startMonth = FiscalYearSettings.startMonth
-
         switch (target, format) {
         case (.journal, .csv):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let projected = legacyJournalProjection(from: context)
             let csv = ReportCSVExportService.exportJournalCSV(
                 entries: projected.entries,
@@ -756,6 +754,8 @@ enum ExportCoordinator {
             return .text(csv)
 
         case (.journal, .pdf):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let projected = legacyJournalProjection(from: context)
             let pdf = PDFExportService.exportJournalPDF(
                 entries: projected.entries,
@@ -766,56 +766,68 @@ enum ExportCoordinator {
             return .data(pdf)
 
         case (.profitLoss, .csv):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .text(ReportCSVExportService.exportProfitLossCSV(report: legacyProfitLossReport(from: report)))
 
         case (.profitLoss, .pdf):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .data(PDFExportService.exportProfitLossPDF(report: legacyProfitLossReport(from: report)))
 
         case (.balanceSheet, .csv):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .text(ReportCSVExportService.exportBalanceSheetCSV(report: legacyBalanceSheetReport(from: report)))
 
         case (.balanceSheet, .pdf):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .data(PDFExportService.exportBalanceSheetPDF(report: legacyBalanceSheetReport(from: report)))
 
         case (.trialBalance, .csv):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateTrialBalance(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .text(ReportCSVExportService.exportTrialBalanceCSV(rows: legacyTrialBalanceReport(from: report).rows))
 
         case (.trialBalance, .pdf):
+            let context = AccountingReadSupport(modelContext: modelContext)
+                .canonicalReadContext(fiscalYear: fiscalYear)
             let report = AccountingReportService.generateTrialBalance(
                 fiscalYear: fiscalYear,
                 accounts: context.accounts,
                 journals: context.journals,
-                startMonth: startMonth
+                startMonth: FiscalYearSettings.startMonth
             )
             return .data(PDFExportService.exportTrialBalancePDF(report: legacyTrialBalanceReport(from: report)))
 
@@ -846,6 +858,7 @@ enum ExportCoordinator {
             guard let opts = transactionOptions else {
                 throw ExportError.transactionsRequired
             }
+            let support = AccountingReadSupport(modelContext: modelContext)
             let categoriesById = Dictionary(uniqueKeysWithValues: support.fetchCategories().map { ($0.id, $0) })
             let projectsById = Dictionary(uniqueKeysWithValues: support.fetchProjects().map { ($0.id, $0) })
             return .text(generateCSV(
@@ -919,6 +932,7 @@ enum ExportCoordinator {
 
         case (.fixedAssets, .csv):
             let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+            let support = AccountingReadSupport(modelContext: modelContext)
             return .text(ReportCSVExportService.exportFixedAssetsCSV(
                 assets: assets,
                 calculateAccumulated: { asset in
@@ -944,6 +958,7 @@ enum ExportCoordinator {
 
         case (.fixedAssets, .pdf):
             let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+            let support = AccountingReadSupport(modelContext: modelContext)
             return .data(PDFExportService.exportFixedAssetsPDF(
                 assets: assets,
                 fiscalYear: fiscalYear,

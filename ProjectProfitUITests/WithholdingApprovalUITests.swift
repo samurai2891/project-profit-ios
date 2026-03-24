@@ -63,6 +63,28 @@ final class WithholdingApprovalUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["仕訳一覧"].firstMatch.waitForExistence(timeout: 10))
     }
 
+    func testLockedYearDisablesSaveAndApproveAndShowsYearLockMessage() {
+        relaunchWithLockedYearSeed()
+        let approvalTab = app.tabBars.buttons["承認"].firstMatch
+        XCTAssertTrue(approvalTab.waitForExistence(timeout: 10))
+        approvalTab.tap()
+
+        let counterparty = app.staticTexts["UIテスト税理士"].firstMatch
+        XCTAssertTrue(counterparty.waitForExistence(timeout: 10))
+        counterparty.tap()
+
+        let saveButton = app.buttons["approval.candidate.saveButton"].firstMatch
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
+        XCTAssertFalse(saveButton.isEnabled)
+
+        let approveButton = app.buttons["approval.candidate.approveButton"].firstMatch
+        XCTAssertTrue(approveButton.waitForExistence(timeout: 10))
+        XCTAssertFalse(approveButton.isEnabled)
+
+        let lockMessage = app.staticTexts["approval.candidate.yearLockMessage"].firstMatch
+        XCTAssertTrue(lockMessage.waitForExistence(timeout: 10))
+    }
+
     private func openFilingDashboard() {
         let filingTab = app.tabBars.buttons["確定申告"].firstMatch
         if filingTab.exists {
@@ -101,5 +123,12 @@ final class WithholdingApprovalUITests: XCTestCase {
         let settingsStaticText = app.staticTexts["設定"].firstMatch
         XCTAssertTrue(settingsStaticText.waitForExistence(timeout: 10))
         settingsStaticText.tap()
+    }
+
+    private func relaunchWithLockedYearSeed() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments += ["--ui-testing", "--seed-withholding-flow-locked-year"]
+        app.launch()
     }
 }

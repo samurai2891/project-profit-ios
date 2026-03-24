@@ -1,0 +1,12 @@
+## books
+- status: ok
+- reason: xcodebuild test succeeded
+- mode: test
+- configuration: Debug
+- head_sha: a2d059d9b9d71ac22148f7b641a83ab03249134d
+- run_id: local
+- run_url: local
+- test_summary: Executed 55 tests, with 0 failures
+- simulator_device: iPhone 17 Pro
+- xcresult: /Users/yutaro/project-profit-ios/artifacts/release-quality/books/books.xcresult
+- log: /Users/yutaro/project-profit-ios/artifacts/release-quality/books/xcodebuild.log

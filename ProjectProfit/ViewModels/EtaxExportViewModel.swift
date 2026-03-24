@@ -13,6 +13,7 @@ final class EtaxExportViewModel {
 
     private let contextProvider: @MainActor (Int) -> EtaxExportContext
     private let snapshotProvider: @MainActor (Int) -> EtaxFormBuildSnapshot
+    private let modelContext: ModelContext
     private let taxYearStateUseCase: TaxYearStateUseCase
     private let filingPreflightUseCase: FilingPreflightUseCase
     private let formBuilder: @MainActor (FilingStyle, EtaxFormBuildSnapshot) throws -> EtaxForm
@@ -45,6 +46,7 @@ final class EtaxExportViewModel {
         formBuilder: @escaping @MainActor (FilingStyle, EtaxFormBuildSnapshot) throws -> EtaxForm,
         exporter: @escaping @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
     ) {
+        self.modelContext = modelContext
         self.contextProvider = contextProvider
         self.snapshotProvider = snapshotProvider
         self.taxYearStateUseCase = TaxYearStateUseCase(modelContext: modelContext)
@@ -58,6 +60,7 @@ final class EtaxExportViewModel {
     // MARK: - Generate Preview
 
     func generatePreview() {
+        let exportContext = contextProvider(fiscalYear)
         guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
             exportedForm = nil
             validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
@@ -65,7 +68,7 @@ final class EtaxExportViewModel {
             return
         }
 
-        let preflightErrors = preflightErrors(context: .export)
+        let preflightErrors = preflightErrors(context: .export, exportContext: exportContext)
         guard preflightErrors.isEmpty else {
             exportedForm = nil
             validationErrors = preflightErrors
@@ -75,7 +78,11 @@ final class EtaxExportViewModel {
 
         do {
             let snapshot = snapshotProvider(fiscalYear)
-            let revision = dataRevision(for: snapshot)
+            let revision = currentDataRevision(
+                businessId: exportContext.businessId,
+                fiscalYear: fiscalYear,
+                fallbackSnapshot: snapshot
+            )
             let form = try buildExportParityForm(snapshot: snapshot)
             validationErrors = EtaxCharacterValidator.validateForm(form)
             exportedForm = form
@@ -113,15 +120,12 @@ final class EtaxExportViewModel {
             return
         }
 
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
-            return
-        }
-
-        let snapshot = snapshotProvider(fiscalYear)
-        let currentRevision = dataRevision(for: snapshot)
+        let exportContext = contextProvider(fiscalYear)
+        let currentRevision = currentDataRevision(
+            businessId: exportContext.businessId,
+            fiscalYear: fiscalYear,
+            fallbackSnapshot: nil
+        )
         let shouldRebuild = previewState?.fiscalYear != fiscalYear
             || previewState?.formType != formType
             || previewState?.dataRevision != currentRevision
@@ -129,6 +133,14 @@ final class EtaxExportViewModel {
         let currentForm: EtaxForm
         do {
             if shouldRebuild {
+                let preflightErrors = preflightErrors(context: .export, exportContext: exportContext)
+                guard preflightErrors.isEmpty else {
+                    validationErrors = preflightErrors
+                    exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
+                    return
+                }
+
+                let snapshot = snapshotProvider(fiscalYear)
                 currentForm = try buildExportParityForm(snapshot: snapshot)
                 exportedForm = currentForm
                 previewState = PreviewState(
@@ -139,6 +151,7 @@ final class EtaxExportViewModel {
             } else if let exportedForm {
                 currentForm = exportedForm
             } else {
+                let snapshot = snapshotProvider(fiscalYear)
                 currentForm = try buildExportParityForm(snapshot: snapshot)
                 exportedForm = currentForm
                 previewState = PreviewState(
@@ -153,7 +166,11 @@ final class EtaxExportViewModel {
             return
         }
 
-        let exportValidationErrors = EtaxCharacterValidator.validateForm(currentForm)
+        let exportValidationErrors = if shouldRebuild || previewState == nil {
+            EtaxCharacterValidator.validateForm(currentForm)
+        } else {
+            validationErrors
+        }
         validationErrors = exportValidationErrors
         guard exportValidationErrors.isEmpty else {
             exportResult = .failure(message: exportValidationErrors.map(\.description).joined(separator: "\n"))
@@ -183,8 +200,16 @@ final class EtaxExportViewModel {
     }
 
     private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        var errors = taxStatePreflightErrors()
-        errors.append(contentsOf: accountingPreflightErrors(context: context))
+        let exportContext = contextProvider(fiscalYear)
+        return preflightErrors(context: context, exportContext: exportContext)
+    }
+
+    private func preflightErrors(
+        context: FilingPreflightContext,
+        exportContext: EtaxExportContext
+    ) -> [EtaxExportError] {
+        var errors = taxStatePreflightErrors(context: exportContext)
+        errors.append(contentsOf: accountingPreflightErrors(context: context, exportContext: exportContext))
         return errors
     }
 
@@ -302,6 +327,142 @@ final class EtaxExportViewModel {
         NSDecimalNumber(decimal: value).stringValue
     }
 
+    private func currentDataRevision(
+        businessId: UUID?,
+        fiscalYear: Int,
+        fallbackSnapshot: EtaxFormBuildSnapshot?
+    ) -> Int {
+        do {
+            var hasher = Hasher()
+            hasher.combine(fiscalYear)
+
+            if let businessId {
+                if let businessProfile = try modelContext.fetch(
+                    FetchDescriptor<BusinessProfileEntity>(
+                        predicate: #Predicate { $0.businessId == businessId },
+                        sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+                    )
+                ).first {
+                    hasher.combine(businessProfile.businessId)
+                    hasher.combine(businessProfile.updatedAt.timeIntervalSinceReferenceDate)
+                } else {
+                    hasher.combine("businessProfile:nil")
+                }
+
+                if let taxYearProfile = try modelContext.fetch(
+                    FetchDescriptor<TaxYearProfileEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                        },
+                        sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+                    )
+                ).first {
+                    hasher.combine(taxYearProfile.profileId)
+                    hasher.combine(taxYearProfile.updatedAt.timeIntervalSinceReferenceDate)
+                    hasher.combine(taxYearProfile.taxPackVersion)
+                    hasher.combine(taxYearProfile.yearLockStateRaw)
+                } else {
+                    hasher.combine("taxYearProfile:nil")
+                }
+
+                let accounts = try modelContext.fetch(
+                    FetchDescriptor<CanonicalAccountEntity>(
+                        predicate: #Predicate { $0.businessId == businessId },
+                        sortBy: [SortDescriptor(\.accountId)]
+                    )
+                )
+                hasher.combine(accounts.count)
+                for account in accounts {
+                    hasher.combine(account.accountId)
+                    hasher.combine(account.code)
+                    hasher.combine(account.name)
+                    hasher.combine(account.updatedAt.timeIntervalSinceReferenceDate)
+                }
+
+                let journals = try modelContext.fetch(
+                    FetchDescriptor<JournalEntryEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                        },
+                        sortBy: [SortDescriptor(\.journalId)]
+                    )
+                )
+                hasher.combine(journals.count)
+                for journal in journals {
+                    hasher.combine(journal.journalId)
+                    hasher.combine(journal.voucherNo)
+                    hasher.combine(journal.updatedAt.timeIntervalSinceReferenceDate)
+                    hasher.combine(journal.approvedAt?.timeIntervalSinceReferenceDate ?? 0)
+                }
+
+                let candidates = try modelContext.fetch(
+                    FetchDescriptor<PostingCandidateEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                        },
+                        sortBy: [SortDescriptor(\.candidateId)]
+                    )
+                )
+                hasher.combine(candidates.count)
+                for candidate in candidates {
+                    hasher.combine(candidate.candidateId)
+                    hasher.combine(candidate.statusRaw)
+                    hasher.combine(candidate.updatedAt.timeIntervalSinceReferenceDate)
+                }
+            }
+
+            let categories = try modelContext.fetch(
+                FetchDescriptor<PPCategory>(
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(categories.count)
+            for category in categories {
+                hasher.combine(category.id)
+                hasher.combine(category.name)
+                hasher.combine(category.archivedAt?.timeIntervalSinceReferenceDate ?? 0)
+                hasher.combine(category.linkedAccountId ?? "")
+            }
+
+            let fixedAssets = try modelContext.fetch(
+                FetchDescriptor<PPFixedAsset>(
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(fixedAssets.count)
+            for asset in fixedAssets {
+                hasher.combine(asset.id)
+                hasher.combine(asset.updatedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(asset.name)
+                hasher.combine(asset.acquisitionCost)
+                hasher.combine(asset.businessUsePercent)
+            }
+
+            let inventoryRecords = try modelContext.fetch(
+                FetchDescriptor<PPInventoryRecord>(
+                    predicate: #Predicate { $0.fiscalYear == fiscalYear },
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(inventoryRecords.count)
+            for record in inventoryRecords {
+                hasher.combine(record.id)
+                hasher.combine(record.updatedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(record.openingInventory)
+                hasher.combine(record.purchases)
+                hasher.combine(record.closingInventory)
+            }
+
+            return hasher.finalize()
+        } catch {
+            if let fallbackSnapshot {
+                return dataRevision(for: fallbackSnapshot)
+            }
+            let fallbackSnapshot = snapshotProvider(fiscalYear)
+            return dataRevision(for: fallbackSnapshot)
+        }
+    }
+
     static func exportableForm(from form: EtaxForm) -> EtaxForm {
         let exportableKeys: Set<String> = Set(
             TaxYearDefinitionLoader.fieldDefinitions(for: form.formType, fiscalYear: form.fiscalYear)
@@ -328,8 +489,7 @@ final class EtaxExportViewModel {
         )
     }
 
-    private func taxStatePreflightErrors() -> [EtaxExportError] {
-        let context = contextProvider(fiscalYear)
+    private func taxStatePreflightErrors(context: EtaxExportContext) -> [EtaxExportError] {
         guard let businessId = context.businessId else {
             return []
         }
@@ -352,8 +512,11 @@ final class EtaxExportViewModel {
         }
     }
 
-    private func accountingPreflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        guard let businessId = contextProvider(fiscalYear).businessId else {
+    private func accountingPreflightErrors(
+        context: FilingPreflightContext,
+        exportContext: EtaxExportContext
+    ) -> [EtaxExportError] {
+        guard let businessId = exportContext.businessId else {
             return []
         }
 

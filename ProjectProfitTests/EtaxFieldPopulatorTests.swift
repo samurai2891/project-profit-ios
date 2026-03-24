@@ -266,8 +266,8 @@ final class EtaxFieldPopulatorTests: XCTestCase {
         XCTAssertEqual(values["declarant_address"], "東京都千代田区1-1")
         XCTAssertEqual(values["declarant_phone"], "0312345678")
         XCTAssertEqual(values["declarant_business_category"], "ソフトウェア開発")
-        XCTAssertEqual(values["declarant_birth_date"], "1990-01-02")
-        XCTAssertEqual(values["declarant_my_number_flag"], "1")
+        XCTAssertNil(values["declarant_birth_date"])
+        XCTAssertNil(values["declarant_my_number_flag"])
     }
 
     func testPopulateDeclarantInfoSkipsSensitiveFieldsWhenConsentDisabled() {

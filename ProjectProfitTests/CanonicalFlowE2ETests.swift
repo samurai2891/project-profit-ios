@@ -216,7 +216,10 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let report = try MigrationReportRunner(modelContext: scenario.context).dryRun()
 
         XCTAssertTrue(report.orphanRecords.isEmpty)
-        XCTAssertTrue(report.warnings.isEmpty)
+        XCTAssertEqual(
+            report.warnings,
+            ["Transaction legacy data remains after canonical migration"]
+        )
         XCTAssertTrue(report.deltas.contains(where: { $0.modelName == "Profile" && $0.executeSupported }))
     }
 

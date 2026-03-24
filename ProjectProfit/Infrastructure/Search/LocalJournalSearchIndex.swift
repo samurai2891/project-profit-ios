@@ -12,12 +12,7 @@ final class LocalJournalSearchIndex {
     }
 
     func search(criteria: JournalSearchCriteria) throws -> [UUID] {
-        let descriptor = FetchDescriptor<JournalSearchIndexEntity>(
-            sortBy: [
-                SortDescriptor(\.journalDate, order: .reverse),
-                SortDescriptor(\.updatedAt, order: .reverse)
-            ]
-        )
+        let descriptor = searchDescriptor(criteria: criteria)
         return try modelContext.fetch(descriptor)
             .filter { entry in
                 try matches(entry, criteria: criteria)
@@ -26,28 +21,10 @@ final class LocalJournalSearchIndex {
     }
 
     func rebuild(businessId: UUID? = nil, taxYear: Int? = nil) throws {
-        let existingDescriptor = FetchDescriptor<JournalSearchIndexEntity>()
-        let existing = try modelContext.fetch(existingDescriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let existing = try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
         existing.forEach(modelContext.delete)
 
-        let journalDescriptor = FetchDescriptor<JournalEntryEntity>()
-        let journalEntities = try modelContext.fetch(journalDescriptor).filter { entity in
-            if let businessId, entity.businessId != businessId {
-                return false
-            }
-            if let taxYear, entity.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let journalEntities = try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear))
 
         let evidenceIds = Set(journalEntities.flatMap { entity in
             let lineEvidenceIds = entity.lines.compactMap(\.evidenceReferenceId)
@@ -57,8 +34,7 @@ final class LocalJournalSearchIndex {
             return lineEvidenceIds
         })
 
-        let evidenceDescriptor = FetchDescriptor<EvidenceRecordEntity>()
-        let evidences = try modelContext.fetch(evidenceDescriptor)
+        let evidences = try modelContext.fetch(evidenceDescriptor(businessId: businessId, taxYear: taxYear))
             .map(EvidenceRecordEntityMapper.toDomain)
             .filter { evidenceIds.contains($0.id) }
         let evidenceById = Dictionary(uniqueKeysWithValues: evidences.map { ($0.id, $0) })
@@ -82,29 +58,11 @@ final class LocalJournalSearchIndex {
     }
 
     func indexCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<JournalSearchIndexEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
     func sourceCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<JournalEntryEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
     func validateIntegrity(businessId: UUID? = nil, taxYear: Int? = nil) throws {
@@ -215,15 +173,170 @@ final class LocalJournalSearchIndex {
     }
 
     private func scopedEntries(businessId: UUID? = nil, taxYear: Int? = nil) throws -> [JournalSearchIndexEntity] {
-        let descriptor = FetchDescriptor<JournalSearchIndexEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
+    }
+
+    private func searchDescriptor(criteria: JournalSearchCriteria) -> FetchDescriptor<JournalSearchIndexEntity> {
+        let sortBy = [
+            SortDescriptor(\JournalSearchIndexEntity.journalDate, order: .reverse),
+            SortDescriptor(\JournalSearchIndexEntity.updatedAt, order: .reverse)
+        ]
+        let normalizedCounterparty = SearchIndexNormalizer.normalizeOptionalText(criteria.counterpartyText)
+        let normalizedRegistrationNumber = SearchIndexNormalizer.normalizeIdentifier(criteria.registrationNumber)
+        let normalizedFileHash = SearchIndexNormalizer.normalizeIdentifier(criteria.fileHash)
+        let normalizedTextQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery)
+
+        guard criteria.dateRange == nil,
+              criteria.amountRange == nil,
+              criteria.projectId == nil
+        else {
+            return scopedDescriptor(
+                businessId: criteria.businessId,
+                taxYear: criteria.taxYear,
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedCounterparty,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedCounterparty)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedRegistrationNumber,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedRegistrationNumber)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedFileHash,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedFileHash)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedTextQuery,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedTextQuery)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        return scopedDescriptor(
+            businessId: criteria.businessId,
+            taxYear: criteria.taxYear,
+            sortBy: sortBy
+        )
+    }
+
+    private func scopedDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil,
+        sortBy: [SortDescriptor<JournalSearchIndexEntity>] = []
+    ) -> FetchDescriptor<JournalSearchIndexEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                },
+                sortBy: sortBy
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: sortBy
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear },
+                sortBy: sortBy
+            )
+        case (nil, nil):
+            return FetchDescriptor<JournalSearchIndexEntity>(sortBy: sortBy)
+        }
+    }
+
+    private func sourceDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil
+    ) -> FetchDescriptor<JournalEntryEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear }
+            )
+        case (nil, nil):
+            return FetchDescriptor<JournalEntryEntity>()
+        }
+    }
+
+    private func evidenceDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear }
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>()
         }
     }
 

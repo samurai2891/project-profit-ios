@@ -19,13 +19,9 @@ enum LegacyProjectedJournalAssembler {
         supplementalSourcePrefixes: Set<String>
     ) -> ProjectedLegacyJournalSet {
         let projectedEntries = projectEntries(canonicalJournals)
-        let projectedEntryIds = Set(projectedEntries.map(\.id))
         let projectedLines = projectLines(canonicalJournals, canonicalAccounts: canonicalAccounts)
 
-        let supplementalEntries = legacyEntries.filter { entry in
-            guard !projectedEntryIds.contains(entry.id) else {
-                return false
-            }
+        let prefixedLegacyEntries = legacyEntries.filter { entry in
             guard supplementalSourcePrefixes.contains(where: { entry.sourceKey.hasPrefix($0) }) else {
                 return false
             }
@@ -37,6 +33,16 @@ enum LegacyProjectedJournalAssembler {
                 startMonth: FiscalYearSettings.startMonth
             ) == requestedFiscalYear
         }
+        guard !prefixedLegacyEntries.isEmpty else {
+            return ProjectedLegacyJournalSet(
+                businessId: businessId,
+                entries: projectedEntries,
+                lines: projectedLines
+            )
+        }
+
+        let projectedEntryIds = Set(projectedEntries.map(\.id))
+        let supplementalEntries = prefixedLegacyEntries.filter { !projectedEntryIds.contains($0.id) }
         let supplementalEntryIds = Set(supplementalEntries.map(\.id))
         let supplementalLines = legacyLines.filter { supplementalEntryIds.contains($0.entryId) }
 
@@ -66,18 +72,23 @@ enum LegacyProjectedJournalAssembler {
     }
 
     private static func projectEntries(_ journals: [CanonicalJournalEntry]) -> [PPJournalEntry] {
-        journals.map { entry in
-            PPJournalEntry(
-                id: entry.id,
-                sourceKey: "canonical:\(entry.id.uuidString)",
-                date: entry.journalDate,
-                entryType: projectedLegacyEntryType(for: entry),
-                memo: entry.description,
-                isPosted: entry.approvedAt != nil,
-                createdAt: entry.createdAt,
-                updatedAt: entry.updatedAt
+        var entries: [PPJournalEntry] = []
+        entries.reserveCapacity(journals.count)
+        for entry in journals {
+            entries.append(
+                PPJournalEntry(
+                    id: entry.id,
+                    sourceKey: "canonical:\(entry.id.uuidString)",
+                    date: entry.journalDate,
+                    entryType: projectedLegacyEntryType(for: entry),
+                    memo: entry.description,
+                    isPosted: entry.approvedAt != nil,
+                    createdAt: entry.createdAt,
+                    updatedAt: entry.updatedAt
+                )
             )
         }
+        return entries
     }
 
     private static func projectLines(
@@ -85,10 +96,14 @@ enum LegacyProjectedJournalAssembler {
         canonicalAccounts: [CanonicalAccount]
     ) -> [PPJournalLine] {
         let accountsById = Dictionary(uniqueKeysWithValues: canonicalAccounts.map { ($0.id, $0) })
-        return journals.flatMap { entry in
-            entry.lines.sorted { $0.sortOrder < $1.sortOrder }.map { line in
+        let projectedLineCount = journals.reduce(into: 0) { $0 += $1.lines.count }
+        var projectedLines: [PPJournalLine] = []
+        projectedLines.reserveCapacity(projectedLineCount)
+
+        for entry in journals {
+            for line in orderedLines(for: entry.lines) {
                 let legacyAccountId = accountsById[line.accountId]?.legacyAccountId ?? line.accountId.uuidString
-                return PPJournalLine(
+                projectedLines.append(PPJournalLine(
                     id: line.id,
                     entryId: entry.id,
                     accountId: legacyAccountId,
@@ -98,8 +113,19 @@ enum LegacyProjectedJournalAssembler {
                     displayOrder: line.sortOrder,
                     createdAt: entry.createdAt,
                     updatedAt: entry.updatedAt
-                )
+                ))
             }
         }
+        return projectedLines
+    }
+
+    private static func orderedLines(for lines: [JournalLine]) -> [JournalLine] {
+        guard lines.count > 1 else {
+            return lines
+        }
+        for index in 1..<lines.count where lines[index - 1].sortOrder > lines[index].sortOrder {
+            return lines.sorted { $0.sortOrder < $1.sortOrder }
+        }
+        return lines
     }
 }

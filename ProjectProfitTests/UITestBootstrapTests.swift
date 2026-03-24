@@ -50,4 +50,29 @@ final class UITestBootstrapTests: XCTestCase {
         }))
         XCTAssertTrue(summary.documents.contains(where: { $0.counterpartyId == counterpartyId }))
     }
+
+    func testSeedWithholdingFlowLockedYearLocksPendingCandidateFiscalYear() async throws {
+        try XCTSkipUnless(dataStore.businessProfile != nil, "business profile is required")
+
+        await UITestBootstrap.seedWithholdingFlowLockedYear(modelContext: context, store: dataStore)
+
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let pending = try await workflow.pendingCandidates(businessId: businessId)
+        let counterparty = try await CounterpartyMasterUseCase(modelContext: context)
+            .loadCounterparties(businessId: businessId)
+            .first(where: { $0.displayName == "UIテスト税理士" })
+        let counterpartyId = try XCTUnwrap(counterparty?.id)
+        let lockedCandidate = try XCTUnwrap(
+            pending.first(where: { candidate in
+                candidate.counterpartyId == counterpartyId &&
+                candidate.proposedLines.contains {
+                    $0.withholdingTaxCodeId == WithholdingTaxCode.professionalFee.rawValue &&
+                    $0.withholdingTaxAmount != nil
+                }
+            })
+        )
+
+        XCTAssertNotEqual(dataStore.yearLockState(for: lockedCandidate.taxYear), .open)
+    }
 }

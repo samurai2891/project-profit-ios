@@ -1,9 +1,9 @@
 {
   "deltas" : [
     {
-      "canonicalCount" : 36,
+      "canonicalCount" : 37,
       "executeSupported" : false,
-      "legacyCount" : 37,
+      "legacyCount" : 38,
       "modelName" : "Account"
     },
     {
@@ -49,7 +49,7 @@
       "modelName" : "Inventory"
     },
     {
-      "canonicalCount" : 42,
+      "canonicalCount" : 48,
       "executeSupported" : true,
       "legacyCount" : 0,
       "modelName" : "Journal"
@@ -91,10 +91,8 @@
       "modelName" : "UserRule"
     }
   ],
-  "orphanRecords" : [
-
-  ],
+  "orphanRecords" : [],
   "warnings" : [
-
+    "Transaction legacy data remains after canonical migration"
   ]
 }

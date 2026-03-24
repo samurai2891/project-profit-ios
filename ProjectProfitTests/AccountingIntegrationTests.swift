@@ -325,7 +325,7 @@ final class AccountingIntegrationTests: XCTestCase {
             XCTAssertTrue(xml.contains("<AMF00100>1000000</AMF00100>"), "売上金額")
             XCTAssertTrue(xml.contains("<AMF00230>50000</AMF00230>"), "通信費")
             XCTAssertTrue(xml.contains("<AMF00530>950000</AMF00530>"), "所得金額")
-            XCTAssertTrue(xml.contains("<ABA00140>山田太郎</ABA00140>"), "氏名")
+            XCTAssertTrue(xml.contains("<AMB00040 IDREF=\"NOZEISHA_NM\"/>"), "氏名")
             XCTAssertTrue(xml.contains("<AMF00120>100000</AMF00120>"), "棚卸")
             XCTAssertTrue(xml.contains("<AMG00440>500000</AMG00440>"), "資産合計")
 

@@ -169,82 +169,59 @@ final class ShushiNaiyakushoBuilderTests: XCTestCase {
     }
 
     func testBuildIncludesRentBreakdownFromCanonicalProjection() {
+        let rentAccount = try! XCTUnwrap(
+            dataStore.canonicalAccounts().first { $0.id == canonicalAccountId(for: rentAccountId()) }
+        )
         let pl = CanonicalProfitLossReport(
             fiscalYear: 2025,
             generatedAt: Date(),
             revenueItems: [],
-            expenseItems: []
+            expenseItems: [
+                CanonicalProfitLossItem(
+                    id: rentAccount.id,
+                    code: rentAccount.code,
+                    name: rentAccount.name,
+                    amount: Decimal(240_000)
+                )
+            ]
         )
-        let rentEntryId = UUID()
-        let form = ShushiNaiyakushoBuilder.build(
-            canonicalProfitLoss: pl,
-            input: makeBuildInput(
-                fiscalYear: 2025,
-                canonicalJournals: [
-                    CanonicalJournalEntry(
-                        id: rentEntryId,
-                        businessId: try! XCTUnwrap(dataStore.businessProfile?.id),
-                        taxYear: 2025,
-                        journalDate: Date(),
-                        voucherNo: "1",
-                        lines: [
-                            JournalLine(
-                                journalId: rentEntryId,
-                                accountId: canonicalAccountId(for: rentAccountId()),
-                                debitAmount: Decimal(240_000),
-                                sortOrder: 0
-                            )
-                        ],
-                        approvedAt: Date()
-                    )
-                ]
-            )
-        )
+        let form = ShushiNaiyakushoBuilder.build(canonicalProfitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
-        let rentField = form.fields.first { $0.id == "shushi_rent_breakdown" }
+        let rentField = form.fields.first { $0.id == "shushi_expense_rent" }
         XCTAssertNotNil(rentField)
         XCTAssertEqual(rentField?.taxLine, .rentExpense)
         XCTAssertEqual(rentField?.value.numberValue, 240_000)
     }
 
     func testBuildExcludesUnpostedOrNonRentLinesFromRentBreakdown() {
+        let rentAccount = try! XCTUnwrap(
+            dataStore.canonicalAccounts().first { $0.id == canonicalAccountId(for: rentAccountId()) }
+        )
+        let nonRentAccount = try! XCTUnwrap(
+            dataStore.canonicalAccounts().first { $0.id == canonicalAccountId(for: nonRentAccountId()) }
+        )
         let pl = CanonicalProfitLossReport(
             fiscalYear: 2025,
             generatedAt: Date(),
             revenueItems: [],
-            expenseItems: []
+            expenseItems: [
+                CanonicalProfitLossItem(
+                    id: rentAccount.id,
+                    code: rentAccount.code,
+                    name: rentAccount.name,
+                    amount: Decimal(120_000)
+                ),
+                CanonicalProfitLossItem(
+                    id: nonRentAccount.id,
+                    code: nonRentAccount.code,
+                    name: nonRentAccount.name,
+                    amount: Decimal(70_000)
+                )
+            ]
         )
-        let postedRentEntryId = UUID()
-        let unpostedRentEntryId = UUID()
-        let postedNonRentEntryId = UUID()
-        let form = ShushiNaiyakushoBuilder.build(
-            canonicalProfitLoss: pl,
-            input: makeBuildInput(
-                fiscalYear: 2025,
-                canonicalJournals: [
-                    makeCanonicalJournal(
-                        id: postedRentEntryId,
-                        accountId: canonicalAccountId(for: rentAccountId()),
-                        debitAmount: Decimal(120_000),
-                        approvedAt: Date()
-                    ),
-                    makeCanonicalJournal(
-                        id: unpostedRentEntryId,
-                        accountId: canonicalAccountId(for: rentAccountId()),
-                        debitAmount: Decimal(90_000),
-                        approvedAt: nil
-                    ),
-                    makeCanonicalJournal(
-                        id: postedNonRentEntryId,
-                        accountId: canonicalAccountId(for: nonRentAccountId()),
-                        debitAmount: Decimal(70_000),
-                        approvedAt: Date()
-                    ),
-                ]
-            )
-        )
+        let form = ShushiNaiyakushoBuilder.build(canonicalProfitLoss: pl, input: makeBuildInput(fiscalYear: 2025))
 
-        let rentField = form.fields.first { $0.id == "shushi_rent_breakdown" }
+        let rentField = form.fields.first { $0.id == "shushi_expense_rent" }
         XCTAssertEqual(rentField?.value.numberValue, 120_000)
     }
 

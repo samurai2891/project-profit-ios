@@ -470,7 +470,8 @@ struct ApprovalCandidateDetailView: View {
                             Button("保存") {
                                 Task { await saveCandidateDraft() }
                             }
-                            .disabled(!hasSavableLines)
+                            .disabled(!hasSavableLines || isCandidateYearLocked)
+                            .accessibilityIdentifier("approval.candidate.saveButton")
                         }
                     }
                 }
@@ -499,6 +500,11 @@ struct ApprovalCandidateDetailView: View {
     private var isCandidateYearLocked: Bool {
         guard let candidate else { return false }
         return approvalQueueQueryUseCase.isYearLocked(date: candidate.candidateDate)
+    }
+
+    private var candidateYearLockMessage: String? {
+        guard isCandidateYearLocked, let candidate else { return nil }
+        return AppError.yearLocked(year: candidate.taxYear).localizedDescription
     }
 
     private var hasSavableLines: Bool {
@@ -772,23 +778,28 @@ struct ApprovalCandidateDetailView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: 12) {
-            Button("却下", role: .destructive) {
-                Task { await rejectCandidate() }
-            }
-            .buttonStyle(.bordered)
-            .disabled(isSaving || candidate == nil)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button("却下", role: .destructive) {
+                    Task { await rejectCandidate() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSaving || candidate == nil)
 
-            Button("承認して仕訳作成") {
-                Task { await approveCandidate() }
+                Button("承認して仕訳作成") {
+                    Task { await approveCandidate() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaving || !hasSavableLines || candidate == nil || isCandidateYearLocked)
+                .accessibilityIdentifier("approval.candidate.approveButton")
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSaving || !hasSavableLines || candidate == nil || isCandidateYearLocked)
 
-            if isCandidateYearLocked {
-                Text("年度ロック中")
+            if let candidateYearLockMessage {
+                Text(candidateYearLockMessage)
                     .font(.caption)
                     .foregroundStyle(AppColors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("approval.candidate.yearLockMessage")
             }
         }
         .padding(.horizontal, 16)

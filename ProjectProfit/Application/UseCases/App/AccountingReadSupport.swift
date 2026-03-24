@@ -319,6 +319,10 @@ struct AccountingReadSupport {
     func etaxCandidateSummaries(
         candidatesById: [UUID: PostingCandidate]
     ) -> [UUID: EtaxCandidateSummary] {
+        guard !candidatesById.isEmpty else {
+            return [:]
+        }
+
         let categories = fetchCategories()
         let activeCategories = categories.filter { $0.archivedAt == nil }
         let expenseCategories = activeCategories.filter { $0.type == .expense }
