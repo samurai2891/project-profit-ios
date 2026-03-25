@@ -671,7 +671,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(pending.map(\.id), [result.reopened.id])
     }
 
-    func testPostingWorkflowUseCaseSyncApprovedCandidateRollsBackStatusWhenJournalSaveFails() async throws {
+    func testPostingWorkflowUseCaseApproveCandidateRollsBackStatusWhenJournalSaveFails() async throws {
         let businessId = UUID()
         let debitAccountId = UUID()
         let creditAccountId = UUID()
@@ -723,7 +723,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         )
 
         await XCTAssertThrowsErrorAsync {
-            _ = try await useCase.syncApprovedCandidate(candidate, journalId: UUID())
+            _ = try await useCase.approveCandidate(candidateId: candidate.id)
         }
 
         let persisted = try await candidateRepository.findById(candidate.id)
@@ -732,7 +732,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(savedEntryCount, 0)
     }
 
-    func testPostingWorkflowUseCaseSyncApprovedCandidateReportsRollbackFailure() async throws {
+    func testPostingWorkflowUseCaseApproveCandidateReportsRollbackFailure() async throws {
         let businessId = UUID()
         let debitAccountId = UUID()
         let creditAccountId = UUID()
@@ -783,7 +783,7 @@ final class CanonicalUseCasesTests: XCTestCase {
         )
 
         do {
-            _ = try await useCase.syncApprovedCandidate(candidate, journalId: UUID())
+            _ = try await useCase.approveCandidate(candidateId: candidate.id)
             XCTFail("Expected candidateRollbackFailed error")
         } catch let error as PostingWorkflowUseCaseError {
             guard case let .candidateRollbackFailed(candidateId, persistError, rollbackError) = error else {

@@ -33,7 +33,7 @@
 | # | 項目 | 判定 | 要約 |
 |---|---|---|---|
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | 実装済み | 帳簿画面と `journal / ledger / subLedger export` が共通の canonical-only export source に統一され、orphan legacy supplemental / legacy-only depreciation を除外する parity テストも追加された |
-| 2 | 取引保存成功と canonical 側反映失敗の乖離 | 部分実装 | main path は candidate 保存→承認→canonical journal ロールバック付きになったが、`#if DEBUG` の legacy 保存後同期経路が残る |
+| 2 | 取引保存成功と canonical 側反映失敗の乖離 | 実装済み | 手入力は candidate-only 保存へ統一され、承認時 canonical journal 保存と失敗時ロールバックが main path / release 導線で裏付けられた。未使用の `DEBUG` 補助同期コードも除去された |
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | 部分実装 | `projectAllocationId` は candidate から canonical line まで到達し検索/集計も使うが、一部 UI と履歴系は `PPTransaction.allocations` 依存のまま |
 | 4 | 消費税の簡易課税・2割特例ロジック | 部分実装 | 誤計算の主経路は calculator へ移ったが、判定責務と控除計算責務が二重化し、単体テストも不足 |
 | 5 | 個人事業主向けの年度設定 | 部分実装 | filing/e-Tax/preflight は暦年化済みだが、証憑取込・明細 import・命名には fiscal year 起点が残る |
@@ -50,7 +50,7 @@
 | # | 項目 | main path 実装 | release 導線 | export/帳票整合 | テスト根拠 | 残課題あり |
 |---|---|---|---|---|---|---|
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | [x] | [x] | [x] | [x] | [ ] |
-| 2 | 取引保存成功と canonical 側反映失敗の乖離 | [x] | [x] | [x] | [x] | [x] |
+| 2 | 取引保存成功と canonical 側反映失敗の乖離 | [x] | [x] | [x] | [x] | [ ] |
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [x] |
 | 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [x] |
 | 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [ ] | [x] |
@@ -105,39 +105,38 @@
 
 ### 2. 取引保存成功と canonical 側反映失敗の乖離
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] 手入力保存は candidate 作成経路へ接続されている
   - [x] 承認時に canonical journal を保存する
   - [x] 保存失敗時のロールバックがある
   - [x] main path を支えるテストがある
-  - [ ] `#if DEBUG` の旧保存後同期経路が除去されていない
+  - [x] `#if DEBUG` の旧保存後同期経路は除去された
 - できていること:
   - 手入力保存は `TransactionFormView` から `PostingIntakeUseCase.saveManualCandidate(...)` に接続されている
   - candidate 保存は draft で止まり、承認時に canonical journal を永続化する
   - canonical 保存失敗時は candidate status を元へ戻すロールバックがある
-- まだ足りていないこと:
-  - `LegacyTransactionCompatibilityUseCase` が `#if DEBUG` で残っている
-  - legacy transaction 保存後に canonical 同期を後追い実行する `enqueueCanonicalSync` が残存する
-  - `systemGenerated` mutation は legacy 経路を通しうる
+- 補足:
+  - `ProjectProfitApp` 起動時に `FeatureFlags.switchToCanonical()` が実行され、release は canonical cutover 前提で動作する
+  - `systemGenerated` は `TestMutationDriver` に閉じた test support であり、本番保存経路の分岐ではない
 - 根拠コード:
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/App/FeatureFlags.swift:15`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/ProjectProfitApp.swift:19`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Components/TransactionFormView.swift:303`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Components/TransactionFormView.swift:1261`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Components/TransactionFormView.swift:1275`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/PostingIntakeUseCase.swift:58`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/PostingWorkflowUseCase.swift:158`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingEngine.swift:111`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingEngine.swift:124`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Legacy/LegacyTransactionCompatibilityUseCase.swift:1`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Legacy/LegacyTransactionCompatibilityUseCase.swift:96`
 - 根拠テスト:
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/PostingIntakeUseCaseTests.swift:59`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/CanonicalUseCasesTests.swift:674`
-  - `LegacyTransactionCompatibilityUseCase` 自体の主な参照は test support 側にある
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/PostingIntakeUseCaseTests.swift:332`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TestMutationDriver.swift:5`
 - 未確認事項:
-  - Release build で debug-only 経路が完全に死んでいること自体は今回ビルド成果物では再確認していない
+  - なし
 - release 影響:
-  - release main path の乖離問題は大幅に縮小しているが、repo 全体としては旧「保存後同期」方式が残っている
+  - release 導線では「取引保存成功なのに canonical 反映失敗が後から起こる」構造的乖離は解消済みと説明できる
 
 ### 3. プロジェクト別収益管理と税務帳簿の未連結
 
