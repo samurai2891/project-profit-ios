@@ -3,6 +3,23 @@ import Foundation
 /// 年度別TaxLine→フィールドラベル定義をバンドルJSONからロードするサービス
 @MainActor
 enum TaxYearDefinitionLoader {
+    struct EtaxSupportStatusRow: Equatable {
+        let fiscalYear: Int
+        let blueReturnSupported: Bool
+        let blueCashBasisSupported: Bool
+        let whiteReturnSupported: Bool
+
+        func isSupported(for formType: EtaxFormType) -> Bool {
+            switch formType {
+            case .blueReturn:
+                return blueReturnSupported
+            case .blueCashBasis:
+                return blueCashBasisSupported
+            case .whiteReturn:
+                return whiteReturnSupported
+            }
+        }
+    }
 
     struct PackCoverageReport {
         let missingForms: [String]
@@ -281,6 +298,18 @@ enum TaxYearDefinitionLoader {
             return sorted
         }
         return sorted.filter { isSupported(year: $0, formType: formType) }
+    }
+
+    /// e-Tax UI 向けの年分×様式対応状況を返す
+    static func etaxSupportStatusRows() -> [EtaxSupportStatusRow] {
+        supportedYears().map { year in
+            EtaxSupportStatusRow(
+                fiscalYear: year,
+                blueReturnSupported: isSupported(year: year, formType: .blueReturn),
+                blueCashBasisSupported: isSupported(year: year, formType: .blueCashBasis),
+                whiteReturnSupported: isSupported(year: year, formType: .whiteReturn)
+            )
+        }
     }
 
     /// キャッシュをクリアする（テスト用）

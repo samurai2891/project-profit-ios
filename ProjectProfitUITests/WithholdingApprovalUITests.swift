@@ -63,6 +63,43 @@ final class WithholdingApprovalUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["仕訳一覧"].firstMatch.waitForExistence(timeout: 10))
     }
 
+    func testFilingDashboardNavigatesToEtaxExportScreen() {
+        openFilingDashboard()
+
+        let route = app.descendants(matching: .any).matching(identifier: "filing.workflow.etaxExport").firstMatch
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        route.tap()
+
+        let screen = app.descendants(matching: .any).matching(identifier: "screen.etax.export").firstMatch
+        XCTAssertTrue(screen.waitForExistence(timeout: 10))
+    }
+
+    func testEtaxExportScreenShowsSupportMatrixAndNotes() {
+        openFilingDashboard()
+
+        let route = app.descendants(matching: .any).matching(identifier: "filing.workflow.etaxExport").firstMatch
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        route.tap()
+
+        let matrix = app.descendants(matching: .any).matching(identifier: "etax.support.matrix").firstMatch
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+
+        let note = app.staticTexts["etax.support.note"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10))
+
+        let selectedFormDescription = app.staticTexts["etax.support.selectedFormDescription"].firstMatch
+        XCTAssertTrue(selectedFormDescription.waitForExistence(timeout: 10))
+
+        let row2025 = app.descendants(matching: .any).matching(identifier: "etax.support.row.2025").firstMatch
+        let row2026 = app.descendants(matching: .any).matching(identifier: "etax.support.row.2026").firstMatch
+        XCTAssertTrue(row2025.waitForExistence(timeout: 10))
+        XCTAssertTrue(row2026.waitForExistence(timeout: 10))
+
+        XCTAssertTrue(app.staticTexts["etax.support.row.2025.blueReturn"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["etax.support.row.2025.blueCashBasis"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["etax.support.row.2025.whiteReturn"].firstMatch.waitForExistence(timeout: 10))
+    }
+
     func testLockedYearDisablesSaveAndApproveAndShowsYearLockMessage() {
         relaunchWithLockedYearSeed()
         let approvalTab = app.tabBars.buttons["承認"].firstMatch
@@ -83,6 +120,28 @@ final class WithholdingApprovalUITests: XCTestCase {
 
         let lockMessage = app.staticTexts["approval.candidate.yearLockMessage"].firstMatch
         XCTAssertTrue(lockMessage.waitForExistence(timeout: 10))
+    }
+
+    func testFilingDashboardNavigatesToEtaxExportAndShowsSupportMatrix() {
+        openFilingDashboard()
+
+        let route = app.descendants(matching: .any).matching(identifier: "filing.workflow.etaxExport").firstMatch
+        XCTAssertTrue(route.waitForExistence(timeout: 10))
+        route.tap()
+
+        let screen = app.descendants(matching: .any).matching(identifier: "screen.etax.export").firstMatch
+        XCTAssertTrue(screen.waitForExistence(timeout: 10))
+
+        let matrix = app.descendants(matching: .any).matching(identifier: "etax.support.matrix").firstMatch
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+
+        let note = app.descendants(matching: .any).matching(identifier: "etax.support.note").firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10))
+
+        let yearRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier MATCHES %@", #"^etax\.support\.row\.[0-9]{4}$"#)
+        ).firstMatch
+        XCTAssertTrue(yearRow.waitForExistence(timeout: 10))
     }
 
     private func openFilingDashboard() {

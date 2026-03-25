@@ -252,6 +252,34 @@ final class EtaxExportViewModelTests: XCTestCase {
         )
     }
 
+    func testSupportStatusRowsExposeBundledEtaxMatrix() {
+        let viewModel = makeViewModel()
+
+        XCTAssertEqual(viewModel.supportStatusRows.map(\.fiscalYear), [2025, 2026])
+        XCTAssertTrue(viewModel.supportStatusRows.allSatisfy(\.blueReturnSupported))
+        XCTAssertTrue(viewModel.supportStatusRows.allSatisfy(\.blueCashBasisSupported))
+        XCTAssertTrue(viewModel.supportStatusRows.allSatisfy(\.whiteReturnSupported))
+    }
+
+    func testSelectedFormTypeSupportDescriptionReflectsCurrentFormType() {
+        let viewModel = makeViewModel()
+        viewModel.formType = .blueCashBasis
+
+        XCTAssertEqual(
+            viewModel.selectedFormTypeSupportDescription,
+            "青色申告（現金主義）の利用可能年分: 2025年, 2026年"
+        )
+    }
+
+    func testUnsupportedYearReasonDescriptionExplainsMissingPackBeforeExport() {
+        let viewModel = makeViewModel()
+
+        XCTAssertEqual(
+            viewModel.unsupportedYearReasonDescription,
+            "一覧にない年分は、その様式の税制パック未収録のため選択できません。"
+        )
+    }
+
     func testExportRebuildsPreviewWhenDataRevisionChanges() {
         let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
         seedTaxYearProfile(

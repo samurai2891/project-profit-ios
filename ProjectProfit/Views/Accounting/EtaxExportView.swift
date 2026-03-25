@@ -6,6 +6,12 @@ struct EtaxExportView: View {
         .blueCashBasis,
         .whiteReturn,
     ]
+    private static let supportMatrixColumns: [(formType: EtaxFormType?, title: String)] = [
+        (nil, "年分"),
+        (.blueReturn, "青色"),
+        (.blueCashBasis, "現金"),
+        (.whiteReturn, "白色"),
+    ]
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: EtaxExportViewModel?
@@ -100,6 +106,7 @@ struct EtaxExportView: View {
                 )
             }
         }
+        .accessibilityIdentifier("screen.etax.export")
     }
 
     // MARK: - Settings
@@ -159,10 +166,93 @@ struct EtaxExportView: View {
             Text("申告年分は暦年（1月〜12月）基準で判定します。会計年度設定とは別管理です。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Text(viewModel.selectedFormTypeSupportDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("etax.support.selectedFormDescription")
+
+            supportStatusSection(viewModel: viewModel)
         }
         .padding(16)
         .background(AppColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func supportStatusSection(viewModel: EtaxExportViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("対応状況")
+                .font(.subheadline.weight(.semibold))
+
+            VStack(spacing: 0) {
+                supportMatrixHeader
+
+                ForEach(viewModel.supportStatusRows, id: \.fiscalYear) { row in
+                    supportMatrixRow(row)
+                        .accessibilityIdentifier("etax.support.row.\(row.fiscalYear)")
+
+                    if row.fiscalYear != viewModel.supportStatusRows.last?.fiscalYear {
+                        Divider()
+                    }
+                }
+            }
+            .background(Color.white.opacity(0.001))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.secondary.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .accessibilityIdentifier("etax.support.matrix")
+
+            Text(viewModel.unsupportedYearReasonDescription)
+                .font(.caption)
+                .foregroundStyle(AppColors.warning)
+                .accessibilityIdentifier("etax.support.note")
+        }
+    }
+
+    private var supportMatrixHeader: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(Self.supportMatrixColumns.enumerated()), id: \.offset) { _, column in
+                Text(column.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: column.formType == nil ? .leading : .center)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.secondary.opacity(0.08))
+    }
+
+    private func supportMatrixRow(_ row: TaxYearDefinitionLoader.EtaxSupportStatusRow) -> some View {
+        HStack(spacing: 8) {
+            Text("\(row.fiscalYear)年")
+                .font(.caption.weight(.medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            supportStatusBadge(isSupported: row.isSupported(for: .blueReturn))
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("etax.support.row.\(row.fiscalYear).blueReturn")
+
+            supportStatusBadge(isSupported: row.isSupported(for: .blueCashBasis))
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("etax.support.row.\(row.fiscalYear).blueCashBasis")
+
+            supportStatusBadge(isSupported: row.isSupported(for: .whiteReturn))
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("etax.support.row.\(row.fiscalYear).whiteReturn")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func supportStatusBadge(isSupported: Bool) -> some View {
+        Text(isSupported ? "対応済み" : "未対応")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(isSupported ? AppColors.success : AppColors.warning)
+            .frame(maxWidth: .infinity)
     }
 
     // MARK: - Preview Button

@@ -178,6 +178,25 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertTrue(years.contains(2026))
     }
 
+    func testEtaxSupportStatusRows_returnsBundledYearsInOrder() {
+        let rows = TaxYearDefinitionLoader.etaxSupportStatusRows()
+
+        XCTAssertEqual(rows.map(\.fiscalYear), [2025, 2026])
+    }
+
+    func testEtaxSupportStatusRows_includeThreeFormStatuses() {
+        let rows = TaxYearDefinitionLoader.etaxSupportStatusRows()
+        let row2025 = rows.first { $0.fiscalYear == 2025 }
+        let row2026 = rows.first { $0.fiscalYear == 2026 }
+
+        XCTAssertEqual(row2025?.blueReturnSupported, true)
+        XCTAssertEqual(row2025?.blueCashBasisSupported, true)
+        XCTAssertEqual(row2025?.whiteReturnSupported, true)
+        XCTAssertEqual(row2026?.blueReturnSupported, true)
+        XCTAssertEqual(row2026?.blueCashBasisSupported, true)
+        XCTAssertEqual(row2026?.whiteReturnSupported, true)
+    }
+
     // MARK: - TaxYearPack Bridge
 
     func testTaxYearPackProvider_availableYearsIncludes2026() async {

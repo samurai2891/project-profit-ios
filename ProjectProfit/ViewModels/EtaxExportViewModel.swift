@@ -27,6 +27,27 @@ final class EtaxExportViewModel {
     var exportResult: ExportResult?
     private var previewState: PreviewState?
 
+    var supportStatusRows: [TaxYearDefinitionLoader.EtaxSupportStatusRow] {
+        TaxYearDefinitionLoader.etaxSupportStatusRows()
+    }
+
+    var selectedFormTypeSupportedYears: [Int] {
+        TaxYearDefinitionLoader.supportedYears(formType: formType)
+    }
+
+    var selectedFormTypeSupportDescription: String {
+        let years = selectedFormTypeSupportedYears
+        guard !years.isEmpty else {
+            return "\(formType.exportSelectionLabel)で利用可能な申告年分はありません"
+        }
+        let yearList = years.map { "\($0)年" }.joined(separator: ", ")
+        return "\(formType.exportSelectionLabel)の利用可能年分: \(yearList)"
+    }
+
+    var unsupportedYearReasonDescription: String {
+        "一覧にない年分は、その様式の税制パック未収録のため選択できません。"
+    }
+
     enum ExportResult: Identifiable {
         case success(url: URL)
         case failure(message: String)

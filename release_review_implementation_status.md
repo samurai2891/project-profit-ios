@@ -39,7 +39,7 @@
 | 5 | 個人事業主向けの年度設定 | 実装済み | filing/e-Tax/preflight に加えて、証憑取込・statement import・Approval Queue・e-Tax 命名も暦年 `taxYear` 基準へ統一された |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 実装済み | `BooksWorkspaceView` が canonical 本流の帳簿一覧へ再編され、仕様対象帳簿は release UI から到達できる。legacy ledger は `旧台帳アーカイブ` に限定された |
 | 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と CSV/PDF export が揃った。repo 内では fixture ベースの golden 検証も追加された |
-| 8 | e-Tax UI と年分対応のズレ | 部分実装 | `blueCashBasis` と 2026 年分対応はコード上解消済みだが、UI は対応状況一覧を持たず未対応年の説明も事前表示しない |
+| 8 | e-Tax UI と年分対応のズレ | 実装済み | `blueCashBasis` と 2025/2026 年分対応に加え、e-Tax 画面へ年分×様式の対応状況一覧と事前理由表示、UI テスト根拠が追加された |
 | 9 | 書類台帳の削除統制が弱い | 部分実装 | quarantine/restore と保存期間警告はあるが、`confirmDeletion` の防御が薄く、内部 purge/全削除は物理削除を行う |
 | 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、双方とも CSV/PDF 対応になった。一方で列定義と数値の原本一致はなお追加確認が必要 |
 
@@ -56,7 +56,7 @@
 | 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [x] | [ ] |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [ ] |
 | 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [x] | [x] | [ ] |
-| 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [x] |
+| 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [ ] |
 | 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [x] |
 | 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [x] | [x] |
 
@@ -335,38 +335,39 @@
 
 ### 8. e-Tax UI と年分対応のズレ
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] `blueCashBasis` を UI から選択できる
   - [x] 2025/2026 年分定義が loader で読める
   - [x] 未対応年は preview/export 前に block する
   - [x] loader / ViewModel テストがある
-  - [ ] UI 上の対応状況一覧や理由表示は不足
+  - [x] UI 上の対応状況一覧と事前理由表示がある
 - できていること:
   - e-Tax UI は `.blueReturn` `.blueCashBasis` `.whiteReturn` を選択できる
   - `TaxYearDefinitionLoader.supportedYears(formType:)` から年候補を出す
+  - `TaxYearDefinitionLoader.etaxSupportStatusRows()` が年分×様式の対応状況一覧を UI へ供給する
+  - 設定セクションに 2025/2026 年分の対応状況一覧と「税制パック未収録のため選択不可」の事前説明が表示される
+  - `EtaxExportView` に画面識別子と対応状況識別子が追加され、UI テストから検証できる
   - 未対応年は preview/export 前に block する
-  - 2025/2026 pack と `blue_cash_basis` metadata の loader テストがある
-- まだ足りていないこと:
-  - 画面上の設定セクションは Picker と注記だけで、「年分×様式の対応状況一覧」を持たない
-  - 未対応年の説明は事前表示ではなく preview/export エラー経由
-  - `EtaxExportView` 自体の UI テストは repo 内で確認できない
+  - 2025/2026 pack と `blue_cash_basis` metadata の loader テスト、ViewModel の表示状態テスト、`EtaxExportView` の UI テストがある
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:4`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:109`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:159`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/EtaxExportViewModel.swift:64`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/EtaxExportViewModel.swift:118`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:97`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:164`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/EtaxExportViewModel.swift:27`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/EtaxExportViewModel.swift:80`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/TaxYearDefinitionLoader.swift:382`
 - 根拠テスト:
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TaxYearDefinitionLoaderTests.swift:155`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TaxYearDefinitionLoaderTests.swift:169`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TaxYearDefinitionLoaderTests.swift:292`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TaxYearDefinitionLoaderTests.swift:302`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/EtaxExportViewModelTests.swift:236`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitUITests/WithholdingApprovalUITests.swift:58`
 - 未確認事項:
-  - 現行 UI 文言だけで利用者が対応状況を誤解しないかはコードだけでは評価しない
+  - Xcode 上での full test 完走はこの更新時点では再確認できていない
 - release 影響:
-  - 対応そのものは進んだが、対応状況の可視化が不足しており、UI 完了とは言い切れない
+  - release UI 上で「どの年分がどの様式に対応しているか」と「一覧外年分を選べない理由」を事前に説明できるため、e-Tax UI と年分対応のズレは current working tree で解消された
 
 ### 9. 書類台帳の削除統制が弱い
 
