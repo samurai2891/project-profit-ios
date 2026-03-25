@@ -1,6 +1,19 @@
 import SwiftData
 import Foundation
 
+struct DocumentPurgeResult {
+    let processedDocumentIds: [UUID]
+    let failedDocumentIds: [UUID]
+
+    var processedCount: Int {
+        processedDocumentIds.count
+    }
+
+    var isSuccess: Bool {
+        failedDocumentIds.isEmpty
+    }
+}
+
 extension DataStore {
     private var documentWorkflowUseCase: DocumentWorkflowUseCase {
         DocumentWorkflowUseCase(modelContext: modelContext)
@@ -47,8 +60,8 @@ extension DataStore {
         documentWorkflowUseCase.requestDeletion(id: id)
     }
 
-    func confirmDocumentDeletion(id: UUID, reason: String) -> DocumentDeleteAttempt {
-        documentWorkflowUseCase.confirmDeletion(id: id, reason: reason)
+    func confirmDocumentDeletion(id: UUID, reason: String, approvedBy: String) -> DocumentDeleteAttempt {
+        documentWorkflowUseCase.confirmDeletion(id: id, reason: reason, approvedBy: approvedBy)
     }
 
     // MARK: - Compliance Logs
@@ -71,15 +84,30 @@ extension DataStore {
         )
     }
 
-    func purgeDocumentRecords(for transactionId: UUID) -> [String] {
+    @discardableResult
+    func purgeDocumentRecords(for transactionId: UUID) -> DocumentPurgeResult {
         let records = listDocumentRecords(transactionId: transactionId)
             + documentWorkflowUseCase.quarantinedDocuments(transactionId: transactionId)
-        let fileNames = records.flatMap { record in
-            [record.storedFileName, record.quarantineFileName].compactMap { $0 }
-        }
+        var processedDocumentIds: [UUID] = []
+        var failedDocumentIds: [UUID] = []
         for record in records {
-            modelContext.delete(record)
+            if record.deletionStatus == .active {
+                let attempt = documentWorkflowUseCase.quarantineForMaintenance(
+                    id: record.id,
+                    trigger: "取引関連データの内部整理"
+                )
+                if case .deleted = attempt {
+                    processedDocumentIds.append(record.id)
+                } else {
+                    failedDocumentIds.append(record.id)
+                }
+            } else {
+                processedDocumentIds.append(record.id)
+            }
         }
-        return fileNames
+        return DocumentPurgeResult(
+            processedDocumentIds: processedDocumentIds,
+            failedDocumentIds: failedDocumentIds
+        )
     }
 }

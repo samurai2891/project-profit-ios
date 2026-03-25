@@ -765,6 +765,13 @@ struct LegacyDocumentRecordSnapshot: Codable, Equatable, Sendable {
     let contentHash: String?
     let issueDate: Date
     let note: String
+    let deletionStatus: DocumentDeletionStatus?
+    let deletionRequestedAt: Date?
+    let deletionReason: String?
+    let overrideApprovedAt: Date?
+    let overrideApprovedBy: String?
+    let quarantinedAt: Date?
+    let quarantineFileName: String?
     let createdAt: Date
     let updatedAt: Date
 
@@ -781,6 +788,13 @@ struct LegacyDocumentRecordSnapshot: Codable, Equatable, Sendable {
         self.contentHash = record.contentHash
         self.issueDate = record.issueDate
         self.note = record.note
+        self.deletionStatus = record.deletionStatus
+        self.deletionRequestedAt = record.deletionRequestedAt
+        self.deletionReason = record.deletionReason
+        self.overrideApprovedAt = record.overrideApprovedAt
+        self.overrideApprovedBy = record.overrideApprovedBy
+        self.quarantinedAt = record.quarantinedAt
+        self.quarantineFileName = record.quarantineFileName
         self.createdAt = record.createdAt
         self.updatedAt = record.updatedAt
     }
@@ -799,6 +813,13 @@ struct LegacyDocumentRecordSnapshot: Codable, Equatable, Sendable {
             contentHash: contentHash,
             issueDate: issueDate,
             note: note,
+            deletionStatus: deletionStatus ?? .active,
+            deletionRequestedAt: deletionRequestedAt,
+            deletionReason: deletionReason,
+            overrideApprovedAt: overrideApprovedAt,
+            overrideApprovedBy: overrideApprovedBy,
+            quarantinedAt: quarantinedAt,
+            quarantineFileName: quarantineFileName,
             createdAt: createdAt,
             updatedAt: updatedAt
         )

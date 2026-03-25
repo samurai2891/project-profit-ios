@@ -22,6 +22,8 @@ struct TransactionDocumentsView: View {
     @State private var alertMessage: String?
     @State private var pendingWarningDeleteId: UUID?
     @State private var pendingWarningMessage: String?
+    @State private var deletionReasonInput = ""
+    @State private var deletionApprovedByInput = ""
 
     private var documentWorkflowUseCase: DocumentWorkflowUseCase {
         DocumentWorkflowUseCase(modelContext: modelContext)
@@ -51,16 +53,22 @@ struct TransactionDocumentsView: View {
             get: { pendingWarningDeleteId != nil && pendingWarningMessage != nil },
             set: { if !$0 { pendingWarningDeleteId = nil; pendingWarningMessage = nil } }
         )) {
+            TextField("解除理由", text: $deletionReasonInput)
+            TextField("承認者名", text: $deletionApprovedByInput)
             Button("キャンセル", role: .cancel) {
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                resetDeletionConfirmationState()
             }
             Button("隔離保管する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let result = documentWorkflowUseCase.confirmDeletion(id: id, reason: "取引書類画面で管理者解除")
+                let result = documentWorkflowUseCase.confirmDeletion(
+                    id: id,
+                    reason: deletionReasonInput,
+                    approvedBy: deletionApprovedByInput
+                )
                 handleDeleteAttempt(result)
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                if case .deleted = result {
+                    resetDeletionConfirmationState()
+                }
             }
         } message: {
             Text(pendingWarningMessage ?? "")
@@ -265,5 +273,12 @@ struct TransactionDocumentsView: View {
     private func refresh() {
         records = documentWorkflowUseCase.listDocuments(transactionId: transaction.id)
         quarantinedRecords = documentWorkflowUseCase.quarantinedDocuments(transactionId: transaction.id)
+    }
+
+    private func resetDeletionConfirmationState() {
+        pendingWarningDeleteId = nil
+        pendingWarningMessage = nil
+        deletionReasonInput = ""
+        deletionApprovedByInput = ""
     }
 }

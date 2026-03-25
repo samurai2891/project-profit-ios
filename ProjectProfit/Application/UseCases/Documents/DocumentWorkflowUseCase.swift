@@ -151,6 +151,13 @@ struct DocumentWorkflowUseCase {
         }
 
         if let warning = record.retentionWarningMessage() {
+            record.deletionRequestedAt = Date()
+            record.updatedAt = Date()
+            do {
+                try documentRepository.saveChanges()
+            } catch {
+                return .failed(message: "削除申請の記録に失敗しました")
+            }
             appendComplianceLog(
                 eventType: .adminOverrideRequested,
                 message: warning,
@@ -166,16 +173,26 @@ struct DocumentWorkflowUseCase {
     func confirmDeletion(
         id: UUID,
         reason: String,
-        approvedBy: String = "device-owner"
+        approvedBy: String
     ) -> DocumentDeleteAttempt {
         guard let record = document(id: id) else {
             return .failed(message: "書類が見つかりません")
+        }
+        guard record.deletionStatus == .active else {
+            return .failed(message: "この書類はすでに隔離保管中です")
         }
         let cleanedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedReason.isEmpty else {
             return .failed(message: "管理者解除理由を入力してください")
         }
-        return performDeletion(record: record, reason: cleanedReason, approvedBy: approvedBy)
+        let cleanedApprovedBy = approvedBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedApprovedBy.isEmpty else {
+            return .failed(message: "承認者名を入力してください")
+        }
+        if record.retentionWarningMessage() != nil, record.hasPendingDeletionRequest == false {
+            return .failed(message: "削除申請を行ってから管理者解除を実行してください")
+        }
+        return performDeletion(record: record, reason: cleanedReason, approvedBy: cleanedApprovedBy)
     }
 
     func restoreDeletedDocument(id: UUID) -> DocumentDeleteAttempt {
@@ -193,6 +210,7 @@ struct DocumentWorkflowUseCase {
                 targetFileName: record.storedFileName
             )
             record.deletionStatus = .active
+            record.deletionRequestedAt = nil
             record.deletionReason = nil
             record.overrideApprovedAt = nil
             record.overrideApprovedBy = nil
@@ -226,6 +244,7 @@ struct DocumentWorkflowUseCase {
         do {
             let quarantineFileName = try ReceiptImageStore.quarantineDocumentFile(fileName: record.storedFileName)
             record.deletionStatus = .quarantined
+            record.deletionRequestedAt = nil
             record.deletionReason = reason
             record.overrideApprovedAt = requiresWarning ? Date() : nil
             record.overrideApprovedBy = requiresWarning ? approvedBy : nil
@@ -264,6 +283,22 @@ struct DocumentWorkflowUseCase {
         return .deleted
     }
 
+    @discardableResult
+    func quarantineForMaintenance(
+        id: UUID,
+        trigger: String
+    ) -> DocumentDeleteAttempt {
+        guard let record = document(id: id) else {
+            return .failed(message: "書類が見つかりません")
+        }
+        guard record.deletionStatus == .active else {
+            return .deleted
+        }
+
+        let message = "\(trigger)により書類を隔離保管へ移動: \(record.documentType.label) (\(record.originalFileName))"
+        return quarantineWithoutApproval(record: record, reason: trigger, logMessage: message)
+    }
+
     func addComplianceLog(
         eventType: ComplianceEventType,
         message: String,
@@ -296,6 +331,35 @@ struct DocumentWorkflowUseCase {
         } catch {
             AppLogger.dataStore.error("Failed to save compliance log: \(error.localizedDescription)")
         }
+    }
+
+    private func quarantineWithoutApproval(
+        record: PPDocumentRecord,
+        reason: String,
+        logMessage: String
+    ) -> DocumentDeleteAttempt {
+        do {
+            let quarantineFileName = try ReceiptImageStore.quarantineDocumentFile(fileName: record.storedFileName)
+            record.deletionStatus = .quarantined
+            record.deletionRequestedAt = nil
+            record.deletionReason = reason
+            record.overrideApprovedAt = nil
+            record.overrideApprovedBy = nil
+            record.quarantinedAt = Date()
+            record.quarantineFileName = quarantineFileName
+            record.updatedAt = Date()
+            try documentRepository.saveChanges()
+        } catch {
+            return .failed(message: "書類の隔離保管に失敗しました")
+        }
+
+        appendComplianceLog(
+            eventType: .documentQuarantined,
+            message: logMessage,
+            documentId: record.id,
+            transactionId: record.transactionId
+        )
+        return .deleted
     }
 
     private func cleanupFailedSave(storedFileName: String?, error: AppError) -> Result<PPDocumentRecord, AppError> {

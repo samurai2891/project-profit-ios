@@ -20,6 +20,7 @@
 		058AB4BEC47177E78A830525 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34972547443B4D43E57421DF /* NotificationSettingsView.swift */; };
 		05EA82DD76C37A3A50E41038 /* StatementReconciliationQueryUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD2855A3ACF4EF70BD2010 /* StatementReconciliationQueryUseCase.swift */; };
 		062F3D28A4D586B5A8D5C224 /* UITestBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34F649F30B96E7B3CE0682 /* UITestBootstrapTests.swift */; };
+		06E5746D7D245AA511C91B22 /* DataStoreDocumentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE69AB4437B1860E1C1CF53 /* DataStoreDocumentsTests.swift */; };
 		07804CED0633576194A2E16A /* CounterpartyEntityMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33E11B3513D9FC632FCFDF4 /* CounterpartyEntityMapper.swift */; };
 		07C7C7AB2AAE14E5042C0861 /* BusinessProfileEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B78D7DEEA8EE6A9A2DC1627 /* BusinessProfileEntity.swift */; };
 		0854DAFC0FED5D4D01E0C9CA /* AccountingReportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D85A7C833F25E01DEEF74A6A /* AccountingReportServiceTests.swift */; };
@@ -1077,6 +1078,7 @@
 		BA5B687F55BE7167FE6A6C0C /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		BB232AA65A4C5F8F6DCDFE7E /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		BB4A883A43EE4AEAF39CD780 /* FixedAssetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedAssetDetailView.swift; sourceTree = "<group>"; };
+		BBE69AB4437B1860E1C1CF53 /* DataStoreDocumentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreDocumentsTests.swift; sourceTree = "<group>"; };
 		BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilitiesTests.swift; sourceTree = "<group>"; };
 		BCC3F72DAC4E1889DA7E05B3 /* ApprovalRequestEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestEntityMapper.swift; sourceTree = "<group>"; };
 		BCDE9C330FB6748A69ADA6A3 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
@@ -1512,6 +1514,7 @@
 				5F1F19BD5DF232F565252F9F /* DataRevisionQueryUseCaseTests.swift */,
 				B655CC608E618292BD875311 /* DataStoreAccountingTests.swift */,
 				D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */,
+				BBE69AB4437B1860E1C1CF53 /* DataStoreDocumentsTests.swift */,
 				FAA64290ACD6A71147683711 /* DataStoreFixedAssetTests.swift */,
 				196DFD2BB2BE7776A3E49639 /* DataStoreInventoryTests.swift */,
 				5532FFAAEC276A9776BB1855 /* DataStoreSummaryTests.swift */,
@@ -3952,6 +3955,7 @@
 				3739DFB18A21504E689950C0 /* DataRevisionQueryUseCaseTests.swift in Sources */,
 				DC11EE6A7ED8734EF5CBE0DC /* DataStoreAccountingTests.swift in Sources */,
 				20D70E4108CF27C3CE363F91 /* DataStoreCRUDTests.swift in Sources */,
+				06E5746D7D245AA511C91B22 /* DataStoreDocumentsTests.swift in Sources */,
 				80C21EFFF606F078639CFEA4 /* DataStoreFixedAssetTests.swift in Sources */,
 				73382A383F1194590565B4DF /* DataStoreInventoryTests.swift in Sources */,
 				13B331FCA855B8C13ECAE210 /* DataStoreSummaryTests.swift in Sources */,

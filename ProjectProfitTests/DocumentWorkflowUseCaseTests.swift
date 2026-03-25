@@ -9,18 +9,25 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     private var dataStore: ProjectProfit.DataStore!
     private var useCase: DocumentWorkflowUseCase!
     private var storedFileNames: [String] = []
+    private var tempDirectory: URL!
 
-    override func setUp() {
-        super.setUp()
-        container = try! TestModelContainer.create()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        container = try TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
         useCase = DocumentWorkflowUseCase(modelContext: context)
         storedFileNames = []
+        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "DocumentWorkflowUseCaseTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        ReceiptImageStore.setBaseDirectoryOverride(tempDirectory)
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         for fileName in storedFileNames {
             ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             ReceiptImageStore.deleteQuarantinedDocumentFile(fileName: fileName)
@@ -30,12 +37,17 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
                 ReceiptImageStore.deleteQuarantinedDocumentFile(fileName: quarantineFileName)
             }
         }
+        ReceiptImageStore.setBaseDirectoryOverride(nil)
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
         storedFileNames = []
         useCase = nil
         dataStore = nil
         context = nil
         container = nil
-        super.tearDown()
+        tempDirectory = nil
+        try super.tearDownWithError()
     }
 
     func testAddDocumentSuccessCreatesRecordAndComplianceLog() {
@@ -105,24 +117,61 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         switch attempt {
         case .adminOverrideRequired(let message):
             XCTAssertTrue(message.contains("保存期間"))
+            let storedRecord = try! XCTUnwrap(useCase.document(id: record.id))
+            XCTAssertNotNil(storedRecord.deletionRequestedAt)
             XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .adminOverrideRequested)
         default:
             XCTFail("Expected adminOverrideRequired")
         }
     }
 
-    func testConfirmDeletionQuarantinesRecordAndLogsAdminOverride() {
+    func testConfirmDeletionFailsWithoutPriorRequestWithinRetention() {
         let record = try! XCTUnwrap(makeDocumentRecord())
 
-        let attempt = useCase.confirmDeletion(id: record.id, reason: "workflow-test")
+        let attempt = useCase.confirmDeletion(
+            id: record.id,
+            reason: "workflow-test",
+            approvedBy: "監査担当"
+        )
+
+        if case .failed(let message) = attempt {
+            XCTAssertTrue(message.contains("削除申請"))
+        } else {
+            XCTFail("Expected failed")
+        }
+    }
+
+    func testConfirmDeletionRejectsEmptyApprovedByWithinRetention() {
+        let record = try! XCTUnwrap(makeDocumentRecord())
+        _ = useCase.requestDeletion(id: record.id)
+
+        let attempt = useCase.confirmDeletion(id: record.id, reason: "workflow-test", approvedBy: " ")
+
+        if case .failed(let message) = attempt {
+            XCTAssertTrue(message.contains("承認者名"))
+        } else {
+            XCTFail("Expected failed")
+        }
+    }
+
+    func testConfirmDeletionQuarantinesRecordAndLogsAdminOverride() {
+        let record = try! XCTUnwrap(makeDocumentRecord())
+        _ = useCase.requestDeletion(id: record.id)
+
+        let attempt = useCase.confirmDeletion(
+            id: record.id,
+            reason: "workflow-test",
+            approvedBy: "監査担当"
+        )
 
         if case .deleted = attempt {
             XCTAssertFalse(ReceiptImageStore.documentFileExists(fileName: record.storedFileName))
             let storedRecord = try! XCTUnwrap(useCase.document(id: record.id))
             XCTAssertEqual(storedRecord.deletionStatus, .quarantined)
+            XCTAssertNil(storedRecord.deletionRequestedAt)
             XCTAssertEqual(storedRecord.deletionReason, "workflow-test")
             XCTAssertNotNil(storedRecord.overrideApprovedAt)
-            XCTAssertEqual(storedRecord.overrideApprovedBy, "device-owner")
+            XCTAssertEqual(storedRecord.overrideApprovedBy, "監査担当")
             XCTAssertNotNil(storedRecord.quarantineFileName)
             XCTAssertEqual(useCase.listDocuments(transactionId: record.transactionId).count, 0)
             XCTAssertEqual(useCase.quarantinedDocuments(transactionId: record.transactionId).count, 1)
@@ -149,13 +198,15 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
 
     func testRestoreDeletedDocumentReturnsRecordToActiveList() {
         let record = try! XCTUnwrap(makeDocumentRecord())
-        _ = useCase.confirmDeletion(id: record.id, reason: "restore-test")
+        _ = useCase.requestDeletion(id: record.id)
+        _ = useCase.confirmDeletion(id: record.id, reason: "restore-test", approvedBy: "監査担当")
 
         let attempt = useCase.restoreDeletedDocument(id: record.id)
 
         if case .restored = attempt {
             let restoredRecord = try! XCTUnwrap(useCase.document(id: record.id))
             XCTAssertEqual(restoredRecord.deletionStatus, .active)
+            XCTAssertNil(restoredRecord.deletionRequestedAt)
             XCTAssertNil(restoredRecord.quarantineFileName)
             XCTAssertTrue(ReceiptImageStore.documentFileExists(fileName: restoredRecord.storedFileName))
             XCTAssertEqual(useCase.listDocuments(transactionId: record.transactionId).count, 1)

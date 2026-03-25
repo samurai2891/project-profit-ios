@@ -8,20 +8,32 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     private var container: ModelContainer!
     private var context: ModelContext!
     private var dataStore: ProjectProfit.DataStore!
+    private var tempDirectory: URL!
 
-    override func setUp() {
-        super.setUp()
-        container = try! TestModelContainer.create()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "DocumentAndSubLedgerTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        ReceiptImageStore.setBaseDirectoryOverride(tempDirectory)
+        container = try TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
+        ReceiptImageStore.setBaseDirectoryOverride(nil)
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
         dataStore = nil
         context = nil
         container = nil
-        super.tearDown()
+        tempDirectory = nil
+        try super.tearDownWithError()
     }
 
     func testLegalDocumentTypeRetentionPolicyDefaults() {
@@ -64,7 +76,7 @@ final class DocumentAndSubLedgerTests: XCTestCase {
             XCTFail("Expected adminOverrideRequired")
         }
 
-        let confirmed = dataStore.confirmDocumentDeletion(id: record.id, reason: "単体テスト")
+        let confirmed = dataStore.confirmDocumentDeletion(id: record.id, reason: "単体テスト", approvedBy: "管理者A")
         if case .deleted = confirmed {
             XCTAssertEqual(dataStore.documentCount(for: tx.id), 0)
         } else {

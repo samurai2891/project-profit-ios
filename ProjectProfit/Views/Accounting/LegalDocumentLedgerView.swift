@@ -14,6 +14,8 @@ struct LegalDocumentLedgerView: View {
     @State private var alertMessage: String?
     @State private var pendingWarningDeleteId: UUID?
     @State private var pendingWarningMessage: String?
+    @State private var deletionReasonInput = ""
+    @State private var deletionApprovedByInput = ""
     @State private var showShareSheet = false
     @State private var showSearchFilters = false
     @State private var shareItem: Any = ""
@@ -204,16 +206,22 @@ struct LegalDocumentLedgerView: View {
             get: { pendingWarningDeleteId != nil && pendingWarningMessage != nil },
             set: { if !$0 { pendingWarningDeleteId = nil; pendingWarningMessage = nil } }
         )) {
+            TextField("解除理由", text: $deletionReasonInput)
+            TextField("承認者名", text: $deletionApprovedByInput)
             Button("キャンセル", role: .cancel) {
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                resetDeletionConfirmationState()
             }
             Button("隔離保管する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let attempt = documentWorkflowUseCase.confirmDeletion(id: id, reason: "書類台帳で管理者解除")
+                let attempt = documentWorkflowUseCase.confirmDeletion(
+                    id: id,
+                    reason: deletionReasonInput,
+                    approvedBy: deletionApprovedByInput
+                )
                 handleDeleteAttempt(attempt)
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                if case .deleted = attempt {
+                    resetDeletionConfirmationState()
+                }
             }
         } message: {
             Text(pendingWarningMessage ?? "")
@@ -269,5 +277,12 @@ struct LegalDocumentLedgerView: View {
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    private func resetDeletionConfirmationState() {
+        pendingWarningDeleteId = nil
+        pendingWarningMessage = nil
+        deletionReasonInput = ""
+        deletionApprovedByInput = ""
     }
 }

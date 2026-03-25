@@ -40,7 +40,7 @@
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 実装済み | `BooksWorkspaceView` が canonical 本流の帳簿一覧へ再編され、仕様対象帳簿は release UI から到達できる。legacy ledger は `旧台帳アーカイブ` に限定された |
 | 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と CSV/PDF export が揃った。repo 内では fixture ベースの golden 検証も追加された |
 | 8 | e-Tax UI と年分対応のズレ | 実装済み | `blueCashBasis` と 2025/2026 年分対応に加え、e-Tax 画面へ年分×様式の対応状況一覧と事前理由表示、UI テスト根拠が追加された |
-| 9 | 書類台帳の削除統制が弱い | 部分実装 | quarantine/restore と保存期間警告はあるが、`confirmDeletion` の防御が薄く、内部 purge/全削除は物理削除を行う |
+| 9 | 書類台帳の削除統制が弱い | 実装済み | 保存期間内削除は request 済み状態と理由・承認者入力を必須化し、UI・内部 purge・全削除も quarantine 統制へ統一された |
 | 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、双方とも CSV/PDF 対応になった。一方で列定義と数値の原本一致はなお追加確認が必要 |
 
 ## 実装チェックリスト
@@ -57,7 +57,7 @@
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [ ] |
 | 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [x] | [x] | [ ] |
 | 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [ ] |
-| 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [x] |
+| 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [ ] |
 | 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [x] | [x] |
 
 凡例:
@@ -371,45 +371,37 @@
 
 ### 9. 書類台帳の削除統制が弱い
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] 保存期間中の警告と admin override 要求がある
   - [x] quarantine / restore 導線がある
   - [x] compliance log が残る
   - [x] 主削除フローを支えるテストがある
-  - [ ] `confirmDeletion` の防御は十分でない
-  - [ ] 内部 purge / 全削除の物理削除経路が残る
+  - [x] `confirmDeletion` は request 済み状態・理由・承認者入力を要求する
+  - [x] 内部 purge / 全削除は document の quarantine 統制へ統一された
 - できていること:
-  - `DocumentDeletionStatus` に `active/quarantined` があり、保存期間中は warning を返す
-  - `requestDeletion` は保存期間内なら `adminOverrideRequired` を返す
-  - `performDeletion` は実ファイルを quarantine へ移動し、restore 導線もある
-  - compliance log は `adminOverrideRequested` `adminOverrideApproved` `documentQuarantined` `documentDeleted` `documentRestored` を記録する
-- まだ足りていないこと:
-  - `confirmDeletion` は「理由が空でない」ことしか見ず、`requestDeletion` 通過済み状態を要求しない
-  - `approvedBy` 既定値は `"device-owner"` 固定
-  - UI は固定理由文字列で `confirmDeletion` を呼ぶ
-  - `purgeDocumentRecords` は record を物理削除する
-  - `SettingsMaintenanceUseCase.deleteAllData()` は document file を物理削除する
-  - `deleteAllData()` は `quarantineFileName` を削除対象に含めていない
+  - `PPDocumentRecord` は `deletionRequestedAt` を持ち、保存期間内削除は request 済み状態を保持する
+  - `confirmDeletion` は保存期間内なら request 済み状態を必須にし、理由と承認者名の空文字も拒否する
+  - `approvedBy` の既定値は廃止され、承認者名は明示入力値を `overrideApprovedBy` に保存する
+  - 取引書類画面と書類台帳画面は固定理由ではなく、理由・承認者名入力つきで管理者解除を行う
+  - `purgeDocumentRecords` は record を物理削除せず、active 書類を quarantine へ移動して record を保持する
+  - `SettingsMaintenanceUseCase.deleteAllData()` は document record / compliance log を残し、active document file を quarantine へ移す
 - 根拠コード:
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Models/PPDocumentRecord.swift:79`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Models/PPDocumentRecord.swift:170`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift:145`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift:166`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift:215`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Transactions/TransactionDocumentsView.swift:50`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/DataStore+Documents.swift:74`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceUseCase.swift:16`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Models/PPDocumentRecord.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Documents/DocumentWorkflowUseCase.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Transactions/TransactionDocumentsView.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/LegalDocumentLedgerView.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/DataStore+Documents.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Settings/SettingsMaintenanceUseCase.swift`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentWorkflowUseCaseTests.swift:100`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentWorkflowUseCaseTests.swift:114`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentWorkflowUseCaseTests.swift:150`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentAndSubLedgerTests.swift:34`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentWorkflowUseCaseTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DocumentAndSubLedgerTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/DataStoreDocumentsTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/SettingsMaintenanceUseCaseTests.swift`
 - 未確認事項:
-  - `purgeDocumentRecords` を直接固定する専用テストは repo 内で確認できない
-  - `deleteAllData()` の document/quarantine 実ファイル削除差分を検証するテストは確認できない
+  - `RestoreService` の snapshot 差し替え時 hard-delete 経路まではこの更新の対象外
 - release 影響:
-  - 日常削除フローは強化されたが、内部 purge と全削除の物理削除経路が残るため、削除統制は完了していない
+  - main path・UI・内部 purge・設定全削除の各導線で書類は quarantine 統制に揃い、保存期間内削除も request 状態と承認情報の両方が揃わないと成立しない
 
 ### 10. 固定資産帳票区分と export の粗さ
 

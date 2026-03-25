@@ -17,8 +17,24 @@ struct SettingsMaintenanceUseCase {
         let imagesToDelete = transactions().compactMap(\.receiptImagePath)
             + recurringTransactions().compactMap(\.receiptImagePath)
         let documents = documentRecords()
-        let documentFilesToDelete = documents.map(\.storedFileName)
         let secureStoreIds = Set(businessProfiles().map(\.id.uuidString))
+        let documentWorkflowUseCase = DocumentWorkflowUseCase(modelContext: modelContext)
+        let failedDocumentIds = documents.compactMap { document -> UUID? in
+            guard document.deletionStatus == .active else { return nil }
+            let attempt = documentWorkflowUseCase.quarantineForMaintenance(
+                id: document.id,
+                trigger: "設定の全データ削除"
+            )
+            if case .deleted = attempt {
+                return nil
+            }
+            return document.id
+        }
+
+        guard failedDocumentIds.isEmpty else {
+            AppLogger.dataStore.error("全データ削除を中断: 隔離保管に失敗した書類ID=\(failedDocumentIds.map(\.uuidString).joined(separator: \",\"))")
+            return
+        }
 
         deleteAll(projects())
         deleteAll(transactions())
@@ -31,16 +47,11 @@ struct SettingsMaintenanceUseCase {
         deleteAll(businessProfileEntities())
         deleteAll(taxYearProfiles())
         deleteAll(fixedAssets())
-        deleteAll(documents)
-        deleteAll(complianceLogs())
 
         do {
             try WorkflowPersistenceSupport.save(modelContext: modelContext)
             for imagePath in imagesToDelete {
                 ReceiptImageStore.deleteImage(fileName: imagePath)
-            }
-            for fileName in documentFilesToDelete {
-                ReceiptImageStore.deleteDocumentFile(fileName: fileName)
             }
             for profileId in secureStoreIds {
                 _ = ProfileSecureStore.delete(profileId: profileId)

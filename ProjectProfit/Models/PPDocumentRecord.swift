@@ -105,6 +105,7 @@ final class PPDocumentRecord {
     var issueDate: Date
     var note: String
     var deletionStatus: DocumentDeletionStatus
+    var deletionRequestedAt: Date?
     var deletionReason: String?
     var overrideApprovedAt: Date?
     var overrideApprovedBy: String?
@@ -127,6 +128,7 @@ final class PPDocumentRecord {
         issueDate: Date = Date(),
         note: String = "",
         deletionStatus: DocumentDeletionStatus = .active,
+        deletionRequestedAt: Date? = nil,
         deletionReason: String? = nil,
         overrideApprovedAt: Date? = nil,
         overrideApprovedBy: String? = nil,
@@ -149,6 +151,7 @@ final class PPDocumentRecord {
         self.issueDate = issueDate
         self.note = note
         self.deletionStatus = deletionStatus
+        self.deletionRequestedAt = deletionRequestedAt
         self.deletionReason = deletionReason
         self.overrideApprovedAt = overrideApprovedAt
         self.overrideApprovedBy = overrideApprovedBy
@@ -177,6 +180,10 @@ extension PPDocumentRecord {
 
     var isQuarantined: Bool {
         deletionStatus == .quarantined
+    }
+
+    var hasPendingDeletionRequest: Bool {
+        deletionRequestedAt != nil
     }
 }
 
