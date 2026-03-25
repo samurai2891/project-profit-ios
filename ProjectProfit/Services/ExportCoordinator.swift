@@ -182,6 +182,48 @@ enum ExportCoordinator {
         let document: WithholdingStatementDocument?
     }
 
+    @MainActor
+    private struct AccountingBookExportSource {
+        let fiscalYear: Int
+        private let support: AccountingReadSupport
+        private let projectedJournalQuery: ProjectedJournalReadModelQuery
+        private let ledgerQueryUseCase: LedgerQueryUseCase
+        private let subLedgerQueryUseCase: SubLedgerQueryUseCase
+
+        init(modelContext: ModelContext, fiscalYear: Int) {
+            let support = AccountingReadSupport(modelContext: modelContext)
+            self.fiscalYear = fiscalYear
+            self.support = support
+            self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
+            self.ledgerQueryUseCase = LedgerQueryUseCase(modelContext: modelContext)
+            self.subLedgerQueryUseCase = SubLedgerQueryUseCase(modelContext: modelContext)
+        }
+
+        func journalPayload() -> (entries: [PPJournalEntry], lines: [PPJournalLine], accounts: [PPAccount]) {
+            let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+            let projected = projectedJournalQuery.snapshot(fiscalYear: fiscalYear)
+            return (
+                entries: projected.entries,
+                lines: projected.lines,
+                accounts: legacyAccounts(for: context)
+            )
+        }
+
+        func ledgerEntries(options: LedgerExportOptions) -> [AccountingLedgerEntry] {
+            ledgerQueryUseCase.snapshot(accountId: options.accountId).entries
+        }
+
+        func subLedgerSnapshot(options: SubLedgerExportOptions) -> SubLedgerSnapshot {
+            let year = options.startDate.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear
+            return subLedgerQueryUseCase.snapshot(
+                type: options.type,
+                year: year,
+                accountFilter: options.accountFilter,
+                counterpartyFilter: options.counterpartyFilter
+            )
+        }
+    }
+
     // MARK: - Export
 
     /// 指定の帳票をフォーマットでエクスポートし、一時ファイルのURLを返す
@@ -618,20 +660,6 @@ enum ExportCoordinator {
         }
     }
 
-    private static func projectedJournalExportPayload(
-        modelContext: ModelContext,
-        fiscalYear: Int
-    ) -> (entries: [PPJournalEntry], lines: [PPJournalLine], accounts: [PPAccount]) {
-        let support = AccountingReadSupport(modelContext: modelContext)
-        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
-        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        return (
-            entries: projected.entries,
-            lines: projected.lines,
-            accounts: legacyAccounts(for: context)
-        )
-    }
-
     private static func legacyTrialBalanceReport(from report: CanonicalTrialBalanceReport) -> TrialBalanceReport {
         TrialBalanceReport(
             fiscalYear: report.fiscalYear,
@@ -720,13 +748,11 @@ enum ExportCoordinator {
         guard let fiscalYear else {
             throw ExportError.dataUnavailable
         }
+        let bookExportSource = AccountingBookExportSource(modelContext: modelContext, fiscalYear: fiscalYear)
 
         switch (target, format) {
         case (.journal, .csv):
-            let projected = projectedJournalExportPayload(
-                modelContext: modelContext,
-                fiscalYear: fiscalYear
-            )
+            let projected = bookExportSource.journalPayload()
             let csv = ReportCSVExportService.exportJournalCSV(
                 entries: projected.entries,
                 lines: projected.lines,
@@ -735,10 +761,7 @@ enum ExportCoordinator {
             return .text(csv)
 
         case (.journal, .pdf):
-            let projected = projectedJournalExportPayload(
-                modelContext: modelContext,
-                fiscalYear: fiscalYear
-            )
+            let projected = bookExportSource.journalPayload()
             let pdf = PDFExportService.exportJournalPDF(
                 entries: projected.entries,
                 lines: projected.lines,
@@ -815,9 +838,7 @@ enum ExportCoordinator {
 
         case (.ledger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
-            let entries = legacyLedgerEntries(
-                from: LedgerQueryUseCase(modelContext: modelContext).snapshot(accountId: opts.accountId).entries
-            )
+            let entries = legacyLedgerEntries(from: bookExportSource.ledgerEntries(options: opts))
             return .text(ReportCSVExportService.exportLedgerCSV(
                 accountName: opts.accountName,
                 accountCode: opts.accountCode,
@@ -826,9 +847,7 @@ enum ExportCoordinator {
 
         case (.ledger, .pdf):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
-            let entries = legacyLedgerEntries(
-                from: LedgerQueryUseCase(modelContext: modelContext).snapshot(accountId: opts.accountId).entries
-            )
+            let entries = legacyLedgerEntries(from: bookExportSource.ledgerEntries(options: opts))
             return .data(PDFExportService.exportLedgerPDF(
                 accountName: opts.accountName,
                 accountCode: opts.accountCode,
@@ -853,29 +872,17 @@ enum ExportCoordinator {
             guard let opts = subLedgerOptions else {
                 throw ExportError.subLedgerConfigurationRequired
             }
-            let year = opts.startDate.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear
-            let entries = SubLedgerQueryUseCase(modelContext: modelContext).snapshot(
-                type: opts.type,
-                year: year,
-                accountFilter: opts.accountFilter,
-                counterpartyFilter: opts.counterpartyFilter
-            ).entries
-            return .text(exportSubLedgerCSV(entries: entries))
+            let snapshot = bookExportSource.subLedgerSnapshot(options: opts)
+            return .text(exportSubLedgerCSV(entries: snapshot.entries))
 
         case (.subLedger, .pdf):
             guard let opts = subLedgerOptions else {
                 throw ExportError.subLedgerConfigurationRequired
             }
-            let year = opts.startDate.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear
-            let entries = SubLedgerQueryUseCase(modelContext: modelContext).snapshot(
-                type: opts.type,
-                year: year,
-                accountFilter: opts.accountFilter,
-                counterpartyFilter: opts.counterpartyFilter
-            ).entries
+            let snapshot = bookExportSource.subLedgerSnapshot(options: opts)
             return .data(PDFExportService.exportSubLedgerPDF(
-                entries: entries,
-                fiscalYear: year,
+                entries: snapshot.entries,
+                fiscalYear: snapshot.summary.periodStart.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear,
                 title: opts.type.title
             ))
 

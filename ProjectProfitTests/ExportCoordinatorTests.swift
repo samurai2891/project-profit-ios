@@ -279,6 +279,15 @@ final class ExportCoordinatorTests: XCTestCase {
             year: 2025,
             month: 3
         )
+        insertOrphanLegacySupplementalEntry(
+            sourceKey: "depreciation:\(UUID().uuidString):2025",
+            memo: "Legacy Depreciation Supplemental",
+            debitAccountId: AccountingConstants.depreciationExpenseAccountId,
+            creditAccountId: AccountingConstants.accumulatedDepreciationAccountId,
+            amount: 60_000,
+            year: 2025,
+            month: 4
+        )
 
         let journalURL = try ExportCoordinator.export(
             target: .journal,
@@ -321,6 +330,115 @@ final class ExportCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(subLedgerCSV.contains("Canonical Manual Export"))
         XCTAssertFalse(subLedgerCSV.contains("Orphan Legacy Supplemental"))
+        XCTAssertFalse(journalCSV.contains("減価償却費"))
+        XCTAssertFalse(ledgerCSV.contains("減価償却費"))
+        XCTAssertFalse(subLedgerCSV.contains("減価償却費"))
+    }
+
+    func testBookExportsMatchCanonicalReadModelsOnSharedFixture() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 12_000,
+            year: 2025,
+            month: 2,
+            description: "Canonical Manual Export",
+            entryType: .normal,
+            sourceCandidateId: UUID()
+        )
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 50_000,
+            year: 2025,
+            month: 1,
+            description: "Canonical Opening Export",
+            entryType: .opening
+        )
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.salesAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 8_000,
+            year: 2025,
+            month: 12,
+            description: "Canonical Closing Export",
+            entryType: .closing
+        )
+        insertOrphanLegacySupplementalEntry(
+            sourceKey: "manual:\(UUID().uuidString)",
+            memo: "Orphan Legacy Supplemental",
+            debitAccountId: "acct-rent",
+            creditAccountId: AccountingConstants.cashAccountId,
+            amount: 9_999,
+            year: 2025,
+            month: 3
+        )
+        insertOrphanLegacySupplementalEntry(
+            sourceKey: "depreciation:\(UUID().uuidString):2025",
+            memo: "Legacy Depreciation Supplemental",
+            debitAccountId: AccountingConstants.depreciationExpenseAccountId,
+            creditAccountId: AccountingConstants.accumulatedDepreciationAccountId,
+            amount: 90_000,
+            year: 2025,
+            month: 4
+        )
+
+        let support = AccountingReadSupport(modelContext: context)
+        let projected = support.projectedCanonicalJournals(fiscalYear: 2025)
+
+        let journalURL = try ExportCoordinator.export(
+            target: .journal,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+        let ledgerURL = try ExportCoordinator.export(
+            target: .ledger,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            ledgerOptions: .init(accountId: "acct-rent", accountName: "地代家賃", accountCode: "622")
+        )
+        let subLedgerURL = try ExportCoordinator.export(
+            target: .subLedger,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            subLedgerOptions: .init(
+                type: .expenseBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: "acct-rent",
+                counterpartyFilter: nil
+            )
+        )
+
+        let journalCSV = try String(contentsOf: journalURL, encoding: .utf8)
+        let ledgerCSV = try String(contentsOf: ledgerURL, encoding: .utf8)
+        let subLedgerCSV = try String(contentsOf: subLedgerURL, encoding: .utf8)
+
+        XCTAssertEqual(csvDataRowCount(journalCSV), projected.lines.count)
+        XCTAssertEqual(csvDataRowCount(ledgerCSV), 1)
+        XCTAssertEqual(csvDataRowCount(subLedgerCSV), 1)
+
+        XCTAssertTrue(journalCSV.contains("manual:"))
+        XCTAssertTrue(journalCSV.contains("opening:"))
+        XCTAssertTrue(journalCSV.contains("closing:"))
+        XCTAssertTrue(journalCSV.contains("Canonical Manual Export"))
+        XCTAssertTrue(journalCSV.contains("Canonical Opening Export"))
+        XCTAssertTrue(journalCSV.contains("Canonical Closing Export"))
+        XCTAssertTrue(ledgerCSV.contains("Canonical Manual Export"))
+        XCTAssertTrue(subLedgerCSV.contains("Canonical Manual Export"))
+        XCTAssertTrue(subLedgerCSV.contains("Canonical Manual Export"))
+
+        XCTAssertFalse(journalCSV.contains("Orphan Legacy Supplemental"))
+        XCTAssertFalse(journalCSV.contains("Legacy Depreciation Supplemental"))
+        XCTAssertFalse(ledgerCSV.contains("Orphan Legacy Supplemental"))
+        XCTAssertFalse(ledgerCSV.contains("Legacy Depreciation Supplemental"))
+        XCTAssertFalse(subLedgerCSV.contains("Orphan Legacy Supplemental"))
+        XCTAssertFalse(subLedgerCSV.contains("Legacy Depreciation Supplemental"))
     }
 
     func testEtaxExportRequiresFormOptionAfterPreflightPasses() throws {
@@ -556,6 +674,18 @@ final class ExportCoordinatorTests: XCTestCase {
             fatalError("Canonical account not found for \(legacyAccountId)")
         }
         return account
+    }
+
+    private func csvDataRowCount(_ text: String) -> Int {
+        let normalized = text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return 0 }
+        let lines = normalized
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return max(lines.count - 1, 0)
     }
 
     private func canonicalAccountId(_ legacyAccountId: String) -> UUID {

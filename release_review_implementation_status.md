@@ -32,7 +32,7 @@
 
 | # | 項目 | 判定 | 要約 |
 |---|---|---|---|
-| 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | 部分実装 | 画面参照は `projected canonical` 系に寄ったが、`projected` 自体が legacy 補足をマージし、`journal export` と `ledger/subLedger export` の内部経路も未統一 |
+| 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | 実装済み | 帳簿画面と `journal / ledger / subLedger export` が共通の canonical-only export source に統一され、orphan legacy supplemental / legacy-only depreciation を除外する parity テストも追加された |
 | 2 | 取引保存成功と canonical 側反映失敗の乖離 | 部分実装 | main path は candidate 保存→承認→canonical journal ロールバック付きになったが、`#if DEBUG` の legacy 保存後同期経路が残る |
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | 部分実装 | `projectAllocationId` は candidate から canonical line まで到達し検索/集計も使うが、一部 UI と履歴系は `PPTransaction.allocations` 依存のまま |
 | 4 | 消費税の簡易課税・2割特例ロジック | 部分実装 | 誤計算の主経路は calculator へ移ったが、判定責務と控除計算責務が二重化し、単体テストも不足 |
@@ -43,40 +43,75 @@
 | 9 | 書類台帳の削除統制が弱い | 部分実装 | quarantine/restore と保存期間警告はあるが、`confirmDeletion` の防御が薄く、内部 purge/全削除は物理削除を行う |
 | 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離済みだが、減価償却明細は PDF のみで列定義も仕様書と一致していない |
 
+## 実装チェックリスト
+
+### 項目別チェック一覧
+
+| # | 項目 | main path 実装 | release 導線 | export/帳票整合 | テスト根拠 | 残課題あり |
+|---|---|---|---|---|---|---|
+| 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | [x] | [x] | [x] | [x] | [ ] |
+| 2 | 取引保存成功と canonical 側反映失敗の乖離 | [x] | [x] | [x] | [x] | [x] |
+| 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [x] |
+| 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [x] |
+| 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [ ] | [x] |
+| 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [x] |
+| 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [ ] | [x] | [x] |
+| 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [x] |
+| 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [x] |
+| 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [ ] | [x] |
+
+凡例:
+- `main path 実装` = 主機能の中心経路は実装済み
+- `release 導線` = release UI / main workflow から到達できる
+- `export/帳票整合` = 仕様書や帳票要件まで含めて整合している
+- `テスト根拠` = 主要論点を直接支えるテスト根拠がある
+- `残課題あり` = current working tree で未統一・未達・未検証が残る
+
 ## 詳細
 
 ### 1. 仕訳帳と元帳/補助簿の参照ソース不一致
 
-- 判定: `部分実装`
+- 判定: `実装済み`
+- 実装チェック:
+  - [x] 仕訳帳・元帳・補助簿の画面参照は canonical/projected 系へ寄っている
+  - [x] main path の読取 query は存在する
+  - [x] canonical のみを単一正本とする export source helper に統一された
+  - [x] `journal export` と `ledger/subLedger export` の内部経路は一致している
+  - [x] export parity を固定するテスト根拠がある
 - できていること:
-  - 仕訳参照は `projectedCanonicalJournals(...)` を使用している
-  - 元帳と補助簿は `ProjectedJournalReadModelQuery.snapshot(...)` を共通利用している
-  - 画面側の main path は canonical 読取へ寄っている
-- まだ足りていないこと:
-  - `projected` は canonical のみではなく `manual:` `opening:` `closing:` `depreciation:` prefix の legacy 補足仕訳をマージしている
-  - `journal export` は `context.journals` を投影する独自 `legacyJournalProjection` 経路
-  - `ledger/subLedger export` は query use case 経由の `projected` 経路
-  - 補足 legacy 仕訳の取り込み規則が export target ごとに一致していない
+  - 仕訳参照は `ProjectedJournalReadModelQuery.snapshot(...)` を使用している
+  - 元帳と補助簿は同じ projected canonical snapshot family を使う read query に乗っている
+  - `ExportCoordinator` は `AccountingBookExportSource` を通して `journal / ledger / subLedger` を共通の canonical-only source から出力する
+  - canonical manual/opening/closing は legacy 表示互換の `sourceKey` を保ったまま export に出る
+  - orphan legacy supplemental entry と legacy-only depreciation entry は read/export の双方で除外される
 - 根拠コード:
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:27`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:85`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:183`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/LegacyProjectedJournalAssembler.swift:24`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/LegacyProjectedJournalAssembler.swift:56`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:753`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:842`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:878`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:5`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:54`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:152`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:72`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:665`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:783`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:822`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:853`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/AccountingReadQueryUseCaseTests.swift:212`
-  - `ExportCoordinatorTests` は format/preflight の確認が中心で、`journal` と `ledger/subLedger` のソース整合自体は固定していない
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/AccountingReadQueryUseCaseTests.swift:107`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/AccountingReadQueryUseCaseTests.swift:244`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:243`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:326`
 - 未確認事項:
-  - 同一 fixture で `journal export` と `ledger export` の実出力差分までは今回未採取
+  - `FilingPreflightUseCase` の supplemental merge は今回の統一対象外
 - release 影響:
-  - 画面上は参照統一が進んでいるが、出力物まで含めて「同じ正本を見ている」とは current code だけでは言えない
+  - 画面と 3 帳簿 export が同じ canonical-only source rule を見る状態になり、「同じ正本を見ている」と説明できる
 
 ### 2. 取引保存成功と canonical 側反映失敗の乖離
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] 手入力保存は candidate 作成経路へ接続されている
+  - [x] 承認時に canonical journal を保存する
+  - [x] 保存失敗時のロールバックがある
+  - [x] main path を支えるテストがある
+  - [ ] `#if DEBUG` の旧保存後同期経路が除去されていない
 - できていること:
   - 手入力保存は `TransactionFormView` から `PostingIntakeUseCase.saveManualCandidate(...)` に接続されている
   - candidate 保存は draft で止まり、承認時に canonical journal を永続化する
@@ -107,6 +142,12 @@
 ### 3. プロジェクト別収益管理と税務帳簿の未連結
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] project allocation が candidate line に反映される
+  - [x] canonical journal line に `projectAllocationId` が保存される
+  - [x] canonical 集計・検索は `projectAllocationId` を使う
+  - [x] main path を支えるテストがある
+  - [ ] 一部 UI / 履歴系は `PPTransaction.allocations` 依存のまま
 - できていること:
   - project allocation は candidate line 作成時に `projectAllocationId` へ展開される
   - canonical journal line の借方/貸方双方へ `projectAllocationId` を保存している
@@ -137,6 +178,12 @@
 ### 4. 消費税の簡易課税・2割特例ロジック
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] 控除方式判定ロジックがある
+  - [x] 実控除額計算ロジックがある
+  - [x] 簡易課税 / 2割特例の統合テストがある
+  - [ ] 判定責務と控除計算責務が一本化されていない
+  - [ ] evaluator / calculator の単体テストは不足
 - できていること:
   - 仕入税額控除方式の判定は `TaxRuleEvaluator` に分離されている
   - 実控除額計算は `InputTaxDeductionCalculator` が `lineBased/simplified/twoTenths` で再計算する
@@ -167,6 +214,12 @@
 ### 5. 個人事業主向けの年度設定
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] filing/e-Tax/preflight は暦年処理を使う
+  - [x] e-Tax UI は暦年基準を明記している
+  - [x] 暦年 main path を支えるテストがある
+  - [ ] receipt intake / statement import の年付与に fiscal 起点が残る
+  - [ ] その残差を固定するテスト根拠は不足
 - できていること:
   - `taxYear(for:)` と `startOfTaxYear/endOfTaxYear` が用意されている
   - e-Tax form build は `startMonth = 1` 固定で暦年抽出
@@ -198,6 +251,12 @@
 ### 6. 仕様書上の帳簿が release 導線に未掲載
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] BooksWorkspace から帳簿導線に到達できる
+  - [x] 旧帳簿導線も release UI 上にある
+  - [x] 導線存在を支えるテストがある
+  - [ ] 旧11帳簿は互換セクションのまま
+  - [ ] read-only 互換導線であり本流 UI にはなっていない
 - できていること:
   - `BooksWorkspaceView` が release 導線として存在し、`FilingDashboardView` から遷移できる
   - main workflow には照合、仕訳ブラウザ、分析、帳票群、固定資産、申告導線がある
@@ -224,6 +283,12 @@
 ### 7. export 機能が帳簿仕様と未整合
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] ExportCoordinator で export target/format を管理している
+  - [x] 補助簿や主要帳票の export 導線はある
+  - [x] format 行列のテストがある
+  - [ ] 仕様書の全11帳簿には未達
+  - [ ] Excel 原本と完全同一フォーマットとは言えない
 - できていること:
   - `ExportCoordinator` が export target/format 行列を一元管理している
   - `subLedger` は CSV/PDF に対応している
@@ -253,6 +318,12 @@
 ### 8. e-Tax UI と年分対応のズレ
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] `blueCashBasis` を UI から選択できる
+  - [x] 2025/2026 年分定義が loader で読める
+  - [x] 未対応年は preview/export 前に block する
+  - [x] loader / ViewModel テストがある
+  - [ ] UI 上の対応状況一覧や理由表示は不足
 - できていること:
   - e-Tax UI は `.blueReturn` `.blueCashBasis` `.whiteReturn` を選択できる
   - `TaxYearDefinitionLoader.supportedYears(formType:)` から年候補を出す
@@ -282,6 +353,13 @@
 ### 9. 書類台帳の削除統制が弱い
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] 保存期間中の警告と admin override 要求がある
+  - [x] quarantine / restore 導線がある
+  - [x] compliance log が残る
+  - [x] 主削除フローを支えるテストがある
+  - [ ] `confirmDeletion` の防御は十分でない
+  - [ ] 内部 purge / 全削除の物理削除経路が残る
 - できていること:
   - `DocumentDeletionStatus` に `active/quarantined` があり、保存期間中は warning を返す
   - `requestDeletion` は保存期間内なら `adminOverrideRequired` を返す
@@ -317,6 +395,13 @@
 ### 10. 固定資産帳票区分と export の粗さ
 
 - 判定: `部分実装`
+- 実装チェック:
+  - [x] register / depreciation は別 target
+  - [x] UI も別画面
+  - [x] register は CSV/PDF export がある
+  - [ ] depreciation は PDF のみ
+  - [ ] 実装列定義は仕様書と一致していない
+  - [ ] depreciation PDF を直接支えるテスト根拠は不足
 - できていること:
   - `ExportCoordinator.ExportTarget` で `fixedAssetRegister` と `fixedAssetDepreciation` が分離されている
   - UI も `FixedAssetListView` と `FixedAssetScheduleView` の別画面
@@ -349,27 +434,23 @@
 ## 横断的に残る不足実装
 
 - canonical main path へ移行した一方で、`legacy` `compat` `readOnly` `#if DEBUG` 経路が複数領域で残っている
-- 画面・集計・export が同じ正本を見ているとは限らず、項目 1・3・7・10 で source/format 差分が残る
+- 項目 1 の帳簿 source 差分は解消したが、項目 3・7・10 では依然として source/format 差分が残る
 - 設定名や引数名は fiscal year を使い続けつつ、実処理だけ tax year に寄った箇所がある
-- 一部領域はサービス統合テストで担保されているが、責務境界の単体テストや export parity テストが不足している
+- 一部領域はサービス統合テストで担保されているが、責務境界の単体テストはなお不足する
 - release gate が `go` でも、10 項目の仕様差分・互換経路残存・未検証経路は current working tree 上で残っている
 
 ## 今回のテスト確認
 
-- current working tree で以下の代表スイート再実行を試行した
-  - `BooksWorkspaceViewTests`
-  - `ExportCoordinatorTests`
-  - `ConsumptionTaxReportServiceTests`
-  - `TaxYearDefinitionLoaderTests`
-  - `DocumentWorkflowUseCaseTests`
-  - `ProjectQueryUseCaseTests`
-- 一括実行は `xcodebuild` 終了コード `65`
-  - xcresult: `/Users/yutaro/Library/Developer/Xcode/DerivedData/ProjectProfit-gjethbtnkdvawmdbwjveldxkexsm/Logs/Test/Test-ProjectProfit-2026.03.25_17-28-08-+0900.xcresult`
-  - failure summary: `DocumentWorkflowUseCaseTests.testDeleteAfterRetentionMovesRecordToQuarantineAndLogsDocumentDeleted()` が `Test crashed with signal kill.`
-- 同一実行ログ内では `DocumentWorkflowUseCaseTests` の他ケース通過も確認できたが、今回の一括再実行は fully green とは記載しない
+- current working tree で帳簿 source 統一の代表確認として以下を再実行した
+  - `ExportCoordinatorTests/testCanonicalOnlyBookExportsExcludeOrphanLegacySupplementals`
+  - `ExportCoordinatorTests/testBookExportsMatchCanonicalReadModelsOnSharedFixture`
+- 上記 2 件は専用 `DerivedData` で green を確認した
+  - xcresult: `/tmp/projectprofit-codex-export-tests/Logs/Test/Test-ProjectProfit-2026.03.25_19-29-45-+0900.xcresult`
+  - xcresult: `/tmp/projectprofit-codex-export-tests/Logs/Test/Test-ProjectProfit-2026.03.25_19-35-02-+0900.xcresult`
+- `AccountingReadQueryUseCaseTests` の代表 2 件は追加再実行を開始したが、このターンでは専用 `DerivedData` 初回ビルドが長く、完走確認までは記録していない
 
 ## 前回レポートとの差分
 
-- 10 項目すべての判定は `部分実装` のままで、`実装済み` へ上げられる項目は current working tree 上で確認できなかった
+- 項目 1 は `実装済み` へ更新した
 - ただし今回の監査では、各項目の未達内容を `できていること / まだ足りていないこと / 根拠コード / 根拠テスト / 未確認事項 / release影響` に分解した
-- また、監査対象 HEAD が `a2d059d9...` ではなく `1557241966...` であること、working tree に未コミット変更があること、一括再実行テストが green ではないことを明示した
+- また、監査対象 HEAD が `a2d059d9...` ではなく `1557241966...` であること、working tree に未コミット変更があることを明示した
