@@ -37,7 +37,7 @@
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | 実装済み | project/history の表示系も canonical read model に統一され、`projectAllocationId` を案件別集計・履歴・詳細表示まで一貫利用する |
 | 4 | 消費税の簡易課税・2割特例ロジック | 実装済み | 判定と控除計算は decision object ベースに一本化され、簡易課税のみなし仕入率も `TaxYearPack` 正本へ統一、単体/統合テストで境界が固定された |
 | 5 | 個人事業主向けの年度設定 | 実装済み | filing/e-Tax/preflight に加えて、証憑取込・statement import・Approval Queue・e-Tax 命名も暦年 `taxYear` 基準へ統一された |
-| 6 | 仕様書上の帳簿が release 導線に未掲載 | 部分実装 | Books 導線自体は release 画面にあるが、旧11帳簿は `互換` セクションかつ `readOnly` 導線 |
+| 6 | 仕様書上の帳簿が release 導線に未掲載 | 実装済み | `BooksWorkspaceView` が canonical 本流の帳簿一覧へ再編され、仕様対象帳簿は release UI から到達できる。legacy ledger は `旧台帳アーカイブ` に限定された |
 | 7 | export 機能が帳簿仕様と未整合 | 部分実装 | `ExportCoordinator` で対象は広がったが、仕様書の「全11帳簿」「Excel 原本と完全同一フォーマット」には一致していない |
 | 8 | e-Tax UI と年分対応のズレ | 部分実装 | `blueCashBasis` と 2026 年分対応はコード上解消済みだが、UI は対応状況一覧を持たず未対応年の説明も事前表示しない |
 | 9 | 書類台帳の削除統制が弱い | 部分実装 | quarantine/restore と保存期間警告はあるが、`confirmDeletion` の防御が薄く、内部 purge/全削除は物理削除を行う |
@@ -54,7 +54,7 @@
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [ ] |
 | 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [ ] |
 | 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [x] | [ ] |
-| 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [x] |
+| 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [ ] |
 | 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [ ] | [x] | [x] |
 | 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [x] |
 | 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [x] |
@@ -260,35 +260,39 @@
 
 ### 6. 仕様書上の帳簿が release 導線に未掲載
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] BooksWorkspace から帳簿導線に到達できる
-  - [x] 旧帳簿導線も release UI 上にある
+  - [x] 仕様対象帳簿が canonical 本流セクションに載っている
   - [x] 導線存在を支えるテストがある
-  - [ ] 旧11帳簿は互換セクションのまま
-  - [ ] read-only 互換導線であり本流 UI にはなっていない
+  - [x] 旧11帳簿は互換セクションから本流導線へ移された
+  - [x] legacy ledger は `旧台帳アーカイブ` に縮小され、本流 UI ではない
 - できていること:
   - `BooksWorkspaceView` が release 導線として存在し、`FilingDashboardView` から遷移できる
-  - main workflow には照合、仕訳ブラウザ、分析、帳票群、固定資産、申告導線がある
-  - 旧帳簿導線は `BooksWorkspaceView` に配置され、`DEBUG` 限定ではない
-- まだ足りていないこと:
-  - 旧11帳簿は `11帳簿（互換）` セクションとして分離されている
-  - 互換帳簿は `LedgerDataStore(accessMode: .readOnly)` で起動される
-  - `LedgerHomeView` でも read-only 時は追加 UI を出さず、作成/編集本流ではない
+  - `BooksWorkspaceView` は `帳簿ワークフロー` と別に `帳簿・台帳` セクションを持ち、`仕訳帳` `総勘定元帳` `現金出納帳` `預金出納帳` `売掛帳` `買掛帳` `経費帳` `固定資産台帳` `棚卸台帳` `白色簡易帳簿` を release 本流として案内する
+  - `仕訳帳` は `JournalBrowserView`、`総勘定元帳` は `LedgerView`、補助簿群は canonical `SubLedgerView`、`固定資産台帳` は `FixedAssetListView`、`棚卸台帳` は `InventoryInputView` に接続される
+  - `SubLedgerType` と read model は `depositBook` を追加し、預金系勘定を canonical 側から読める
+  - `白色簡易帳簿` は新規 `WhiteTaxBookkeepingQueryUseCase` / `WhiteTaxBookkeepingView` により canonical read-only 画面として追加された
+  - legacy ledger は `旧台帳アーカイブ` に縮小され、`交通費精算書（互換）` と `旧台帳一覧` の参照導線のみを残す
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Filing/Presentation/Screens/FilingDashboardView.swift:200`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:100`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:322`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:324`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:503`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Views/LedgerHomeView.swift:23`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:18`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:56`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:138`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/DataStore+SubLedger.swift:5`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingBookReadModelQueries.swift:176`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/WhiteTaxBookkeepingReadSupport.swift:27`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/WhiteTaxBookkeepingView.swift:1`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/BooksWorkspaceViewTests.swift:18`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/BooksWorkspaceViewTests.swift:32`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/BooksWorkspaceViewTests.swift:54`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/WorkflowNavigationTests.swift:28`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/AccountingReadQueryUseCaseTests.swift:441`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/WhiteTaxBookkeepingQueryUseCaseTests.swift:26`
 - 未確認事項:
-  - 旧11帳簿の個別画面が release UX 上どこまで案内されるかは UI 仕様書の明文化を repo 内で確認していない
+  - 項目 6 の release 導線コードと対象テストは更新済みだが、この更新時点では repo 全体フルテスト完走までは再確認していない
 - release 影響:
-  - 導線自体は存在するが、仕様書上の帳簿群は current 実装では「互換・参照専用」として扱われている
+  - 仕様対象の帳簿群は release UI の canonical 本流から到達できる状態になり、「仕様書上の帳簿が release 導線に未掲載」という指摘には current working tree 上で対応できている
 
 ### 7. export 機能が帳簿仕様と未整合
 
@@ -305,7 +309,7 @@
   - `legacyLedgerBook` は CSV/PDF/XLSX を持つ
 - まだ足りていないこと:
   - 仕様書は「全11帳簿」「CSV/PDF で Excel 原本と完全同一フォーマット」を要求している
-  - current `SubLedgerType` は 4 種で、仕様書の 11 帳簿全体には対応していない
+  - current `SubLedgerType` は 5 種まで拡張されたが、仕様書の 11 帳簿全体に対する export 整合までは未達
   - `subLedger` CSV は汎用ヘッダ `date,accountCode,accountName...` で、帳簿別 Excel 列定義とは一致しない
   - `transactions` は CSV のみ、`etax` は CSV/XTX のみなど、仕様書帳簿の行列と export target 行列は一致していない
 - 根拠コード:

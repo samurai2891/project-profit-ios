@@ -132,6 +132,8 @@ struct SubLedgerView: View {
         switch type {
         case .cashBook:
             cashBookContent
+        case .depositBook:
+            depositBookContent
         case .expenseBook:
             expenseBookContent
         case .accountsReceivableBook:
@@ -261,6 +263,71 @@ extension SubLedgerView {
                 .frame(width: 76, alignment: .trailing)
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - 預金出納帳 (Deposit Book)
+
+extension SubLedgerView {
+
+    private var depositBookContent: some View {
+        List {
+            summarySection
+            depositBookHeader
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                depositBookRow(entry)
+                    .listRowBackground(rowBackground(index))
+            }
+            taxMarkFooter
+        }
+        .listStyle(.plain)
+    }
+
+    private var depositBookHeader: some View {
+        HStack(spacing: 0) {
+            Text("月日")
+                .frame(width: 44, alignment: .leading)
+            Text("摘要")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("科目")
+                .frame(width: 90, alignment: .leading)
+            Text("預入")
+                .frame(width: 76, alignment: .trailing)
+            Text("引出")
+                .frame(width: 76, alignment: .trailing)
+            Text("残高")
+                .frame(width: 76, alignment: .trailing)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    private func depositBookRow(_ entry: SubLedgerEntry) -> some View {
+        HStack(spacing: 0) {
+            Text(monthDay(entry.date))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+
+            Text(entryDescription(entry))
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(entry.accountName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 90, alignment: .leading)
+
+            CurrencyText(amount: entry.debit, font: .caption, emptyWhenZero: true)
+                .frame(width: 76, alignment: .trailing)
+
+            CurrencyText(amount: entry.credit, font: .caption, emptyWhenZero: true)
+                .frame(width: 76, alignment: .trailing)
+
+            CurrencyText(amount: entry.runningBalance, font: .caption.weight(.medium))
+                .frame(width: 76, alignment: .trailing)
+        }
     }
 }
 

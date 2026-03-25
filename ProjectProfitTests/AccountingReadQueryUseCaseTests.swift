@@ -241,6 +241,38 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertTrue(snapshot.expenseAccounts.contains(where: { $0.id == "acct-rent" }))
     }
 
+    func testSubLedgerQueryUseCaseSupportsDepositBookOnCanonicalReadModel() {
+        _ = mutations(dataStore).addManualJournalEntry(
+            date: makeDate(year: 2025, month: 8, day: 1),
+            memo: "bank deposit",
+            lines: [
+                (accountId: AccountingConstants.bankAccountId, debit: 50_000, credit: 0, memo: ""),
+                (accountId: AccountingConstants.salesAccountId, debit: 0, credit: 50_000, memo: ""),
+            ]
+        )
+        _ = mutations(dataStore).addManualJournalEntry(
+            date: makeDate(year: 2025, month: 8, day: 2),
+            memo: "bank withdrawal",
+            lines: [
+                (accountId: "acct-rent", debit: 12_000, credit: 0, memo: ""),
+                (accountId: AccountingConstants.bankAccountId, debit: 0, credit: 12_000, memo: ""),
+            ]
+        )
+
+        let snapshot = SubLedgerQueryUseCase(modelContext: context).snapshot(type: .depositBook, year: 2025)
+        let expectedEntries = dataStore.getSubLedgerEntries(
+            type: .depositBook,
+            startDate: makeDate(year: 2025, month: 1, day: 1),
+            endDate: makeDate(year: 2025, month: 12, day: 31)
+        )
+
+        XCTAssertEqual(snapshot.entries.map(\.id), expectedEntries.map(\.id))
+        XCTAssertEqual(snapshot.entries.map(\.runningBalance), expectedEntries.map(\.runningBalance))
+        XCTAssertEqual(snapshot.summary.count, expectedEntries.count)
+        XCTAssertEqual(snapshot.summary.debitTotal, expectedEntries.reduce(0) { $0 + $1.debit })
+        XCTAssertEqual(snapshot.summary.creditTotal, expectedEntries.reduce(0) { $0 + $1.credit })
+    }
+
     func testProjectedReadModelsExcludeLegacyOnlyDepreciationEntries() {
         let asset = try! XCTUnwrap(
             dataStore.addFixedAsset(

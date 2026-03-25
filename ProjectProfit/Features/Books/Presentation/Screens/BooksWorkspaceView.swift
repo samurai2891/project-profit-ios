@@ -11,10 +11,21 @@ struct BooksWorkspaceView: View {
     }
 
     enum LegacyLedgerDestinationID: String, Equatable {
-        case depositBooks
         case transportationExpense
-        case whiteTaxBookkeeping
         case compatibilityHome
+    }
+
+    enum ReleaseBookDestinationID: String, Equatable {
+        case journalBook
+        case generalLedger
+        case cashBook
+        case depositBook
+        case accountsReceivableBook
+        case accountsPayableBook
+        case expenseBook
+        case fixedAssetLedger
+        case inventoryLedger
+        case whiteTaxBookkeeping
     }
 
     struct WorkflowItem: Equatable {
@@ -31,10 +42,79 @@ struct BooksWorkspaceView: View {
         let destinationID: LegacyLedgerDestinationID
     }
 
+    struct ReleaseBookItem: Equatable {
+        let icon: String
+        let title: String
+        let subtitle: String
+        let destinationID: ReleaseBookDestinationID
+    }
+
     static let reconciliationTitle = BankCardReconciliationView.titleText
     static let reconciliationSubtitle = "明細取込と未照合チェック"
     static let analyticsTitle = "分析レポート"
     static let analyticsSubtitle = "収益・費用・月別推移を確認"
+    static let releaseBookItems: [ReleaseBookItem] = [
+        ReleaseBookItem(
+            icon: "book.pages",
+            title: "仕訳帳",
+            subtitle: "仕訳一覧から日付・摘要・勘定を確認",
+            destinationID: .journalBook
+        ),
+        ReleaseBookItem(
+            icon: "book.closed.fill",
+            title: "総勘定元帳",
+            subtitle: "勘定科目別の取引履歴",
+            destinationID: .generalLedger
+        ),
+        ReleaseBookItem(
+            icon: "banknote",
+            title: "現金出納帳",
+            subtitle: "現金勘定の増減明細",
+            destinationID: .cashBook
+        ),
+        ReleaseBookItem(
+            icon: "building.columns",
+            title: "預金出納帳",
+            subtitle: "預金勘定の入出金と残高推移",
+            destinationID: .depositBook
+        ),
+        ReleaseBookItem(
+            icon: "creditcard.and.123",
+            title: "売掛帳",
+            subtitle: "売掛金の増減明細",
+            destinationID: .accountsReceivableBook
+        ),
+        ReleaseBookItem(
+            icon: "cart.badge.minus",
+            title: "買掛帳",
+            subtitle: "買掛金の増減明細",
+            destinationID: .accountsPayableBook
+        ),
+        ReleaseBookItem(
+            icon: "chart.bar.xaxis",
+            title: "経費帳",
+            subtitle: "費用科目の明細",
+            destinationID: .expenseBook
+        ),
+        ReleaseBookItem(
+            icon: "shippingbox",
+            title: "固定資産台帳",
+            subtitle: "固定資産の取得・償却状況",
+            destinationID: .fixedAssetLedger
+        ),
+        ReleaseBookItem(
+            icon: "cart",
+            title: "棚卸台帳",
+            subtitle: "棚卸高・仕入高・売上原価の管理",
+            destinationID: .inventoryLedger
+        ),
+        ReleaseBookItem(
+            icon: "text.book.closed",
+            title: "白色簡易帳簿",
+            subtitle: "白色申告向けの収支集計を確認",
+            destinationID: .whiteTaxBookkeeping
+        ),
+    ]
     static let workflowItems: [WorkflowItem] = [
         WorkflowItem(
             icon: "building.columns.circle",
@@ -57,27 +137,15 @@ struct BooksWorkspaceView: View {
     ]
     static let legacyLedgerItems: [LegacyLedgerItem] = [
         LegacyLedgerItem(
-            icon: "building.columns",
-            title: "預金出納帳",
-            subtitle: "旧台帳の預金出納帳を参照",
-            destinationID: .depositBooks
-        ),
-        LegacyLedgerItem(
             icon: "tram",
-            title: "交通費精算書",
+            title: "交通費精算書（互換）",
             subtitle: "旧台帳の交通費精算書を参照",
             destinationID: .transportationExpense
         ),
         LegacyLedgerItem(
-            icon: "text.book.closed",
-            title: "白色申告用 簡易帳簿",
-            subtitle: "旧台帳の白色申告帳簿を参照",
-            destinationID: .whiteTaxBookkeeping
-        ),
-        LegacyLedgerItem(
             icon: "books.vertical",
-            title: "11帳簿管理",
-            subtitle: "互換帳簿をまとめて確認",
+            title: "旧台帳一覧",
+            subtitle: "互換台帳を読み取り専用で参照",
             destinationID: .compatibilityHome
         ),
     ]
@@ -103,6 +171,7 @@ struct BooksWorkspaceView: View {
                 introductionCard
                 statusCard
                 workflowSection
+                releaseBooksSection
                 reportsSection
                 assetManagementSection
                 filingSection
@@ -173,40 +242,17 @@ struct BooksWorkspaceView: View {
         )
     }
 
+    private var releaseBooksSection: some View {
+        section(
+            title: "帳簿・台帳",
+            rows: Self.releaseBookItems.map(releaseBookRow)
+        )
+    }
+
     private var reportsSection: some View {
         section(
             title: "帳票・集計",
             rows: [
-                WorkspaceRow(
-                    icon: "book.closed.fill",
-                    title: "総勘定元帳",
-                    subtitle: "勘定科目別の取引履歴",
-                    destination: AnyView(LedgerView())
-                ),
-                WorkspaceRow(
-                    icon: "banknote",
-                    title: "現金出納帳",
-                    subtitle: "現金勘定の増減明細",
-                    destination: AnyView(SubLedgerView(type: .cashBook))
-                ),
-                WorkspaceRow(
-                    icon: "creditcard.and.123",
-                    title: "売掛帳",
-                    subtitle: "売掛金の増減明細",
-                    destination: AnyView(SubLedgerView(type: .accountsReceivableBook))
-                ),
-                WorkspaceRow(
-                    icon: "cart.badge.minus",
-                    title: "買掛帳",
-                    subtitle: "買掛金の増減明細",
-                    destination: AnyView(SubLedgerView(type: .accountsPayableBook))
-                ),
-                WorkspaceRow(
-                    icon: "chart.bar.xaxis",
-                    title: "経費帳",
-                    subtitle: "費用科目の明細",
-                    destination: AnyView(SubLedgerView(type: .expenseBook))
-                ),
                 WorkspaceRow(
                     icon: "calendar.badge.clock",
                     title: "月別総括集計表",
@@ -240,22 +286,10 @@ struct BooksWorkspaceView: View {
             title: "資産・補助管理",
             rows: [
                 WorkspaceRow(
-                    icon: "shippingbox",
-                    title: "固定資産台帳",
-                    subtitle: "固定資産の管理と減価償却",
-                    destination: AnyView(FixedAssetListView())
-                ),
-                WorkspaceRow(
                     icon: "tablecells.badge.ellipsis",
                     title: "減価償却明細表",
                     subtitle: "全固定資産の減価償却スケジュール",
                     destination: AnyView(FixedAssetScheduleView())
-                ),
-                WorkspaceRow(
-                    icon: "cart",
-                    title: "棚卸入力",
-                    subtitle: "在庫・仕入高・売上原価の管理",
-                    destination: AnyView(InventoryInputView())
                 ),
                 WorkspaceRow(
                     icon: "archivebox",
@@ -319,9 +353,43 @@ struct BooksWorkspaceView: View {
         }
     }
 
+    private func releaseBookRow(_ item: Self.ReleaseBookItem) -> WorkspaceRow {
+        WorkspaceRow(
+            icon: item.icon,
+            title: item.title,
+            subtitle: item.subtitle,
+            destination: releaseBookDestination(for: item.destinationID)
+        )
+    }
+
+    private func releaseBookDestination(for destinationID: Self.ReleaseBookDestinationID) -> AnyView {
+        switch destinationID {
+        case .journalBook:
+            AnyView(JournalBrowserView())
+        case .generalLedger:
+            AnyView(LedgerView())
+        case .cashBook:
+            AnyView(SubLedgerView(type: .cashBook))
+        case .depositBook:
+            AnyView(SubLedgerView(type: .depositBook))
+        case .accountsReceivableBook:
+            AnyView(SubLedgerView(type: .accountsReceivableBook))
+        case .accountsPayableBook:
+            AnyView(SubLedgerView(type: .accountsPayableBook))
+        case .expenseBook:
+            AnyView(SubLedgerView(type: .expenseBook))
+        case .fixedAssetLedger:
+            AnyView(FixedAssetListView())
+        case .inventoryLedger:
+            AnyView(InventoryInputView())
+        case .whiteTaxBookkeeping:
+            AnyView(WhiteTaxBookkeepingView())
+        }
+    }
+
     private var legacyLedgerSection: some View {
         section(
-            title: "11帳簿（互換）",
+            title: "旧台帳アーカイブ",
             rows: Self.legacyLedgerItems.map(legacyLedgerRow)
         )
     }
@@ -337,28 +405,12 @@ struct BooksWorkspaceView: View {
 
     private func legacyLedgerDestination(for destinationID: Self.LegacyLedgerDestinationID) -> AnyView {
         switch destinationID {
-        case .depositBooks:
-            AnyView(
-                LegacyLedgerFilteredContainerView(
-                    title: "預金出納帳",
-                    emptyMessage: "預金出納帳はまだ作成されていません",
-                    ledgerTypes: [.bankAccountBook, .bankAccountBookInvoice]
-                )
-            )
         case .transportationExpense:
             AnyView(
                 LegacyLedgerFilteredContainerView(
                     title: "交通費精算書",
                     emptyMessage: "交通費精算書はまだ作成されていません",
                     ledgerTypes: [.transportationExpense]
-                )
-            )
-        case .whiteTaxBookkeeping:
-            AnyView(
-                LegacyLedgerFilteredContainerView(
-                    title: "白色申告用 簡易帳簿",
-                    emptyMessage: "白色申告用 簡易帳簿はまだ作成されていません",
-                    ledgerTypes: [.whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice]
                 )
             )
         case .compatibilityHome:

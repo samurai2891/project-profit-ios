@@ -29,15 +29,39 @@ final class BooksWorkspaceViewTests: XCTestCase {
         XCTAssertEqual(ReportView.titleText, "分析レポート")
     }
 
-    func testBooksWorkspaceIncludesReleaseLegacyLedgerRoutes() {
+    func testBooksWorkspaceIncludesReleaseBookRoutesForSpecLedgers() {
+        XCTAssertEqual(
+            BooksWorkspaceView.releaseBookItems.map(\.destinationID),
+            [
+                .journalBook,
+                .generalLedger,
+                .cashBook,
+                .depositBook,
+                .accountsReceivableBook,
+                .accountsPayableBook,
+                .expenseBook,
+                .fixedAssetLedger,
+                .inventoryLedger,
+                .whiteTaxBookkeeping,
+            ]
+        )
+        XCTAssertEqual(
+            BooksWorkspaceView.releaseBookItems.map(\.title),
+            ["仕訳帳", "総勘定元帳", "現金出納帳", "預金出納帳", "売掛帳", "買掛帳", "経費帳", "固定資産台帳", "棚卸台帳", "白色簡易帳簿"]
+        )
+    }
+
+    func testBooksWorkspaceLegacyArchiveExcludesSpecLedgerTitles() {
         XCTAssertEqual(
             BooksWorkspaceView.legacyLedgerItems.map(\.destinationID),
-            [.depositBooks, .transportationExpense, .whiteTaxBookkeeping, .compatibilityHome]
+            [.transportationExpense, .compatibilityHome]
         )
         XCTAssertEqual(
             BooksWorkspaceView.legacyLedgerItems.map(\.title),
-            ["預金出納帳", "交通費精算書", "白色申告用 簡易帳簿", "11帳簿管理"]
+            ["交通費精算書（互換）", "旧台帳一覧"]
         )
+        XCTAssertFalse(BooksWorkspaceView.legacyLedgerItems.map(\.title).contains("預金出納帳"))
+        XCTAssertFalse(BooksWorkspaceView.legacyLedgerItems.map(\.title).contains("白色簡易帳簿"))
     }
 
     func testFilingDashboardUsesBooksWorkspaceEntryCopy() {

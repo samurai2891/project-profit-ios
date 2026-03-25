@@ -4,6 +4,7 @@ import Foundation
 
 enum SubLedgerType: String, CaseIterable, Identifiable {
     case cashBook
+    case depositBook
     case accountsReceivableBook
     case accountsPayableBook
     case expenseBook
@@ -13,6 +14,7 @@ enum SubLedgerType: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .cashBook: "現金出納帳"
+        case .depositBook: "預金出納帳"
         case .accountsReceivableBook: "売掛帳"
         case .accountsPayableBook: "買掛帳"
         case .expenseBook: "経費帳"
@@ -22,6 +24,7 @@ enum SubLedgerType: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .cashBook: "現金勘定の増減明細"
+        case .depositBook: "預金勘定の増減明細"
         case .accountsReceivableBook: "売掛金の増減明細"
         case .accountsPayableBook: "買掛金の増減明細"
         case .expenseBook: "費用科目の明細"
@@ -72,6 +75,10 @@ extension DataStore {
         switch type {
         case .cashBook:
             return [AccountingConstants.cashAccountId]
+        case .depositBook:
+            return accounts
+                .filter { $0.isActive && $0.accountType == .asset && $0.code.hasPrefix("102") }
+                .map(\.id)
         case .accountsReceivableBook:
             return [AccountingConstants.accountsReceivableAccountId]
         case .accountsPayableBook:
@@ -222,7 +229,7 @@ extension DataStore {
             switch type {
             case .accountsReceivableBook, .accountsPayableBook:
                 balanceKey = line.counterparty ?? ""
-            case .cashBook, .expenseBook:
+            case .cashBook, .depositBook, .expenseBook:
                 balanceKey = line.accountId
             }
 

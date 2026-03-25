@@ -330,13 +330,15 @@ struct AccountingReadSupport {
         let incomeCategories = activeCategories.filter { $0.type == .income }
         let categoriesById = Dictionary(uniqueKeysWithValues: activeCategories.map { ($0.id, $0) })
         let legacyAccountsById = Dictionary(uniqueKeysWithValues: fetchAccounts().map { ($0.id, $0) })
-        let canonicalAccountsById = Dictionary(
-            uniqueKeysWithValues: candidatesById.values
+        let referencedAccountIds = Set(
+            candidatesById.values
                 .flatMap(\.proposedLines)
                 .flatMap { [$0.debitAccountId, $0.creditAccountId].compactMap { $0 } }
-                .compactMap { accountId in
-                    fetchCanonicalAccount(accountId: accountId).map { (accountId, $0) }
-                }
+        )
+        let canonicalAccountsById = Dictionary(
+            uniqueKeysWithValues: referencedAccountIds.compactMap { accountId in
+                fetchCanonicalAccount(accountId: accountId).map { (accountId, $0) }
+            }
         )
 
         return candidatesById.reduce(into: [UUID: EtaxCandidateSummary]()) { result, entry in

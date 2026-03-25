@@ -24,4 +24,25 @@ final class WorkflowNavigationTests: XCTestCase {
             [.reconciliation, .journalBrowser, .analytics]
         )
     }
+
+    func testBooksWorkspaceReleaseBookRoutesExposeCanonicalLedgerEntries() {
+        XCTAssertTrue(
+            BooksWorkspaceView.releaseBookItems.contains { $0.title == "仕訳帳" && $0.destinationID == .journalBook }
+        )
+        XCTAssertEqual(
+            BooksWorkspaceView.releaseBookItems.map(\.destinationID),
+            [
+                .journalBook,
+                .generalLedger,
+                .cashBook,
+                .depositBook,
+                .accountsReceivableBook,
+                .accountsPayableBook,
+                .expenseBook,
+                .fixedAssetLedger,
+                .inventoryLedger,
+                .whiteTaxBookkeeping,
+            ]
+        )
+    }
 }

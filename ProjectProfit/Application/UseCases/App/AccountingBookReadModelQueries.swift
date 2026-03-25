@@ -274,7 +274,7 @@ struct SubLedgerReadModelQuery {
             switch type {
             case .accountsReceivableBook, .accountsPayableBook:
                 balanceKey = line.counterparty ?? ""
-            case .cashBook, .expenseBook:
+            case .cashBook, .depositBook, .expenseBook:
                 balanceKey = line.accountId
             }
 
@@ -347,6 +347,8 @@ private func canonicalSubLedgerType(for type: SubLedgerType) -> CanonicalSubLedg
     switch type {
     case .cashBook:
         return .cash
+    case .depositBook:
+        return .deposit
     case .accountsReceivableBook:
         return .accountsReceivable
     case .accountsPayableBook:
@@ -452,6 +454,10 @@ private func subLedgerAccountIds(type: SubLedgerType, accounts: [PPAccount]) -> 
     switch type {
     case .cashBook:
         return [AccountingConstants.cashAccountId]
+    case .depositBook:
+        return accounts
+            .filter { $0.isActive && $0.accountType == .asset && $0.code.hasPrefix("102") }
+            .map(\.id)
     case .accountsReceivableBook:
         return [AccountingConstants.accountsReceivableAccountId]
     case .accountsPayableBook:
