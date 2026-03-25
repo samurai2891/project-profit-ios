@@ -288,7 +288,7 @@ struct ClosingEntryUseCase {
             return .opening
         case .closing:
             return .closing
-        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+        case .manual, .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
             return .normal
         }
     }

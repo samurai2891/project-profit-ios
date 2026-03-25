@@ -106,7 +106,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(bundle.balanceSheet.liabilitiesAndEquity, expectedBalanceSheet.liabilitiesAndEquity)
     }
 
-    func testJournalReadQueryUseCaseReturnsProjectedEntriesAndSupplementalMatches() {
+    func testJournalReadQueryUseCaseExcludesOrphanLegacySupplementalEntries() {
         let project = mutations(dataStore).addProject(name: "Journal Project", description: "")
         let manualEntry = try! XCTUnwrap(
             mutations(dataStore).addManualJournalEntry(
@@ -123,23 +123,55 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         let snapshot = useCase.listSnapshot(fiscalYear: 2025)
         XCTAssertEqual(snapshot.businessId, businessId)
         XCTAssertTrue(snapshot.projects.contains(where: { $0.id == project.id }))
-        XCTAssertTrue(snapshot.entries.contains(where: { $0.id == manualEntry.id }))
+        XCTAssertFalse(snapshot.entries.contains(where: { $0.id == manualEntry.id }))
 
         let detail = useCase.detailSnapshot(entryId: manualEntry.id, fiscalYear: 2025)
-        XCTAssertEqual(detail.lines.map(\.displayOrder), [0, 1])
-        XCTAssertEqual(detail.lines.first?.accountName, "現金")
+        XCTAssertTrue(detail.lines.isEmpty)
 
         let matchIds = useCase.supplementalMatchIds(
             criteria: JournalSearchCriteria(textQuery: "manual journal match"),
             snapshot: snapshot
         )
-        XCTAssertTrue(matchIds.contains(manualEntry.id))
+        XCTAssertFalse(matchIds.contains(manualEntry.id))
 
         let excluded = useCase.supplementalMatchIds(
             criteria: JournalSearchCriteria(counterpartyText: "相手先"),
             snapshot: snapshot
         )
         XCTAssertFalse(excluded.contains(manualEntry.id))
+    }
+
+    func testJournalReadQueryUseCaseRetainsCanonicalSupplementalSourceSemantics() throws {
+        let manual = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.salesAccountId,
+            amount: 50_000,
+            year: 2025,
+            description: "Canonical Manual",
+            entryType: .normal,
+            sourceCandidateId: UUID()
+        )
+        let opening = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 80_000,
+            year: 2025,
+            description: "Canonical Opening",
+            entryType: .opening
+        )
+        let closing = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.salesAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 10_000,
+            year: 2025,
+            description: "Canonical Closing",
+            entryType: .closing
+        )
+        let snapshot = JournalReadQueryUseCase(modelContext: context).listSnapshot(fiscalYear: 2025)
+
+        XCTAssertTrue(snapshot.entries.contains { $0.id == manual.id && $0.sourceKey.hasPrefix("manual:") })
+        XCTAssertTrue(snapshot.entries.contains { $0.id == opening.id && $0.sourceKey.hasPrefix("opening:") })
+        XCTAssertTrue(snapshot.entries.contains { $0.id == closing.id && $0.sourceKey.hasPrefix("closing:") })
     }
 
     func testLedgerQueryUseCaseMatchesLegacyLedgerBalanceAndEntries() {
@@ -209,7 +241,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertTrue(snapshot.expenseAccounts.contains(where: { $0.id == "acct-rent" }))
     }
 
-    func testProjectedReadModelsIncludeDepreciationSupplementalEntries() {
+    func testProjectedReadModelsExcludeLegacyOnlyDepreciationEntries() {
         let asset = try! XCTUnwrap(
             dataStore.addFixedAsset(
                 name: "Camera",
@@ -223,17 +255,12 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         )
 
         let journalSnapshot = JournalReadQueryUseCase(modelContext: context).listSnapshot(fiscalYear: 2025)
-        let journalItem = try! XCTUnwrap(journalSnapshot.entries.first { $0.id == depreciationEntry.id })
-        XCTAssertTrue(journalItem.isSupplemental)
+        XCTAssertFalse(journalSnapshot.entries.contains { $0.id == depreciationEntry.id })
 
         let ledgerSnapshot = LedgerQueryUseCase(modelContext: context).snapshot(
             accountId: AccountingConstants.depreciationExpenseAccountId
         )
-        let expectedLedgerEntries = dataStore.getLedgerEntries(
-            accountId: AccountingConstants.depreciationExpenseAccountId
-        )
-        XCTAssertEqual(ledgerSnapshot.entries.map(\.id), expectedLedgerEntries.map(\.id))
-        XCTAssertEqual(ledgerSnapshot.entries.map(\.runningBalance), expectedLedgerEntries.map(\.runningBalance))
+        XCTAssertFalse(ledgerSnapshot.entries.contains { $0.id == depreciationEntry.id })
 
         let startDate = makeDate(year: 2025, month: 1, day: 1)
         let endDate = makeDate(year: 2025, month: 12, day: 31)
@@ -248,8 +275,8 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
             endDate: endDate,
             accountFilter: AccountingConstants.depreciationExpenseAccountId
         )
-        XCTAssertEqual(subLedgerSnapshot.entries.map(\.id), expectedSubLedgerEntries.map(\.id))
-        XCTAssertEqual(subLedgerSnapshot.entries.map(\.runningBalance), expectedSubLedgerEntries.map(\.runningBalance))
+        XCTAssertTrue(expectedSubLedgerEntries.isEmpty)
+        XCTAssertTrue(subLedgerSnapshot.entries.isEmpty)
     }
 
     func testClosingQueryUseCaseResolvesDisplayLinesAndYearState() throws {
@@ -501,12 +528,16 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         try! context.save()
     }
 
+    @discardableResult
     private func createApprovedCanonicalJournal(
         debitLegacyAccountId: String,
         creditLegacyAccountId: String,
         amount: Int,
-        year: Int
-    ) {
+        year: Int,
+        description: String = "テスト",
+        entryType: CanonicalJournalEntryType = .normal,
+        sourceCandidateId: UUID? = nil
+    ) -> CanonicalJournalEntry {
         let journalId = UUID()
         let journalDate = makeDate(year: year, month: 6, day: 15)
         let entry = CanonicalJournalEntry(
@@ -515,8 +546,9 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
             taxYear: year,
             journalDate: journalDate,
             voucherNo: VoucherNumber(taxYear: year, month: 6, sequence: nextVoucherSequence(for: year)).value,
-            entryType: .normal,
-            description: "テスト",
+            sourceCandidateId: sourceCandidateId,
+            entryType: entryType,
+            description: description,
             lines: [
                 JournalLine(
                     journalId: journalId,
@@ -541,6 +573,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         )
         context.insert(CanonicalJournalEntryEntityMapper.toEntity(entry))
         try! context.save()
+        return entry
     }
 
     private func nextVoucherSequence(for taxYear: Int) -> Int {

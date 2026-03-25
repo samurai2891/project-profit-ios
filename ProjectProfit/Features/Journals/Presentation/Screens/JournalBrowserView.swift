@@ -141,6 +141,7 @@ struct JournalBrowserView: View {
     private func badgeColor(for type: CanonicalJournalEntryType) -> Color {
         switch type {
         case .normal: AppColors.primary
+        case .manual: AppColors.warning
         case .opening: AppColors.success
         case .closing: AppColors.error
         case .depreciation: AppColors.warning

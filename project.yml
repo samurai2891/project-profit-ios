@@ -24,7 +24,6 @@ targets:
         excludes:
           - "Ledger/Bridge/xlsxwriter"
           - "Resources/TaxYearPacks"
-          - "Application/UseCases/Legacy/LegacyTransactionCompatibilityUseCase.swift"
     resources:
       - path: ProjectProfit/Ledger/Resources
         buildPhase: resources
@@ -78,7 +77,6 @@ targets:
     platform: iOS
     sources:
       - ProjectProfitTests
-      - path: ProjectProfit/Application/UseCases/Legacy/LegacyTransactionCompatibilityUseCase.swift
     dependencies:
       - target: ProjectProfit
     settings:

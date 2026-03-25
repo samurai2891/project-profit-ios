@@ -2,242 +2,23 @@ import Foundation
 import SwiftData
 @testable import ProjectProfit
 
-enum LegacyTransactionMutationSource: Sendable, Equatable {
+enum TestMutationSource: Sendable, Equatable {
     case systemGenerated
     case userInitiated
-}
-
-@MainActor
-struct LegacyTransactionTestSupport {
-    private let store: ProjectProfit.DataStore
-    private let modelContext: ModelContext
-    private let postingSupport: CanonicalPostingSupport
-
-    init(store: ProjectProfit.DataStore) {
-        self.store = store
-        self.modelContext = store.modelContext
-        self.postingSupport = CanonicalPostingSupport(modelContext: store.modelContext)
-    }
-
-    func syncCanonicalArtifacts(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) async -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
-        syncCanonicalArtifactsSynchronously(
-            forTransactionId: transactionId,
-            source: source
-        )
-    }
-
-    func syncCanonicalArtifactsSynchronously(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
-        store.loadData()
-        guard let transaction = store.allTransactions.first(where: { $0.id == transactionId }) else {
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: .skippedSourceNotFound,
-                postingStatus: .skippedSourceNotFound
-            )
-        }
-
-        let explicitTaxCodeId = compatibilityTaxCodeId(
-            explicitTaxCodeId: transaction.taxCodeId,
-            legacyCategory: transaction.taxCategory,
-            taxRate: transaction.taxRate
-        )
-        let counterpartyStatus = syncCanonicalCounterpartyNow(
-            explicitId: transaction.counterpartyId,
-            rawName: transaction.counterparty,
-            defaultTaxCodeId: explicitTaxCodeId
-        )
-        let counterpartyId: UUID?
-        switch counterpartyStatus {
-        case .synced(let id):
-            counterpartyId = id
-        case .skippedSourceNotFound, .skippedBusinessProfileUnavailable, .skippedBlankName, .failed:
-            counterpartyId = nil
-        }
-
-        let posting: CanonicalTransactionPostingBridge.Posting
-        do {
-            posting = try buildCanonicalPosting(
-                for: transaction,
-                counterpartyId: counterpartyId,
-                source: source ?? .manual
-            )
-        } catch AppError.invalidInput(let message)
-            where message.contains("事業者プロフィールが未設定") {
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedBusinessProfileUnavailable
-            )
-        } catch AppError.yearLocked {
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedBusinessProfileUnavailable
-            )
-        } catch {
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .skippedLegacyJournalUnavailable
-            )
-        }
-
-        do {
-            let journal = try postingSupport.persistApprovedPosting(
-                posting: posting,
-                allocationAmounts: transaction.allocations.filter { $0.amount > 0 },
-                actor: source == .importFile ? "user" : "system",
-                saveChanges: true
-            )
-            if transaction.journalEntryId != journal.id {
-                transaction.journalEntryId = journal.id
-                _ = store.save()
-                store.refreshTransactions()
-            }
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .synced(candidateId: posting.candidate.id, journalId: journal.id)
-            )
-        } catch {
-            AppLogger.dataStore.warning("Canonical posting sync failed: \(error.localizedDescription)")
-            return ProjectProfit.DataStore.CanonicalTransactionSyncResult(
-                counterpartyStatus: counterpartyStatus,
-                postingStatus: .failed(error.localizedDescription)
-            )
-        }
-    }
-
-    @discardableResult
-    func removeCanonicalArtifactsSynchronously(forTransactionId transactionId: UUID) -> Bool {
-        store.loadData()
-        guard let transaction = store.allTransactions.first(where: { $0.id == transactionId }),
-              let journalId = transaction.journalEntryId else {
-            return true
-        }
-
-        do {
-            let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
-                predicate: #Predicate { $0.journalId == journalId }
-            )
-            guard let journalEntity = try modelContext.fetch(journalDescriptor).first else {
-                transaction.journalEntryId = nil
-                _ = store.save()
-                store.refreshTransactions()
-                return true
-            }
-
-            let businessId = journalEntity.businessId
-            let taxYear = journalEntity.taxYear
-            let sourceCandidateId = journalEntity.sourceCandidateId
-
-            modelContext.delete(journalEntity)
-
-            if let sourceCandidateId {
-                let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
-                    predicate: #Predicate { $0.candidateId == sourceCandidateId }
-                )
-                try modelContext.fetch(candidateDescriptor).forEach(modelContext.delete)
-            }
-
-            transaction.journalEntryId = nil
-            try modelContext.save()
-            try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
-                businessId: businessId,
-                taxYear: taxYear
-            )
-            store.refreshTransactions()
-            store.refreshJournalEntries()
-            store.refreshJournalLines()
-            return true
-        } catch {
-            AppLogger.dataStore.warning("Canonical artifact removal failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    private func compatibilityTaxCodeId(
-        explicitTaxCodeId: String?,
-        legacyCategory: TaxCategory?,
-        taxRate: Int?
-    ) -> String? {
-        if let taxCodeId = TaxCode.resolve(id: explicitTaxCodeId)?.rawValue {
-            return taxCodeId
-        }
-        return TaxCode.resolve(legacyCategory: legacyCategory, taxRate: taxRate)?.rawValue
-    }
-
-    private func syncCanonicalCounterpartyNow(
-        explicitId: UUID?,
-        rawName: String?,
-        defaultTaxCodeId: String?
-    ) -> ProjectProfit.DataStore.CanonicalCounterpartySyncStatus {
-        do {
-            let resolved = try postingSupport.resolveCounterpartyReference(
-                explicitId: explicitId,
-                rawName: rawName,
-                defaultTaxCodeId: defaultTaxCodeId,
-                businessId: store.businessProfile?.id
-            )
-            guard let counterpartyId = resolved.id else {
-                if explicitId != nil || store.businessProfile == nil {
-                    return .skippedBusinessProfileUnavailable
-                }
-                return .skippedBlankName
-            }
-            try modelContext.save()
-            return .synced(counterpartyId)
-        } catch {
-            AppLogger.dataStore.warning("Canonical counterparty sync failed: \(error.localizedDescription)")
-            return .failed(error.localizedDescription)
-        }
-    }
-
-    private func buildCanonicalPosting(
-        for transaction: PPTransaction,
-        counterpartyId: UUID?,
-        source: CandidateSource
-    ) throws -> CanonicalTransactionPostingBridge.Posting {
-        try postingSupport.buildApprovedPosting(
-            seed: CanonicalPostingSeed(
-                id: transaction.id,
-                type: transaction.type,
-                amount: transaction.amount,
-                date: transaction.date,
-                categoryId: transaction.categoryId,
-                memo: transaction.memo,
-                recurringId: transaction.recurringId,
-                paymentAccountId: transaction.paymentAccountId,
-                transferToAccountId: transaction.transferToAccountId,
-                taxDeductibleRate: transaction.taxDeductibleRate,
-                taxAmount: transaction.taxAmount,
-                taxCodeId: transaction.taxCodeId,
-                isTaxIncluded: transaction.isTaxIncluded,
-                receiptImagePath: transaction.receiptImagePath,
-                lineItems: transaction.lineItems,
-                counterpartyId: counterpartyId,
-                counterpartyName: transaction.counterparty,
-                source: source,
-                createdAt: transaction.createdAt,
-                updatedAt: transaction.updatedAt,
-                journalEntryId: transaction.journalEntryId
-            ),
-            snapshot: try postingSupport.snapshot()
-        )
-    }
 }
 
 @MainActor
 struct TestMutationDriver {
     private let store: ProjectProfit.DataStore
     private let modelContext: ModelContext
-    private let legacySupport: LegacyTransactionTestSupport
+    private let postingSupport: CanonicalPostingSupport
+    private let postingWorkflowUseCase: PostingWorkflowUseCase
 
     init(store: ProjectProfit.DataStore) {
         self.store = store
         self.modelContext = store.modelContext
-        self.legacySupport = LegacyTransactionTestSupport(store: store)
+        self.postingSupport = CanonicalPostingSupport(modelContext: store.modelContext)
+        self.postingWorkflowUseCase = PostingWorkflowUseCase(modelContext: store.modelContext)
     }
 
     @discardableResult
@@ -332,39 +113,78 @@ struct TestMutationDriver {
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) -> Result<PPTransaction, AppError> {
-        let result = LegacyTransactionCompatibilityUseCase(modelContext: modelContext).addTransactionResult(
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: categoryId,
-            memo: memo,
-            allocations: allocations,
-            recurringId: recurringId,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyId: counterpartyId,
-            counterparty: counterparty,
-            candidateSource: candidateSource,
-            enqueueCanonicalSync: enqueueCanonicalSync,
-            mutationSource: mutationSource
-        )
-        store.loadData()
-        if case .failure(let error) = result {
-            store.lastError = error
-        } else {
-            store.lastError = nil
+        do {
+            if let blockedError = blockedLegacyTransactionMutation(source: mutationSource) {
+                refreshStore(lastError: blockedError)
+                return .failure(blockedError)
+            }
+            guard !store.cannotPostNormalEntry(for: date) else {
+                let error = AppError.yearLocked(
+                    year: fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)
+                )
+                refreshStore(lastError: error)
+                return .failure(error)
+            }
+
+            let transactionId = UUID()
+            let journal = try persistCanonicalTransaction(
+                transactionId: transactionId,
+                existingJournalId: nil,
+                type: type,
+                amount: amount,
+                date: date,
+                categoryId: categoryId,
+                memo: memo,
+                allocations: allocations,
+                recurringId: recurringId,
+                receiptImagePath: receiptImagePath,
+                lineItems: lineItems,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: transferToAccountId,
+                taxDeductibleRate: taxDeductibleRate,
+                taxAmount: taxAmount,
+                taxRate: taxRate,
+                isTaxIncluded: isTaxIncluded,
+                taxCategory: taxCategory,
+                counterpartyId: counterpartyId,
+                counterparty: counterparty,
+                candidateSource: candidateSource ?? .manual
+            )
+            let transaction = upsertShadowTransaction(
+                id: transactionId,
+                journalEntryId: journal.id,
+                type: type,
+                amount: amount,
+                date: date,
+                categoryId: categoryId,
+                memo: memo,
+                allocations: allocations,
+                recurringId: recurringId,
+                receiptImagePath: receiptImagePath,
+                lineItems: lineItems,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: transferToAccountId,
+                taxDeductibleRate: taxDeductibleRate,
+                taxAmount: taxAmount,
+                taxRate: taxRate,
+                isTaxIncluded: isTaxIncluded,
+                taxCategory: taxCategory,
+                counterpartyId: counterpartyId,
+                counterparty: counterparty
+            )
+            try modelContext.save()
+            refreshStore(lastError: nil)
+            return .success(transaction)
+        } catch let error as AppError {
+            refreshStore(lastError: error)
+            return .failure(error)
+        } catch {
+            let appError = AppError.saveFailed(underlying: error)
+            refreshStore(lastError: appError)
+            return .failure(appError)
         }
-        return result
     }
 
     @discardableResult
@@ -388,11 +208,10 @@ struct TestMutationDriver {
         counterpartyId: UUID? = nil,
         counterparty: String? = nil,
         candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true,
         reloadStoreAfterMutation: Bool = true,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) -> PPTransaction {
-        let transaction = LegacyTransactionCompatibilityUseCase(modelContext: modelContext).addTransaction(
+        switch addTransactionResult(
             type: type,
             amount: amount,
             date: date,
@@ -412,13 +231,16 @@ struct TestMutationDriver {
             counterpartyId: counterpartyId,
             counterparty: counterparty,
             candidateSource: candidateSource,
-            enqueueCanonicalSync: enqueueCanonicalSync,
             mutationSource: mutationSource
-        )
-        if reloadStoreAfterMutation {
-            store.loadData()
+        ) {
+        case .success(let transaction):
+            if reloadStoreAfterMutation {
+                store.loadData()
+            }
+            return transaction
+        case .failure(let error):
+            preconditionFailure("TestMutationDriver.addTransaction failed: \(error.localizedDescription)")
         }
-        return transaction
     }
 
     @discardableResult
@@ -442,66 +264,136 @@ struct TestMutationDriver {
         counterpartyId: UUID?? = nil,
         counterparty: String?? = nil,
         candidateSource: CandidateSource? = nil,
-        enqueueCanonicalSync: Bool = true,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) -> Bool {
-        let useCase = LegacyTransactionCompatibilityUseCase(modelContext: modelContext)
-        let updated = useCase.updateTransaction(
-            id: id,
-            type: type,
-            amount: amount,
-            date: date,
-            categoryId: categoryId,
-            memo: memo,
-            allocations: allocations,
-            receiptImagePath: receiptImagePath,
-            lineItems: lineItems,
-            paymentAccountId: paymentAccountId,
-            transferToAccountId: transferToAccountId,
-            taxDeductibleRate: taxDeductibleRate,
-            taxAmount: taxAmount,
-            taxRate: taxRate,
-            isTaxIncluded: isTaxIncluded,
-            taxCategory: taxCategory,
-            counterpartyId: counterpartyId,
-            counterparty: counterparty,
-            candidateSource: candidateSource,
-            enqueueCanonicalSync: enqueueCanonicalSync,
-            mutationSource: mutationSource
-        )
-        store.loadData()
-        store.lastError = useCase.lastError
-        return updated
+        if let blockedError = blockedLegacyTransactionMutation(source: mutationSource) {
+            refreshStore(lastError: blockedError)
+            return false
+        }
+        guard let transaction = store.allTransactions.first(where: { $0.id == id }) else {
+            refreshStore(lastError: .transactionNotFound(id: id))
+            return false
+        }
+        let targetDate = date ?? transaction.date
+        guard !store.cannotPostNormalEntry(for: targetDate), !store.cannotPostNormalEntry(for: transaction.date) else {
+            let error = AppError.yearLocked(
+                year: fiscalYear(for: targetDate, startMonth: FiscalYearSettings.startMonth)
+            )
+            refreshStore(lastError: error)
+            return false
+        }
+
+        do {
+            let updatedType = type ?? transaction.type
+            let updatedAmount = amount ?? transaction.amount
+            let updatedCategoryId = categoryId ?? transaction.categoryId
+            let updatedMemo = memo ?? transaction.memo
+            let updatedAllocations = allocations ?? transaction.allocations.map { ($0.projectId, $0.ratio) }
+            let updatedReceiptImagePath = receiptImagePath ?? transaction.receiptImagePath
+            let updatedLineItems = lineItems ?? transaction.lineItems
+            let updatedPaymentAccountId = paymentAccountId ?? transaction.paymentAccountId
+            let updatedTransferToAccountId = transferToAccountId ?? transaction.transferToAccountId
+            let updatedTaxDeductibleRate = taxDeductibleRate ?? transaction.taxDeductibleRate
+            let updatedTaxAmount = taxAmount ?? transaction.taxAmount
+            let updatedTaxRate = taxRate ?? transaction.taxRate
+            let updatedIsTaxIncluded = isTaxIncluded ?? transaction.isTaxIncluded
+            let updatedTaxCategory = taxCategory ?? transaction.taxCategory
+            let updatedCounterpartyId = counterpartyId ?? transaction.counterpartyId
+            let updatedCounterparty = counterparty ?? transaction.counterparty
+
+            let journal = try persistCanonicalTransaction(
+                transactionId: transaction.id,
+                existingJournalId: transaction.journalEntryId,
+                type: updatedType,
+                amount: updatedAmount,
+                date: targetDate,
+                categoryId: updatedCategoryId,
+                memo: updatedMemo,
+                allocations: updatedAllocations,
+                recurringId: transaction.recurringId,
+                receiptImagePath: updatedReceiptImagePath,
+                lineItems: updatedLineItems,
+                paymentAccountId: updatedPaymentAccountId,
+                transferToAccountId: updatedTransferToAccountId,
+                taxDeductibleRate: updatedTaxDeductibleRate,
+                taxAmount: updatedTaxAmount,
+                taxRate: updatedTaxRate,
+                isTaxIncluded: updatedIsTaxIncluded,
+                taxCategory: updatedTaxCategory,
+                counterpartyId: updatedCounterpartyId,
+                counterparty: updatedCounterparty,
+                candidateSource: candidateSource ?? .manual
+            )
+
+            _ = upsertShadowTransaction(
+                id: transaction.id,
+                journalEntryId: journal.id,
+                type: updatedType,
+                amount: updatedAmount,
+                date: targetDate,
+                categoryId: updatedCategoryId,
+                memo: updatedMemo,
+                allocations: updatedAllocations,
+                recurringId: transaction.recurringId,
+                receiptImagePath: updatedReceiptImagePath,
+                lineItems: updatedLineItems,
+                paymentAccountId: updatedPaymentAccountId,
+                transferToAccountId: updatedTransferToAccountId,
+                taxDeductibleRate: updatedTaxDeductibleRate,
+                taxAmount: updatedTaxAmount,
+                taxRate: updatedTaxRate,
+                isTaxIncluded: updatedIsTaxIncluded,
+                taxCategory: updatedTaxCategory,
+                counterpartyId: updatedCounterpartyId,
+                counterparty: updatedCounterparty,
+                createdAt: transaction.createdAt
+            )
+            try modelContext.save()
+            refreshStore(lastError: nil)
+            return true
+        } catch {
+            refreshStore(lastError: normalizedAppError(error))
+            return false
+        }
     }
 
     func deleteTransaction(
         id: UUID,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) {
-        let useCase = LegacyTransactionCompatibilityUseCase(modelContext: modelContext)
-        useCase.deleteTransaction(
-            id: id,
-            mutationSource: mutationSource
-        )
-        store.loadData()
-        store.lastError = useCase.lastError
-    }
+        if let blockedError = blockedLegacyTransactionMutation(source: mutationSource) {
+            refreshStore(lastError: blockedError)
+            return
+        }
+        guard let transaction = store.allTransactions.first(where: { $0.id == id }) else {
+            refreshStore(lastError: .transactionNotFound(id: id))
+            return
+        }
+        guard !store.cannotPostNormalEntry(for: transaction.date) else {
+            let error = AppError.yearLocked(
+                year: fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth)
+            )
+            refreshStore(lastError: error)
+            return
+        }
 
-    func syncCanonicalArtifacts(
-        forTransactionId transactionId: UUID,
-        source: CandidateSource? = nil
-    ) async -> ProjectProfit.DataStore.CanonicalTransactionSyncResult {
-        let result = await legacySupport.syncCanonicalArtifacts(
-            forTransactionId: transactionId,
-            source: source
-        )
-        store.loadData()
-        return result
+        do {
+            if let journalId = transaction.journalEntryId {
+                try deleteCanonicalJournal(journalId: journalId)
+            }
+            transaction.deletedAt = Date()
+            transaction.updatedAt = Date()
+            try modelContext.save()
+            refreshStore(lastError: nil)
+        } catch {
+            refreshStore(lastError: normalizedAppError(error))
+        }
     }
 
     @discardableResult
     func addRecurring(
         name: String,
+        description: String = "",
         type: TransactionType,
         amount: Int,
         categoryId: String,
@@ -635,31 +527,125 @@ struct TestMutationDriver {
         date: Date,
         memo: String,
         lines: [(accountId: String, debit: Int, credit: Int, memo: String)],
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) -> PPJournalEntry? {
-        let useCase = LegacyTransactionCompatibilityUseCase(modelContext: modelContext)
-        let entry = useCase.addManualJournalEntry(
-            date: date,
-            memo: memo,
-            lines: lines,
-            mutationSource: mutationSource
-        )
-        store.loadData()
-        store.lastError = useCase.lastError
-        return entry
+        if let blockedError = blockedLegacyManualJournalMutation(source: mutationSource) {
+            refreshStore(lastError: blockedError)
+            return nil
+        }
+        guard !lines.isEmpty else {
+            refreshStore(lastError: nil)
+            return nil
+        }
+        guard !store.isYearLocked(for: date) else {
+            refreshStore(lastError: nil)
+            return nil
+        }
+        guard let businessId = store.businessProfile?.id else {
+            let error = AppError.invalidInput(message: "事業者プロフィールが未設定です")
+            refreshStore(lastError: error)
+            return nil
+        }
+
+        do {
+            let entryId = UUID()
+            let now = Date()
+            let taxYear = fiscalYear(for: date, startMonth: FiscalYearSettings.startMonth)
+            let canonicalLines = try lines.enumerated().map { index, line in
+                guard let accountId = store.canonicalAccountId(for: line.accountId),
+                      let account = store.canonicalAccount(id: accountId) else {
+                    throw PostingWorkflowUseCaseError.accountNotFound(UUID())
+                }
+                return JournalLine(
+                    journalId: entryId,
+                    accountId: accountId,
+                    debitAmount: Decimal(line.debit),
+                    creditAmount: Decimal(line.credit),
+                    legalReportLineId: account.defaultLegalReportLineId,
+                    sortOrder: index
+                )
+            }
+            let canonicalEntry = CanonicalJournalEntry(
+                id: entryId,
+                businessId: businessId,
+                taxYear: taxYear,
+                journalDate: date,
+                voucherNo: try nextVoucherNumber(businessId: businessId, taxYear: taxYear, month: Calendar.current.component(.month, from: date)).value,
+                entryType: .manual,
+                description: memo,
+                lines: canonicalLines,
+                approvedAt: canonicalLinesBalanced(canonicalLines) ? now : nil,
+                createdAt: now,
+                updatedAt: now
+            )
+
+            modelContext.insert(CanonicalJournalEntryEntityMapper.toEntity(canonicalEntry))
+            let legacyEntry = PPJournalEntry(
+                id: entryId,
+                sourceKey: PPJournalEntry.manualSourceKey(entryId),
+                date: date,
+                entryType: .manual,
+                memo: memo,
+                isPosted: canonicalEntry.isBalanced,
+                createdAt: now,
+                updatedAt: now
+            )
+            modelContext.insert(legacyEntry)
+            for (index, line) in lines.enumerated() {
+                modelContext.insert(
+                    PPJournalLine(
+                        entryId: entryId,
+                        accountId: line.accountId,
+                        debit: line.debit,
+                        credit: line.credit,
+                        memo: line.memo,
+                        displayOrder: index,
+                        createdAt: now,
+                        updatedAt: now
+                    )
+                )
+            }
+            try modelContext.save()
+            try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+                businessId: businessId,
+                taxYear: taxYear
+            )
+            refreshStore(lastError: nil)
+            return legacyEntry
+        } catch {
+            refreshStore(lastError: normalizedAppError(error))
+            return nil
+        }
     }
 
     func deleteManualJournalEntry(
         id: UUID,
-        mutationSource: LegacyTransactionMutationSource = .systemGenerated
+        mutationSource: TestMutationSource = .systemGenerated
     ) {
-        let useCase = LegacyTransactionCompatibilityUseCase(modelContext: modelContext)
-        useCase.deleteManualJournalEntry(
-            id: id,
-            mutationSource: mutationSource
-        )
-        store.loadData()
-        store.lastError = useCase.lastError
+        if let blockedError = blockedLegacyManualJournalMutation(source: mutationSource) {
+            refreshStore(lastError: blockedError)
+            return
+        }
+        guard let entry = store.journalEntries.first(where: { $0.id == id && $0.entryType == .manual }) else {
+            refreshStore(lastError: nil)
+            return
+        }
+        guard !store.isYearLocked(for: entry.date) else {
+            refreshStore(lastError: nil)
+            return
+        }
+
+        do {
+            try deleteCanonicalJournal(journalId: id)
+            for line in store.journalLines where line.entryId == id {
+                modelContext.delete(line)
+            }
+            modelContext.delete(entry)
+            try modelContext.save()
+            refreshStore(lastError: nil)
+        } catch {
+            refreshStore(lastError: normalizedAppError(error))
+        }
     }
 
     @discardableResult
@@ -768,6 +754,220 @@ struct TestMutationDriver {
             modelContext: modelContext,
             resetStoreState: { self.store.loadData() }
         ).deleteAllData()
+    }
+
+    private func blockedLegacyTransactionMutation(source: TestMutationSource) -> AppError? {
+        guard source == .userInitiated, FeatureFlags.useCanonicalPosting else {
+            return nil
+        }
+        return .legacyTransactionMutationDisabled
+    }
+
+    private func blockedLegacyManualJournalMutation(source: TestMutationSource) -> AppError? {
+        guard source == .userInitiated, FeatureFlags.useCanonicalPosting else {
+            return nil
+        }
+        return .legacyManualJournalMutationDisabled
+    }
+
+    private func persistCanonicalTransaction(
+        transactionId: UUID,
+        existingJournalId: UUID?,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID?,
+        receiptImagePath: String?,
+        lineItems: [ReceiptLineItem],
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxRate: Int?,
+        isTaxIncluded: Bool?,
+        taxCategory: TaxCategory?,
+        counterpartyId: UUID?,
+        counterparty: String?,
+        candidateSource: CandidateSource
+    ) throws -> CanonicalJournalEntry {
+        let snapshot = try postingSupport.snapshot()
+        let resolvedTaxCode = TaxCode.resolve(
+            legacyCategory: taxCategory,
+            taxRate: taxRate
+        )?.rawValue
+        let posting = try postingSupport.buildApprovedPosting(
+            seed: CanonicalPostingSeed(
+                id: transactionId,
+                type: type,
+                amount: amount,
+                date: date,
+                categoryId: type == .transfer ? "" : categoryId,
+                memo: memo,
+                recurringId: recurringId,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: type == .transfer ? transferToAccountId : nil,
+                taxDeductibleRate: type == .expense ? taxDeductibleRate : nil,
+                taxAmount: taxAmount,
+                taxCodeId: resolvedTaxCode,
+                isTaxIncluded: isTaxIncluded,
+                receiptImagePath: receiptImagePath,
+                lineItems: lineItems,
+                counterpartyId: counterpartyId,
+                counterpartyName: counterparty,
+                source: candidateSource,
+                createdAt: Date(),
+                updatedAt: Date(),
+                journalEntryId: existingJournalId
+            ),
+            snapshot: snapshot
+        )
+        let allocationAmounts = type == .transfer ? [] : calculateRatioAllocations(amount: amount, allocations: allocations)
+        let actor = candidateSource == .importFile ? "user" : "system"
+        return try postingSupport.persistApprovedPosting(
+            posting: posting,
+            allocationAmounts: allocationAmounts,
+            actor: actor,
+            saveChanges: false
+        )
+    }
+
+    @discardableResult
+    private func upsertShadowTransaction(
+        id: UUID,
+        journalEntryId: UUID,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID?,
+        receiptImagePath: String?,
+        lineItems: [ReceiptLineItem],
+        paymentAccountId: String?,
+        transferToAccountId: String?,
+        taxDeductibleRate: Int?,
+        taxAmount: Int?,
+        taxRate: Int?,
+        isTaxIncluded: Bool?,
+        taxCategory: TaxCategory?,
+        counterpartyId: UUID?,
+        counterparty: String?,
+        createdAt: Date = Date()
+    ) -> PPTransaction {
+        let normalizedAllocations = type == .transfer ? [] : calculateRatioAllocations(amount: amount, allocations: allocations)
+        if let existing = store.allTransactions.first(where: { $0.id == id }) {
+            existing.type = type
+            existing.amount = amount
+            existing.date = date
+            existing.categoryId = type == .transfer ? "" : categoryId
+            existing.memo = memo
+            existing.allocations = normalizedAllocations
+            existing.recurringId = recurringId
+            existing.receiptImagePath = receiptImagePath
+            existing.lineItems = lineItems
+            existing.paymentAccountId = paymentAccountId
+            existing.transferToAccountId = transferToAccountId
+            existing.taxDeductibleRate = taxDeductibleRate
+            existing.taxAmount = taxAmount
+            existing.taxRate = taxRate
+            existing.isTaxIncluded = isTaxIncluded
+            existing.taxCategory = taxCategory
+            existing.taxCodeId = TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)?.rawValue
+            existing.counterpartyId = counterpartyId
+            existing.counterparty = counterparty
+            existing.journalEntryId = journalEntryId
+            existing.deletedAt = nil
+            existing.updatedAt = Date()
+            return existing
+        }
+
+        let transaction = PPTransaction.makeCompatibilityTransaction(
+            id: id,
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: type == .transfer ? "" : categoryId,
+            memo: memo,
+            allocations: normalizedAllocations,
+            recurringId: recurringId,
+            receiptImagePath: receiptImagePath,
+            lineItems: lineItems,
+            paymentAccountId: paymentAccountId,
+            transferToAccountId: transferToAccountId,
+            taxDeductibleRate: taxDeductibleRate,
+            journalEntryId: journalEntryId,
+            taxAmount: taxAmount,
+            taxRate: taxRate,
+            isTaxIncluded: isTaxIncluded,
+            taxCategory: taxCategory,
+            counterpartyId: counterpartyId,
+            counterparty: counterparty,
+            createdAt: createdAt,
+            updatedAt: Date()
+        )
+        modelContext.insert(transaction)
+        return transaction
+    }
+
+    private func deleteCanonicalJournal(journalId: UUID) throws {
+        let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate { $0.journalId == journalId }
+        )
+        guard let journalEntity = try modelContext.fetch(journalDescriptor).first else {
+            return
+        }
+        let businessId = journalEntity.businessId
+        let taxYear = journalEntity.taxYear
+        let sourceCandidateId = journalEntity.sourceCandidateId
+        modelContext.delete(journalEntity)
+        if let sourceCandidateId {
+            let candidateDescriptor = FetchDescriptor<PostingCandidateEntity>(
+                predicate: #Predicate { $0.candidateId == sourceCandidateId }
+            )
+            try modelContext.fetch(candidateDescriptor).forEach(modelContext.delete)
+        }
+        try modelContext.save()
+        try? LocalJournalSearchIndex(modelContext: modelContext).rebuild(
+            businessId: businessId,
+            taxYear: taxYear
+        )
+    }
+
+    private func nextVoucherNumber(businessId: UUID, taxYear: Int, month: Int) throws -> VoucherNumber {
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId && $0.taxYear == taxYear
+            },
+            sortBy: [SortDescriptor(\.voucherNo, order: .reverse)]
+        )
+        let sequence = try modelContext.fetch(descriptor)
+            .compactMap { VoucherNumber(rawValue: $0.voucherNo) }
+            .filter { $0.taxYear == taxYear && $0.month == month }
+            .compactMap(\.sequence)
+            .max() ?? 0
+        return VoucherNumber(taxYear: taxYear, month: month, sequence: sequence + 1)
+    }
+
+    private func canonicalLinesBalanced(_ lines: [JournalLine]) -> Bool {
+        let debit = lines.reduce(Decimal.zero) { $0 + $1.debitAmount }
+        let credit = lines.reduce(Decimal.zero) { $0 + $1.creditAmount }
+        return debit == credit && debit > 0
+    }
+
+    private func normalizedAppError(_ error: Error) -> AppError {
+        if let appError = error as? AppError {
+            return appError
+        }
+        return .saveFailed(underlying: error)
+    }
+
+    private func refreshStore(lastError: AppError?) {
+        store.loadData()
+        store.lastError = lastError
     }
 
     private func dayKey(for date: Date) -> String {

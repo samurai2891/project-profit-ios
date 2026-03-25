@@ -3132,18 +3132,8 @@ class DataStore {
     }
 
     func projectedCanonicalJournals(fiscalYear requestedFiscalYear: Int? = nil) -> (entries: [PPJournalEntry], lines: [PPJournalLine]) {
-        guard let businessId = businessProfile?.id else {
-            return ([], [])
-        }
-        let projected = LegacyProjectedJournalAssembler.assemble(
-            businessId: businessId,
-            fiscalYear: requestedFiscalYear,
-            canonicalAccounts: fetchCanonicalAccounts(businessId: businessId),
-            canonicalJournals: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear),
-            legacyEntries: journalEntries,
-            legacyLines: journalLines,
-            supplementalSourcePrefixes: ["manual:", "opening:", "closing:", "depreciation:"]
-        )
+        let projected = AccountingReadSupport(modelContext: modelContext)
+            .projectedCanonicalJournals(fiscalYear: requestedFiscalYear)
         return (projected.entries, projected.lines)
     }
 

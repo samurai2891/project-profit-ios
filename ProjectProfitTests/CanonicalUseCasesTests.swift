@@ -732,6 +732,74 @@ final class CanonicalUseCasesTests: XCTestCase {
         XCTAssertEqual(savedEntryCount, 0)
     }
 
+    func testPostingWorkflowUseCaseSyncApprovedCandidateReportsRollbackFailure() async throws {
+        let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "1200")!,
+                    memo: "rollback failure"
+                )
+            ],
+            status: .needsReview,
+            source: .manual,
+            memo: "rollback failure"
+        )
+        let candidateRepository = RollbackFailingPostingCandidateRepository(initialCandidates: [candidate])
+        let journalRepository = FailingCanonicalJournalEntryRepository()
+        let chartRepository = InMemoryChartOfAccountsRepository(
+            initialAccounts: [
+                seededAccount(
+                    id: debitAccountId,
+                    businessId: businessId,
+                    code: "505",
+                    name: "広告宣伝費",
+                    accountType: .expense,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.advertising.rawValue
+                ),
+                seededAccount(
+                    id: creditAccountId,
+                    businessId: businessId,
+                    code: "101",
+                    name: "現金",
+                    accountType: .asset,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.cash.rawValue
+                ),
+            ]
+        )
+        let useCase = PostingWorkflowUseCase(
+            postingCandidateRepository: candidateRepository,
+            journalEntryRepository: journalRepository,
+            chartOfAccountsRepository: chartRepository
+        )
+
+        do {
+            _ = try await useCase.syncApprovedCandidate(candidate, journalId: UUID())
+            XCTFail("Expected candidateRollbackFailed error")
+        } catch let error as PostingWorkflowUseCaseError {
+            guard case let .candidateRollbackFailed(candidateId, persistError, rollbackError) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(candidateId, candidate.id)
+            XCTAssertTrue(persistError is FailingCanonicalJournalEntryRepository.Failure)
+            XCTAssertTrue(rollbackError is RollbackFailingPostingCandidateRepository.Failure)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        let persisted = try await candidateRepository.findById(candidate.id)
+        XCTAssertEqual(persisted?.status, .approved)
+    }
+
     private func seedAccount(
         id: UUID,
         businessId: UUID,
@@ -889,6 +957,46 @@ private actor InMemoryPostingCandidateRepository: PostingCandidateRepository {
     }
 
     func save(_ candidate: PostingCandidate) async throws {
+        storage[candidate.id] = candidate
+    }
+
+    func delete(_ id: UUID) async throws {
+        storage[id] = nil
+    }
+}
+
+private actor RollbackFailingPostingCandidateRepository: PostingCandidateRepository {
+    enum Failure: Error {
+        case saveFailed
+    }
+
+    private var storage: [UUID: PostingCandidate]
+
+    init(initialCandidates: [PostingCandidate] = []) {
+        self.storage = Dictionary(uniqueKeysWithValues: initialCandidates.map { ($0.id, $0) })
+    }
+
+    func findById(_ id: UUID) async throws -> PostingCandidate? {
+        storage[id]
+    }
+
+    func findByIds(_ ids: Set<UUID>) async throws -> [PostingCandidate] {
+        guard !ids.isEmpty else { return [] }
+        return storage.values.filter { ids.contains($0.id) }
+    }
+
+    func findByEvidence(evidenceId: UUID) async throws -> [PostingCandidate] {
+        storage.values.filter { $0.evidenceId == evidenceId }
+    }
+
+    func findByStatus(businessId: UUID, status: CandidateStatus) async throws -> [PostingCandidate] {
+        storage.values.filter { $0.businessId == businessId && $0.status == status }
+    }
+
+    func save(_ candidate: PostingCandidate) async throws {
+        if let existing = storage[candidate.id], existing.status == .approved, candidate.status == .needsReview {
+            throw Failure.saveFailed
+        }
         storage[candidate.id] = candidate
     }
 

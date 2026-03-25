@@ -66,6 +66,8 @@ enum LegacyProjectedJournalAssembler {
             return .opening
         case .closing:
             return .closing
+        case .manual:
+            return .manual
         case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
             return .auto
         }
@@ -78,7 +80,7 @@ enum LegacyProjectedJournalAssembler {
             entries.append(
                 PPJournalEntry(
                     id: entry.id,
-                    sourceKey: "canonical:\(entry.id.uuidString)",
+                    sourceKey: projectedSourceKey(for: entry),
                     date: entry.journalDate,
                     entryType: projectedLegacyEntryType(for: entry),
                     memo: entry.description,
@@ -89,6 +91,22 @@ enum LegacyProjectedJournalAssembler {
             )
         }
         return entries
+    }
+
+    private static func projectedSourceKey(for entry: CanonicalJournalEntry) -> String {
+        switch entry.entryType {
+        case .opening:
+            return "opening:\(entry.id.uuidString)"
+        case .closing:
+            return "closing:\(entry.id.uuidString)"
+        case .manual:
+            return "manual:\(entry.id.uuidString)"
+        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
+            if entry.sourceCandidateId != nil && entry.sourceEvidenceId == nil {
+                return "manual:\(entry.id.uuidString)"
+            }
+            return "canonical:\(entry.id.uuidString)"
+        }
     }
 
     private static func projectLines(

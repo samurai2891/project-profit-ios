@@ -121,8 +121,21 @@ struct CanonicalPostingEngine {
             )
             return entry
         } catch {
-            try? await postingCandidateRepository.save(candidate)
-            throw error
+            let persistError = error
+            do {
+                try await postingCandidateRepository.save(candidate)
+            } catch {
+                let rollbackError = error
+                AppLogger.general.error(
+                    "Candidate rollback failed after journal save failure. candidateId=\(candidate.id.uuidString) persistError=\(persistError.localizedDescription) rollbackError=\(rollbackError.localizedDescription)"
+                )
+                throw PostingWorkflowUseCaseError.candidateRollbackFailed(
+                    candidateId: candidate.id,
+                    persistError: persistError,
+                    rollbackError: rollbackError
+                )
+            }
+            throw persistError
         }
     }
 

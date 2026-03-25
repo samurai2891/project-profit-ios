@@ -16,6 +16,7 @@ enum PostingWorkflowUseCaseError: LocalizedError {
     case journalNotCancelled(UUID)
     case journalNotApproved(UUID)
     case sourceCandidateNotFound(UUID)
+    case candidateRollbackFailed(candidateId: UUID, persistError: Error, rollbackError: Error)
 
     var errorDescription: String? {
         switch self {
@@ -45,6 +46,8 @@ enum PostingWorkflowUseCaseError: LocalizedError {
             return "未確定の仕訳は取消できません"
         case .sourceCandidateNotFound:
             return "再レビュー元の仕訳候補が見つかりません"
+        case .candidateRollbackFailed:
+            return "仕訳保存後の候補ロールバックに失敗しました"
         }
     }
 }

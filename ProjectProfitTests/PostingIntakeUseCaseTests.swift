@@ -328,4 +328,14 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(evidence.count, beforeEvidence.count + 1)
         XCTAssertTrue(pending.contains { $0.memo == "売上入金" && $0.status == .needsReview && $0.source == .importFile })
     }
+
+    func testProjectYAMLDoesNotReferenceLegacyTransactionCompatibilityUseCase() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let projectFile = repositoryRoot.appendingPathComponent("project.yml")
+        let contents = try String(contentsOf: projectFile, encoding: .utf8)
+
+        XCTAssertFalse(contents.contains("LegacyTransactionCompatibilityUseCase.swift"))
+    }
 }

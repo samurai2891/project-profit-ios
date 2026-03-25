@@ -317,7 +317,6 @@
 		9143628E0D0D0967C8258625 /* ChartOfAccountsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D184AD0D6B42E9393B29E04D /* ChartOfAccountsRepository.swift */; };
 		9194ED99A6A9CF25B057C4EA /* TaxCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB68A6107C278D784F401570 /* TaxCodeTests.swift */; };
 		929AA389D09BB99AC70984C4 /* ManualJournalFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA1D0763CA8B60E2F9A314F /* ManualJournalFormView.swift */; };
-		92ED24922EE788A405D18630 /* LegacyTransactionCompatibilityUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AAEEF6FCED4036394B6FE4E /* LegacyTransactionCompatibilityUseCase.swift */; };
 		95267AE635883155EE55C8F1 /* PPInventoryRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD243CA8A1EAC52C78410E8C /* PPInventoryRecordTests.swift */; };
 		953866B57FA463B8A57E319C /* FilingPreflightUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0196BD9BEB119EDF94F5E9C0 /* FilingPreflightUseCase.swift */; };
 		958F914CF5C1857A1725463F /* LedgerCSVImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A13DD825D6394247A8D9D9 /* LedgerCSVImportView.swift */; };
@@ -946,7 +945,6 @@
 		890651B2C97C4594F40FE15C /* DepreciationEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepreciationEngineTests.swift; sourceTree = "<group>"; };
 		8A8200AAE6AB7E643EE45588 /* DistributionRuleEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionRuleEntityMapper.swift; sourceTree = "<group>"; };
 		8AAB658AA44519964D6C3627 /* SwiftDataAuditRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataAuditRepository.swift; sourceTree = "<group>"; };
-		8AAEEF6FCED4036394B6FE4E /* LegacyTransactionCompatibilityUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTransactionCompatibilityUseCase.swift; sourceTree = "<group>"; };
 		8AAF099BC83095DBB111B627 /* RecurringQueryUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringQueryUseCaseTests.swift; sourceTree = "<group>"; };
 		8AD52CCF15CF298118376C94 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		8AF46963DC33627777FEEB69 /* JournalEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JournalEntry.swift; sourceTree = "<group>"; };
@@ -2807,7 +2805,6 @@
 		BA1B761AD13397E8642DB9D4 = {
 			isa = PBXGroup;
 			children = (
-				DA681DD665033EF75E771D17 /* Legacy */,
 				3E7B670F522DFA7E7D82C25E /* ProjectProfit */,
 				A26F918CB697B9588D4C4194 /* ProjectProfitShareExtension */,
 				AF4130438377D208BC14F57F /* ProjectProfitShareExtensionTests */,
@@ -3070,15 +3067,6 @@
 				8676DBB9A86F24F40C11E8E5 /* XML */,
 			);
 			path = Export;
-			sourceTree = "<group>";
-		};
-		DA681DD665033EF75E771D17 /* Legacy */ = {
-			isa = PBXGroup;
-			children = (
-				8AAEEF6FCED4036394B6FE4E /* LegacyTransactionCompatibilityUseCase.swift */,
-			);
-			name = Legacy;
-			path = ProjectProfit/Application/UseCases/Legacy;
 			sourceTree = "<group>";
 		};
 		DFEF3743CD333CC543EBBC97 /* Categories */ = {
@@ -3968,7 +3956,6 @@
 				F7A02359B889CA70D406119A /* LedgerDataStoreTests.swift in Sources */,
 				F74A1113ED67C8DBFA664C41 /* LedgerImportCoordinatorTests.swift in Sources */,
 				19BBEAF0E1D7F92BD9BFCCC4 /* LegacyProfileMigrationRunnerTests.swift in Sources */,
-				92ED24922EE788A405D18630 /* LegacyTransactionCompatibilityUseCase.swift in Sources */,
 				33C763EE07C93D1059D994A8 /* LegalReportLineTests.swift in Sources */,
 				B6C6F24C707483A67E2BBB86 /* LineItemTests.swift in Sources */,
 				CA7E417A66CC343484F028B6 /* MigrationReportRunnerTests.swift in Sources */,

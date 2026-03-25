@@ -168,6 +168,8 @@ struct JournalDetailView: View {
             return JournalEntryType.opening.label
         case .closing:
             return JournalEntryType.closing.label
+        case .manual:
+            return JournalEntryType.manual.label
         case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
             return JournalEntryType.auto.label
         }

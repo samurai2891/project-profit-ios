@@ -618,46 +618,18 @@ enum ExportCoordinator {
         }
     }
 
-    private static func legacyJournalProjection(
-        from context: CanonicalReadContext
-    ) -> (entries: [PPJournalEntry], lines: [PPJournalLine]) {
-        let books = CanonicalBookService.generateJournalBook(
-            journals: context.journals,
-            accounts: context.accounts,
-            counterparties: context.counterpartiesById
+    private static func projectedJournalExportPayload(
+        modelContext: ModelContext,
+        fiscalYear: Int
+    ) -> (entries: [PPJournalEntry], lines: [PPJournalLine], accounts: [PPAccount]) {
+        let support = AccountingReadSupport(modelContext: modelContext)
+        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        return (
+            entries: projected.entries,
+            lines: projected.lines,
+            accounts: legacyAccounts(for: context)
         )
-        let journalsById = Dictionary(uniqueKeysWithValues: context.journals.map { ($0.id, $0) })
-        let entries = books.compactMap { book -> PPJournalEntry? in
-            guard let journal = journalsById[book.id] else {
-                return nil
-            }
-            return PPJournalEntry(
-                id: journal.id,
-                sourceKey: journalSourceKey(journal),
-                date: journal.journalDate,
-                entryType: exportJournalEntryType(for: journal.entryType),
-                memo: journal.description,
-                isPosted: journal.approvedAt != nil,
-                createdAt: journal.createdAt,
-                updatedAt: journal.updatedAt
-            )
-        }
-        let lines = books.flatMap { book in
-            book.lines.enumerated().map { index, line in
-                PPJournalLine(
-                    id: line.id,
-                    entryId: book.id,
-                    accountId: context.legacyAccountId(for: line.accountId),
-                    debit: decimalInt(line.debitAmount),
-                    credit: decimalInt(line.creditAmount),
-                    memo: "",
-                    displayOrder: index,
-                    createdAt: journalsById[book.id]?.createdAt ?? Date(),
-                    updatedAt: journalsById[book.id]?.updatedAt ?? Date()
-                )
-            }
-        }
-        return (entries, lines)
     }
 
     private static func legacyTrialBalanceReport(from report: CanonicalTrialBalanceReport) -> TrialBalanceReport {
@@ -751,24 +723,26 @@ enum ExportCoordinator {
 
         switch (target, format) {
         case (.journal, .csv):
-            let context = AccountingReadSupport(modelContext: modelContext)
-                .canonicalReadContext(fiscalYear: fiscalYear)
-            let projected = legacyJournalProjection(from: context)
+            let projected = projectedJournalExportPayload(
+                modelContext: modelContext,
+                fiscalYear: fiscalYear
+            )
             let csv = ReportCSVExportService.exportJournalCSV(
                 entries: projected.entries,
                 lines: projected.lines,
-                accounts: legacyAccounts(for: context)
+                accounts: projected.accounts
             )
             return .text(csv)
 
         case (.journal, .pdf):
-            let context = AccountingReadSupport(modelContext: modelContext)
-                .canonicalReadContext(fiscalYear: fiscalYear)
-            let projected = legacyJournalProjection(from: context)
+            let projected = projectedJournalExportPayload(
+                modelContext: modelContext,
+                fiscalYear: fiscalYear
+            )
             let pdf = PDFExportService.exportJournalPDF(
                 entries: projected.entries,
                 lines: projected.lines,
-                accounts: legacyAccounts(for: context),
+                accounts: projected.accounts,
                 fiscalYear: fiscalYear
             )
             return .data(pdf)
@@ -1080,33 +1054,6 @@ enum ExportCoordinator {
             return .revenue
         case .expense:
             return .expense
-        }
-    }
-
-    private static func exportJournalEntryType(for entryType: CanonicalJournalEntryType) -> JournalEntryType {
-        switch entryType {
-        case .normal:
-            return .auto
-        case .opening:
-            return .opening
-        case .closing:
-            return .closing
-        case .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
-            return .auto
-        }
-    }
-
-    private static func journalSourceKey(_ journal: CanonicalJournalEntry) -> String {
-        switch journal.entryType {
-        case .opening:
-            return "opening:\(journal.id.uuidString)"
-        case .closing:
-            return "closing:\(journal.id.uuidString)"
-        case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
-            if journal.sourceCandidateId != nil && journal.sourceEvidenceId == nil {
-                return "manual:\(journal.id.uuidString)"
-            }
-            return "canonical:\(journal.id.uuidString)"
         }
     }
 

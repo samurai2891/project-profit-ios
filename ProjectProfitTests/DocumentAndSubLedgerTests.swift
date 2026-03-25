@@ -98,7 +98,6 @@ final class DocumentAndSubLedgerTests: XCTestCase {
             memo: "旧領収書",
             allocations: [(projectId: project.id, ratio: 100)],
             receiptImagePath: legacyImageFile,
-            enqueueCanonicalSync: false,
             reloadStoreAfterMutation: false
         )
 
@@ -134,7 +133,6 @@ final class DocumentAndSubLedgerTests: XCTestCase {
             memo: "既存書類あり",
             allocations: [(projectId: project.id, ratio: 100)],
             receiptImagePath: legacyImageFile,
-            enqueueCanonicalSync: false,
             reloadStoreAfterMutation: false
         )
 

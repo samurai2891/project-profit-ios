@@ -1283,6 +1283,8 @@ private func legacyEntryType(for entryType: CanonicalJournalEntryType) -> Journa
     switch entryType {
     case .normal:
         return .auto
+    case .manual:
+        return .manual
     case .opening:
         return .opening
     case .closing:
@@ -1298,6 +1300,8 @@ private func journalSourceKey(_ journal: CanonicalJournalEntry) -> String {
         return "opening:\(journal.id.uuidString)"
     case .closing:
         return "closing:\(journal.id.uuidString)"
+    case .manual:
+        return "manual:\(journal.id.uuidString)"
     case .normal, .depreciation, .inventoryAdjustment, .recurring, .taxAdjustment, .reversal:
         if journal.sourceCandidateId != nil && journal.sourceEvidenceId == nil {
             return "manual:\(journal.id.uuidString)"

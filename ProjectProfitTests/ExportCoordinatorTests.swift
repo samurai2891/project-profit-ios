@@ -239,6 +239,90 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(text.contains("export target"))
     }
 
+    func testCanonicalOnlyBookExportsExcludeOrphanLegacySupplementals() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 12_000,
+            year: 2025,
+            month: 2,
+            description: "Canonical Manual Export",
+            entryType: .normal,
+            sourceCandidateId: UUID()
+        )
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.cashAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 50_000,
+            year: 2025,
+            month: 1,
+            description: "Canonical Opening Export",
+            entryType: .opening
+        )
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: AccountingConstants.salesAccountId,
+            creditLegacyAccountId: AccountingConstants.ownerCapitalAccountId,
+            amount: 8_000,
+            year: 2025,
+            month: 12,
+            description: "Canonical Closing Export",
+            entryType: .closing
+        )
+        insertOrphanLegacySupplementalEntry(
+            sourceKey: "manual:\(UUID().uuidString)",
+            memo: "Orphan Legacy Supplemental",
+            debitAccountId: "acct-rent",
+            creditAccountId: AccountingConstants.cashAccountId,
+            amount: 9_999,
+            year: 2025,
+            month: 3
+        )
+
+        let journalURL = try ExportCoordinator.export(
+            target: .journal,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+        let ledgerURL = try ExportCoordinator.export(
+            target: .ledger,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            ledgerOptions: .init(accountId: "acct-rent", accountName: "地代家賃", accountCode: "622")
+        )
+        let subLedgerURL = try ExportCoordinator.export(
+            target: .subLedger,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            subLedgerOptions: .init(
+                type: .expenseBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: "acct-rent",
+                counterpartyFilter: nil
+            )
+        )
+
+        let journalCSV = try String(contentsOf: journalURL, encoding: .utf8)
+        let ledgerCSV = try String(contentsOf: ledgerURL, encoding: .utf8)
+        let subLedgerCSV = try String(contentsOf: subLedgerURL, encoding: .utf8)
+
+        XCTAssertTrue(journalCSV.contains("Canonical Manual Export"))
+        XCTAssertTrue(journalCSV.contains("Canonical Opening Export"))
+        XCTAssertTrue(journalCSV.contains("Canonical Closing Export"))
+        XCTAssertFalse(journalCSV.contains("Orphan Legacy Supplemental"))
+
+        XCTAssertTrue(ledgerCSV.contains("Canonical Manual Export"))
+        XCTAssertFalse(ledgerCSV.contains("Orphan Legacy Supplemental"))
+
+        XCTAssertTrue(subLedgerCSV.contains("Canonical Manual Export"))
+        XCTAssertFalse(subLedgerCSV.contains("Orphan Legacy Supplemental"))
+    }
+
     func testEtaxExportRequiresFormOptionAfterPreflightPasses() throws {
         seedTaxYearProfile(year: 2025, state: .taxClose)
 
@@ -356,6 +440,126 @@ final class ExportCoordinatorTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    @discardableResult
+    private func createApprovedCanonicalJournal(
+        debitLegacyAccountId: String,
+        creditLegacyAccountId: String,
+        amount: Int,
+        year: Int,
+        month: Int,
+        description: String,
+        entryType: CanonicalJournalEntryType,
+        sourceCandidateId: UUID? = nil
+    ) -> CanonicalJournalEntry {
+        let journalId = UUID()
+        let journalDate = makeDate(year: year, month: month, day: 15)
+        let entry = CanonicalJournalEntry(
+            id: journalId,
+            businessId: businessId,
+            taxYear: year,
+            journalDate: journalDate,
+            voucherNo: VoucherNumber(taxYear: year, month: month, sequence: nextVoucherSequence(for: year)).value,
+            sourceCandidateId: sourceCandidateId,
+            entryType: entryType,
+            description: description,
+            lines: [
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(debitLegacyAccountId),
+                    debitAmount: Decimal(amount),
+                    creditAmount: 0,
+                    legalReportLineId: canonicalAccount(debitLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 0
+                ),
+                JournalLine(
+                    journalId: journalId,
+                    accountId: canonicalAccountId(creditLegacyAccountId),
+                    debitAmount: 0,
+                    creditAmount: Decimal(amount),
+                    legalReportLineId: canonicalAccount(creditLegacyAccountId).defaultLegalReportLineId,
+                    sortOrder: 1
+                ),
+            ],
+            approvedAt: journalDate,
+            createdAt: journalDate,
+            updatedAt: journalDate
+        )
+        context.insert(CanonicalJournalEntryEntityMapper.toEntity(entry))
+        try! context.save()
+        return entry
+    }
+
+    private func insertOrphanLegacySupplementalEntry(
+        sourceKey: String,
+        memo: String,
+        debitAccountId: String,
+        creditAccountId: String,
+        amount: Int,
+        year: Int,
+        month: Int
+    ) {
+        let entryId = UUID()
+        let date = makeDate(year: year, month: month, day: 20)
+        context.insert(
+            PPJournalEntry(
+                id: entryId,
+                sourceKey: sourceKey,
+                date: date,
+                entryType: .manual,
+                memo: memo,
+                isPosted: true,
+                createdAt: date,
+                updatedAt: date
+            )
+        )
+        context.insert(
+            PPJournalLine(
+                id: UUID(),
+                entryId: entryId,
+                accountId: debitAccountId,
+                debit: amount,
+                credit: 0,
+                memo: "",
+                displayOrder: 0,
+                createdAt: date,
+                updatedAt: date
+            )
+        )
+        context.insert(
+            PPJournalLine(
+                id: UUID(),
+                entryId: entryId,
+                accountId: creditAccountId,
+                debit: 0,
+                credit: amount,
+                memo: "",
+                displayOrder: 1,
+                createdAt: date,
+                updatedAt: date
+            )
+        )
+        try! context.save()
+    }
+
+    private func nextVoucherSequence(for taxYear: Int) -> Int {
+        let currentBusinessId = businessId!
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate { $0.businessId == currentBusinessId && $0.taxYear == taxYear }
+        )
+        return ((try? context.fetch(descriptor).count) ?? 0) + 1
+    }
+
+    private func canonicalAccount(_ legacyAccountId: String) -> CanonicalAccount {
+        guard let account = dataStore.canonicalAccounts().first(where: { $0.legacyAccountId == legacyAccountId }) else {
+            fatalError("Canonical account not found for \(legacyAccountId)")
+        }
+        return account
+    }
+
+    private func canonicalAccountId(_ legacyAccountId: String) -> UUID {
+        canonicalAccount(legacyAccountId).id
     }
 
     private func assertUnsupportedFormat(

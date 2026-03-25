@@ -4,24 +4,15 @@ import SwiftData
 @MainActor
 struct ProjectedJournalReadModelQuery {
     private let support: AccountingReadSupport
-    private let supplementalSourcePrefixes: Set<String>
 
     init(
-        modelContext: ModelContext,
-        supplementalSourcePrefixes: Set<String> = ["manual:", "opening:", "closing:", "depreciation:"]
+        modelContext: ModelContext
     ) {
-        self.init(
-            support: AccountingReadSupport(modelContext: modelContext),
-            supplementalSourcePrefixes: supplementalSourcePrefixes
-        )
+        self.init(support: AccountingReadSupport(modelContext: modelContext))
     }
 
-    init(
-        support: AccountingReadSupport,
-        supplementalSourcePrefixes: Set<String> = ["manual:", "opening:", "closing:", "depreciation:"]
-    ) {
+    init(support: AccountingReadSupport) {
         self.support = support
-        self.supplementalSourcePrefixes = supplementalSourcePrefixes
     }
 
     func snapshot(fiscalYear requestedFiscalYear: Int? = nil) -> ProjectedJournalSnapshot {
@@ -29,17 +20,10 @@ struct ProjectedJournalReadModelQuery {
             return ProjectedJournalSnapshot(businessId: nil, entries: [], lines: [])
         }
 
-        let projected = LegacyProjectedJournalAssembler.assemble(
+        let projected = canonicalProjectedJournalSet(
+            support: support,
             businessId: businessProfile.id,
-            fiscalYear: requestedFiscalYear,
-            canonicalAccounts: support.fetchCanonicalAccounts(businessId: businessProfile.id),
-            canonicalJournals: support.fetchCanonicalJournalEntries(
-                businessId: businessProfile.id,
-                taxYear: requestedFiscalYear
-            ),
-            legacyEntries: support.fetchJournalEntries(),
-            legacyLines: support.fetchJournalLines(),
-            supplementalSourcePrefixes: supplementalSourcePrefixes
+            fiscalYear: requestedFiscalYear
         )
         return ProjectedJournalSnapshot(
             businessId: projected.businessId,
@@ -47,6 +31,26 @@ struct ProjectedJournalReadModelQuery {
             lines: projected.lines
         )
     }
+}
+
+@MainActor
+private func canonicalProjectedJournalSet(
+    support: AccountingReadSupport,
+    businessId: UUID,
+    fiscalYear requestedFiscalYear: Int? = nil
+) -> ProjectedLegacyJournalSet {
+    LegacyProjectedJournalAssembler.assemble(
+        businessId: businessId,
+        fiscalYear: requestedFiscalYear,
+        canonicalAccounts: support.fetchCanonicalAccounts(businessId: businessId),
+        canonicalJournals: support.fetchCanonicalJournalEntries(
+            businessId: businessId,
+            taxYear: requestedFiscalYear
+        ),
+        legacyEntries: [],
+        legacyLines: [],
+        supplementalSourcePrefixes: []
+    )
 }
 
 @MainActor
@@ -356,6 +360,8 @@ private func ledgerEntryType(for entryType: CanonicalJournalEntryType) -> Journa
     switch entryType {
     case .normal:
         return .auto
+    case .manual:
+        return .manual
     case .opening:
         return .opening
     case .closing:
