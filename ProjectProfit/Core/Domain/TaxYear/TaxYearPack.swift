@@ -17,6 +17,7 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
     let smallAmountThreshold: Decimal
     let transitionalCreditRate: Decimal?
     let transitionalMeasures: [TransitionalTaxCreditMeasure]
+    let simplifiedDeemedPurchaseRates: [Int: Decimal]
     let twoTenthsSpecialAvailable: Bool
     let blueDeductionOptions: [BlueDeductionLevel]
     let filingDeadlineMonth: Int
@@ -39,6 +40,7 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         case smallAmountThreshold
         case transitionalCreditRate
         case transitionalMeasures
+        case simplifiedDeemedPurchaseRates
         case twoTenthsSpecialAvailable
         case blueDeductionOptions
         case filingDeadlineMonth
@@ -62,6 +64,7 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         smallAmountThreshold: Decimal = 10000,
         transitionalCreditRate: Decimal? = nil,
         transitionalMeasures: [TransitionalTaxCreditMeasure] = TransitionalTaxCreditMeasure.defaultMeasures,
+        simplifiedDeemedPurchaseRates: [Int: Decimal] = Self.defaultSimplifiedDeemedPurchaseRates,
         twoTenthsSpecialAvailable: Bool = true,
         blueDeductionOptions: [BlueDeductionLevel] = BlueDeductionLevel.allCases,
         filingDeadlineMonth: Int = 3,
@@ -83,6 +86,7 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         self.smallAmountThreshold = smallAmountThreshold
         self.transitionalCreditRate = transitionalCreditRate
         self.transitionalMeasures = transitionalMeasures
+        self.simplifiedDeemedPurchaseRates = simplifiedDeemedPurchaseRates
         self.twoTenthsSpecialAvailable = twoTenthsSpecialAvailable
         self.blueDeductionOptions = blueDeductionOptions
         self.filingDeadlineMonth = filingDeadlineMonth
@@ -115,6 +119,10 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
             [TransitionalTaxCreditMeasure].self,
             forKey: .transitionalMeasures
         ) ?? TransitionalTaxCreditMeasure.defaultMeasures
+        self.simplifiedDeemedPurchaseRates = try container.decodeIfPresent(
+            [Int: Decimal].self,
+            forKey: .simplifiedDeemedPurchaseRates
+        ) ?? Self.defaultSimplifiedDeemedPurchaseRates
         self.twoTenthsSpecialAvailable = try container.decodeIfPresent(Bool.self, forKey: .twoTenthsSpecialAvailable) ?? true
         self.blueDeductionOptions = try container.decodeBlueDeductionOptionsIfPresent(forKey: .blueDeductionOptions) ?? BlueDeductionLevel.allCases
         self.filingDeadlineMonth = try container.decodeIfPresent(Int.self, forKey: .filingDeadlineMonth) ?? 3
@@ -123,6 +131,15 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         self.effectiveFrom = try container.decodeIfPresent(Date.self, forKey: .effectiveFrom) ?? defaultEffectiveDate
         self.deprecatedAt = try container.decodeIfPresent(Date.self, forKey: .deprecatedAt)
     }
+
+    static let defaultSimplifiedDeemedPurchaseRates: [Int: Decimal] = [
+        1: Decimal(string: "0.90")!,
+        2: Decimal(string: "0.80")!,
+        3: Decimal(string: "0.70")!,
+        4: Decimal(string: "0.60")!,
+        5: Decimal(string: "0.50")!,
+        6: Decimal(string: "0.40")!
+    ]
 }
 
 struct TransitionalTaxCreditMeasure: Codable, Sendable, Equatable {

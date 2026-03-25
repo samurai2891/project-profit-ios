@@ -79,7 +79,7 @@ enum FormEngine {
     ) throws -> BuildInput {
         BuildInput(
             snapshot: EtaxFormBuildQueryUseCase(modelContext: dataStore.modelContext)
-                .snapshot(fiscalYear: fiscalYear)
+                .snapshot(taxYear: fiscalYear)
         )
     }
 
@@ -107,7 +107,7 @@ enum FormEngine {
 extension FormEngine.BuildInput {
     init(snapshot: EtaxFormBuildSnapshot) {
         self.init(
-            fiscalYear: snapshot.fiscalYear,
+            fiscalYear: snapshot.taxYear,
             startMonth: snapshot.startMonth,
             canonicalAccounts: snapshot.canonicalAccounts,
             canonicalAccountsById: snapshot.canonicalAccountsById,

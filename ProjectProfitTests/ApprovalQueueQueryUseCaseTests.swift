@@ -41,12 +41,12 @@ final class ApprovalQueueQueryUseCaseTests: XCTestCase {
         XCTAssertTrue(useCase.canonicalAccounts().isEmpty)
     }
 
-    func testIsYearLockedMatchesStoredTaxYearProfile() throws {
+    func testIsYearLockedUsesCalendarTaxYear() throws {
         let businessId = UUID()
         try seedBusinessProfile(id: businessId)
         try seedTaxYearProfile(
             businessId: businessId,
-            taxYear: 2025,
+            taxYear: 2026,
             state: .finalLock
         )
 

@@ -62,10 +62,7 @@ struct StatementImportUseCase {
             request.fileData,
             originalFileName: request.originalFileName
         )
-        let suggestedTaxYear = fiscalYear(
-            for: dates.min() ?? Date(),
-            startMonth: FiscalYearSettings.startMonth
-        )
+        let suggestedTaxYear = taxYear(for: dates.min() ?? Date())
         let evidence = EvidenceDocument(
             businessId: businessId,
             taxYear: suggestedTaxYear,
@@ -287,7 +284,7 @@ struct StatementImportUseCase {
             return PostingCandidate(
                 evidenceId: evidenceId,
                 businessId: businessId,
-                taxYear: fiscalYear(for: line.date, startMonth: FiscalYearSettings.startMonth),
+                taxYear: taxYear(for: line.date),
                 candidateDate: line.date,
                 counterpartyId: nil,
                 proposedLines: [candidateLine],

@@ -340,7 +340,7 @@ enum ExportCoordinator {
         modelContext: ModelContext
     ) throws {
         let businessId = EtaxExportContextQueryUseCase(modelContext: modelContext)
-            .context(fiscalYear: fiscalYear)
+            .context(taxYear: fiscalYear)
             .businessId
         guard let businessId else {
             return

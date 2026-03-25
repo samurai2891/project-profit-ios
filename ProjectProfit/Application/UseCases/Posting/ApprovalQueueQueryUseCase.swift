@@ -55,7 +55,7 @@ struct ApprovalQueueQueryUseCase {
         guard let businessId = currentBusinessId() else {
             return false
         }
-        let taxYear = fiscalYear(for: date, startMonth: startMonth)
+        let taxYear = taxYear(for: date)
         let state = (try? repository.yearLockState(businessId: businessId, taxYear: taxYear)) ?? .open
         return !state.allowsNormalPosting
     }

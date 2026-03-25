@@ -197,6 +197,8 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(pack.transitionalMeasures.count, 2)
         XCTAssertEqual(pack.transitionalMeasures.first?.id, "transitional_80")
         XCTAssertEqual(pack.transitionalMeasures.last?.id, "transitional_50")
+        XCTAssertEqual(pack.simplifiedDeemedPurchaseRates[2], Decimal(string: "0.80")!)
+        XCTAssertEqual(pack.simplifiedDeemedPurchaseRates[6], Decimal(string: "0.40")!)
     }
 
     func testPackSupportedForms_2025And2026MatchExpectedSet() {

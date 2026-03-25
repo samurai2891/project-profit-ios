@@ -210,6 +210,11 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
             simplifiedBusinessCategory: 2,
             taxPackVersion: "2025-v1"
         )
+        let pack = TaxYearPack(
+            taxYear: 2025,
+            version: "2025-v1",
+            simplifiedDeemedPurchaseRates: [2: Decimal(string: "0.55")!]
+        )
 
         let worksheet = ConsumptionTaxReportService.generateWorksheet(
             fiscalYear: 2025,
@@ -225,16 +230,21 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
                     counterpartyId: registeredCounterpartyId
                 )
             ],
-            accounts: canonicalAccounts
+            accounts: canonicalAccounts,
+            pack: pack
         )
 
         XCTAssertEqual(worksheet.outputTaxTotal, 1_000)
         XCTAssertEqual(worksheet.rawInputTaxTotal, 500)
-        XCTAssertEqual(worksheet.deductibleInputTaxTotal, 800)
-        XCTAssertEqual(worksheet.taxPayable, 200)
+        XCTAssertEqual(worksheet.deductibleInputTaxTotal, 550)
+        XCTAssertEqual(worksheet.taxPayable, 450)
         XCTAssertEqual(
             worksheet.lines.first(where: { $0.direction == .input })?.purchaseCreditMethod,
             .simplifiedEstimate
+        )
+        XCTAssertEqual(
+            worksheet.lines.first(where: { $0.direction == .input })?.deductibleTaxAmount,
+            550
         )
     }
 
@@ -270,6 +280,47 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
         XCTAssertEqual(
             worksheet.lines.first(where: { $0.direction == .input })?.purchaseCreditMethod,
             .twoTenthsEstimate
+        )
+    }
+
+    func testGenerateWorksheetMarksSimplifiedWithoutBusinessCategoryAsRequiresReview() {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            vatStatus: .taxable,
+            vatMethod: .simplified,
+            simplifiedBusinessCategory: nil,
+            taxPackVersion: "2025-v1"
+        )
+
+        let worksheet = ConsumptionTaxReportService.generateWorksheet(
+            fiscalYear: 2025,
+            taxYearProfile: profile,
+            journalEntries: [
+                makeOutputEntry(year: 2025, month: 8, day: 1, taxableAmount: 10_000, taxAmount: 1_000),
+                makeInputEntry(
+                    year: 2025,
+                    month: 8,
+                    day: 2,
+                    taxableAmount: 5_000,
+                    taxAmount: 500,
+                    counterpartyId: registeredCounterpartyId
+                )
+            ],
+            accounts: canonicalAccounts
+        )
+
+        XCTAssertEqual(worksheet.outputTaxTotal, 1_000)
+        XCTAssertEqual(worksheet.rawInputTaxTotal, 500)
+        XCTAssertEqual(worksheet.deductibleInputTaxTotal, 0)
+        XCTAssertEqual(worksheet.taxPayable, 1_000)
+        XCTAssertEqual(
+            worksheet.lines.first(where: { $0.direction == .input })?.purchaseCreditMethod,
+            .requiresReview
+        )
+        XCTAssertEqual(
+            worksheet.lines.first(where: { $0.direction == .input })?.deductibleTaxAmount,
+            0
         )
     }
 

@@ -100,7 +100,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
         var exportResult: EtaxExportViewModel.ExportResult?
         let elapsed = measureSeconds {
             let viewModel = makeEtaxExportViewModel()
-            viewModel.fiscalYear = 2025
+            viewModel.taxYear = 2025
             viewModel.generatePreview()
             previewForm = viewModel.exportedForm
             viewModel.exportCsv()
@@ -126,16 +126,16 @@ final class ReleasePerformanceGateTests: XCTestCase {
         let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
             modelContext: context,
-            contextProvider: { fiscalYear in
+            contextProvider: { taxYear in
                 EtaxExportContext(
                     businessId: self.dataStore.businessProfile?.id,
-                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == taxYear
                         ? self.dataStore.currentTaxYearProfile
-                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
+                        : contextQueryUseCase.context(taxYear: taxYear).fallbackTaxYearProfile
                 )
             },
-            snapshotProvider: { fiscalYear in
-                formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+            snapshotProvider: { taxYear in
+                formBuildQueryUseCase.snapshot(taxYear: taxYear)
             },
             formBuilder: { filingStyle, snapshot in
                 try FormEngine.build(

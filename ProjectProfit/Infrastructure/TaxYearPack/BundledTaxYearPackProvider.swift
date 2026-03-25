@@ -164,6 +164,7 @@ final class BundledTaxYearPackProvider: TaxYearPackProviderPort, @unchecked Send
             smallAmountThreshold: rules.smallAmountThreshold ?? profilePack.smallAmountThreshold,
             transitionalCreditRate: rules.transitionalMeasures.first?.creditRate ?? profilePack.transitionalCreditRate,
             transitionalMeasures: rules.transitionalMeasures.isEmpty ? profilePack.transitionalMeasures : rules.transitionalMeasures,
+            simplifiedDeemedPurchaseRates: rules.simplifiedDeemedPurchaseRates ?? profilePack.simplifiedDeemedPurchaseRates,
             twoTenthsSpecialAvailable: rules.twoTenthsSpecialAvailable ?? profilePack.twoTenthsSpecialAvailable,
             blueDeductionOptions: profilePack.blueDeductionOptions,
             filingDeadlineMonth: profilePack.filingDeadlineMonth,
@@ -183,6 +184,7 @@ private struct ConsumptionTaxRules: Decodable {
     let nationalRateReduced: Decimal?
     let localRateReduced: Decimal?
     let transitionalMeasures: [TransitionalTaxCreditMeasure]
+    let simplifiedDeemedPurchaseRates: [Int: Decimal]?
     let smallAmountThreshold: Decimal?
     let twoTenthsSpecialAvailable: Bool?
 
@@ -194,7 +196,58 @@ private struct ConsumptionTaxRules: Decodable {
         case nationalRateReduced
         case localRateReduced
         case transitionalMeasures
+        case simplifiedTaxation
         case specialProvisions
+    }
+
+    private struct SimplifiedTaxation: Decodable {
+        let deemedPurchaseRates: [Int: Decimal]?
+
+        private enum CodingKeys: String, CodingKey {
+            case deemedPurchaseRates
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            deemedPurchaseRates = try container.decodeIfPresent(
+                DeemedPurchaseRates.self,
+                forKey: .deemedPurchaseRates
+            )?.value
+        }
+    }
+
+    private struct DeemedPurchaseRates: Decodable {
+        let value: [Int: Decimal]
+
+        struct DynamicKey: CodingKey {
+            var stringValue: String
+            var intValue: Int?
+
+            init?(stringValue: String) {
+                self.stringValue = stringValue
+                self.intValue = nil
+            }
+
+            init?(intValue: Int) {
+                self.stringValue = "\(intValue)"
+                self.intValue = intValue
+            }
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: DynamicKey.self)
+            var resolved: [Int: Decimal] = [:]
+
+            for key in container.allKeys {
+                let suffix = key.stringValue.replacingOccurrences(of: "category", with: "")
+                guard let category = Int(suffix) else { continue }
+                if let value = try container.decodeDecimalIfPresent(forKey: key) {
+                    resolved[category] = value
+                }
+            }
+
+            value = resolved.isEmpty ? TaxYearPack.defaultSimplifiedDeemedPurchaseRates : resolved
+        }
     }
 
     private struct SpecialProvision: Decodable {
@@ -225,6 +278,10 @@ private struct ConsumptionTaxRules: Decodable {
         nationalRateReduced = try container.decodeDecimalIfPresent(forKey: .nationalRateReduced)
         localRateReduced = try container.decodeDecimalIfPresent(forKey: .localRateReduced)
         transitionalMeasures = try container.decodeIfPresent([TransitionalTaxCreditMeasure].self, forKey: .transitionalMeasures) ?? []
+        simplifiedDeemedPurchaseRates = try container.decodeIfPresent(
+            SimplifiedTaxation.self,
+            forKey: .simplifiedTaxation
+        )?.deemedPurchaseRates
 
         let provisions = try container.decodeIfPresent([SpecialProvision].self, forKey: .specialProvisions) ?? []
         smallAmountThreshold = provisions.first(where: { $0.id == "small_amount_special" })?.threshold

@@ -27,11 +27,11 @@ struct EtaxExportView: View {
                 let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: modelContext)
                 viewModel = EtaxExportViewModel(
                     modelContext: modelContext,
-                    contextProvider: { fiscalYear in
-                        contextQueryUseCase.context(fiscalYear: fiscalYear)
+                    contextProvider: { taxYear in
+                        contextQueryUseCase.context(taxYear: taxYear)
                     },
-                    snapshotProvider: { fiscalYear in
-                        formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+                    snapshotProvider: { taxYear in
+                        formBuildQueryUseCase.snapshot(taxYear: taxYear)
                     },
                     formBuilder: { filingStyle, snapshot in
                         try FormEngine.build(
@@ -107,19 +107,19 @@ struct EtaxExportView: View {
     @MainActor
     private func settingsSection(viewModel: EtaxExportViewModel) -> some View {
         let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: viewModel.formType)
-        let yearOptions = supportedYears.isEmpty ? [viewModel.fiscalYear] : supportedYears
+        let yearOptions = supportedYears.isEmpty ? [viewModel.taxYear] : supportedYears
 
         return VStack(alignment: .leading, spacing: 12) {
             Text("設定")
                 .font(.headline)
 
             HStack {
-                Text("年度")
+                Text("申告年分")
                 Spacer()
-                Picker("年度", selection: Binding(
-                    get: { viewModel.fiscalYear },
+                Picker("申告年分", selection: Binding(
+                    get: { viewModel.taxYear },
                     set: {
-                        viewModel.fiscalYear = $0
+                        viewModel.taxYear = $0
                         viewModel.exportedForm = nil
                         viewModel.validationErrors = []
                     }
@@ -140,10 +140,10 @@ struct EtaxExportView: View {
                         viewModel.formType = $0
                         let years = TaxYearDefinitionLoader.supportedYears(formType: $0)
                         if !years.isEmpty,
-                           !years.contains(viewModel.fiscalYear),
+                           !years.contains(viewModel.taxYear),
                            let latest = years.last
                         {
-                            viewModel.fiscalYear = latest
+                            viewModel.taxYear = latest
                         }
                         viewModel.exportedForm = nil
                         viewModel.validationErrors = []

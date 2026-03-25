@@ -503,13 +503,13 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
             )
         )
 
-        let populated = EtaxExportContextQueryUseCase(modelContext: context).context(fiscalYear: 2025)
+        let populated = EtaxExportContextQueryUseCase(modelContext: context).context(taxYear: 2025)
         XCTAssertEqual(populated.businessId, businessId)
         XCTAssertEqual(populated.fallbackTaxYearProfile?.taxYear, 2025)
 
         let emptyContainer = try! TestModelContainer.create()
         let emptyContext = ModelContext(emptyContainer)
-        let empty = EtaxExportContextQueryUseCase(modelContext: emptyContext).context(fiscalYear: 2025)
+        let empty = EtaxExportContextQueryUseCase(modelContext: emptyContext).context(taxYear: 2025)
         XCTAssertNil(empty.businessId)
         XCTAssertNil(empty.fallbackTaxYearProfile)
     }

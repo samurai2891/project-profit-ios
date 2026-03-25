@@ -749,6 +749,110 @@ final class ReceiptEvidenceIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(result.candidate.proposedLines.first?.debitAccountId, expectedExpenseAccountId)
     }
 
+    func testIntakeUsesCalendarTaxYearWhenFiscalStartMonthChanges() async throws {
+        let key = FiscalYearSettings.userDefaultsKey
+        let previousStartMonth = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(4, forKey: key)
+        defer {
+            if let previousStartMonth {
+                UserDefaults.standard.set(previousStartMonth, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        let businessId = try await seedBusinessProfile()
+        let communicationLegacyAccountId = "acct-communication"
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: communicationLegacyAccountId,
+            code: "612",
+            name: "クラウド通信費",
+            accountType: .expense,
+            normalBalance: .debit,
+            displayOrder: 1
+        )
+        try await seedCanonicalAccount(
+            businessId: businessId,
+            legacyAccountId: "acct-cash",
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            displayOrder: 2
+        )
+
+        context.insert(
+            PPAccount(
+                id: communicationLegacyAccountId,
+                code: "612",
+                name: "クラウド通信費",
+                accountType: .expense,
+                subtype: .communicationExpense,
+                displayOrder: 1
+            )
+        )
+        context.insert(
+            PPCategory(
+                id: "cat-cloud-communication",
+                name: "クラウド通信費",
+                type: .expense,
+                icon: "wifi",
+                linkedAccountId: communicationLegacyAccountId
+            )
+        )
+        context.insert(
+            PPUserRule(
+                keyword: "AWS",
+                taxLine: .communicationExpense,
+                priority: 300
+            )
+        )
+        try context.save()
+
+        let result = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(
+            ReceiptEvidenceIntakeRequest(
+                receiptData: ReceiptData(
+                    totalAmount: 3_300,
+                    date: "2026-03-07",
+                    storeName: "AWS",
+                    registrationNumber: nil,
+                    estimatedCategory: "tools",
+                    itemSummary: "月額利用料"
+                ),
+                ocrText: "AWS\n合計 3,300円",
+                sourceType: .camera,
+                fileData: Data("jpeg-aws-tax-year".utf8),
+                originalFileName: "aws-tax-year.jpg",
+                mimeType: "image/jpeg",
+                reviewedAmount: 3_300,
+                reviewedDate: date(2026, 3, 7),
+                transactionType: .expense,
+                categoryId: "cat-tools",
+                memo: "AWS 月額利用料",
+                lineItems: [LineItem(name: "月額利用料", quantity: 1, unitPrice: 3_300)],
+                linkedProjectIds: [],
+                paymentAccountId: "acct-cash",
+                transferToAccountId: nil,
+                taxDeductibleRate: 100,
+                taxCodeId: nil,
+                isTaxIncluded: false,
+                taxAmount: nil,
+                registrationNumber: nil,
+                counterpartyId: nil,
+                counterpartyName: "AWS",
+                isWithholdingEnabled: false,
+                withholdingTaxCodeId: nil,
+                withholdingTaxAmount: nil
+            )
+        )
+        defer { ReceiptImageStore.deleteDocumentFile(fileName: result.evidence.originalFilePath) }
+
+        XCTAssertEqual(result.evidence.taxYear, 2026)
+        XCTAssertEqual(result.candidate.taxYear, 2026)
+        XCTAssertEqual(result.candidate.legacySnapshot?.categoryId, "cat-cloud-communication")
+    }
+
     private func seedBusinessProfile() async throws -> UUID {
         let businessId = UUID()
         let profile = BusinessProfile(

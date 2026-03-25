@@ -35,8 +35,8 @@
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | 実装済み | 帳簿画面と `journal / ledger / subLedger export` が共通の canonical-only export source に統一され、orphan legacy supplemental / legacy-only depreciation を除外する parity テストも追加された |
 | 2 | 取引保存成功と canonical 側反映失敗の乖離 | 実装済み | 手入力は candidate-only 保存へ統一され、承認時 canonical journal 保存と失敗時ロールバックが main path / release 導線で裏付けられた。未使用の `DEBUG` 補助同期コードも除去された |
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | 実装済み | project/history の表示系も canonical read model に統一され、`projectAllocationId` を案件別集計・履歴・詳細表示まで一貫利用する |
-| 4 | 消費税の簡易課税・2割特例ロジック | 部分実装 | 誤計算の主経路は calculator へ移ったが、判定責務と控除計算責務が二重化し、単体テストも不足 |
-| 5 | 個人事業主向けの年度設定 | 部分実装 | filing/e-Tax/preflight は暦年化済みだが、証憑取込・明細 import・命名には fiscal year 起点が残る |
+| 4 | 消費税の簡易課税・2割特例ロジック | 実装済み | 判定と控除計算は decision object ベースに一本化され、簡易課税のみなし仕入率も `TaxYearPack` 正本へ統一、単体/統合テストで境界が固定された |
+| 5 | 個人事業主向けの年度設定 | 実装済み | filing/e-Tax/preflight に加えて、証憑取込・statement import・Approval Queue・e-Tax 命名も暦年 `taxYear` 基準へ統一された |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 部分実装 | Books 導線自体は release 画面にあるが、旧11帳簿は `互換` セクションかつ `readOnly` 導線 |
 | 7 | export 機能が帳簿仕様と未整合 | 部分実装 | `ExportCoordinator` で対象は広がったが、仕様書の「全11帳簿」「Excel 原本と完全同一フォーマット」には一致していない |
 | 8 | e-Tax UI と年分対応のズレ | 部分実装 | `blueCashBasis` と 2026 年分対応はコード上解消済みだが、UI は対応状況一覧を持たず未対応年の説明も事前表示しない |
@@ -52,8 +52,8 @@
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | [x] | [x] | [x] | [x] | [ ] |
 | 2 | 取引保存成功と canonical 側反映失敗の乖離 | [x] | [x] | [x] | [x] | [ ] |
 | 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [ ] |
-| 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [x] |
-| 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [ ] | [x] |
+| 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [ ] |
+| 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [x] | [ ] |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [x] |
 | 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [ ] | [x] | [x] |
 | 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [x] |
@@ -180,76 +180,83 @@
 
 ### 4. 消費税の簡易課税・2割特例ロジック
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] 控除方式判定ロジックがある
   - [x] 実控除額計算ロジックがある
   - [x] 簡易課税 / 2割特例の統合テストがある
-  - [ ] 判定責務と控除計算責務が一本化されていない
-  - [ ] evaluator / calculator の単体テストは不足
+  - [x] 判定責務と控除計算責務が一本化されている
+  - [x] evaluator / calculator の単体テストがある
 - できていること:
-  - 仕入税額控除方式の判定は `TaxRuleEvaluator` に分離されている
-  - 実控除額計算は `InputTaxDeductionCalculator` が `lineBased/simplified/twoTenths` で再計算する
-  - `ConsumptionTaxReportService` は worksheet 生成後に控除額を再配分する
-  - 簡易課税、2割特例、経過措置の統合テストがある
-- まだ足りていないこと:
-  - 判定責務は `TaxRuleEvaluator`、最終控除計算は `InputTaxDeductionCalculator.mode()` に分かれており、責務分離が途中
-  - `InputTaxCreditMethod.creditRate` の `simplifiedEstimate` / `twoTenthsEstimate` は `0` を返し、「別計算」前提が残る
-  - `simplifiedBusinessCategory` 未設定時は `deemedPurchaseRate == 0`
-  - evaluator / calculator の単体テストファイルは確認できず、統合テスト依存
+  - `TaxRuleEvaluator` は `InputTaxDeductionDecision` を返し、控除方式判定と控除率・計算モード解決を同じ決定オブジェクトへ集約した
+  - `InputTaxDeductionCalculator` は profile 再判定を持たず、decision を入力に控除額計算と worksheet 合計再配分のみを担当する
+  - 簡易課税のみなし仕入率は `TaxYearPack.simplifiedDeemedPurchaseRates` を正本として `rules.json` から decode される
+  - `simplifiedBusinessCategory` 未設定時は `requiresReview + 控除額 0` の fail-safe に統一された
+  - `ConsumptionTaxReportService` と `AccountingBootstrapService` は同じ decision API を使って控除額を計算する
+  - 簡易課税、2割特例、経過措置の統合テストに加え、evaluator / calculator の単体テストが追加された
 - 根拠コード:
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift:16`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift:123`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/InputTaxDeductionCalculator.swift:16`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/InputTaxDeductionCalculator.swift:96`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ConsumptionTaxReportService.swift:94`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ConsumptionTaxReportService.swift:203`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ConsumptionTaxReportService.swift:232`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/TaxRuleEvaluator.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Tax/InputTaxDeductionCalculator.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/TaxYear/TaxYearPack.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/TaxYearPack/BundledTaxYearPackProvider.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ConsumptionTaxReportService.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/AccountingBootstrapService.swift`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ConsumptionTaxReportServiceTests.swift:159`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ConsumptionTaxReportServiceTests.swift:204`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ConsumptionTaxReportServiceTests.swift:241`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Core/TaxRuleEvaluatorTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Core/InputTaxDeductionCalculatorTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ConsumptionTaxReportServiceTests.swift`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TaxYearDefinitionLoaderTests.swift`
 - 未確認事項:
-  - `TaxRuleEvaluator` と `InputTaxDeductionCalculator` の単体境界を固定するテストは repo 内で未確認
+  - `xcodebuild` のフル完走はこの監査時点では未確認
 - release 影響:
-  - 主計算経路は改善されているが、責務の二重化と fallback 的な `0` 返却が残るため、ロジックの正本はまだ一枚岩ではない
+  - 簡易課税・2割特例・経過措置の main path は同一 decision model を通るため、release 上は「判定と控除計算の正本が一致している」と説明できる
 
 ### 5. 個人事業主向けの年度設定
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] filing/e-Tax/preflight は暦年処理を使う
   - [x] e-Tax UI は暦年基準を明記している
-  - [x] 暦年 main path を支えるテストがある
-  - [ ] receipt intake / statement import の年付与に fiscal 起点が残る
-  - [ ] その残差を固定するテスト根拠は不足
+  - [x] receipt intake / statement import の `taxYear` 付与は暦年 `taxYear(for:)` に統一された
+  - [x] Approval Queue の年ロック判定も暦年 `taxYear` 基準へ整合した
+  - [x] e-Tax 系 API 引数や state 名は対象範囲で `taxYear` に整理された
+  - [x] 暦年 main path と regression を支えるテストがある
 - できていること:
   - `taxYear(for:)` と `startOfTaxYear/endOfTaxYear` が用意されている
   - e-Tax form build は `startMonth = 1` 固定で暦年抽出
   - preflight も `startMonth: 1` で trial balance を判定
-  - e-Tax UI には「申告年分は暦年基準」と表示がある
-- まだ足りていないこと:
-  - Settings 画面では会計年度開始月を保持できる
-  - 証憑取込 `ReceiptEvidenceIntakeUseCase` の `taxYear` 付与は `fiscalYear(...)`
-  - Statement import candidate 生成時の `taxYear` 付与も `fiscalYear(...)`
-  - e-Tax 系 API 引数や state 名は `fiscalYear` のままで、実処理と命名が一致していない
+  - `ReceiptEvidenceIntakeUseCase` は evidence / posting candidate / 分類プレビュー用ダミー候補の `taxYear` を暦年で付与する
+  - `StatementImportUseCase` は imported evidence / posting candidate の `taxYear` を暦年で付与する
+  - `ApprovalQueueQueryUseCase.isYearLocked(date:)` は暦年 `taxYear` でロック状態を判定する
+  - `EtaxExportViewModel`、`EtaxExportContextQueryUseCase`、`EtaxFormBuildQueryUseCase`、`EtaxFormBuildSnapshot` の対象範囲命名は `taxYear` に整理された
+  - e-Tax UI は「申告年分」表記に揃えつつ「申告年分は暦年（1月〜12月）基準」と表示する
+- 補足:
+  - Settings 画面の「会計年度開始月」保持機能自体は維持されており、会計年度設定と申告年分が別概念であることを前提にしている
+  - `EtaxForm` 本体や `FormEngine` 全域、tax pack JSON フィールド名までは今回の整理対象外
 - 根拠コード:
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Utilities/FiscalYearUtilities.swift:8`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Utilities/FiscalYearUtilities.swift:61`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift:1380`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift:178`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift:1364`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/App/AccountingReadSupport.swift:1384`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Filing/FilingPreflightUseCase.swift:85`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:159`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Settings/SettingsView.swift:208`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Evidence/ReceiptEvidenceIntakeUseCase.swift:109`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Statements/StatementImportUseCase.swift:290`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Evidence/ReceiptEvidenceIntakeUseCase.swift:626`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Statements/StatementImportUseCase.swift:65`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Statements/StatementImportUseCase.swift:286`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/ApprovalQueueQueryUseCase.swift:53`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/EtaxExportViewModel.swift:22`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/EtaxExportView.swift:110`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/FilingPreflightUseCaseTests.swift:95`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/EtaxExportViewModelTests.swift:124`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/FilingPreflightUseCaseTests.swift:88`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/EtaxExportViewModelTests.swift:112`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ReceiptEvidenceIntakeUseCaseTests.swift:709`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/StatementImportUseCaseTests.swift:123`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/StatementImportUseCaseTests.swift:149`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ApprovalQueueQueryUseCaseTests.swift:40`
 - 未確認事項:
-  - `FiscalYearSettings.startMonth` を変更した状態での receipt intake / statement import の `taxYear` 検証テストは repo 内で確認できない
+  - 関連スイート中心の確認は実施したが、repo 全体フルテストの完走まではこの更新では再確認していない
 - release 影響:
-  - filing/e-Tax は暦年で進む一方、取り込み・命名・設定 UI に fiscal 起点が残るため、利用者の年分理解と内部表現が完全一致していない
+  - filing/e-Tax/preflight、証憑取込、statement import、Approval Queue、e-Tax 命名が同じ暦年 `taxYear` を前提に揃い、利用者の年分理解と内部表現のズレは解消された
 
 ### 6. 仕様書上の帳簿が release 導線に未掲載
 

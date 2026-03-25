@@ -1320,27 +1320,24 @@ struct CanonicalTransactionPostingBridge {
         }
 
         let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
-        let deductionCalculator = InputTaxDeductionCalculator(profile: taxYearProfile)
+        let deductionCalculator = InputTaxDeductionCalculator()
         let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
         let grossAmount = Decimal(snapshot.amount)
         let creditMethod: InputTaxCreditMethod
+        let deductibleTaxAmount: Decimal
         if snapshot.type == .expense {
-            creditMethod = evaluator.evaluateInputTaxCreditMethod(
+            let decision = evaluator.evaluateInputTaxDeductionDecision(
                 transactionDate: snapshot.date,
                 counterpartyInvoiceStatus: counterpartyInvoiceStatus,
                 amount: grossAmount
             )
-        } else {
-            creditMethod = .notApplicable
-        }
-
-        let deductibleTaxAmount: Decimal
-        if snapshot.type == .expense {
+            creditMethod = decision.creditMethod
             deductibleTaxAmount = deductionCalculator.deductibleTaxAmount(
                 taxAmount: Decimal(taxAmount),
-                creditMethod: creditMethod
+                decision: decision
             )
         } else {
+            creditMethod = .notApplicable
             deductibleTaxAmount = 0
         }
 

@@ -99,7 +99,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         XCTAssertFalse(exportPreflight.isBlocking)
 
         let viewModel = makeEtaxExportViewModel()
-        viewModel.fiscalYear = fiscalYear
+        viewModel.taxYear = fiscalYear
         viewModel.generatePreview()
 
         XCTAssertNotNil(viewModel.exportedForm)
@@ -117,16 +117,16 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
             modelContext: context,
-            contextProvider: { fiscalYear in
+            contextProvider: { taxYear in
                 EtaxExportContext(
                     businessId: self.dataStore.businessProfile?.id,
-                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == fiscalYear
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == taxYear
                         ? self.dataStore.currentTaxYearProfile
-                        : contextQueryUseCase.context(fiscalYear: fiscalYear).fallbackTaxYearProfile
+                        : contextQueryUseCase.context(taxYear: taxYear).fallbackTaxYearProfile
                 )
             },
-            snapshotProvider: { fiscalYear in
-                formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+            snapshotProvider: { taxYear in
+                formBuildQueryUseCase.snapshot(taxYear: taxYear)
             },
             formBuilder: { filingStyle, snapshot in
                 try FormEngine.build(

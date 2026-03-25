@@ -175,7 +175,7 @@ struct EtaxCandidateSummary {
 }
 
 struct EtaxFormBuildSnapshot {
-    let fiscalYear: Int
+    let taxYear: Int
     let startMonth: Int
     let canonicalAccounts: [CanonicalAccount]
     let canonicalAccountsById: [UUID: CanonicalAccount]
@@ -1361,10 +1361,10 @@ struct EtaxExportContextQueryUseCase {
         self.support = AccountingReadSupport(modelContext: modelContext)
     }
 
-    func context(fiscalYear: Int) -> EtaxExportContext {
+    func context(taxYear: Int) -> EtaxExportContext {
         let businessId = support.fetchBusinessProfile()?.id
         let fallbackTaxYearProfile = businessId.flatMap {
-            support.fetchTaxYearProfile(businessId: $0, taxYear: fiscalYear)
+            support.fetchTaxYearProfile(businessId: $0, taxYear: taxYear)
         }
         return EtaxExportContext(
             businessId: businessId,
@@ -1381,20 +1381,20 @@ struct EtaxFormBuildQueryUseCase {
         self.support = AccountingReadSupport(modelContext: modelContext)
     }
 
-    func snapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
+    func snapshot(taxYear: Int) -> EtaxFormBuildSnapshot {
         let readContext = support.canonicalReadContext()
         let startMonth = 1
-        let dateRange = startOfTaxYear(fiscalYear)...endOfTaxYear(fiscalYear)
+        let dateRange = startOfTaxYear(taxYear)...endOfTaxYear(taxYear)
         let journals = readContext.journals.filter { dateRange.contains($0.journalDate) }
         let businessProfile = support.fetchBusinessProfile()
         let taxYearProfile = readContext.businessId.flatMap {
-            support.fetchTaxYearProfile(businessId: $0, taxYear: fiscalYear)
+            support.fetchTaxYearProfile(businessId: $0, taxYear: taxYear)
         }
         let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
         let candidatesById = support.fetchPostingCandidates(ids: candidateIds)
 
         return EtaxFormBuildSnapshot(
-            fiscalYear: fiscalYear,
+            taxYear: taxYear,
             startMonth: startMonth,
             canonicalAccounts: readContext.accounts,
             canonicalAccountsById: readContext.canonicalAccountsById,
@@ -1402,18 +1402,18 @@ struct EtaxFormBuildQueryUseCase {
                 uniqueKeysWithValues: support.fetchCategories().map { ($0.id, $0.name) }
             ),
             fixedAssets: support.fetchFixedAssets(),
-            inventoryRecord: support.fetchInventoryRecord(fiscalYear: fiscalYear),
+            inventoryRecord: support.fetchInventoryRecord(fiscalYear: taxYear),
             businessProfile: businessProfile,
             taxYearProfile: taxYearProfile,
             sensitivePayload: businessProfile.flatMap { ProfileSecureStore.load(profileId: $0.id.uuidString) },
             canonicalProfitLoss: AccountingReportService.generateProfitLoss(
-                fiscalYear: fiscalYear,
+                fiscalYear: taxYear,
                 accounts: readContext.accounts,
                 journals: journals,
                 startMonth: startMonth
             ),
             canonicalBalanceSheet: AccountingReportService.generateBalanceSheet(
-                fiscalYear: fiscalYear,
+                fiscalYear: taxYear,
                 accounts: readContext.accounts,
                 journals: journals,
                 startMonth: startMonth

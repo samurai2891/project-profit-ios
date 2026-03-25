@@ -129,7 +129,43 @@ final class StatementImportUseCaseTests: XCTestCase {
         )
     }
 
+    func testImportStatementUsesCalendarTaxYearWhenFiscalStartMonthChanges() async throws {
+        let key = FiscalYearSettings.userDefaultsKey
+        let previousStartMonth = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(4, forKey: key)
+        defer {
+            if let previousStartMonth {
+                UserDefaults.standard.set(previousStartMonth, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let request = StatementImportRequest(
+            fileData: Data("""
+            日付,摘要,金額,取引先,参照番号,メモ
+            2026/03/10,振込入金,120000,株式会社テスト,REF-301,3月分
+            2026/03/12,カード決済,-5500,カフェ,REF-302,会食
+            """.utf8),
+            originalFileName: "calendar-tax-year.csv",
+            mimeType: "text/csv",
+            statementKind: .bank,
+            paymentAccountId: AccountingConstants.bankAccountId,
+            statementPeriodYear: 2026
+        )
+
+        let result = try await useCase.importStatement(request: request)
+        let evidences = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2026)
+        let importedEvidence = try XCTUnwrap(evidences.first { $0.id == result.evidenceId })
+        let candidates = try await PostingWorkflowUseCase(modelContext: context).candidates(evidenceId: result.evidenceId)
+
+        XCTAssertEqual(importedEvidence.taxYear, 2026)
+        XCTAssertEqual(Set(candidates.map(\.taxYear)), [2026])
+    }
+
     func testImportStatementUsesRequestYearForPDFMonthDayRows() async throws {
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let pdfData = makeTextPDF(pages: [
             "01/10 ClientDeposit 120000",
             "01/12 CoffeeShop -5500"
@@ -145,10 +181,15 @@ final class StatementImportUseCaseTests: XCTestCase {
 
         let result = try await useCase.importStatement(request: request)
         let lines = try await repository.findLines(importId: result.importRecord.id)
+        let evidences = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2024)
+        let importedEvidence = try XCTUnwrap(evidences.first { $0.id == result.evidenceId })
+        let candidates = try await PostingWorkflowUseCase(modelContext: context).candidates(evidenceId: result.evidenceId)
         let years = Set(lines.map { Calendar.current.component(.year, from: $0.date) })
 
         XCTAssertEqual(lines.count, 2)
         XCTAssertEqual(years, [2024])
+        XCTAssertEqual(importedEvidence.taxYear, 2024)
+        XCTAssertEqual(Set(candidates.map(\.taxYear)), [2024])
     }
 
     func testImportStatementRollsBackArtifactsWhenSuggestionRefreshFails() async throws {

@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class EtaxExportViewModel {
     private struct PreviewState {
-        let fiscalYear: Int
+        let taxYear: Int
         let formType: EtaxFormType
         let dataRevision: Int
     }
@@ -19,7 +19,7 @@ final class EtaxExportViewModel {
     private let formBuilder: @MainActor (FilingStyle, EtaxFormBuildSnapshot) throws -> EtaxForm
     private let exporter: @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
 
-    var fiscalYear: Int
+    var taxYear: Int
     var formType: EtaxFormType = .blueReturn
     var validationErrors: [EtaxExportError] = []
     var exportedForm: EtaxForm?
@@ -54,16 +54,16 @@ final class EtaxExportViewModel {
         self.formBuilder = formBuilder
         self.exporter = exporter
         let preferredYear = currentTaxYear() - 1
-        self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
+        self.taxYear = Self.resolveSupportedTaxYear(formType: .blueReturn, preferredYear: preferredYear)
     }
 
     // MARK: - Generate Preview
 
     func generatePreview() {
-        let exportContext = contextProvider(fiscalYear)
-        guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
+        let exportContext = contextProvider(taxYear)
+        guard TaxYearDefinitionLoader.isSupported(year: taxYear, formType: formType) else {
             exportedForm = nil
-            validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
+            validationErrors = [.unsupportedTaxYear(year: taxYear)]
             previewState = nil
             return
         }
@@ -77,17 +77,17 @@ final class EtaxExportViewModel {
         }
 
         do {
-            let snapshot = snapshotProvider(fiscalYear)
+            let snapshot = snapshotProvider(taxYear)
             let revision = currentDataRevision(
                 businessId: exportContext.businessId,
-                fiscalYear: fiscalYear,
+                taxYear: taxYear,
                 fallbackSnapshot: snapshot
             )
             let form = try buildExportParityForm(snapshot: snapshot)
             validationErrors = EtaxCharacterValidator.validateForm(form)
             exportedForm = form
             previewState = PreviewState(
-                fiscalYear: fiscalYear,
+                taxYear: taxYear,
                 formType: formType,
                 dataRevision: revision
             )
@@ -111,22 +111,22 @@ final class EtaxExportViewModel {
 
     private func export(format: ExportCoordinator.ExportFormat) {
         guard exportedForm != nil else { return }
-        guard exportedForm?.fiscalYear == fiscalYear else {
-            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
+        guard exportedForm?.fiscalYear == taxYear else {
+            exportResult = .failure(message: "申告年分を変更したため、プレビューを再生成してください")
             return
         }
-        guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
-            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: fiscalYear).description)
+        guard TaxYearDefinitionLoader.isSupported(year: taxYear, formType: formType) else {
+            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: taxYear).description)
             return
         }
 
-        let exportContext = contextProvider(fiscalYear)
+        let exportContext = contextProvider(taxYear)
         let currentRevision = currentDataRevision(
             businessId: exportContext.businessId,
-            fiscalYear: fiscalYear,
+            taxYear: taxYear,
             fallbackSnapshot: nil
         )
-        let shouldRebuild = previewState?.fiscalYear != fiscalYear
+        let shouldRebuild = previewState?.taxYear != taxYear
             || previewState?.formType != formType
             || previewState?.dataRevision != currentRevision
 
@@ -140,22 +140,22 @@ final class EtaxExportViewModel {
                     return
                 }
 
-                let snapshot = snapshotProvider(fiscalYear)
+                let snapshot = snapshotProvider(taxYear)
                 currentForm = try buildExportParityForm(snapshot: snapshot)
                 exportedForm = currentForm
                 previewState = PreviewState(
-                    fiscalYear: fiscalYear,
+                    taxYear: taxYear,
                     formType: formType,
                     dataRevision: currentRevision
                 )
             } else if let exportedForm {
                 currentForm = exportedForm
             } else {
-                let snapshot = snapshotProvider(fiscalYear)
+                let snapshot = snapshotProvider(taxYear)
                 currentForm = try buildExportParityForm(snapshot: snapshot)
                 exportedForm = currentForm
                 previewState = PreviewState(
-                    fiscalYear: fiscalYear,
+                    taxYear: taxYear,
                     formType: formType,
                     dataRevision: currentRevision
                 )
@@ -191,7 +191,7 @@ final class EtaxExportViewModel {
 
     // MARK: - File Handling
 
-    private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
+    private static func resolveSupportedTaxYear(formType: EtaxFormType, preferredYear: Int) -> Int {
         let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
         if years.contains(preferredYear) {
             return preferredYear
@@ -200,7 +200,7 @@ final class EtaxExportViewModel {
     }
 
     private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        let exportContext = contextProvider(fiscalYear)
+        let exportContext = contextProvider(taxYear)
         return preflightErrors(context: context, exportContext: exportContext)
     }
 
@@ -231,7 +231,7 @@ final class EtaxExportViewModel {
 
     private func dataRevision(for snapshot: EtaxFormBuildSnapshot) -> Int {
         var hasher = Hasher()
-        hasher.combine(snapshot.fiscalYear)
+        hasher.combine(snapshot.taxYear)
         hasher.combine(snapshot.startMonth)
 
         if let businessProfile = snapshot.businessProfile {
@@ -329,12 +329,12 @@ final class EtaxExportViewModel {
 
     private func currentDataRevision(
         businessId: UUID?,
-        fiscalYear: Int,
+        taxYear: Int,
         fallbackSnapshot: EtaxFormBuildSnapshot?
     ) -> Int {
         do {
             var hasher = Hasher()
-            hasher.combine(fiscalYear)
+            hasher.combine(taxYear)
 
             if let businessId {
                 if let businessProfile = try modelContext.fetch(
@@ -352,7 +352,7 @@ final class EtaxExportViewModel {
                 if let taxYearProfile = try modelContext.fetch(
                     FetchDescriptor<TaxYearProfileEntity>(
                         predicate: #Predicate {
-                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                            $0.businessId == businessId && $0.taxYear == taxYear
                         },
                         sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
                     )
@@ -382,7 +382,7 @@ final class EtaxExportViewModel {
                 let journals = try modelContext.fetch(
                     FetchDescriptor<JournalEntryEntity>(
                         predicate: #Predicate {
-                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                            $0.businessId == businessId && $0.taxYear == taxYear
                         },
                         sortBy: [SortDescriptor(\.journalId)]
                     )
@@ -398,7 +398,7 @@ final class EtaxExportViewModel {
                 let candidates = try modelContext.fetch(
                     FetchDescriptor<PostingCandidateEntity>(
                         predicate: #Predicate {
-                            $0.businessId == businessId && $0.taxYear == fiscalYear
+                            $0.businessId == businessId && $0.taxYear == taxYear
                         },
                         sortBy: [SortDescriptor(\.candidateId)]
                     )
@@ -440,7 +440,7 @@ final class EtaxExportViewModel {
 
             let inventoryRecords = try modelContext.fetch(
                 FetchDescriptor<PPInventoryRecord>(
-                    predicate: #Predicate { $0.fiscalYear == fiscalYear },
+                    predicate: #Predicate { $0.fiscalYear == taxYear },
                     sortBy: [SortDescriptor(\.id)]
                 )
             )
@@ -458,7 +458,7 @@ final class EtaxExportViewModel {
             if let fallbackSnapshot {
                 return dataRevision(for: fallbackSnapshot)
             }
-            let fallbackSnapshot = snapshotProvider(fiscalYear)
+            let fallbackSnapshot = snapshotProvider(taxYear)
             return dataRevision(for: fallbackSnapshot)
         }
     }
@@ -497,7 +497,7 @@ final class EtaxExportViewModel {
         do {
             let issues = try taxYearStateUseCase.filingPreflightIssues(
                 businessId: businessId,
-                taxYear: fiscalYear,
+                taxYear: taxYear,
                 fallbackProfile: context.fallbackTaxYearProfile
             )
             let errors = issues
@@ -523,7 +523,7 @@ final class EtaxExportViewModel {
         do {
             let report = try filingPreflightUseCase.preflightReport(
                 businessId: businessId,
-                taxYear: fiscalYear,
+                taxYear: taxYear,
                 context: context
             )
             guard !report.blockingIssues.isEmpty else {

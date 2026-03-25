@@ -1,57 +1,45 @@
 import Foundation
 
+enum InputTaxDeductionCalculationMode: Sendable, Equatable {
+    case lineBased
+    case simplified(deemedPurchaseRate: Decimal)
+    case twoTenths(creditRate: Decimal)
+    case reviewRequired
+}
+
+struct InputTaxDeductionDecision: Sendable, Equatable {
+    let creditMethod: InputTaxCreditMethod
+    let calculationMode: InputTaxDeductionCalculationMode
+    let creditRate: Decimal
+    let deemedPurchaseRate: Decimal?
+    let requiresReview: Bool
+}
+
 struct InputTaxDeductionCalculator: Sendable {
-    enum Mode: Sendable, Equatable {
-        case lineBased
-        case simplified(deemedPurchaseRate: Decimal)
-        case twoTenths
-    }
-
-    let profile: TaxYearProfile
-
-    init(profile: TaxYearProfile) {
-        self.profile = profile
-    }
-
-    func mode() -> Mode {
-        if profile.isTwoTenthsSpecial {
-            return .twoTenths
-        }
-        if profile.isSimplifiedTaxation {
-            return .simplified(
-                deemedPurchaseRate: Self.deemedPurchaseRate(
-                    category: profile.simplifiedBusinessCategory
-                )
-            )
-        }
-        return .lineBased
-    }
-
     func deductibleTaxAmount(
         taxAmount: Decimal,
-        creditMethod: InputTaxCreditMethod
+        decision: InputTaxDeductionDecision
     ) -> Decimal {
-        switch mode() {
-        case .lineBased:
-            return taxAmount * creditMethod.creditRate
-        case .simplified(let deemedPurchaseRate):
-            return taxAmount * deemedPurchaseRate
-        case .twoTenths:
-            return taxAmount * Decimal(string: "0.8")!
+        guard !decision.requiresReview else {
+            return 0
         }
+        return taxAmount * decision.creditRate
     }
 
     func worksheetDeductibleInputTaxTotal(
         outputTaxTotal: Int,
-        provisionalInputDeductibleTotal: Int
+        provisionalInputDeductibleTotal: Int,
+        calculationMode: InputTaxDeductionCalculationMode
     ) -> Int {
-        switch mode() {
+        switch calculationMode {
         case .lineBased:
             return provisionalInputDeductibleTotal
         case .simplified(let deemedPurchaseRate):
             return decimalToInt(Decimal(outputTaxTotal) * deemedPurchaseRate)
-        case .twoTenths:
-            return decimalToInt(Decimal(outputTaxTotal) * Decimal(string: "0.8")!)
+        case .twoTenths(let creditRate):
+            return decimalToInt(Decimal(outputTaxTotal) * creditRate)
+        case .reviewRequired:
+            return 0
         }
     }
 
@@ -91,25 +79,6 @@ struct InputTaxDeductionCalculator: Sendable {
             updated[index] = updated[index].withDeductibleTaxAmount(max(allocated, 0))
         }
         return updated
-    }
-
-    static func deemedPurchaseRate(category: Int?) -> Decimal {
-        switch category {
-        case 1:
-            return Decimal(string: "0.90")!
-        case 2:
-            return Decimal(string: "0.80")!
-        case 3:
-            return Decimal(string: "0.70")!
-        case 4:
-            return Decimal(string: "0.60")!
-        case 5:
-            return Decimal(string: "0.50")!
-        case 6:
-            return Decimal(string: "0.40")!
-        default:
-            return 0
-        }
     }
 
     private func decimalToInt(_ value: Decimal) -> Int {

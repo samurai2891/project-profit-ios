@@ -23,15 +23,15 @@ final class EtaxExportViewModelTests: XCTestCase {
         super.tearDown()
     }
 
-    func testInitUsesSupportedFiscalYear() {
+    func testInitUsesSupportedTaxYear() {
         let viewModel = makeViewModel()
         let supportedYears = TaxYearDefinitionLoader.supportedYears(formType: .blueReturn)
-        XCTAssertTrue(supportedYears.contains(viewModel.fiscalYear))
+        XCTAssertTrue(supportedYears.contains(viewModel.taxYear))
     }
 
     func testGeneratePreviewUnsupportedYearSetsValidationError() {
         let viewModel = makeViewModel()
-        viewModel.fiscalYear = 1900
+        viewModel.taxYear = 1900
 
         viewModel.generatePreview()
 
@@ -44,7 +44,7 @@ final class EtaxExportViewModelTests: XCTestCase {
         )
     }
 
-    func testExportXtxFailsWhenFiscalYearChangedAfterPreview() {
+    func testExportXtxFailsWhenTaxYearChangedAfterPreview() {
         let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
         seedTaxYearProfile(
             TaxYearProfile(
@@ -56,11 +56,11 @@ final class EtaxExportViewModelTests: XCTestCase {
         )
 
         let viewModel = makeViewModel()
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
         viewModel.generatePreview()
         XCTAssertNotNil(viewModel.exportedForm)
 
-        viewModel.fiscalYear = 2024
+        viewModel.taxYear = 2024
         viewModel.exportXtx()
 
         guard case .failure(let message)? = viewModel.exportResult else {
@@ -71,7 +71,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testExportXtxUnsupportedYearReturnsFailure() {
         let viewModel = makeViewModel()
-        viewModel.fiscalYear = 1900
+        viewModel.taxYear = 1900
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 1900,
             formType: .blueReturn,
@@ -97,7 +97,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testExportCsvUnsupportedYearReturnsFailure() {
         let viewModel = makeViewModel()
-        viewModel.fiscalYear = 1900
+        viewModel.taxYear = 1900
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 1900,
             formType: .blueReturn,
@@ -125,7 +125,7 @@ final class EtaxExportViewModelTests: XCTestCase {
         let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         let key = FiscalYearSettings.userDefaultsKey
         let previousStartMonth = UserDefaults.standard.integer(forKey: key)
@@ -183,7 +183,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         viewModel.generatePreview()
 
@@ -195,7 +195,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
     func testGeneratePreviewBuildsCashBasisFormWhenBlueCashBasisSelected() {
         var capturedStyle: FilingStyle?
-        let snapshot = makeSnapshot(fiscalYear: 2025)
+        let snapshot = makeSnapshot(taxYear: 2025)
         let expectedForm = EtaxForm(
             fiscalYear: 2025,
             formType: .blueCashBasis,
@@ -236,7 +236,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             }
         )
         viewModel.formType = .blueCashBasis
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         viewModel.generatePreview()
 
@@ -265,13 +265,13 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         var buildCount = 0
         var exportedRevenue: Int?
-        let snapshotProvider = { [unowned self] (fiscalYear: Int) in
-            self.makeSnapshot(fiscalYear: fiscalYear)
+        let snapshotProvider = { [unowned self] (taxYear: Int) in
+            self.makeSnapshot(taxYear: taxYear)
         }
         let viewModel = EtaxExportViewModel(
             modelContext: context,
-            contextProvider: { [unowned self] fiscalYear in
-                EtaxExportContextQueryUseCase(modelContext: self.context).context(fiscalYear: fiscalYear)
+            contextProvider: { [unowned self] taxYear in
+                EtaxExportContextQueryUseCase(modelContext: self.context).context(taxYear: taxYear)
             },
             snapshotProvider: snapshotProvider,
             formBuilder: { filingStyle, snapshot in
@@ -287,7 +287,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             }
         )
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         seedCanonicalJournal(
             businessId: businessId,
@@ -341,7 +341,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         viewModel.generatePreview()
         XCTAssertNotNil(viewModel.exportedForm)
@@ -384,12 +384,12 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         var exportedFieldIDs: [String] = []
         let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
-        let snapshot = makeSnapshot(fiscalYear: 2025)
+        let snapshot = makeSnapshot(taxYear: 2025)
         let expectedForm = makeWhiteParityForm(fiscalYear: 2025)
         let viewModel = EtaxExportViewModel(
             modelContext: context,
-            contextProvider: { fiscalYear in
-                contextQueryUseCase.context(fiscalYear: fiscalYear)
+            contextProvider: { taxYear in
+                contextQueryUseCase.context(taxYear: taxYear)
             },
             snapshotProvider: { _ in snapshot },
             formBuilder: { _, _ in
@@ -401,7 +401,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             }
         )
         viewModel.formType = .whiteReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         viewModel.generatePreview()
         XCTAssertNotNil(viewModel.exportedForm)
@@ -473,7 +473,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 2025,
             formType: .blueReturn,
@@ -532,7 +532,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
 
         viewModel.generatePreview()
 
@@ -565,7 +565,7 @@ final class EtaxExportViewModelTests: XCTestCase {
 
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
-        viewModel.fiscalYear = 2025
+        viewModel.taxYear = 2025
         viewModel.exportedForm = EtaxForm(
             fiscalYear: 2025,
             formType: .blueReturn,
@@ -601,11 +601,11 @@ final class EtaxExportViewModelTests: XCTestCase {
         let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
         return EtaxExportViewModel(
             modelContext: context,
-            contextProvider: { fiscalYear in
-                contextQueryUseCase.context(fiscalYear: fiscalYear)
+            contextProvider: { taxYear in
+                contextQueryUseCase.context(taxYear: taxYear)
             },
-            snapshotProvider: { fiscalYear in
-                formBuildQueryUseCase.snapshot(fiscalYear: fiscalYear)
+            snapshotProvider: { taxYear in
+                formBuildQueryUseCase.snapshot(taxYear: taxYear)
             },
             formBuilder: { filingStyle, snapshot in
                 try FormEngine.build(
@@ -628,8 +628,8 @@ final class EtaxExportViewModelTests: XCTestCase {
         )
     }
 
-    private func makeSnapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
-        EtaxFormBuildQueryUseCase(modelContext: context).snapshot(fiscalYear: fiscalYear)
+    private func makeSnapshot(taxYear: Int) -> EtaxFormBuildSnapshot {
+        EtaxFormBuildQueryUseCase(modelContext: context).snapshot(taxYear: taxYear)
     }
 
     private func makeWhiteParityForm(fiscalYear: Int) -> EtaxForm {

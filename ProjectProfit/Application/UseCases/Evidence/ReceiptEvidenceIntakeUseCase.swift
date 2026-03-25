@@ -106,7 +106,7 @@ struct ReceiptEvidenceIntakeUseCase {
         }
 
         let businessId = businessProfile.id
-        let taxYear = fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth)
+        let taxYear = taxYear(for: request.reviewedDate)
         let contentHash = ReceiptImageStore.sha256Hex(data: request.fileData)
         if let existingEvidenceId = try existingEvidenceId(businessId: businessId, fileHash: contentHash) {
             throw ReceiptEvidenceIntakeUseCaseError.duplicateEvidence(
@@ -623,7 +623,7 @@ struct ReceiptEvidenceIntakeUseCase {
     private func previewClassificationCandidate(for request: ReceiptEvidenceIntakeRequest) -> PostingCandidate {
         PostingCandidate(
             businessId: UUID(),
-            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            taxYear: taxYear(for: request.reviewedDate),
             candidateDate: request.reviewedDate,
             status: .needsReview,
             source: .ocr,
@@ -657,7 +657,7 @@ struct ReceiptEvidenceIntakeUseCase {
     private func previewClassificationEvidence(for request: ReceiptEvidenceIntakeRequest) -> EvidenceDocument {
         EvidenceDocument(
             businessId: UUID(),
-            taxYear: fiscalYear(for: request.reviewedDate, startMonth: FiscalYearSettings.startMonth),
+            taxYear: taxYear(for: request.reviewedDate),
             sourceType: request.sourceType,
             legalDocumentType: canonicalLegalDocumentType(for: request.receiptData.documentType),
             storageCategory: storageCategory(for: request.sourceType),
