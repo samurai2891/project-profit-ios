@@ -36,7 +36,7 @@ struct LedgerView: View {
                let account = activeAccounts.first(where: { $0.id == accountId }) {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
-                        target: .ledger,
+                        target: .generalLedger,
                         fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth),
                         ledgerOptions: ExportCoordinator.LedgerExportOptions(
                             accountId: account.id,

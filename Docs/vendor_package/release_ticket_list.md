@@ -227,14 +227,15 @@
 
 ### REL-P1-08 ExportCoordinator へ出力系を集約する
 - 関連既存チケット: `PP-052`
-- 状態: **部分実装**
+- 状態: **実装済み**
 - 根拠:
   - `ProjectProfit/Services/ExportCoordinator.swift` と `ProjectProfit/Views/Components/ExportMenuButton.swift` に共通 export 導線がある。
-  - `ProjectProfit/Views/Accounting/ProfitLossView.swift`、`BalanceSheetView.swift`、`TrialBalanceView.swift`、`JournalListView.swift`、`LedgerView.swift`、`FixedAssetListView.swift` は `ExportMenuButton` を使う。
-  - `ProjectProfit/ViewModels/TransactionsViewModel.swift` の transaction CSV export、`ProjectProfit/Views/Accounting/SubLedgerView.swift` の補助簿 export、`ProjectProfit/ViewModels/EtaxExportViewModel.swift` の XTX / CSV export は `ExportCoordinator.export(...)` に統一された。
-  - `ProjectProfit/Services/ExportCoordinator.swift` は `transactions` / `subLedger` / `etax` target と `xtx` format を持ち、e-Tax 生成も coordinator 内で処理する。
-  - `ProjectProfitTests/ExportCoordinatorTests.swift` には transactions が preflight を要求しないこと、e-Tax が form option を要求すること、`.xtx` の命名を確認するテストがあり、2026-03-10 実行では green だった。
-  - 一方で `ProjectProfit/Ledger/Services/` の個別 export service は互換用途として残っている。
+  - `ProjectProfit/Services/ExportCoordinator.swift` は `cashBook`、`bankAccountBook`、`accountsReceivableBook`、`accountsPayableBook`、`expenseBook`、`generalLedger`、`journalBook`、`transportationExpense`、`whiteTaxBookkeeping`、`fixedAssetRegister`、`fixedAssetDepreciation` の 11帳簿 target を正式 target として持ち、公開導線の正本になっている。
+  - `ProjectProfit/Views/Accounting/SubLedgerView.swift`、`ProjectProfit/Views/Accounting/JournalListView.swift`、`ProjectProfit/Views/Accounting/LedgerView.swift`、`ProjectProfit/Views/Accounting/WhiteTaxBookkeepingView.swift`、`ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift` は 11帳簿側 target に接続された export 導線を持つ。
+  - `ProjectProfit/ViewModels/TransactionsViewModel.swift` の transaction CSV export、`ProjectProfit/ViewModels/EtaxExportViewModel.swift` の XTX / CSV export、旧台帳の互換 export も `ExportCoordinator.export(...)` に統一されている。
+  - `ProjectProfit/Ledger/Services/LedgerExportService.swift` と `ProjectProfit/Ledger/Services/LedgerPDFExportService.swift` の個別 service は adapter として `ExportCoordinator` 配下から再利用される。
+  - `ProjectProfitTests/ExportCoordinatorTests.swift` には 11帳簿 matrix、official target の export、legacy 互換、unsupported format、preflight 境界を確認するテストがある。
+  - `ProjectProfitTests/Golden/GoldenBaselineTests.swift` は `ProjectProfitTests/Golden/fixtures/baseline_fiscal_year_2025.json` を使い、11帳簿の CSV/PDF について列順・見出し・主要本文・PDF テキスト断片を fixture ベースで比較する。
 
 ---
 

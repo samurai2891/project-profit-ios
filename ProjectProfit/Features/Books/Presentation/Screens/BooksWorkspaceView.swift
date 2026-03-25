@@ -24,6 +24,7 @@ struct BooksWorkspaceView: View {
         case accountsPayableBook
         case expenseBook
         case fixedAssetLedger
+        case transportationExpense
         case inventoryLedger
         case whiteTaxBookkeeping
     }
@@ -101,6 +102,12 @@ struct BooksWorkspaceView: View {
             title: "固定資産台帳",
             subtitle: "固定資産の取得・償却状況",
             destinationID: .fixedAssetLedger
+        ),
+        ReleaseBookItem(
+            icon: "tram.fill",
+            title: "交通費精算書",
+            subtitle: "交通費精算書の作成済み帳簿を参照",
+            destinationID: .transportationExpense
         ),
         ReleaseBookItem(
             icon: "cart",
@@ -365,7 +372,7 @@ struct BooksWorkspaceView: View {
     private func releaseBookDestination(for destinationID: Self.ReleaseBookDestinationID) -> AnyView {
         switch destinationID {
         case .journalBook:
-            AnyView(JournalBrowserView())
+            AnyView(JournalListView())
         case .generalLedger:
             AnyView(LedgerView())
         case .cashBook:
@@ -380,6 +387,14 @@ struct BooksWorkspaceView: View {
             AnyView(SubLedgerView(type: .expenseBook))
         case .fixedAssetLedger:
             AnyView(FixedAssetListView())
+        case .transportationExpense:
+            AnyView(
+                LegacyLedgerFilteredContainerView(
+                    title: "交通費精算書",
+                    emptyMessage: "交通費精算書はまだ作成されていません",
+                    ledgerTypes: [.transportationExpense]
+                )
+            )
         case .inventoryLedger:
             AnyView(InventoryInputView())
         case .whiteTaxBookkeeping:

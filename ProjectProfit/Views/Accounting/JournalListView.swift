@@ -55,7 +55,7 @@ struct JournalListView: View {
                 HStack(spacing: 12) {
                     if !sortedEntries.isEmpty {
                         ExportMenuButton(
-                            target: .journal,
+                            target: .journalBook,
                             fiscalYear: currentFiscalYear(startMonth: FiscalYearSettings.startMonth)
                         )
                     }

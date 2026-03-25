@@ -7,6 +7,7 @@ struct ExportMenuButton: View {
     let target: ExportCoordinator.ExportTarget
     let fiscalYear: Int
     let ledgerOptions: ExportCoordinator.LedgerExportOptions?
+    let ledgerBookSelectionOptions: ExportCoordinator.LedgerBookSelectionOptions?
 
     @State private var showShareSheet = false
     @State private var shareURL: URL?
@@ -17,11 +18,13 @@ struct ExportMenuButton: View {
     init(
         target: ExportCoordinator.ExportTarget,
         fiscalYear: Int,
-        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
+        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil,
+        ledgerBookSelectionOptions: ExportCoordinator.LedgerBookSelectionOptions? = nil
     ) {
         self.target = target
         self.fiscalYear = fiscalYear
         self.ledgerOptions = ledgerOptions
+        self.ledgerBookSelectionOptions = ledgerBookSelectionOptions
     }
 
     var body: some View {
@@ -83,7 +86,8 @@ struct ExportMenuButton: View {
                 format: format,
                 fiscalYear: fiscalYear,
                 modelContext: modelContext,
-                ledgerOptions: ledgerOptions
+                ledgerOptions: ledgerOptions,
+                ledgerBookSelectionOptions: ledgerBookSelectionOptions
             )
             showShareSheet = true
         } catch {

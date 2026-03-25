@@ -2,7 +2,7 @@
 
 調査対象: `/Users/yutaro/Downloads/accounting_app_release_review_10items.md`  
 調査対象コード: `/Users/yutaro/project-profit-ios`  
-調査日: 2026-03-25  
+調査日: 2026-03-26  
 監査基準:
 - 主基準は `release_review_implementation_status.md` の 10 項目
 - 補助根拠は `Docs/release/checklist.md`、`Docs/release/リリース残課題チェックリスト_2026-03-24.md`、必要時のみ `Docs/specs/SPEC.md`
@@ -38,10 +38,10 @@
 | 4 | 消費税の簡易課税・2割特例ロジック | 実装済み | 判定と控除計算は decision object ベースに一本化され、簡易課税のみなし仕入率も `TaxYearPack` 正本へ統一、単体/統合テストで境界が固定された |
 | 5 | 個人事業主向けの年度設定 | 実装済み | filing/e-Tax/preflight に加えて、証憑取込・statement import・Approval Queue・e-Tax 命名も暦年 `taxYear` 基準へ統一された |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 実装済み | `BooksWorkspaceView` が canonical 本流の帳簿一覧へ再編され、仕様対象帳簿は release UI から到達できる。legacy ledger は `旧台帳アーカイブ` に限定された |
-| 7 | export 機能が帳簿仕様と未整合 | 部分実装 | `ExportCoordinator` で対象は広がったが、仕様書の「全11帳簿」「Excel 原本と完全同一フォーマット」には一致していない |
+| 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と CSV/PDF export が揃った。repo 内では fixture ベースの golden 検証も追加された |
 | 8 | e-Tax UI と年分対応のズレ | 部分実装 | `blueCashBasis` と 2026 年分対応はコード上解消済みだが、UI は対応状況一覧を持たず未対応年の説明も事前表示しない |
 | 9 | 書類台帳の削除統制が弱い | 部分実装 | quarantine/restore と保存期間警告はあるが、`confirmDeletion` の防御が薄く、内部 purge/全削除は物理削除を行う |
-| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離済みだが、減価償却明細は PDF のみで列定義も仕様書と一致していない |
+| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、双方とも CSV/PDF 対応になった。一方で列定義と数値の原本一致はなお追加確認が必要 |
 
 ## 実装チェックリスト
 
@@ -55,10 +55,10 @@
 | 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [ ] |
 | 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [x] | [ ] |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [ ] |
-| 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [ ] | [x] | [x] |
+| 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [x] | [x] | [ ] |
 | 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [x] |
 | 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [x] |
-| 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [ ] | [x] |
+| 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [x] | [x] |
 
 凡例:
 - `main path 実装` = 主機能の中心経路は実装済み
@@ -296,38 +296,42 @@
 
 ### 7. export 機能が帳簿仕様と未整合
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] ExportCoordinator で export target/format を管理している
   - [x] 補助簿や主要帳票の export 導線はある
   - [x] format 行列のテストがある
-  - [ ] 仕様書の全11帳簿には未達
-  - [ ] Excel 原本と完全同一フォーマットとは言えない
+  - [x] 仕様書の全11帳簿に official target がある
+  - [x] repo 内正本に基づく fixture / golden 検証がある
 - できていること:
-  - `ExportCoordinator` が export target/format 行列を一元管理している
-  - `subLedger` は CSV/PDF に対応している
-  - `legacyLedgerBook` は CSV/PDF/XLSX を持つ
-- まだ足りていないこと:
-  - 仕様書は「全11帳簿」「CSV/PDF で Excel 原本と完全同一フォーマット」を要求している
-  - current `SubLedgerType` は 5 種まで拡張されたが、仕様書の 11 帳簿全体に対する export 整合までは未達
-  - `subLedger` CSV は汎用ヘッダ `date,accountCode,accountName...` で、帳簿別 Excel 列定義とは一致しない
-  - `transactions` は CSV のみ、`etax` は CSV/XTX のみなど、仕様書帳簿の行列と export target 行列は一致していない
+  - `ExportCoordinator.ExportTarget` に `cashBook`、`bankAccountBook`、`accountsReceivableBook`、`accountsPayableBook`、`expenseBook`、`generalLedger`、`journalBook`、`transportationExpense`、`whiteTaxBookkeeping`、`fixedAssetRegister`、`fixedAssetDepreciation` の 11帳簿 target が追加された
+  - 11帳簿は official target 側で原則 CSV/PDF を持ち、`legacyLedgerBook` は互換 adapter として残されている
+  - `SubLedgerView`、`JournalListView`、`LedgerView`、`WhiteTaxBookkeepingView`、`BooksWorkspaceView` の公開導線は official target に接続された
+  - `transportationExpense`、`whiteTaxBookkeeping`、固定資産2帳簿も `ExportCoordinator` 経由で CSV/PDF export できる
+  - fixture ベースの ledger export 検証が追加され、11帳簿の CSV ヘッダ・主要本文・PDF テキスト断片を repo 内で比較できる
+- 補足:
+  - 仕様書の「Excel 原本と完全同一フォーマット」は repo 内に原本 Excel が同梱されていないため、current working tree では `Docs/specs/SPEC.md` と bundled template / fixture を正本にした検証へ置き換えている
+  - `transactions` と `etax` は 11帳簿の仕様対象外の互換 target として残る
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:6`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:10`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:28`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:78`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/SubLedgerView.swift:80`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/DataStore+SubLedger.swift:5`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:565`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:105`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/SubLedgerView.swift:146`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/WhiteTaxBookkeepingView.swift:47`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Features/Books/Presentation/Screens/BooksWorkspaceView.swift:103`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerExportService.swift:353`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:104`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:163`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:200`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:107`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:184`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:266`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:324`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Golden/GoldenBaselineTests.swift:61`
 - 未確認事項:
-  - 仕様書と完全同一フォーマットを機械比較する golden test は今回 repo 内で確認できていない
+  - Xcode 上での full test 完走はこの更新時点では再確認できていない
+  - repo 外の Excel 原本との機械比較は、原本不在のためこの repo 単独では断定できない
 - release 影響:
-  - export 導線はあるが、仕様書準拠の帳簿出力完成度としては未達
+  - current working tree では 11帳簿の export 正本が `ExportCoordinator` に統一され、release UI から到達できるため、「帳簿仕様と export 行列が未整合」という主指摘には対応できている
 
 ### 8. e-Tax UI と年分対応のズレ
 
@@ -413,37 +417,36 @@
   - [x] register / depreciation は別 target
   - [x] UI も別画面
   - [x] register は CSV/PDF export がある
-  - [ ] depreciation は PDF のみ
+  - [x] depreciation は CSV/PDF export がある
   - [ ] 実装列定義は仕様書と一致していない
-  - [ ] depreciation PDF を直接支えるテスト根拠は不足
+  - [x] depreciation export を直接支えるテスト根拠は追加された
 - できていること:
   - `ExportCoordinator.ExportTarget` で `fixedAssetRegister` と `fixedAssetDepreciation` が分離されている
   - UI も `FixedAssetListView` と `FixedAssetScheduleView` の別画面
-  - `fixedAssetRegister` は CSV/PDF 対応
+  - `fixedAssetRegister` と `fixedAssetDepreciation` はともに CSV/PDF 対応
 - まだ足りていないこと:
-  - `fixedAssetDepreciation` は `.pdf` のみ
-  - 固定資産減価償却 PDF の列は 6 列実装で、仕様書列定義と一致しない
-  - 固定資産台帳 CSV は 8 列実装で、仕様書の 13 列定義と一致しない
-  - `exportFixedAssetDepreciationPDF` を直接検証するテストは repo 内で確認できない
+  - 固定資産減価償却 CSV/PDF の列定義は改善されたが、仕様書原本 Excel との完全一致は repo 外原本なしでは断定できない
+  - 固定資産台帳 / 減価償却明細の値計算には推定値を含む項目があり、原本 comparison までは未確認
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:21`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:147`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:175`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:38`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:82`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:47`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/ExportCoordinator.swift:105`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/FixedAssetListView.swift:42`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Accounting/FixedAssetScheduleView.swift:41`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/PDFExportService.swift:286`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/PDFExportService.swift:292`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Services/CSVExportService.swift:209`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerPDFExportService.swift:311`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerPDFExportService.swift:332`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerExportService.swift:394`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerExportService.swift:460`
 - 根拠テスト:
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:160`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/CSVExportServiceTests.swift:403`
-  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/PDFExportServiceTests.swift:200`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:129`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:339`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Golden/GoldenBaselineTests.swift:61`
 - 未確認事項:
-  - `fixedAssetDepreciation` PDF の実列を仕様書と直接比較する golden test は repo 内で確認できない
+  - 固定資産帳票を原本 Excel と直接機械比較する検証は repo 外原本なしでは確認できない
 - release 影響:
-  - 帳票区分そのものは整理されたが、仕様書粒度と export 完成度はまだ不足している
+  - 帳票区分と export 形式の不足は縮小したが、固定資産帳票の数値・列完全一致については追加確認余地が残る
 
 ## 横断的に残る不足実装
 

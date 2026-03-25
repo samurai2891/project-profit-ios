@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import SwiftData
 import XCTest
 @testable import ProjectProfit
@@ -87,7 +88,7 @@ struct GoldenFixtureLoader {
             simplifiedBusinessCategory: state.taxYearProfile.simplifiedBusinessCategory,
             invoiceIssuerStatusAtYear: state.taxYearProfile.invoiceIssuerStatusAtYear,
             electronicBookLevel: state.taxYearProfile.electronicBookLevel,
-            yearLockState: .open,
+            yearLockState: .taxClose,
             taxYear: fixture.businessProfile.fiscalYear
         )
         _ = try await useCase.save(command: command, currentState: state)
@@ -355,6 +356,22 @@ struct GoldenMigrationOrphanSnapshot: Codable, Equatable {
     let message: String
 }
 
+struct GoldenLedgerExportSnapshot: Codable, Equatable {
+    let fiscalYear: Int
+    let ledgers: [GoldenLedgerArtifactSnapshot]
+}
+
+struct GoldenLedgerArtifactSnapshot: Codable, Equatable {
+    let target: String
+    let formats: [String]
+    let csvLines: [String]
+    let csvContainsInvoiceColumn: Bool
+    let csvContainsCarryForward: Bool
+    let csvContainsRunningBalanceOrTotal: Bool
+    let pdfPageCount: Int
+    let pdfLines: [String]
+}
+
 @MainActor
 struct GoldenSnapshotBuilder {
     static func journalBookSnapshot(from scenario: GoldenScenario) -> GoldenJournalBookSnapshot {
@@ -535,6 +552,82 @@ struct GoldenSnapshotBuilder {
         )
     }
 
+    static func ledgerExportSnapshot(from scenario: GoldenScenario) throws -> GoldenLedgerExportSnapshot {
+        let fiscalYear = scenario.fixture.businessProfile.fiscalYear
+        let transportationBook = try seedTransportationExpenseBookIfNeeded(in: scenario.context, fiscalYear: fiscalYear)
+        try seedFixedAssetIfNeeded(in: scenario.context, fiscalYear: fiscalYear)
+
+        let artifacts = try [
+            exportLedgerArtifact(
+                target: .cashBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .cashBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .bankAccountBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .depositBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .accountsReceivableBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .accountsReceivableBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .accountsPayableBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .accountsPayableBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .expenseBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .expenseBook, startDate: nil, endDate: nil, accountFilter: "acct-rent", counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .generalLedger,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                ledgerOptions: .init(accountId: "acct-rent", accountName: "地代家賃", accountCode: "622")
+            ),
+            exportLedgerArtifact(
+                target: .journalBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .transportationExpense,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                ledgerBookSelectionOptions: .init(bookId: transportationBook.id, ledgerType: .transportationExpense)
+            ),
+            exportLedgerArtifact(
+                target: .whiteTaxBookkeeping,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .fixedAssetRegister,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .fixedAssetDepreciation,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+        ]
+
+        return GoldenLedgerExportSnapshot(
+            fiscalYear: fiscalYear,
+            ledgers: artifacts.sorted { $0.target < $1.target }
+        )
+    }
+
     private static func valueType(of value: EtaxFieldValue) -> String {
         switch value {
         case .number:
@@ -544,6 +637,137 @@ struct GoldenSnapshotBuilder {
         case .flag:
             return "flag"
         }
+    }
+
+    private static func exportLedgerArtifact(
+        target: ExportCoordinator.ExportTarget,
+        fiscalYear: Int,
+        context: ModelContext,
+        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil,
+        subLedgerOptions: ExportCoordinator.SubLedgerExportOptions? = nil,
+        ledgerBookSelectionOptions: ExportCoordinator.LedgerBookSelectionOptions? = nil
+    ) throws -> GoldenLedgerArtifactSnapshot {
+        let csvURL = try ExportCoordinator.export(
+            target: target,
+            format: .csv,
+            fiscalYear: fiscalYear,
+            modelContext: context,
+            ledgerOptions: ledgerOptions,
+            subLedgerOptions: subLedgerOptions,
+            ledgerBookSelectionOptions: ledgerBookSelectionOptions
+        )
+        let pdfURL = try ExportCoordinator.export(
+            target: target,
+            format: .pdf,
+            fiscalYear: fiscalYear,
+            modelContext: context,
+            ledgerOptions: ledgerOptions,
+            subLedgerOptions: subLedgerOptions,
+            ledgerBookSelectionOptions: ledgerBookSelectionOptions
+        )
+
+        let csvText = try String(contentsOf: csvURL, encoding: .utf8)
+        let pdfData = try Data(contentsOf: pdfURL)
+        let csvLines = normalizedLines(csvText)
+        let pdfLines = normalizedPDFLines(pdfData)
+
+        return GoldenLedgerArtifactSnapshot(
+            target: target.label,
+            formats: ["csv", "pdf"],
+            csvLines: Array(csvLines.prefix(6)),
+            csvContainsInvoiceColumn: csvLines.contains { $0.contains("インボイス") },
+            csvContainsCarryForward: csvLines.contains { $0.contains("前期より繰越") },
+            csvContainsRunningBalanceOrTotal: csvLines.contains {
+                $0.contains("残高") || $0.contains("累計") || $0.contains("差引残高")
+            },
+            pdfPageCount: PDFDocument(data: pdfData)?.pageCount ?? 0,
+            pdfLines: Array(pdfLines.prefix(12))
+        )
+    }
+
+    private static func normalizedLines(_ text: String) -> [String] {
+        text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizedPDFLines(_ data: Data) -> [String] {
+        guard let document = PDFDocument(data: data) else {
+            return []
+        }
+        let text = (0..<document.pageCount)
+            .compactMap { document.page(at: $0)?.string }
+            .joined(separator: "\n")
+        return normalizedLines(text)
+    }
+
+    private static func seedTransportationExpenseBookIfNeeded(
+        in context: ModelContext,
+        fiscalYear: Int
+    ) throws -> SDLedgerBook {
+        FeatureFlags.useLegacyLedger = true
+        let store = LedgerDataStore(modelContext: context, accessMode: .readWrite)
+        if let existing = store.books(ofType: .transportationExpense).sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+            return existing
+        }
+
+        let metadata = TransportationExpenseMetadata(
+            year: fiscalYear,
+            monthPeriod: 3,
+            department: "開発",
+            employeeName: "山田太郎",
+            requestDate: "\(fiscalYear)-03-31",
+            settlementDate: "\(fiscalYear)-03-31"
+        )
+        guard let book = store.createBook(
+            ledgerType: .transportationExpense,
+            title: "交通費精算書",
+            metadataJSON: LedgerBridge.encodeTransportationExpenseMetadata(metadata)
+        ) else {
+            throw XCTSkip("failed to seed transportation expense book")
+        }
+        store.addEntry(
+            to: book.id,
+            entry: TransportationExpenseEntry(
+                id: UUID(),
+                date: "\(fiscalYear)-03-05",
+                destination: "渋谷",
+                purpose: "打ち合わせ",
+                transportMethod: "電車",
+                routeFrom: "新宿",
+                routeTo: "渋谷",
+                tripType: .roundTrip,
+                amount: 1296
+            )
+        )
+        return book
+    }
+
+    private static func seedFixedAssetIfNeeded(
+        in context: ModelContext,
+        fiscalYear: Int
+    ) throws {
+        let descriptor = FetchDescriptor<PPFixedAsset>()
+        if ((try? context.fetch(descriptor).count) ?? 0) > 0 {
+            return
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let acquisitionDate = calendar.date(from: DateComponents(year: fiscalYear, month: 1, day: 10)) ?? Date()
+        context.insert(
+            PPFixedAsset(
+                name: "MacBook Pro",
+                acquisitionDate: acquisitionDate,
+                acquisitionCost: 360_000,
+                usefulLifeYears: 4,
+                depreciationMethod: .straightLine,
+                memo: "golden fixture asset",
+                businessUsePercent: 100
+            )
+        )
+        try context.save()
     }
 }
 

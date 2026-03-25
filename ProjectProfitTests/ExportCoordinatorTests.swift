@@ -47,9 +47,9 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(pdfFileName, "balance_sheet_2025_\(expectedDate).pdf")
 
         let journalFileName = ExportCoordinator.makeFileName(
-            target: .journal, fiscalYear: 2026, format: .csv
+            target: .journalBook, fiscalYear: 2026, format: .csv
         )
-        XCTAssertTrue(journalFileName.hasPrefix("journal_2026_"))
+        XCTAssertTrue(journalFileName.hasPrefix("journal_book_2026_"))
         XCTAssertTrue(journalFileName.hasSuffix(".csv"))
 
         let trialBalanceFileName = ExportCoordinator.makeFileName(
@@ -59,9 +59,9 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(trialBalanceFileName.hasSuffix(".pdf"))
 
         let ledgerFileName = ExportCoordinator.makeFileName(
-            target: .ledger, fiscalYear: 2026, format: .csv
+            target: .generalLedger, fiscalYear: 2026, format: .csv
         )
-        XCTAssertTrue(ledgerFileName.hasPrefix("ledger_2026_"))
+        XCTAssertTrue(ledgerFileName.hasPrefix("general_ledger_2026_"))
 
         let fixedAssetsFileName = ExportCoordinator.makeFileName(
             target: .fixedAssetRegister, fiscalYear: 2026, format: .csv
@@ -79,6 +79,15 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.label, "損益計算書")
         XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.label, "貸借対照表")
         XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.label, "残高試算表")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.cashBook.label, "現金出納帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.bankAccountBook.label, "預金出納帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsReceivableBook.label, "売掛帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsPayableBook.label, "買掛帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.expenseBook.label, "経費帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.generalLedger.label, "総勘定元帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.journalBook.label, "仕訳帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.transportationExpense.label, "交通費精算書")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.label, "白色申告用 簡易帳簿")
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.label, "仕訳帳")
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.label, "総勘定元帳")
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.label, "取引履歴")
@@ -105,10 +114,19 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.cashBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.bankAccountBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsReceivableBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsPayableBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.expenseBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.generalLedger.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.journalBook.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.transportationExpense.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.supportedFormats, [.pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv, .pdf])
@@ -120,6 +138,15 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(ExportCoordinator.ExportTarget.profitLoss.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.balanceSheet.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.trialBalance.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.cashBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.bankAccountBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.accountsReceivableBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.accountsPayableBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.expenseBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.generalLedger.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.journalBook.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.transportationExpense.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.journal.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.ledger.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssetRegister.requiresPreflight)
@@ -157,7 +184,7 @@ final class ExportCoordinatorTests: XCTestCase {
         assertUnsupportedFormat(target: .ledger, format: .xtx, fiscalYear: 2025)
         assertUnsupportedFormat(target: .etax, format: .pdf, fiscalYear: 2025)
         assertUnsupportedFormat(target: .transactions, format: .pdf, fiscalYear: 2025)
-        assertUnsupportedFormat(target: .fixedAssetDepreciation, format: .csv, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .transportationExpense, format: .xtx, fiscalYear: 2025)
     }
 
     func testSubLedgerExportDoesNotRequirePreflight() throws {
@@ -237,6 +264,101 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(text.contains("export target"))
+    }
+
+    func testOfficialCashBookExportUsesLedgerFormat() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .expense,
+            amount: 5_000,
+            date: makeDate(year: 2025, month: 2, day: 4),
+            categoryId: "cat-tools",
+            memo: "cash book export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .cashBook,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            subLedgerOptions: .init(
+                type: .cashBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("月,日,摘要,勘定科目"))
+        XCTAssertTrue(text.contains("cash book export"))
+    }
+
+    func testWhiteTaxBookkeepingOfficialExportProvidesCsv() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .income,
+            amount: 50_000,
+            date: makeDate(year: 2025, month: 3, day: 10),
+            categoryId: "cat-sales",
+            memo: "white tax export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .whiteTaxBookkeeping,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("売上金額"))
+        XCTAssertTrue(text.contains("2025年分"))
+    }
+
+    func testTransportationExpenseOfficialExportUsesSelectedLegacyBook() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        let book = seedLegacyTransportationExpenseBook()
+
+        let url = try ExportCoordinator.export(
+            target: .transportationExpense,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context,
+            ledgerBookSelectionOptions: .init(bookId: book.id, ledgerType: .transportationExpense)
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("日付,行先,目的（用件）"))
+    }
+
+    func testFixedAssetDepreciationOfficialExportProvidesCsv() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        seedFixedAsset(
+            name: "MacBook Pro",
+            acquisitionCost: 360_000,
+            usefulLifeYears: 4,
+            year: 2025,
+            month: 1,
+            day: 10
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .fixedAssetDepreciation,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("勘定科目,資産コード,資産名"))
+        XCTAssertTrue(text.contains("MacBook Pro"))
+        XCTAssertTrue(text.contains("減価償却費"))
     }
 
     func testCanonicalOnlyBookExportsExcludeOrphanLegacySupplementals() throws {
@@ -786,6 +908,28 @@ final class ExportCoordinatorTests: XCTestCase {
             )
         )
         return book
+    }
+
+    private func seedFixedAsset(
+        name: String,
+        acquisitionCost: Int,
+        usefulLifeYears: Int,
+        year: Int,
+        month: Int,
+        day: Int
+    ) {
+        context.insert(
+            PPFixedAsset(
+                name: name,
+                acquisitionDate: makeDate(year: year, month: month, day: day),
+                acquisitionCost: acquisitionCost,
+                usefulLifeYears: usefulLifeYears,
+                depreciationMethod: .straightLine,
+                memo: "export test asset",
+                businessUsePercent: 100
+            )
+        )
+        try! context.save()
     }
 
     private func makeLegacyLedgerOptions(book: SDLedgerBook) -> ExportCoordinator.LegacyLedgerExportOptions {

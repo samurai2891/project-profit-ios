@@ -146,7 +146,7 @@ struct SubLedgerView: View {
     private func exportSubLedger(format: ExportCoordinator.ExportFormat) {
         do {
             shareURL = try ExportCoordinator.export(
-                target: .subLedger,
+                target: type.exportTarget,
                 format: format,
                 fiscalYear: selectedYear,
                 modelContext: modelContext,
@@ -163,6 +163,23 @@ struct SubLedgerView: View {
             shareURL = nil
             showShareSheet = false
             exportErrorMessage = error.localizedDescription
+        }
+    }
+}
+
+private extension SubLedgerType {
+    var exportTarget: ExportCoordinator.ExportTarget {
+        switch self {
+        case .cashBook:
+            return .cashBook
+        case .depositBook:
+            return .bankAccountBook
+        case .accountsReceivableBook:
+            return .accountsReceivableBook
+        case .accountsPayableBook:
+            return .accountsPayableBook
+        case .expenseBook:
+            return .expenseBook
         }
     }
 }
