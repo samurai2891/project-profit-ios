@@ -55,6 +55,12 @@ xsd_summary_file="$artifact_dir/xsd_validation_summary.txt"
 
 mkdir -p "$artifact_dir"
 
+extract_output_field() {
+  local key="$1"
+  local payload="$2"
+  awk -F= -v key="$key" '$1 == key {print substr($0, index($0, "=") + 1); exit}' <<< "$payload"
+}
+
 resolve_spec_path() {
   local preferred="$1"
   local search_dir="$2"
@@ -163,9 +169,9 @@ set -e
 
 echo "$health_output"
 
-health_status="$(printf '%s\n' "$health_output" | awk -F= '/^status=/{print $2; exit}')"
-health_reason="$(printf '%s\n' "$health_output" | awk -F= '/^reason=/{print $2; exit}')"
-health_device="$(printf '%s\n' "$health_output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+health_status="$(extract_output_field "status" "$health_output")"
+health_reason="$(extract_output_field "reason" "$health_output")"
+health_device="$(extract_output_field "simulator_device" "$health_output")"
 
 if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status" == "warn" ]]; then
   swift_lane_executed="true"

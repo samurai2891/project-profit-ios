@@ -40,8 +40,8 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
           if [[ -z "$status" ]]; then
             status="error"
           fi
@@ -83,9 +83,9 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          simulator_device="$(printf '%s\n' "$output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          simulator_device="$(awk -F= '/^simulator_device=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -141,10 +141,10 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -211,11 +211,11 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -289,11 +289,11 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -367,11 +367,11 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -442,12 +442,12 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
-          metrics_path="$(printf '%s\n' "$output" | awk -F= '/^metrics_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
+          metrics_path="$(awk -F= '/^metrics_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -527,11 +527,11 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -605,11 +605,11 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          summary_path="$(printf '%s\n' "$output" | awk -F= '/^summary_path=/{print $2; exit}')"
-          xcresult_path="$(printf '%s\n' "$output" | awk -F= '/^xcresult_path=/{print $2; exit}')"
-          log_path="$(printf '%s\n' "$output" | awk -F= '/^log_path=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          summary_path="$(awk -F= '/^summary_path=/{print $2; exit}' <<< "$output")"
+          xcresult_path="$(awk -F= '/^xcresult_path=/{print $2; exit}' <<< "$output")"
+          log_path="$(awk -F= '/^log_path=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"

@@ -208,7 +208,7 @@ parse_exit=$?
 set -e
 
 if [[ "$parse_exit" -ne 0 ]]; then
-  reason="$(printf '%s' "$parse_output" | head -n 1)"
+  reason="$(awk 'NR == 1 { print; exit }' <<< "$parse_output")"
   if [[ -z "$reason" ]]; then
     reason="failed to parse form metadata"
   fi
@@ -216,7 +216,7 @@ if [[ "$parse_exit" -ne 0 ]]; then
   exit 1
 fi
 
-parse_result="$(printf '%s' "$parse_output" | tail -n 1)"
+parse_result="$(awk 'END { print }' <<< "$parse_output")"
 IFS=$'\t' read -r form_id form_ver metadata_source resolved_tax_year <<< "$parse_result"
 
 if [[ -z "$form_id" || -z "$form_ver" || -z "$metadata_source" || -z "$resolved_tax_year" ]]; then

@@ -3,9 +3,41 @@ import XCTest
 
 final class EtaxXtxExporterTests: XCTestCase {
 
-    private let blueXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA210-011.xsd"
-    private let cashBasisXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA230-010.xsd"
-    private let whiteXsdPath = "/Users/yutaro/project-profit-ios-local/e-taxall/19XMLスキーマ/shotoku/KOA110-012.xsd"
+    private var blueXsdPath: String { resolveShotokuXsdPath(fileName: "KOA210-011.xsd") }
+    private var cashBasisXsdPath: String { resolveShotokuXsdPath(fileName: "KOA230-010.xsd") }
+    private var whiteXsdPath: String { resolveShotokuXsdPath(fileName: "KOA110-012.xsd") }
+
+    private func resolveShotokuXsdPath(fileName: String, filePath: StaticString = #filePath) -> String {
+        let sourceFileURL = URL(fileURLWithPath: "\(filePath)")
+        let repoRoot = sourceFileURL.deletingLastPathComponent().deletingLastPathComponent()
+        let envRoot = ProcessInfo.processInfo.environment["ETAX_REFERENCE_ROOT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let candidateRoots = [
+            envRoot.map(URL.init(fileURLWithPath:)),
+            repoRoot.appendingPathComponent("tools/etax/xsd"),
+            repoRoot.appendingPathComponent("e-taxall"),
+            repoRoot.deletingLastPathComponent().appendingPathComponent("project-profit-ios-local/e-taxall"),
+        ].compactMap { $0 }
+
+        let shotokuRelativePath = "19XMLスキーマ/shotoku/\(fileName)"
+        let toolsRelativePath = "shotoku/\(fileName)"
+
+        for root in candidateRoots {
+            let candidates = [
+                root.appendingPathComponent(shotokuRelativePath),
+                root.appendingPathComponent(toolsRelativePath),
+            ]
+
+            if let existingPath = candidates
+                .map(\.path)
+                .first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                return existingPath
+            }
+        }
+
+        return repoRoot.appendingPathComponent("tools/etax/xsd/shotoku/\(fileName)").path
+    }
 
     private func makeForm(
         fields: [EtaxField] = [],

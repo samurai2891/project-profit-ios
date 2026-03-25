@@ -36,6 +36,12 @@ if [[ ! -d "$default_schema_dir" ]]; then
 fi
 schema_dir="$default_schema_dir"
 
+extract_output_field() {
+  local key="$1"
+  local payload="$2"
+  awk -F= -v key="$key" '$1 == key {print substr($0, index($0, "=") + 1); exit}' <<< "$payload"
+}
+
 print_usage() {
   cat <<'EOF'
 Usage:
@@ -147,13 +153,13 @@ if [[ -z "$schema_path" ]]; then
 
   printf '%s\n' "$resolve_output"
 
-  resolve_status="$(printf '%s\n' "$resolve_output" | awk -F= '/^status=/{print $2; exit}')"
-  resolve_reason="$(printf '%s\n' "$resolve_output" | awk -F= '/^reason=/{print $2; exit}')"
-  form_id="$(printf '%s\n' "$resolve_output" | awk -F= '/^form_id=/{print $2; exit}')"
-  form_ver="$(printf '%s\n' "$resolve_output" | awk -F= '/^form_ver=/{print $2; exit}')"
-  schema_path="$(printf '%s\n' "$resolve_output" | awk -F= '/^schema_path=/{print $2; exit}')"
-  resolved_tax_year="$(printf '%s\n' "$resolve_output" | awk -F= '/^tax_year=/{print $2; exit}')"
-  metadata_source="$(printf '%s\n' "$resolve_output" | awk -F= '/^metadata_source=/{print $2; exit}')"
+  resolve_status="$(extract_output_field "status" "$resolve_output")"
+  resolve_reason="$(extract_output_field "reason" "$resolve_output")"
+  form_id="$(extract_output_field "form_id" "$resolve_output")"
+  form_ver="$(extract_output_field "form_ver" "$resolve_output")"
+  schema_path="$(extract_output_field "schema_path" "$resolve_output")"
+  resolved_tax_year="$(extract_output_field "tax_year" "$resolve_output")"
+  metadata_source="$(extract_output_field "metadata_source" "$resolve_output")"
 
   if [[ "$resolve_exit" -ne 0 || -z "$schema_path" || "$resolve_status" == "error" ]]; then
     if [[ -z "$resolve_reason" ]]; then

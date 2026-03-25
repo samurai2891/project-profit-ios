@@ -33,9 +33,9 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          simulator_device="$(printf '%s\n' "$output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          simulator_device="$(awk -F= '/^simulator_device=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -95,9 +95,9 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          input_dir="$(printf '%s\n' "$output" | awk -F= '/^input_dir=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          input_dir="$(awk -F= '/^input_dir=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
