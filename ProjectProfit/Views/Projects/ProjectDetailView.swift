@@ -11,7 +11,7 @@ struct ProjectDetailView: View {
     @State private var showEditSheet = false
     @State private var showAddTransactionSheet = false
     @State private var showReceiptScanner = false
-    @State private var selectedTransaction: PPTransaction?
+    @State private var selectedTransaction: CanonicalTransactionListItem?
 
     private var resolvedViewModel: ProjectDetailViewModel {
         viewModel ?? ProjectDetailViewModel(modelContext: modelContext, projectId: projectId)
@@ -64,7 +64,7 @@ struct ProjectDetailView: View {
         .sheet(item: $selectedTransaction, onDismiss: {
             viewModel?.reload()
         }) { transaction in
-            TransactionDetailView(transaction: transaction)
+            CanonicalTransactionReadOnlyDetailView(transaction: transaction)
         }
         .task {
             if viewModel == nil {
@@ -477,7 +477,7 @@ private extension ProjectDetailView {
 // MARK: - TransactionRow
 
 private struct TransactionRow: View {
-    let transaction: PPTransaction
+    let transaction: CanonicalTransactionListItem
     let projectId: UUID
     let viewModel: ProjectDetailViewModel
 
@@ -498,18 +498,11 @@ private struct TransactionRow: View {
     }
 
     private var allocationRatio: Int? {
-        guard transaction.allocations.count > 1 else {
-            return nil
-        }
-        return transaction.allocations
-            .first(where: { $0.projectId == projectId })?
-            .ratio
+        transaction.projectRatio
     }
 
     private var allocationAmount: Int? {
-        transaction.allocations
-            .first(where: { $0.projectId == projectId })?
-            .amount
+        transaction.projectAmount
     }
 
     private var categoryName: String {

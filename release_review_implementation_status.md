@@ -34,7 +34,7 @@
 |---|---|---|---|
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | 実装済み | 帳簿画面と `journal / ledger / subLedger export` が共通の canonical-only export source に統一され、orphan legacy supplemental / legacy-only depreciation を除外する parity テストも追加された |
 | 2 | 取引保存成功と canonical 側反映失敗の乖離 | 実装済み | 手入力は candidate-only 保存へ統一され、承認時 canonical journal 保存と失敗時ロールバックが main path / release 導線で裏付けられた。未使用の `DEBUG` 補助同期コードも除去された |
-| 3 | プロジェクト別収益管理と税務帳簿の未連結 | 部分実装 | `projectAllocationId` は candidate から canonical line まで到達し検索/集計も使うが、一部 UI と履歴系は `PPTransaction.allocations` 依存のまま |
+| 3 | プロジェクト別収益管理と税務帳簿の未連結 | 実装済み | project/history の表示系も canonical read model に統一され、`projectAllocationId` を案件別集計・履歴・詳細表示まで一貫利用する |
 | 4 | 消費税の簡易課税・2割特例ロジック | 部分実装 | 誤計算の主経路は calculator へ移ったが、判定責務と控除計算責務が二重化し、単体テストも不足 |
 | 5 | 個人事業主向けの年度設定 | 部分実装 | filing/e-Tax/preflight は暦年化済みだが、証憑取込・明細 import・命名には fiscal year 起点が残る |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 部分実装 | Books 導線自体は release 画面にあるが、旧11帳簿は `互換` セクションかつ `readOnly` 導線 |
@@ -51,7 +51,7 @@
 |---|---|---|---|---|---|---|
 | 1 | 仕訳帳と元帳/補助簿の参照ソース不一致 | [x] | [x] | [x] | [x] | [ ] |
 | 2 | 取引保存成功と canonical 側反映失敗の乖離 | [x] | [x] | [x] | [x] | [ ] |
-| 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [x] |
+| 3 | プロジェクト別収益管理と税務帳簿の未連結 | [x] | [x] | [x] | [x] | [ ] |
 | 4 | 消費税の簡易課税・2割特例ロジック | [x] | [x] | [x] | [x] | [x] |
 | 5 | 個人事業主向けの年度設定 | [x] | [x] | [x] | [ ] | [x] |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | [x] | [x] | [ ] | [x] | [x] |
@@ -140,39 +140,43 @@
 
 ### 3. プロジェクト別収益管理と税務帳簿の未連結
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] project allocation が candidate line に反映される
   - [x] canonical journal line に `projectAllocationId` が保存される
   - [x] canonical 集計・検索は `projectAllocationId` を使う
+  - [x] project detail / history の表示系が canonical read model に統一されている
   - [x] main path を支えるテストがある
-  - [ ] 一部 UI / 履歴系は `PPTransaction.allocations` 依存のまま
 - できていること:
   - project allocation は candidate line 作成時に `projectAllocationId` へ展開される
   - canonical journal line の借方/貸方双方へ `projectAllocationId` を保存している
   - canonical 集計、案件別 yearly summary、検索 index は `projectAllocationId` を利用している
-- まだ足りていないこと:
-  - `ProjectDetailSnapshot.recentTransactions` は `PPTransaction.allocations` で抽出している
-  - `TransactionHistory` の project filter も `transaction.allocations` 依存
-  - 同一 snapshot 内で `summary/yearlyProfitLoss` は canonical、`recentTransactions` は legacy transaction という二重基準が残る
+  - `ProjectDetailSnapshot.recentTransactions` は canonical journal 起点の read model を返し、focused project の `projectAmount / projectRatio` を表示できる
+  - `TransactionHistory` の project filter・金額比較・一覧詳細遷移は canonical read model を正本として扱い、canonical-only 行も表示される
+  - project detail / transaction history の詳細画面は canonical read-only detail に統一されている
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingSupport.swift:514`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingEngine.swift:214`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingEngine.swift:228`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Application/UseCases/Posting/CanonicalPostingEngine.swift:254`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataReportingRepository.swift:157`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataProjectQueryRepository.swift:34`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataProjectQueryRepository.swift:79`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Search/LocalJournalSearchIndex.swift:138`
-  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataTransactionHistoryRepository.swift:21`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Core/Domain/Transactions/CanonicalTransactionDisplayItem.swift:1`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/CanonicalTransactionDisplayBuilder.swift:1`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataProjectQueryRepository.swift:27`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Infrastructure/Persistence/SwiftData/Repositories/SwiftDataTransactionHistoryRepository.swift:14`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/ViewModels/TransactionsViewModel.swift:103`
+  - `/Users/yutaro/project-profit-ios/ProjectProfit/Views/Transactions/CanonicalTransactionReadOnlyDetailView.swift:1`
 - 根拠テスト:
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/CanonicalPostingSupportTests.swift:76`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ProjectQueryUseCaseTests.swift:94`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ProjectQueryUseCaseTests.swift:117`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TransactionHistoryUseCaseTests.swift:27`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TransactionHistoryUseCaseTests.swift:73`
+  - `/Users/yutaro/project-profit-ios/ProjectProfitTests/TransactionsViewModelTests.swift:169`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/SearchIndexTests.swift:280`
 - 未確認事項:
-  - `recentTransactions` を canonical source に寄せる改修予定の有無は repo 内根拠だけでは確認していない
+  - なし
 - release 影響:
-  - 案件別収支と税務帳簿は主要集計で連結しているが、画面の一部リスト表示では canonical-only データが落ちうる
+  - 案件別収支、税務帳簿、案件詳細、取引履歴が同じ canonical project allocation を参照する状態になり、canonical-only データも UI 上で欠落しない
 
 ### 4. 消費税の簡易課税・2割特例ロジック
 

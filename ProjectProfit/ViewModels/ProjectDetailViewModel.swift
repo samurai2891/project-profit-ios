@@ -38,8 +38,8 @@ final class ProjectDetailViewModel {
         summary?.profit ?? 0
     }
 
-    var recentTransactions: [PPTransaction] {
-        detailSnapshot.recentTransactions
+    var recentTransactions: [CanonicalTransactionListItem] {
+        detailSnapshot.recentTransactions.map { CanonicalTransactionListItem($0, focusedProjectId: projectId) }
     }
 
     var yearlyProfitLoss: [FiscalYearProjectSummary] {

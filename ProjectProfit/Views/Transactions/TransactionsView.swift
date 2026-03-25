@@ -24,7 +24,7 @@ struct TransactionsView: View {
     @State private var showAddSheet = false
     @State private var showFilterSheet = false
     @State private var showReceiptScanner = false
-    @State private var selectedTransaction: PPTransaction?
+    @State private var selectedTransaction: CanonicalTransactionListItem?
     @State private var showShareSheet = false
     @State private var shareURL: URL?
     @State private var exportErrorMessage: String?
@@ -123,7 +123,7 @@ struct TransactionsView: View {
             ReceiptScannerView()
         }
         .sheet(item: $selectedTransaction) { transaction in
-            TransactionDetailView(transaction: transaction)
+            CanonicalTransactionReadOnlyDetailView(transaction: transaction)
         }
         .sheet(isPresented: $showFilterSheet) {
             FilterView(filter: Binding(
@@ -622,7 +622,7 @@ struct TransactionsView: View {
 // MARK: - TransactionCardView
 
 private struct TransactionCardView: View {
-    let transaction: PPTransaction
+    let transaction: CanonicalTransactionListItem
     let categoryName: String
     let projectNames: [String]
     let onTap: () -> Void
@@ -640,10 +640,11 @@ private struct TransactionCardView: View {
     }
 
     private var formattedAmount: String {
+        let displayAmount = transaction.projectAmount ?? transaction.amount
         switch transaction.type {
-        case .income: return "+\(formatCurrency(transaction.amount))"
-        case .expense: return "-\(formatCurrency(transaction.amount))"
-        case .transfer: return formatCurrency(transaction.amount)
+        case .income: return "+\(formatCurrency(displayAmount))"
+        case .expense: return "-\(formatCurrency(displayAmount))"
+        case .transfer: return formatCurrency(displayAmount)
         }
     }
 

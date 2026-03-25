@@ -4,9 +4,11 @@ import SwiftData
 @MainActor
 final class SwiftDataTransactionHistoryRepository: TransactionHistoryRepository {
     private let modelContext: ModelContext
+    private let displayBuilder: CanonicalTransactionDisplayBuilder
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.displayBuilder = CanonicalTransactionDisplayBuilder(modelContext: modelContext)
     }
 
     func allTransactions() throws -> [PPTransaction] {
@@ -14,28 +16,37 @@ final class SwiftDataTransactionHistoryRepository: TransactionHistoryRepository 
         return try modelContext.fetch(descriptor)
     }
 
-    func filteredTransactions(filter: TransactionFilter, sort: TransactionSort?) throws -> [PPTransaction] {
-        var result = try allTransactions().filter { transaction in
+    func allDisplayTransactions() throws -> [CanonicalTransactionDisplayItem] {
+        displayBuilder.allDisplayItems()
+    }
+
+    func filteredDisplayTransactions(
+        filter: TransactionFilter,
+        sort: TransactionSort?
+    ) throws -> [CanonicalTransactionDisplayItem] {
+        var result = try allDisplayTransactions().filter { transaction in
             if let start = filter.startDate, transaction.date < start { return false }
             if let end = filter.endDate, transaction.date > end { return false }
             if let projectId = filter.projectId,
-               !transaction.allocations.contains(where: { $0.projectId == projectId }) {
+               !transaction.projectAllocations.contains(where: { $0.projectId == projectId }) {
                 return false
             }
             if let categoryId = filter.categoryId, transaction.categoryId != categoryId { return false }
             if let type = filter.type, transaction.type != type { return false }
-            if let amountMin = filter.amountMin, transaction.amount < amountMin { return false }
-            if let amountMax = filter.amountMax, transaction.amount > amountMax { return false }
-            if let counterparty = filter.counterparty, !counterparty.isEmpty {
-                guard let value = transaction.counterparty,
-                      value.lowercased().contains(counterparty.lowercased()) else {
+
+            let comparableAmount = comparableAmount(for: transaction, filter: filter)
+            if let amountMin = filter.amountMin, comparableAmount < amountMin { return false }
+            if let amountMax = filter.amountMax, comparableAmount > amountMax { return false }
+
+            if let counterparty = normalized(filter.counterparty), !counterparty.isEmpty {
+                guard let value = normalized(transaction.counterpartyName),
+                      value.contains(counterparty) else {
                     return false
                 }
             }
-            if !filter.searchText.isEmpty {
-                let query = filter.searchText.lowercased()
-                let memoMatch = transaction.memo.lowercased().contains(query)
-                let counterpartyMatch = transaction.counterparty?.lowercased().contains(query) ?? false
+            if let query = normalized(filter.searchText), !query.isEmpty {
+                let memoMatch = normalized(transaction.memo)?.contains(query) ?? false
+                let counterpartyMatch = normalized(transaction.counterpartyName)?.contains(query) ?? false
                 if !memoMatch && !counterpartyMatch { return false }
             }
             return true
@@ -48,11 +59,13 @@ final class SwiftDataTransactionHistoryRepository: TransactionHistoryRepository 
             case .date:
                 comparison = lhs.date < rhs.date
             case .amount:
-                comparison = lhs.amount < rhs.amount
+                let lhsAmount = comparableAmount(for: lhs, filter: filter)
+                let rhsAmount = comparableAmount(for: rhs, filter: filter)
+                comparison = lhsAmount < rhsAmount
             }
             return sortSpec.order == .desc ? !comparison : comparison
         }
-        return result
+        return result.map { $0.focused(on: filter.projectId) }
     }
 
     func allCategories() throws -> [PPCategory] {
@@ -87,5 +100,19 @@ final class SwiftDataTransactionHistoryRepository: TransactionHistoryRepository 
         let targetId = transactionId
         let descriptor = FetchDescriptor<PPDocumentRecord>(predicate: #Predicate { $0.transactionId == targetId })
         return try modelContext.fetch(descriptor).count
+    }
+
+    private func comparableAmount(
+        for transaction: CanonicalTransactionDisplayItem,
+        filter: TransactionFilter
+    ) -> Int {
+        guard let projectId = filter.projectId else {
+            return transaction.amount
+        }
+        return transaction.projectAllocations.first(where: { $0.projectId == projectId })?.amount ?? transaction.amount
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

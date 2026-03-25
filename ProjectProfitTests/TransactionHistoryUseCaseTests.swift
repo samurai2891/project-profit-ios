@@ -74,9 +74,54 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
         let sort = TransactionSort(field: .amount, order: .desc)
 
         let expected = dataStore.getFilteredTransactions(filter: filter, sort: sort).map(\.id)
-        let actual = useCase.filteredTransactions(filter: filter, sort: sort).map(\.id)
+        let actual = useCase.filteredTransactions(filter: filter, sort: sort).compactMap(\.legacyTransactionId)
 
         XCTAssertEqual(actual, expected)
+    }
+
+    func testFilteredTransactionsIncludesCanonicalOnlyRowsWithoutProjectFilter() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let project = mutations(dataStore).addProject(name: "Canonical案件", description: "")
+
+        try await approveManualCandidate(
+            type: .expense,
+            amount: 7_000,
+            date: makeDate(2025, 5, 1),
+            categoryId: "cat-hosting",
+            memo: "canonical hosting",
+            allocations: [(projectId: project.id, ratio: 100)]
+        )
+
+        let rows = useCase.filteredTransactions(filter: TransactionFilter())
+
+        XCTAssertEqual(rows.first?.amount, 7_000)
+        XCTAssertEqual(rows.first?.projectAmount, 7_000)
+        XCTAssertTrue(rows.first?.isCanonicalOnly == true)
+    }
+
+    func testFilteredTransactionsProjectFilterUsesCanonicalProjectAllocation() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let projectA = mutations(dataStore).addProject(name: "Alpha", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Beta", description: "")
+
+        try await approveManualCandidate(
+            type: .income,
+            amount: 10_000,
+            date: makeDate(2025, 6, 1),
+            categoryId: "cat-sales",
+            memo: "split income",
+            allocations: [
+                (projectId: projectA.id, ratio: 60),
+                (projectId: projectB.id, ratio: 40)
+            ]
+        )
+
+        let rows = useCase.filteredTransactions(filter: TransactionFilter(projectId: projectA.id))
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.amount, 10_000)
+        XCTAssertEqual(rows.first?.projectAmount, 6_000)
+        XCTAssertEqual(rows.first?.projectRatio, 60)
     }
 
     func testFilteredTransactionsMatchesDataStoreForSearchAndCounterpartyFiltering() {
@@ -107,7 +152,7 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
         )
 
         let expected = dataStore.getFilteredTransactions(filter: filter).map(\.id)
-        let actual = useCase.filteredTransactions(filter: filter).map(\.id)
+        let actual = useCase.filteredTransactions(filter: filter).compactMap(\.legacyTransactionId)
 
         XCTAssertEqual(actual, expected)
     }
@@ -192,5 +237,41 @@ final class TransactionHistoryUseCaseTests: XCTestCase {
 
     private func makeDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         Calendar.current.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    private func approveManualCandidate(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String = "acct-cash",
+        candidateSource: CandidateSource = .manual
+    ) async throws {
+        let result = await dataStore.saveManualPostingCandidate(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            paymentAccountId: paymentAccountId,
+            candidateSource: candidateSource
+        )
+
+        let candidate: PostingCandidate
+        switch result {
+        case .success(let savedCandidate):
+            candidate = savedCandidate
+        case .failure(let error):
+            XCTFail("manual candidate save should succeed: \(error.localizedDescription)")
+            return
+        }
+
+        _ = try await dataStore.approvePostingCandidate(
+            candidateId: candidate.id,
+            description: "approved for transaction history test"
+        )
     }
 }

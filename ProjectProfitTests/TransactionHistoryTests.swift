@@ -71,7 +71,7 @@ final class TransactionHistoryTests: XCTestCase {
             makeTransaction(date: jan),
             makeTransaction(date: feb1),
             makeTransaction(date: feb2),
-        ]
+        ].map(CanonicalTransactionListItem.init)
 
         let groups = groupTransactionsByMonth(transactions)
         XCTAssertEqual(groups.count, 2)
@@ -85,7 +85,7 @@ final class TransactionHistoryTests: XCTestCase {
             makeTransaction(date: jan),
             makeTransaction(date: mar),
             makeTransaction(date: feb),
-        ]
+        ].map(CanonicalTransactionListItem.init)
 
         let groups = groupTransactionsByMonth(transactions)
         XCTAssertEqual(groups.count, 3)
@@ -140,7 +140,7 @@ final class TransactionHistoryTests: XCTestCase {
             makeTransaction(type: .income, amount: 10000, date: date1),
             makeTransaction(type: .expense, amount: 3000, date: date2),
             makeTransaction(type: .income, amount: 5000, date: date3),
-        ]
+        ].map(CanonicalTransactionListItem.init)
 
         let groups = groupTransactionsByMonth(transactions)
         XCTAssertEqual(groups.count, 1)
@@ -159,7 +159,7 @@ final class TransactionHistoryTests: XCTestCase {
 
     // MARK: - Private grouping helper (mirrors ViewModel logic)
 
-    private func groupTransactionsByMonth(_ transactions: [PPTransaction]) -> [TransactionGroup] {
+    private func groupTransactionsByMonth(_ transactions: [CanonicalTransactionListItem]) -> [TransactionGroup] {
         let grouped = Dictionary(grouping: transactions) { transaction -> String in
             let comps = calendar.dateComponents([.year, .month], from: transaction.date)
             let year = comps.year ?? 0

@@ -3,7 +3,11 @@ import Foundation
 @MainActor
 protocol TransactionHistoryRepository {
     func allTransactions() throws -> [PPTransaction]
-    func filteredTransactions(filter: TransactionFilter, sort: TransactionSort?) throws -> [PPTransaction]
+    func allDisplayTransactions() throws -> [CanonicalTransactionDisplayItem]
+    func filteredDisplayTransactions(
+        filter: TransactionFilter,
+        sort: TransactionSort?
+    ) throws -> [CanonicalTransactionDisplayItem]
     func allCategories() throws -> [PPCategory]
     func allProjects() throws -> [PPProject]
     func category(id: String) throws -> PPCategory?

@@ -11,6 +11,7 @@ final class TransactionsViewModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -19,6 +20,7 @@ final class TransactionsViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         viewModel = nil
         dataStore = nil
         context = nil
@@ -159,5 +161,35 @@ final class TransactionsViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.filter.counterparty, "取引先A")
         XCTAssertEqual(viewModel.filter.searchText, "請求")
+    }
+
+    func testIncomeTotalWithCanonicalOnlyProjectFilterUsesFocusedProjectAmount() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let projectA = mutations(dataStore).addProject(name: "Project A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "Project B", description: "")
+
+        let result = await dataStore.saveManualPostingCandidate(
+            type: .income,
+            amount: 10_000,
+            date: Date(),
+            categoryId: "cat-sales",
+            memo: "canonical split",
+            allocations: [
+                (projectId: projectA.id, ratio: 60),
+                (projectId: projectB.id, ratio: 40)
+            ],
+            paymentAccountId: "acct-cash",
+            candidateSource: .manual
+        )
+
+        let candidate = try XCTUnwrap({
+            if case .success(let saved) = result { return saved }
+            return nil
+        }())
+        _ = try await dataStore.approvePostingCandidate(candidateId: candidate.id, description: "approved")
+
+        viewModel.filter = TransactionFilter(projectId: projectA.id)
+        XCTAssertEqual(viewModel.incomeTotal, 6_000)
+        XCTAssertEqual(viewModel.filteredTransactions.first?.projectAmount, 6_000)
     }
 }

@@ -6,7 +6,7 @@ import SwiftUI
 struct TransactionGroup: Identifiable {
     let yearMonth: String
     let displayLabel: String
-    let transactions: [PPTransaction]
+    let transactions: [CanonicalTransactionListItem]
     let income: Int
     let expense: Int
     let transfer: Int
@@ -25,7 +25,7 @@ struct LedgerRow: Identifiable {
     let debit: Int
     let credit: Int
     let runningBalance: Int
-    let transaction: PPTransaction
+    let transaction: CanonicalTransactionListItem
 }
 
 // MARK: - TransactionsViewModel
@@ -63,9 +63,11 @@ final class TransactionsViewModel {
 
     // MARK: - Computed Properties
 
-    var filteredTransactions: [PPTransaction] {
+    var filteredTransactions: [CanonicalTransactionListItem] {
         _ = refreshVersion
-        return transactionHistoryUseCase.filteredTransactions(filter: filter, sort: sort)
+        return transactionHistoryUseCase
+            .filteredTransactions(filter: filter, sort: sort)
+            .map { CanonicalTransactionListItem($0, focusedProjectId: filter.projectId) }
     }
 
     var groupedTransactions: [TransactionGroup] {
@@ -173,16 +175,49 @@ final class TransactionsViewModel {
 
     func exportURL(exportAll: Bool = false) throws -> URL {
         _ = refreshVersion
-        let target = exportAll ? transactionHistoryUseCase.allTransactions() : filteredTransactions
+        let target: [PPTransaction]
+        if exportAll {
+            target = transactionHistoryUseCase.allTransactions()
+        } else {
+            target = transactionHistoryUseCase.exportableTransactions(
+                for: filteredTransactions.map { item in
+                    CanonicalTransactionDisplayItem(
+                        id: item.id,
+                        journalId: item.journalId,
+                        sourceCandidateId: item.sourceCandidateId,
+                        sourceEvidenceId: item.sourceEvidenceId,
+                        legacyTransactionId: item.legacyTransactionId,
+                        date: item.date,
+                        type: item.type,
+                        amount: item.amount,
+                        projectAmount: item.projectAmount,
+                        projectRatio: item.projectRatio,
+                        projectAllocations: item.projectAllocations,
+                        categoryId: item.categoryId,
+                        memo: item.memo,
+                        lineItems: item.lineItems,
+                        receiptImagePath: item.receiptImagePath,
+                        counterpartyId: item.counterpartyId,
+                        counterpartyName: item.counterpartyName,
+                        recurringId: item.recurringId,
+                        isCanonicalOnly: item.isCanonicalOnly,
+                        canOpenLegacyTransactionDetail: item.canOpenLegacyTransactionDetail
+                    )
+                }
+            )
+            guard !target.isEmpty else {
+                throw ExportCoordinator.ExportError.dataUnavailable
+            }
+        }
         return try transactionHistoryUseCase.exportCSV(transactions: target)
     }
 
-    func categoryName(for transaction: PPTransaction) -> String {
+    func categoryName(for transaction: CanonicalTransactionListItem) -> String {
         transactionHistoryUseCase.categoryName(for: transaction.categoryId)
     }
 
-    func projectNames(for transaction: PPTransaction) -> [String] {
-        transactionHistoryUseCase.projectNames(for: transaction.allocations)
+    func projectNames(for transaction: CanonicalTransactionListItem) -> [String] {
+        transaction.projectAllocations.compactMap { $0.projectName }
     }
 
     func refresh() {
@@ -191,12 +226,12 @@ final class TransactionsViewModel {
 
     // MARK: - Private Helpers
 
-    private func yearMonthKey(for transaction: PPTransaction) -> String {
+    private func yearMonthKey(for transaction: CanonicalTransactionListItem) -> String {
         let comps = Calendar.current.dateComponents([.year, .month], from: transaction.date)
         return String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
     }
 
-    private func createTransactionGroup(yearMonth: String, transactions: [PPTransaction]) -> TransactionGroup {
+    private func createTransactionGroup(yearMonth: String, transactions: [CanonicalTransactionListItem]) -> TransactionGroup {
         TransactionGroup(
             yearMonth: yearMonth,
             displayLabel: displayLabel(from: yearMonth),
@@ -219,7 +254,7 @@ final class TransactionsViewModel {
         return formatYearMonth(date)
     }
 
-    private func sortTransactions(_ transactions: [PPTransaction]) -> [PPTransaction] {
+    private func sortTransactions(_ transactions: [CanonicalTransactionListItem]) -> [CanonicalTransactionListItem] {
         switch sort.field {
         case .date:
             return sort.order == .desc
@@ -227,22 +262,28 @@ final class TransactionsViewModel {
                 : transactions.sorted { $0.date < $1.date }
         case .amount:
             return sort.order == .desc
-                ? transactions.sorted { $0.amount > $1.amount }
-                : transactions.sorted { $0.amount < $1.amount }
+                ? transactions.sorted { effectiveAmount(for: $0) > effectiveAmount(for: $1) }
+                : transactions.sorted { effectiveAmount(for: $0) < effectiveAmount(for: $1) }
         }
     }
 
-    private func totalByType(_ type: TransactionType, from transactions: [PPTransaction]) -> Int {
+    private func totalByType(_ type: TransactionType, from transactions: [CanonicalTransactionListItem]) -> Int {
         transactions
             .filter { $0.type == type }
             .reduce(0) { $0 + effectiveAmount(for: $1) }
     }
 
     /// プロジェクトフィルタ適用時は配分額、未適用時は取引全額を返す
-    private func effectiveAmount(for transaction: PPTransaction) -> Int {
+    private func effectiveAmount(for transaction: CanonicalTransactionListItem) -> Int {
         guard let projectId = filter.projectId else {
             return transaction.amount
         }
-        return transaction.allocations.first { $0.projectId == projectId }?.amount ?? transaction.amount
+        if let projectAmount = transaction.projectAmount {
+            return projectAmount
+        }
+        if let projectAmount = transaction.projectAllocations.first(where: { $0.projectId == projectId })?.amount {
+            return projectAmount
+        }
+        return transaction.amount
     }
 }

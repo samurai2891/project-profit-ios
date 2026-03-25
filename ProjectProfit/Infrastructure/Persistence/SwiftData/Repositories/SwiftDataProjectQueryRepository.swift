@@ -5,10 +5,12 @@ import SwiftData
 final class SwiftDataProjectQueryRepository: ProjectQueryRepository {
     private let modelContext: ModelContext
     private let reportingRepository: SwiftDataReportingRepository
+    private let displayBuilder: CanonicalTransactionDisplayBuilder
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         self.reportingRepository = SwiftDataReportingRepository(modelContext: modelContext)
+        self.displayBuilder = CanonicalTransactionDisplayBuilder(modelContext: modelContext)
     }
 
     func listSnapshot() -> ProjectListSnapshot {
@@ -27,14 +29,14 @@ final class SwiftDataProjectQueryRepository: ProjectQueryRepository {
 
     func detailSnapshot(projectId: UUID, startMonth: Int) -> ProjectDetailSnapshot {
         let project = fetchProject(id: projectId)
-        let transactions = fetchTransactions()
         let categories = fetchCategories()
         let summary = (try? reportingRepository.projectSummaries(startDate: nil, endDate: nil))?
             .first { $0.id == projectId }
-        let recentTransactions = transactions
+        let recentTransactions = displayBuilder.allDisplayItems()
             .filter { transaction in
-                transaction.allocations.contains(where: { $0.projectId == projectId })
+                transaction.projectAllocations.contains(where: { $0.projectId == projectId })
             }
+            .map { $0.focused(on: projectId) }
             .sorted { $0.date > $1.date }
 
         return ProjectDetailSnapshot(
@@ -56,11 +58,6 @@ final class SwiftDataProjectQueryRepository: ProjectQueryRepository {
     private func fetchProject(id: UUID) -> PPProject? {
         let descriptor = FetchDescriptor<PPProject>(predicate: #Predicate { $0.id == id })
         return try? modelContext.fetch(descriptor).first
-    }
-
-    private func fetchTransactions() -> [PPTransaction] {
-        let descriptor = FetchDescriptor<PPTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)])
-        return ((try? modelContext.fetch(descriptor)) ?? []).filter { $0.deletedAt == nil }
     }
 
     private func fetchCategories() -> [PPCategory] {

@@ -110,7 +110,36 @@ final class ProjectQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(snapshot.summary?.totalExpense, 12_000)
         XCTAssertEqual(snapshot.yearlyProfitLoss.map(\.expense), [12_000])
         XCTAssertEqual(snapshot.yearlyProfitLoss.map(\.profit), [-12_000])
-        XCTAssertTrue(snapshot.recentTransactions.isEmpty)
+        XCTAssertEqual(snapshot.recentTransactions.map(\.amount), [12_000])
+        XCTAssertEqual(snapshot.recentTransactions.first?.projectAmount, 12_000)
+        XCTAssertEqual(snapshot.recentTransactions.first?.categoryId, "cat-tools")
+        XCTAssertTrue(snapshot.recentTransactions.first?.isCanonicalOnly == true)
+    }
+
+    func testDetailSnapshotRecentTransactionsResolveFocusedProjectAllocation() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let projectA = mutations(dataStore).addProject(name: "案件A", description: "")
+        let projectB = mutations(dataStore).addProject(name: "案件B", description: "")
+
+        try await approveManualCandidate(
+            type: .income,
+            amount: 10_000,
+            date: makeDate(year: 2026, month: 6, day: 10),
+            categoryId: "cat-sales",
+            memo: "split income",
+            allocations: [
+                (projectId: projectA.id, ratio: 60),
+                (projectId: projectB.id, ratio: 40)
+            ],
+            candidateSource: .manual
+        )
+
+        let snapshot = useCase.detailSnapshot(projectId: projectA.id)
+
+        XCTAssertEqual(snapshot.recentTransactions.count, 1)
+        XCTAssertEqual(snapshot.recentTransactions.first?.amount, 10_000)
+        XCTAssertEqual(snapshot.recentTransactions.first?.projectAmount, 6_000)
+        XCTAssertEqual(snapshot.recentTransactions.first?.projectRatio, 60)
     }
 
     private func makeDate(year: Int, month: Int, day: Int) -> Date {

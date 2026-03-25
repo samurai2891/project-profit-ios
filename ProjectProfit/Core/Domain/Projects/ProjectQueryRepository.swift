@@ -15,7 +15,7 @@ struct ProjectListSnapshot {
 struct ProjectDetailSnapshot {
     let project: PPProject?
     let summary: ProjectSummary?
-    let recentTransactions: [PPTransaction]
+    let recentTransactions: [CanonicalTransactionDisplayItem]
     let yearlyProfitLoss: [FiscalYearProjectSummary]
     let categoryNamesById: [String: String]
     let canMutateLegacyTransactions: Bool
