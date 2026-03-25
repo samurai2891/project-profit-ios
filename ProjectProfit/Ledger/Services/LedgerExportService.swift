@@ -419,7 +419,7 @@ final class CSVExportService {
             lines.append(csvRow(["償却方法", metadata.depreciationMethod]))
         }
         if metadata.depreciationRate > 0 {
-            lines.append(csvRow(["償却率", String(metadata.depreciationRate)]))
+            lines.append(csvRow(["償却率", String(format: "%.3f", metadata.depreciationRate)]))
         }
         if !lines.isEmpty {
             lines.append("")
@@ -434,7 +434,8 @@ final class CSVExportService {
             let currentQuantity = acquiredQuantity - disposalQuantity
             let currentAmount = acquiredAmount - disposalAmount
             let businessUseRatio = entry.businessUseRatio ?? 1.0
-            let deductibleAmount = Int(Double(currentAmount) * businessUseRatio)
+            let depreciationAmount = entry.depreciationAmount ?? 0
+            let deductibleAmount = Int(Double(depreciationAmount) * businessUseRatio)
             lines.append(csvRow([
                 entry.date,
                 entry.description,
@@ -474,10 +475,11 @@ final class CSVExportService {
         ]))
 
         for entry in entries {
-            let depreciationExpense = max(0, entry.openingBookValue - ((entry.openingBookValue + (entry.midYearChange ?? 0)) - Int(Double(entry.openingBookValue) * entry.depreciationRate)))
-            let totalDepreciation = depreciationExpense
-            let deductibleAmount = Int(Double(totalDepreciation) * entry.businessUseRatio)
-            let yearEndBalance = max(0, entry.openingBookValue + (entry.midYearChange ?? 0) - totalDepreciation)
+            let depreciationExpense = entry.depreciationExpense ?? 0
+            let specialDepreciation = entry.specialDepreciation ?? 0
+            let totalDepreciation = entry.totalDepreciation ?? (depreciationExpense + specialDepreciation)
+            let deductibleAmount = entry.deductibleAmount ?? Int(Double(totalDepreciation) * entry.businessUseRatio)
+            let yearEndBalance = entry.yearEndBalance ?? max(0, entry.openingBookValue + (entry.midYearChange ?? 0) - totalDepreciation)
             lines.append(csvRow([
                 entry.account,
                 entry.assetCode,
@@ -487,14 +489,14 @@ final class CSVExportService {
                 optStr(entry.quantity),
                 entry.acquisitionDate,
                 String(entry.acquisitionCost),
-                entry.depreciationMethod.rawValue,
+                entry.depreciationMethodLabel ?? entry.depreciationMethod.rawValue,
                 String(entry.usefulLife),
                 String(format: "%.3f", entry.depreciationRate),
                 String(entry.depreciationMonths),
                 String(entry.openingBookValue),
                 optStr(entry.midYearChange),
                 String(depreciationExpense),
-                "",
+                specialDepreciation == 0 ? "" : String(specialDepreciation),
                 String(totalDepreciation),
                 String(format: "%.2f", entry.businessUseRatio),
                 String(deductibleAmount),

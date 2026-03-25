@@ -308,19 +308,58 @@ final class LedgerPDFExportService {
 
     // MARK: - Fixed Asset Depreciation
 
-    func exportFixedAssetDepreciation(entries: [FixedAssetDepreciationEntry]) -> Data {
-        let headers = ["勘定科目", "資産名", "種類", "取得日", "取得価額", "償却方法", "耐用年数", "償却率", "期首帳簿価額", "減価償却費"]
-        let widths: [CGFloat] = [70, 80, 60, 65, 70, 50, 45, 45, 70, 70]
+    func exportFixedAssetDepreciation(metadata: FixedAssetDepreciationMetadata, entries: [FixedAssetDepreciationEntry]) -> Data {
+        let headers = [
+            "勘定科目", "資産コード", "資産名", "資産の種類", "状態", "数量", "取得日", "取得価額",
+            "償却方法", "耐用年数", "償却率", "償却月数", "期首帳簿価額", "期中増減", "減価償却費",
+            "特別(割増)償却費", "償却費合計", "事業専用割合", "必要経費算入額", "本年末残高", "摘要"
+        ]
+        let widths: [CGFloat] = [34, 34, 40, 40, 28, 24, 40, 40, 34, 28, 28, 28, 40, 32, 40, 40, 40, 34, 40, 40, 46]
+        let metadataLines: [String] = metadata.fiscalYear.isEmpty ? [] : ["年分: \(metadata.fiscalYear)"]
 
-        return renderPDF(title: "固定資産台帳 兼 減価償却計算表", headers: headers, columnWidths: widths) { context in
+        return renderPDF(
+            title: "固定資産台帳 兼 減価償却計算表",
+            metadataLines: metadataLines,
+            headers: headers,
+            columnWidths: widths,
+            margin: 16,
+            rowHeight: 16,
+            bodyFont: UIFont(name: "HiraginoSans-W3", size: 6) ?? UIFont.systemFont(ofSize: 6),
+            headerFont: UIFont(name: "HiraginoSans-W6", size: 6) ?? UIFont.boldSystemFont(ofSize: 6),
+            titleFont: UIFont(name: "HiraginoSans-W6", size: 12) ?? UIFont.boldSystemFont(ofSize: 12)
+        ) { context in
             for entry in entries {
-                let depExp = Int(Double(entry.openingBookValue) * entry.depreciationRate)
-                let values = [
-                    entry.account, entry.assetName, entry.assetType,
-                    entry.acquisitionDate, formatNumber(entry.acquisitionCost),
-                    entry.depreciationMethod.rawValue, "\(entry.usefulLife)",
+                let quantity = entry.quantity.map { "\($0)" } ?? ""
+                let midYearChange = entry.midYearChange.map { formatNumber($0) } ?? ""
+                let depreciationMethodLabel = entry.depreciationMethodLabel ?? entry.depreciationMethod.rawValue
+                let depreciationExpense = formatNumber(entry.depreciationExpense ?? 0)
+                let specialDepreciation = entry.specialDepreciation.map { $0 == 0 ? "" : formatNumber($0) } ?? ""
+                let totalDepreciation = formatNumber(entry.totalDepreciation ?? (entry.depreciationExpense ?? 0))
+                let deductibleAmount = formatNumber(entry.deductibleAmount ?? 0)
+                let yearEndBalance = formatNumber(entry.yearEndBalance ?? 0)
+                let remarks = entry.remarks ?? ""
+                let values: [String] = [
+                    entry.account,
+                    entry.assetCode,
+                    entry.assetName,
+                    entry.assetType,
+                    entry.status,
+                    quantity,
+                    entry.acquisitionDate,
+                    formatNumber(entry.acquisitionCost),
+                    depreciationMethodLabel,
+                    "\(entry.usefulLife)",
                     String(format: "%.3f", entry.depreciationRate),
-                    formatNumber(entry.openingBookValue), formatNumber(depExp)
+                    "\(entry.depreciationMonths)",
+                    formatNumber(entry.openingBookValue),
+                    midYearChange,
+                    depreciationExpense,
+                    specialDepreciation,
+                    totalDepreciation,
+                    String(format: "%.2f", entry.businessUseRatio),
+                    deductibleAmount,
+                    yearEndBalance,
+                    remarks
                 ]
                 context.drawDataRow(self.makeRow(widths: widths, values: values))
             }
@@ -330,11 +369,45 @@ final class LedgerPDFExportService {
     // MARK: - Fixed Asset Register
 
     func exportFixedAssetRegister(metadata: FixedAssetRegisterMetadata, entries: [FixedAssetRegisterEntry]) -> Data {
-        let headers = ["日付", "摘要", "取得数量", "取得単価", "取得金額", "償却額", "異動数量", "異動金額", "事業専用割合"]
-        let widths: [CGFloat] = [65, 140, 60, 70, 70, 70, 60, 70, 60]
-        let subtitle = "名称: \(metadata.assetName)　種類: \(metadata.assetType)"
+        let headers = ["年月日", "摘要", "取得数量", "取得単価", "取得金額", "償却額", "異動数量", "異動金額", "現在数量", "現在金額", "事業専用割合", "必要経費算入額", "備考"]
+        let widths: [CGFloat] = [48, 104, 42, 50, 54, 50, 42, 50, 42, 54, 46, 54, 66]
+        var metadataLines: [String] = []
+        if !metadata.assetName.isEmpty {
+            metadataLines.append("名称: \(metadata.assetName)")
+        }
+        if !metadata.assetNumber.isEmpty {
+            metadataLines.append("番号: \(metadata.assetNumber)")
+        }
+        if !metadata.assetType.isEmpty {
+            metadataLines.append("種類: \(metadata.assetType)")
+        }
+        if !metadata.acquisitionDate.isEmpty {
+            metadataLines.append("取得年月日: \(metadata.acquisitionDate)")
+        }
+        if !metadata.location.isEmpty {
+            metadataLines.append("所在: \(metadata.location)")
+        }
+        if metadata.usefulLife > 0 {
+            metadataLines.append("耐用年数: \(metadata.usefulLife)")
+        }
+        if !metadata.depreciationMethod.isEmpty {
+            metadataLines.append("償却方法: \(metadata.depreciationMethod)")
+        }
+        if metadata.depreciationRate > 0 {
+            metadataLines.append("償却率: \(String(format: "%.3f", metadata.depreciationRate))")
+        }
 
-        return renderPDF(title: "固定資産台帳", subtitle: subtitle, headers: headers, columnWidths: widths) { context in
+        return renderPDF(
+            title: "固定資産台帳",
+            metadataLines: metadataLines,
+            headers: headers,
+            columnWidths: widths,
+            margin: 18,
+            rowHeight: 16,
+            bodyFont: UIFont(name: "HiraginoSans-W3", size: 6.5) ?? UIFont.systemFont(ofSize: 6.5),
+            headerFont: UIFont(name: "HiraginoSans-W6", size: 6.5) ?? UIFont.boldSystemFont(ofSize: 6.5),
+            titleFont: UIFont(name: "HiraginoSans-W6", size: 12) ?? UIFont.boldSystemFont(ofSize: 12)
+        ) { context in
             for entry in entries {
                 let aqQty: String = entry.acquiredQuantity.map { "\($0)" } ?? ""
                 let aqPrice: String = entry.acquiredUnitPrice.map { self.formatNumber($0) } ?? ""
@@ -342,8 +415,27 @@ final class LedgerPDFExportService {
                 let depAmt: String = entry.depreciationAmount.map { self.formatNumber($0) } ?? ""
                 let disQty: String = entry.disposalQuantity.map { "\($0)" } ?? ""
                 let disAmt: String = entry.disposalAmount.map { self.formatNumber($0) } ?? ""
-                let bizRatio: String = entry.businessUseRatio.map { String(format: "%.0f%%", $0 * 100) } ?? ""
-                let values: [String] = [entry.date, entry.description, aqQty, aqPrice, aqAmt, depAmt, disQty, disAmt, bizRatio]
+                let currentQuantity = (entry.acquiredQuantity ?? 0) - (entry.disposalQuantity ?? 0)
+                let currentAmount = (entry.acquiredAmount ?? 0) - (entry.disposalAmount ?? 0)
+                let bizRatio = entry.businessUseRatio.map { String(format: "%.2f", $0) } ?? ""
+                let deductibleAmount = entry.businessUseRatio.map {
+                    Int(Double(entry.depreciationAmount ?? 0) * $0)
+                } ?? 0
+                let values: [String] = [
+                    entry.date,
+                    entry.description,
+                    aqQty,
+                    aqPrice,
+                    aqAmt,
+                    depAmt,
+                    disQty,
+                    disAmt,
+                    currentQuantity == 0 ? "" : "\(currentQuantity)",
+                    currentAmount == 0 ? "" : self.formatNumber(currentAmount),
+                    bizRatio,
+                    deductibleAmount == 0 ? "" : self.formatNumber(deductibleAmount),
+                    entry.remarks ?? ""
+                ]
                 context.drawDataRow(self.makeRow(widths: widths, values: values))
             }
         }
@@ -369,8 +461,14 @@ final class LedgerPDFExportService {
     private func renderPDF(
         title: String,
         subtitle: String? = nil,
+        metadataLines: [String] = [],
         headers: [String],
         columnWidths: [CGFloat],
+        margin: CGFloat? = nil,
+        rowHeight: CGFloat? = nil,
+        bodyFont: UIFont? = nil,
+        headerFont: UIFont? = nil,
+        titleFont: UIFont? = nil,
         drawRows: (PDFDrawingContext) -> Void
     ) -> Data {
         let format = UIGraphicsPDFRendererFormat()
@@ -383,14 +481,15 @@ final class LedgerPDFExportService {
             let drawCtx = PDFDrawingContext(
                 pdfContext: pdfContext,
                 pageSize: pageSize,
-                margin: margin,
-                rowHeight: rowHeight,
-                bodyFont: bodyFont,
-                headerFont: headerFont,
-                titleFont: titleFont,
+                margin: margin ?? self.margin,
+                rowHeight: rowHeight ?? self.rowHeight,
+                bodyFont: bodyFont ?? self.bodyFont,
+                headerFont: headerFont ?? self.headerFont,
+                titleFont: titleFont ?? self.titleFont,
                 headerBgColor: headerBgColor,
                 title: title,
                 subtitle: subtitle,
+                metadataLines: metadataLines,
                 headers: headers,
                 columnWidths: columnWidths
             )
@@ -425,6 +524,7 @@ private class PDFDrawingContext {
     let headerBgColor: UIColor
     let title: String
     let subtitle: String?
+    let metadataLines: [String]
     let headers: [String]
     let columnWidths: [CGFloat]
 
@@ -433,7 +533,7 @@ private class PDFDrawingContext {
 
     init(pdfContext: UIGraphicsPDFRendererContext, pageSize: CGSize, margin: CGFloat,
          rowHeight: CGFloat, bodyFont: UIFont, headerFont: UIFont, titleFont: UIFont,
-         headerBgColor: UIColor, title: String, subtitle: String?,
+         headerBgColor: UIColor, title: String, subtitle: String?, metadataLines: [String],
          headers: [String], columnWidths: [CGFloat]) {
         self.pdfContext = pdfContext
         self.pageSize = pageSize
@@ -445,6 +545,7 @@ private class PDFDrawingContext {
         self.headerBgColor = headerBgColor
         self.title = title
         self.subtitle = subtitle
+        self.metadataLines = metadataLines
         self.headers = headers
         self.columnWidths = columnWidths
     }
@@ -456,6 +557,7 @@ private class PDFDrawingContext {
         if let subtitle {
             drawSubtitle(subtitle)
         }
+        drawMetadataLines()
         drawHeaders()
     }
 
@@ -477,6 +579,19 @@ private class PDFDrawingContext {
         ]
         text.draw(at: CGPoint(x: margin, y: currentY), withAttributes: attrs)
         currentY += bodyFont.lineHeight + 6
+    }
+
+    private func drawMetadataLines() {
+        guard !metadataLines.isEmpty else { return }
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: bodyFont,
+            .foregroundColor: UIColor.darkGray
+        ]
+        for line in metadataLines {
+            line.draw(at: CGPoint(x: margin, y: currentY), withAttributes: attrs)
+            currentY += bodyFont.lineHeight + 3
+        }
+        currentY += 4
     }
 
     func drawHeaders() {

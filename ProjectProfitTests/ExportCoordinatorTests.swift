@@ -1,3 +1,4 @@
+import PDFKit
 import SwiftData
 import XCTest
 @testable import ProjectProfit
@@ -337,7 +338,7 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(text.contains("日付,行先,目的（用件）"))
     }
 
-    func testFixedAssetDepreciationOfficialExportProvidesCsv() throws {
+    func testFixedAssetDepreciationOfficialExportMatchesSpecColumnsAndValues() throws {
         seedTaxYearProfile(year: 2025, state: .taxClose)
         seedFixedAsset(
             name: "MacBook Pro",
@@ -355,10 +356,101 @@ final class ExportCoordinatorTests: XCTestCase {
             modelContext: context
         )
 
-        let text = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(text.contains("勘定科目,資産コード,資産名"))
+        let lines = normalizedCSVLines(from: url)
+        XCTAssertEqual(lines[0], "年分,2025年分")
+        XCTAssertEqual(
+            lines[1],
+            "勘定科目,資産コード,資産名,資産の種類,状態,数量,取得日,取得価額,償却方法,耐用年数,償却率,償却月数,期首帳簿価額,期中増減,減価償却費,特別(割増)償却費,償却費合計,事業専用割合,必要経費算入額,本年末残高,摘要"
+        )
+        XCTAssertTrue(lines[2].contains("減価償却費"))
+        XCTAssertTrue(lines[2].contains("MacBook Pro"))
+        XCTAssertTrue(lines[2].contains("定額法"))
+        XCTAssertTrue(lines[2].contains("0.250"))
+        XCTAssertTrue(lines[2].contains("89999"))
+        XCTAssertTrue(lines[2].contains("270001"))
+    }
+
+    func testFixedAssetRegisterOfficialExportMatchesSpecColumnsAndValues() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        seedFixedAsset(
+            name: "MacBook Pro",
+            acquisitionCost: 300_000,
+            usefulLifeYears: 5,
+            businessUsePercent: 80,
+            year: 2025,
+            month: 1,
+            day: 1,
+            memo: "register export asset"
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .fixedAssetRegister,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        let lines = normalizedCSVLines(from: url)
+        XCTAssertEqual(lines[0], "名称,MacBook Pro")
+        XCTAssertTrue(lines[1].hasPrefix("番号,"))
+        XCTAssertEqual(lines[2], "種類,固定資産")
+        XCTAssertEqual(lines[3], "取得年月日,2025/01/01")
+        XCTAssertEqual(lines[4], "耐用年数,5")
+        XCTAssertEqual(lines[5], "償却方法,定額法")
+        XCTAssertEqual(lines[6], "償却率,0.200")
+        XCTAssertEqual(lines[7], "年月日,摘要,取得数量,取得単価,取得金額,償却額,異動数量,異動金額,現在数量,現在金額,事業専用割合,必要経費算入額,備考")
+        XCTAssertEqual(lines[8], "2025/01/01,MacBook Pro,1,300000,300000,59999,,,1,300000,0.80,47999,register export asset")
+    }
+
+    func testFixedAssetDepreciationPdfContainsFullSpecHeaders() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        seedFixedAsset(
+            name: "MacBook Pro",
+            acquisitionCost: 360_000,
+            usefulLifeYears: 4,
+            year: 2025,
+            month: 1,
+            day: 10
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .fixedAssetDepreciation,
+            format: .pdf,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        let text = pdfText(from: url)
+        XCTAssertTrue(text.contains("固定資産台帳 兼 減価償却計算表"))
+        XCTAssertTrue(text.contains("年分: 2025年分"))
+        XCTAssertTrue(text.contains("資産コード"))
+        XCTAssertTrue(text.contains("特別(割増)償却費"))
+        XCTAssertTrue(text.contains("必要経費算入額"))
+        XCTAssertTrue(text.contains("本年末残高"))
         XCTAssertTrue(text.contains("MacBook Pro"))
-        XCTAssertTrue(text.contains("減価償却費"))
+    }
+
+    func testFixedAssetExportPreservesAllDepreciationMethodLabels() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        seedFixedAsset(name: "定額", acquisitionCost: 300_000, usefulLifeYears: 5, depreciationMethod: .straightLine, year: 2025, month: 1, day: 1)
+        seedFixedAsset(name: "定率", acquisitionCost: 300_000, usefulLifeYears: 5, depreciationMethod: .decliningBalance, year: 2025, month: 1, day: 1)
+        seedFixedAsset(name: "少額一括", acquisitionCost: 90_000, usefulLifeYears: 5, depreciationMethod: .immediateExpense, year: 2025, month: 1, day: 1)
+        seedFixedAsset(name: "3年均等", acquisitionCost: 150_000, usefulLifeYears: 3, depreciationMethod: .threeYearEqual, year: 2025, month: 1, day: 1)
+        seedFixedAsset(name: "少額特例", acquisitionCost: 280_000, usefulLifeYears: 5, depreciationMethod: .smallBusiness, year: 2025, month: 1, day: 1)
+
+        let url = try ExportCoordinator.export(
+            target: .fixedAssetDepreciation,
+            format: .csv,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        let joined = normalizedCSVLines(from: url).joined(separator: "\n")
+        XCTAssertTrue(joined.contains("定額法"))
+        XCTAssertTrue(joined.contains("定率法"))
+        XCTAssertTrue(joined.contains("少額一括"))
+        XCTAssertTrue(joined.contains("一括償却（3年均等）"))
+        XCTAssertTrue(joined.contains("少額減価償却資産特例"))
     }
 
     func testCanonicalOnlyBookExportsExcludeOrphanLegacySupplementals() throws {
@@ -914,9 +1006,12 @@ final class ExportCoordinatorTests: XCTestCase {
         name: String,
         acquisitionCost: Int,
         usefulLifeYears: Int,
+        businessUsePercent: Int = 100,
+        depreciationMethod: PPDepreciationMethod = .straightLine,
         year: Int,
         month: Int,
-        day: Int
+        day: Int,
+        memo: String = "export test asset"
     ) {
         context.insert(
             PPFixedAsset(
@@ -924,12 +1019,29 @@ final class ExportCoordinatorTests: XCTestCase {
                 acquisitionDate: makeDate(year: year, month: month, day: day),
                 acquisitionCost: acquisitionCost,
                 usefulLifeYears: usefulLifeYears,
-                depreciationMethod: .straightLine,
-                memo: "export test asset",
-                businessUsePercent: 100
+                depreciationMethod: depreciationMethod,
+                memo: memo,
+                businessUsePercent: businessUsePercent
             )
         )
         try! context.save()
+    }
+
+    private func normalizedCSVLines(from url: URL) -> [String] {
+        let text = try! String(contentsOf: url, encoding: .utf8)
+        return text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func pdfText(from url: URL) -> String {
+        let data = try! Data(contentsOf: url)
+        let document = PDFDocument(data: data)
+        return (0..<(document?.pageCount ?? 0))
+            .compactMap { document?.page(at: $0)?.string }
+            .joined(separator: "\n")
     }
 
     private func makeLegacyLedgerOptions(book: SDLedgerBook) -> ExportCoordinator.LegacyLedgerExportOptions {

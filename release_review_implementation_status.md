@@ -41,7 +41,7 @@
 | 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と CSV/PDF export が揃った。repo 内では fixture ベースの golden 検証も追加された |
 | 8 | e-Tax UI と年分対応のズレ | 実装済み | `blueCashBasis` と 2025/2026 年分対応に加え、e-Tax 画面へ年分×様式の対応状況一覧と事前理由表示、UI テスト根拠が追加された |
 | 9 | 書類台帳の削除統制が弱い | 実装済み | 保存期間内削除は request 済み状態と理由・承認者入力を必須化し、UI・内部 purge・全削除も quarantine 統制へ統一された |
-| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、双方とも CSV/PDF 対応になった。一方で列定義と数値の原本一致はなお追加確認が必要 |
+| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、CSV/PDF とも `SPEC.md` ベースの列定義・主要計算へ揃った。一方で原本 Excel との機械比較は未実施のため、完了条件の「原本一致」は未充足 |
 
 ## 実装チェックリスト
 
@@ -411,15 +411,19 @@
   - [x] UI も別画面
   - [x] register は CSV/PDF export がある
   - [x] depreciation は CSV/PDF export がある
-  - [ ] 実装列定義は仕様書と一致していない
+  - [x] `SPEC.md` ベースの実装列定義へ揃った
   - [x] depreciation export を直接支えるテスト根拠は追加された
+  - [ ] 原本 Excel と直接機械比較した根拠はまだない
 - できていること:
   - `ExportCoordinator.ExportTarget` で `fixedAssetRegister` と `fixedAssetDepreciation` が分離されている
   - UI も `FixedAssetListView` と `FixedAssetScheduleView` の別画面
   - `fixedAssetRegister` と `fixedAssetDepreciation` はともに CSV/PDF 対応
+  - 固定資産台帳は metadata 行・13列ヘッダ・必要経費算入額を含めて `SPEC.md` へ揃えた
+  - 減価償却明細は 21 列ヘッダと主要計算値を `DepreciationEngine` 正本へ寄せ、PDF も同じ列意味論へ揃えた
+  - 償却方法ラベルは `PPDepreciationMethod` の全方式を export 上で明示化し、非定率法を黙って `定額法` に丸めない
 - まだ足りていないこと:
-  - 固定資産減価償却 CSV/PDF の列定義は改善されたが、仕様書原本 Excel との完全一致は repo 外原本なしでは断定できない
-  - 固定資産台帳 / 減価償却明細の値計算には推定値を含む項目があり、原本 comparison までは未確認
+  - 原本 Excel が repo 外のため、固定資産台帳 / 減価償却明細を原本セル単位で比較する検証は未実施
+  - 完了条件が「原本必須」のため、repo 内一致だけでは `実装済み` へ上げない
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:21`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:147`
@@ -439,7 +443,7 @@
 - 未確認事項:
   - 固定資産帳票を原本 Excel と直接機械比較する検証は repo 外原本なしでは確認できない
 - release 影響:
-  - 帳票区分と export 形式の不足は縮小したが、固定資産帳票の数値・列完全一致については追加確認余地が残る
+  - release 導線上では固定資産帳票の区分・列・主要計算は `SPEC.md` と整合したが、原本 Excel 一致の最終確認が残る
 
 ## 横断的に残る不足実装
 

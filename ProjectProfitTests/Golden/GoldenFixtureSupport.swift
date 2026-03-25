@@ -674,14 +674,14 @@ struct GoldenSnapshotBuilder {
         return GoldenLedgerArtifactSnapshot(
             target: target.label,
             formats: ["csv", "pdf"],
-            csvLines: Array(csvLines.prefix(6)),
+            csvLines: Array(csvLines.prefix(14)),
             csvContainsInvoiceColumn: csvLines.contains { $0.contains("インボイス") },
             csvContainsCarryForward: csvLines.contains { $0.contains("前期より繰越") },
             csvContainsRunningBalanceOrTotal: csvLines.contains {
                 $0.contains("残高") || $0.contains("累計") || $0.contains("差引残高")
             },
             pdfPageCount: PDFDocument(data: pdfData)?.pageCount ?? 0,
-            pdfLines: Array(pdfLines.prefix(12))
+            pdfLines: Array(pdfLines.prefix(20))
         )
     }
 

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 
 @MainActor
@@ -32,7 +33,8 @@ struct SettingsMaintenanceUseCase {
         }
 
         guard failedDocumentIds.isEmpty else {
-            AppLogger.dataStore.error("全データ削除を中断: 隔離保管に失敗した書類ID=\(failedDocumentIds.map(\.uuidString).joined(separator: \",\"))")
+            let failedIds = failedDocumentIds.map(\.uuidString).joined(separator: ",")
+            AppLogger.dataStore.error("全データ削除を中断: 隔離保管に失敗した書類ID=\(failedIds)")
             return
         }
 

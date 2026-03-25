@@ -594,6 +594,7 @@ enum ExportCoordinator {
 
             case .fixedAssetDepreciation:
                 return service.exportFixedAssetDepreciation(
+                    metadata: LedgerBridge.decodeFixedAssetDepreciationMetadata(from: options.metadataJSON),
                     entries: store.fixedAssetDepreciationEntries(for: options.bookId)
                 )
 
@@ -981,15 +982,18 @@ enum ExportCoordinator {
         modelContext: ModelContext,
         fiscalYear: Int
     ) -> (metadata: FixedAssetRegisterMetadata, entries: [FixedAssetRegisterEntry]) {
-        let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+        let assets = FixedAssetQueryUseCase(modelContext: modelContext)
+            .listSnapshot(currentYear: fiscalYear)
+            .assets
+            .sorted { $0.acquisitionDate < $1.acquisitionDate }
         let support = AccountingReadSupport(modelContext: modelContext)
         let entries = assets.map { asset in
             let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
-            let currentYearAmount = DepreciationEngine.calculate(
+            let calculation = DepreciationEngine.calculate(
                 asset: asset,
                 fiscalYear: fiscalYear,
                 priorAccumulatedDepreciation: prior
-            )?.annualAmount ?? 0
+            )
             return FixedAssetRegisterEntry(
                 id: asset.id,
                 date: shortDateString(asset.acquisitionDate),
@@ -997,23 +1001,45 @@ enum ExportCoordinator {
                 acquiredQuantity: 1,
                 acquiredUnitPrice: asset.acquisitionCost,
                 acquiredAmount: asset.acquisitionCost,
-                depreciationAmount: currentYearAmount,
-                disposalQuantity: nil,
-                disposalAmount: nil,
-                businessUseRatio: Double(asset.businessUsePercent) / 100.0,
+                depreciationAmount: calculation?.annualAmount,
+                disposalQuantity: asset.assetStatus == .disposed || asset.assetStatus == .sold ? 1 : nil,
+                disposalAmount: asset.disposalAmount,
+                businessUseRatio: exportBusinessUseRatio(for: asset),
                 remarks: asset.memo
             )
         }
-        return (metadata: FixedAssetRegisterMetadata(), entries: entries)
+        let metadata: FixedAssetRegisterMetadata
+        if let firstAsset = assets.first {
+            metadata = FixedAssetRegisterMetadata(
+                assetName: firstAsset.name,
+                assetNumber: firstAsset.id.uuidString,
+                assetType: exportAssetType(for: firstAsset),
+                acquisitionDate: shortDateString(firstAsset.acquisitionDate),
+                location: "",
+                usefulLife: firstAsset.usefulLifeYears,
+                depreciationMethod: exportDepreciationMethodLabel(for: firstAsset.depreciationMethod),
+                depreciationRate: exportDepreciationRate(
+                    for: firstAsset.depreciationMethod,
+                    usefulLifeYears: firstAsset.usefulLifeYears
+                )
+            )
+        } else {
+            metadata = FixedAssetRegisterMetadata()
+        }
+        return (metadata: metadata, entries: entries)
     }
 
     private static func fixedAssetDepreciationContent(
         modelContext: ModelContext,
         fiscalYear: Int
-    ) -> [FixedAssetDepreciationEntry] {
-        let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+    ) -> (metadata: FixedAssetDepreciationMetadata, entries: [FixedAssetDepreciationEntry]) {
+        let assets = FixedAssetQueryUseCase(modelContext: modelContext)
+            .listSnapshot(currentYear: fiscalYear)
+            .assets
+            .sorted { $0.acquisitionDate < $1.acquisitionDate }
         let support = AccountingReadSupport(modelContext: modelContext)
-        return assets.compactMap { asset in
+        let calendar = Calendar(identifier: .gregorian)
+        let entries = assets.compactMap { asset -> FixedAssetDepreciationEntry? in
             let prior = support.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
             guard let calc = DepreciationEngine.calculate(
                 asset: asset,
@@ -1022,32 +1048,95 @@ enum ExportCoordinator {
             ) else {
                 return nil
             }
-            let acquisitionMonth = Calendar(identifier: .gregorian).component(.month, from: asset.acquisitionDate)
-            let months = fiscalYear == Calendar(identifier: .gregorian).component(.year, from: asset.acquisitionDate)
-                ? (13 - acquisitionMonth)
-                : 12
-            let rate: Double = asset.depreciationMethod == .decliningBalance
-                ? (asset.usefulLifeYears > 0 ? 2.0 / Double(asset.usefulLifeYears) : 0)
-                : (asset.usefulLifeYears > 0 ? 1.0 / Double(asset.usefulLifeYears) : 0)
+            let acquisitionYear = calendar.component(.year, from: asset.acquisitionDate)
+            let acquisitionMonth = calendar.component(.month, from: asset.acquisitionDate)
+            let months: Int
+            if let disposalDate = asset.disposalDate,
+               calendar.component(.year, from: disposalDate) == fiscalYear {
+                months = calendar.component(.month, from: disposalDate)
+            } else if fiscalYear == acquisitionYear,
+                      [.straightLine, .decliningBalance].contains(asset.depreciationMethod) {
+                months = 13 - acquisitionMonth
+            } else if calc.annualAmount > 0 {
+                months = 12
+            } else {
+                months = 0
+            }
+            let rate = exportDepreciationRate(
+                for: asset.depreciationMethod,
+                usefulLifeYears: asset.usefulLifeYears
+            )
             return FixedAssetDepreciationEntry(
                 account: "減価償却費",
                 assetCode: asset.id.uuidString,
                 assetName: asset.name,
-                assetType: "固定資産",
+                assetType: exportAssetType(for: asset),
                 status: asset.assetStatus.label,
                 acquisitionDate: shortDateString(asset.acquisitionDate),
                 acquisitionCost: asset.acquisitionCost,
-                depreciationMethod: asset.depreciationMethod == .decliningBalance ? .decliningBalance : .straightLine,
+                depreciationMethod: legacyLedgerDepreciationMethod(for: asset.depreciationMethod),
                 usefulLife: asset.usefulLifeYears,
                 depreciationRate: rate,
                 depreciationMonths: months,
                 openingBookValue: asset.acquisitionCost - prior,
-                businessUseRatio: Double(asset.businessUsePercent) / 100.0,
+                businessUseRatio: exportBusinessUseRatio(for: asset),
                 quantity: 1,
-                midYearChange: nil,
+                midYearChange: 0,
+                depreciationMethodLabel: exportDepreciationMethodLabel(for: asset.depreciationMethod),
+                depreciationExpense: calc.annualAmount,
+                specialDepreciation: 0,
+                totalDepreciation: calc.annualAmount,
+                deductibleAmount: calc.businessAmount,
+                yearEndBalance: calc.bookValueAfter,
                 remarks: asset.memo
             )
         }
+        return (
+            metadata: FixedAssetDepreciationMetadata(fiscalYear: "\(fiscalYear)年分"),
+            entries: entries
+        )
+    }
+
+    private static func exportAssetType(for asset: PPFixedAsset) -> String {
+        switch asset.depreciationMethod {
+        case .threeYearEqual:
+            return "一括償却資産"
+        case .smallBusiness:
+            return "少額減価償却資産"
+        default:
+            return "固定資産"
+        }
+    }
+
+    private static func exportDepreciationMethodLabel(for method: PPDepreciationMethod) -> String {
+        method.label
+    }
+
+    private static func legacyLedgerDepreciationMethod(for method: PPDepreciationMethod) -> DepreciationMethod {
+        switch method {
+        case .decliningBalance:
+            return .decliningBalance
+        case .straightLine, .immediateExpense, .threeYearEqual, .smallBusiness:
+            return .straightLine
+        }
+    }
+
+    private static func exportDepreciationRate(for method: PPDepreciationMethod, usefulLifeYears: Int) -> Double {
+        guard usefulLifeYears > 0 else { return 0 }
+        switch method {
+        case .straightLine:
+            return 1.0 / Double(usefulLifeYears)
+        case .decliningBalance:
+            return 2.0 / Double(usefulLifeYears)
+        case .immediateExpense, .smallBusiness:
+            return 1.0
+        case .threeYearEqual:
+            return 1.0 / 3.0
+        }
+    }
+
+    private static func exportBusinessUseRatio(for asset: PPFixedAsset) -> Double {
+        Double(asset.businessUsePercent) / 100.0
     }
 
     private static func legacyLedgerEntries(from entries: [AccountingLedgerEntry]) -> [DataStore.LedgerEntry] {
@@ -1534,15 +1623,17 @@ enum ExportCoordinator {
             ))
 
         case (.fixedAssetDepreciation, .csv):
-            let entries = fixedAssetDepreciationContent(modelContext: modelContext, fiscalYear: fiscalYear)
+            let payload = fixedAssetDepreciationContent(modelContext: modelContext, fiscalYear: fiscalYear)
             return .text(CSVExportService.shared.exportFixedAssetDepreciation(
-                metadata: FixedAssetDepreciationMetadata(fiscalYear: "\(fiscalYear)年分"),
-                entries: entries
+                metadata: payload.metadata,
+                entries: payload.entries
             ))
 
         case (.fixedAssetDepreciation, .pdf):
+            let payload = fixedAssetDepreciationContent(modelContext: modelContext, fiscalYear: fiscalYear)
             return .data(LedgerPDFExportService.shared.exportFixedAssetDepreciation(
-                entries: fixedAssetDepreciationContent(modelContext: modelContext, fiscalYear: fiscalYear)
+                metadata: payload.metadata,
+                entries: payload.entries
             ))
 
         default:

@@ -74,8 +74,8 @@ final class GoldenBaselineTests: XCTestCase {
         assertLedger(snapshot, target: "仕訳帳", csvContains: ["月,日,借方科目,借方金額,貸方科目,貸方金額,摘要"], pdfContains: ["仕訳帳"])
         assertLedger(snapshot, target: "交通費精算書", csvContains: ["年,2025", "日付,行先,目的（用件）,交通機関（手段）"], pdfContains: ["交通費精算書"])
         assertLedger(snapshot, target: "白色申告用 簡易帳簿", csvContains: ["月,日,摘要,売上金額,雑収入等,仕入", "2025年分"], pdfContains: ["白色申告用", "簡易帳簿"])
-        assertLedger(snapshot, target: "固定資産台帳", csvContains: ["年月日,摘要,取得数量,取得単価,取得金額", "MacBook Pro"], pdfContains: ["固定資産台帳", "MacBook Pro"])
-        assertLedger(snapshot, target: "減価償却明細表", csvContains: ["勘定科目,資産コード,資産名,資産の種類", "MacBook Pro"], pdfContains: ["減価償却", "MacBook Pro"])
+        assertLedger(snapshot, target: "固定資産台帳", csvContains: ["名称,MacBook Pro", "年月日,摘要,取得数量,取得単価,取得金額,償却額,異動数量,異動金額,現在数量,現在金額,事業専用割合,必要経費算入額,備考", "2025/01/10,MacBook Pro,1,360000,360000,89999,,,1,360000,1.00,89999,golden fixture asset"], pdfContains: ["固定資産台帳", "名称: MacBook Pro", "必要経費算入額", "MacBook Pro"])
+        assertLedger(snapshot, target: "減価償却明細表", csvContains: ["年分,2025年分", "勘定科目,資産コード,資産名,資産の種類,状態,数量,取得日,取得価額,償却方法,耐用年数,償却率,償却月数,期首帳簿価額,期中増減,減価償却費,特別(割増)償却費,償却費合計,事業専用割合,必要経費算入額,本年末残高,摘要", "減価償却費", "MacBook Pro"], pdfContains: ["固定資産台帳 兼 減価償却計算表", "年分: 2025年分", "特別(割増)償却費", "本年末残高", "MacBook Pro"])
     }
 
     private func assertLedger(
