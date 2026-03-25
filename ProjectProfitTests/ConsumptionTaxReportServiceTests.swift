@@ -201,6 +201,78 @@ final class ConsumptionTaxReportServiceTests: XCTestCase {
         XCTAssertEqual(inputLine.deductibleTaxAmount, 0)
     }
 
+    func testGenerateWorksheetUsesSimplifiedDeductionBasedOnOutputTax() {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            vatStatus: .taxable,
+            vatMethod: .simplified,
+            simplifiedBusinessCategory: 2,
+            taxPackVersion: "2025-v1"
+        )
+
+        let worksheet = ConsumptionTaxReportService.generateWorksheet(
+            fiscalYear: 2025,
+            taxYearProfile: profile,
+            journalEntries: [
+                makeOutputEntry(year: 2025, month: 5, day: 1, taxableAmount: 10_000, taxAmount: 1_000),
+                makeInputEntry(
+                    year: 2025,
+                    month: 5,
+                    day: 2,
+                    taxableAmount: 5_000,
+                    taxAmount: 500,
+                    counterpartyId: registeredCounterpartyId
+                )
+            ],
+            accounts: canonicalAccounts
+        )
+
+        XCTAssertEqual(worksheet.outputTaxTotal, 1_000)
+        XCTAssertEqual(worksheet.rawInputTaxTotal, 500)
+        XCTAssertEqual(worksheet.deductibleInputTaxTotal, 800)
+        XCTAssertEqual(worksheet.taxPayable, 200)
+        XCTAssertEqual(
+            worksheet.lines.first(where: { $0.direction == .input })?.purchaseCreditMethod,
+            .simplifiedEstimate
+        )
+    }
+
+    func testGenerateWorksheetUsesTwoTenthsSpecialBasedOnOutputTax() {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            vatStatus: .taxable,
+            vatMethod: .twoTenths,
+            taxPackVersion: "2025-v1"
+        )
+
+        let worksheet = ConsumptionTaxReportService.generateWorksheet(
+            fiscalYear: 2025,
+            taxYearProfile: profile,
+            journalEntries: [
+                makeOutputEntry(year: 2025, month: 7, day: 1, taxableAmount: 10_000, taxAmount: 1_000),
+                makeInputEntry(
+                    year: 2025,
+                    month: 7,
+                    day: 2,
+                    taxableAmount: 2_000,
+                    taxAmount: 200,
+                    counterpartyId: registeredCounterpartyId
+                )
+            ],
+            accounts: canonicalAccounts
+        )
+
+        XCTAssertEqual(worksheet.outputTaxTotal, 1_000)
+        XCTAssertEqual(worksheet.deductibleInputTaxTotal, 800)
+        XCTAssertEqual(worksheet.taxPayable, 200)
+        XCTAssertEqual(
+            worksheet.lines.first(where: { $0.direction == .input })?.purchaseCreditMethod,
+            .twoTenthsEstimate
+        )
+    }
+
     func testGenerateWorksheetFiltersEntriesOutsideFiscalYear() {
         let profile = TaxYearProfile(
             businessId: businessId,

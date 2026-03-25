@@ -10,11 +10,25 @@ struct BooksWorkspaceView: View {
         case analytics
     }
 
+    enum LegacyLedgerDestinationID: String, Equatable {
+        case depositBooks
+        case transportationExpense
+        case whiteTaxBookkeeping
+        case compatibilityHome
+    }
+
     struct WorkflowItem: Equatable {
         let icon: String
         let title: String
         let subtitle: String
         let destinationID: WorkflowDestinationID
+    }
+
+    struct LegacyLedgerItem: Equatable {
+        let icon: String
+        let title: String
+        let subtitle: String
+        let destinationID: LegacyLedgerDestinationID
     }
 
     static let reconciliationTitle = BankCardReconciliationView.titleText
@@ -39,6 +53,32 @@ struct BooksWorkspaceView: View {
             title: analyticsTitle,
             subtitle: analyticsSubtitle,
             destinationID: .analytics
+        ),
+    ]
+    static let legacyLedgerItems: [LegacyLedgerItem] = [
+        LegacyLedgerItem(
+            icon: "building.columns",
+            title: "預金出納帳",
+            subtitle: "旧台帳の預金出納帳を参照",
+            destinationID: .depositBooks
+        ),
+        LegacyLedgerItem(
+            icon: "tram",
+            title: "交通費精算書",
+            subtitle: "旧台帳の交通費精算書を参照",
+            destinationID: .transportationExpense
+        ),
+        LegacyLedgerItem(
+            icon: "text.book.closed",
+            title: "白色申告用 簡易帳簿",
+            subtitle: "旧台帳の白色申告帳簿を参照",
+            destinationID: .whiteTaxBookkeeping
+        ),
+        LegacyLedgerItem(
+            icon: "books.vertical",
+            title: "11帳簿管理",
+            subtitle: "互換帳簿をまとめて確認",
+            destinationID: .compatibilityHome
         ),
     ]
 
@@ -66,11 +106,7 @@ struct BooksWorkspaceView: View {
                 reportsSection
                 assetManagementSection
                 filingSection
-                #if DEBUG
-                if FeatureFlags.useLegacyLedger {
-                    debugSection
-                }
-                #endif
+                legacyLedgerSection
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -283,21 +319,52 @@ struct BooksWorkspaceView: View {
         }
     }
 
-    #if DEBUG
-    private var debugSection: some View {
+    private var legacyLedgerSection: some View {
         section(
-            title: "Debug",
-            rows: [
-                WorkspaceRow(
-                    icon: "books.vertical",
-                    title: "台帳管理",
-                    subtitle: "各種台帳の作成・管理・エクスポート",
-                    destination: AnyView(LegacyLedgerHomeContainerView())
-                ),
-            ]
+            title: "11帳簿（互換）",
+            rows: Self.legacyLedgerItems.map(legacyLedgerRow)
         )
     }
-    #endif
+
+    private func legacyLedgerRow(_ item: Self.LegacyLedgerItem) -> WorkspaceRow {
+        WorkspaceRow(
+            icon: item.icon,
+            title: item.title,
+            subtitle: item.subtitle,
+            destination: legacyLedgerDestination(for: item.destinationID)
+        )
+    }
+
+    private func legacyLedgerDestination(for destinationID: Self.LegacyLedgerDestinationID) -> AnyView {
+        switch destinationID {
+        case .depositBooks:
+            AnyView(
+                LegacyLedgerFilteredContainerView(
+                    title: "預金出納帳",
+                    emptyMessage: "預金出納帳はまだ作成されていません",
+                    ledgerTypes: [.bankAccountBook, .bankAccountBookInvoice]
+                )
+            )
+        case .transportationExpense:
+            AnyView(
+                LegacyLedgerFilteredContainerView(
+                    title: "交通費精算書",
+                    emptyMessage: "交通費精算書はまだ作成されていません",
+                    ledgerTypes: [.transportationExpense]
+                )
+            )
+        case .whiteTaxBookkeeping:
+            AnyView(
+                LegacyLedgerFilteredContainerView(
+                    title: "白色申告用 簡易帳簿",
+                    emptyMessage: "白色申告用 簡易帳簿はまだ作成されていません",
+                    ledgerTypes: [.whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice]
+                )
+            )
+        case .compatibilityHome:
+            AnyView(LegacyLedgerHomeContainerView())
+        }
+    }
 
     private func section(title: String, rows: [WorkspaceRow]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -418,7 +485,6 @@ private struct WorkspaceRow: Identifiable {
     }
 }
 
-#if DEBUG
 private struct LegacyLedgerHomeContainerView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var ledgerStore: LedgerDataStore?
@@ -442,4 +508,99 @@ private struct LegacyLedgerHomeContainerView: View {
         }
     }
 }
-#endif
+
+private struct LegacyLedgerFilteredContainerView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let title: String
+    let emptyMessage: String
+    let ledgerTypes: [LedgerType]
+
+    @State private var ledgerStore: LedgerDataStore?
+
+    private func filteredBooks(from ledgerStore: LedgerDataStore) -> [SDLedgerBook] {
+        ledgerStore.books.filter { book in
+            guard let ledgerType = book.ledgerType else {
+                return false
+            }
+            return ledgerTypes.contains(ledgerType)
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let ledgerStore {
+                let books = filteredBooks(from: ledgerStore)
+                if books.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "book.closed")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text(emptyMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(books, id: \.id) { book in
+                            NavigationLink(destination: LedgerBookDetailView(bookId: book.id)) {
+                                legacyBookRow(book: book, ledgerStore: ledgerStore)
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .environment(ledgerStore)
+                }
+            } else {
+                ProgressView("読み込み中...")
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if ledgerStore == nil {
+                ledgerStore = LedgerDataStore(
+                    modelContext: modelContext,
+                    accessMode: .readOnly
+                )
+            }
+        }
+    }
+
+    private func legacyBookRow(book: SDLedgerBook, ledgerStore: LedgerDataStore) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(book.title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if book.includeInvoice {
+                    Text("インボイス")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppColors.primary.opacity(0.15))
+                        .foregroundStyle(AppColors.primary)
+                        .clipShape(Capsule())
+                }
+            }
+
+            HStack {
+                Text(book.ledgerType?.displayName ?? "不明")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let balance = ledgerStore.finalBalance(for: book.id) {
+                    Text("残高: \(formatCurrency(balance))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("更新: \(book.updatedAt, format: .dateTime.month().day().hour().minute())")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
+    }
+}

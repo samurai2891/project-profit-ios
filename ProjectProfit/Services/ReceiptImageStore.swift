@@ -7,6 +7,7 @@ import UIKit
 enum ReceiptImageStore {
     private static let directoryName = "ReceiptImages"
     private static let documentDirectoryName = "DocumentFiles"
+    private static let quarantinedDocumentDirectoryName = "DocumentQuarantine"
     private static let jpegQuality: CGFloat = 0.7
     private static var baseDirectoryURLOverride: URL?
 
@@ -29,6 +30,11 @@ enum ReceiptImageStore {
         return documents.appendingPathComponent(documentDirectoryName)
     }
 
+    static var quarantinedDocumentDirectoryURL: URL {
+        let documents = baseDirectoryURL
+        return documents.appendingPathComponent(quarantinedDocumentDirectoryName)
+    }
+
     static func setBaseDirectoryOverride(_ url: URL?) {
         baseDirectoryURLOverride = url
     }
@@ -42,6 +48,13 @@ enum ReceiptImageStore {
 
     static func ensureDocumentDirectoryExists() throws {
         let url = documentDirectoryURL
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+    }
+
+    static func ensureQuarantineDirectoryExists() throws {
+        let url = quarantinedDocumentDirectoryURL
         if !FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
@@ -161,6 +174,12 @@ enum ReceiptImageStore {
         return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
     }
 
+    static func quarantinedDocumentFileURL(fileName: String) -> URL? {
+        guard let safeName = sanitizedFileName(fileName) else { return nil }
+        let fileURL = quarantinedDocumentDirectoryURL.appendingPathComponent(safeName)
+        return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+    }
+
     static func storeDocumentData(_ data: Data, fileName: String) throws {
         try ensureDocumentDirectoryExists()
         guard let safeName = sanitizedFileName(fileName) else {
@@ -168,6 +187,51 @@ enum ReceiptImageStore {
         }
         let fileURL = documentDirectoryURL.appendingPathComponent(safeName)
         try data.write(to: fileURL, options: .atomic)
+    }
+
+    static func quarantineDocumentFile(fileName: String) throws -> String {
+        try ensureDocumentDirectoryExists()
+        try ensureQuarantineDirectoryExists()
+        guard let safeName = sanitizedFileName(fileName) else {
+            throw ReceiptImageStoreError.invalidFileName
+        }
+        let sourceURL = documentDirectoryURL.appendingPathComponent(safeName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let ext = (safeName as NSString).pathExtension
+        let quarantineName = ext.isEmpty ? UUID().uuidString : "\(UUID().uuidString).\(ext)"
+        let destinationURL = quarantinedDocumentDirectoryURL.appendingPathComponent(quarantineName)
+        try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+        return quarantineName
+    }
+
+    static func restoreQuarantinedDocumentFile(
+        quarantineFileName: String,
+        targetFileName: String
+    ) throws {
+        try ensureDocumentDirectoryExists()
+        try ensureQuarantineDirectoryExists()
+        guard let safeQuarantineName = sanitizedFileName(quarantineFileName),
+              let safeTargetName = sanitizedFileName(targetFileName) else {
+            throw ReceiptImageStoreError.invalidFileName
+        }
+        let sourceURL = quarantinedDocumentDirectoryURL.appendingPathComponent(safeQuarantineName)
+        let destinationURL = documentDirectoryURL.appendingPathComponent(safeTargetName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+    }
+
+    static func deleteQuarantinedDocumentFile(fileName: String) {
+        guard let safeName = sanitizedFileName(fileName) else { return }
+        let fileURL = quarantinedDocumentDirectoryURL.appendingPathComponent(safeName)
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     static func sha256Hex(data: Data) -> String {

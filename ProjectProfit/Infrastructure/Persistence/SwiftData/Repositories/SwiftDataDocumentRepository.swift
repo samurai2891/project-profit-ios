@@ -9,11 +9,16 @@ final class SwiftDataDocumentRepository: DocumentRepository {
         self.modelContext = modelContext
     }
 
-    func listDocuments(transactionId: UUID?) throws -> [PPDocumentRecord] {
+    func allDocuments() throws -> [PPDocumentRecord] {
         let descriptor = FetchDescriptor<PPDocumentRecord>(
             sortBy: [SortDescriptor(\.issueDate, order: .reverse)]
         )
-        let records = try modelContext.fetch(descriptor)
+        return try modelContext.fetch(descriptor)
+    }
+
+    func listDocuments(transactionId: UUID?) throws -> [PPDocumentRecord] {
+        let records = try allDocuments()
+            .filter { $0.deletionStatus == .active }
         if let transactionId {
             return records.filter { $0.transactionId == transactionId }
         }

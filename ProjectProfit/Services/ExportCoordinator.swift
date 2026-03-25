@@ -35,7 +35,8 @@ enum ExportCoordinator {
         case subLedger
         case etax
         case withholdingStatement
-        case fixedAssets
+        case fixedAssetRegister
+        case fixedAssetDepreciation
         case legacyLedgerBook
 
         var label: String {
@@ -49,7 +50,8 @@ enum ExportCoordinator {
             case .subLedger: "補助簿"
             case .etax: "e-Tax"
             case .withholdingStatement: "支払調書"
-            case .fixedAssets: "固定資産台帳"
+            case .fixedAssetRegister: "固定資産台帳"
+            case .fixedAssetDepreciation: "減価償却明細表"
             case .legacyLedgerBook: "旧台帳（互換）"
             }
         }
@@ -65,7 +67,8 @@ enum ExportCoordinator {
             case .subLedger: "sub_ledger"
             case .etax: "etax"
             case .withholdingStatement: "withholding_statement"
-            case .fixedAssets: "fixed_assets"
+            case .fixedAssetRegister: "fixed_asset_register"
+            case .fixedAssetDepreciation: "fixed_asset_depreciation"
             case .legacyLedgerBook: "legacy_ledger"
             }
         }
@@ -74,10 +77,14 @@ enum ExportCoordinator {
         /// ExportMenuButton / EtaxExportView / 旧台帳詳細画面の実使用範囲を正本として管理する。
         var supportedFormats: Set<ExportFormat> {
             switch self {
-            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .withholdingStatement:
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssetRegister, .withholdingStatement:
                 return [.csv, .pdf]
-            case .transactions, .subLedger:
+            case .fixedAssetDepreciation:
+                return [.pdf]
+            case .transactions:
                 return [.csv]
+            case .subLedger:
+                return [.csv, .pdf]
             case .etax:
                 return [.csv, .xtx]
             case .legacyLedgerBook:
@@ -90,7 +97,8 @@ enum ExportCoordinator {
         /// 旧台帳/汎用CSV（取引履歴/補助簿）は日常運用で使うため preflight を要求しない。
         var requiresPreflight: Bool {
             switch self {
-            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger, .fixedAssets, .etax, .withholdingStatement:
+            case .profitLoss, .balanceSheet, .trialBalance, .journal, .ledger,
+                 .fixedAssetRegister, .fixedAssetDepreciation, .etax, .withholdingStatement:
                 return true
             case .transactions, .subLedger, .legacyLedgerBook:
                 return false
@@ -880,6 +888,23 @@ enum ExportCoordinator {
             ).entries
             return .text(exportSubLedgerCSV(entries: entries))
 
+        case (.subLedger, .pdf):
+            guard let opts = subLedgerOptions else {
+                throw ExportError.subLedgerConfigurationRequired
+            }
+            let year = opts.startDate.map { Calendar.current.component(.year, from: $0) } ?? fiscalYear
+            let entries = SubLedgerQueryUseCase(modelContext: modelContext).snapshot(
+                type: opts.type,
+                year: year,
+                accountFilter: opts.accountFilter,
+                counterpartyFilter: opts.counterpartyFilter
+            ).entries
+            return .data(PDFExportService.exportSubLedgerPDF(
+                entries: entries,
+                fiscalYear: year,
+                title: opts.type.title
+            ))
+
         case (.etax, .xtx):
             guard let opts = etaxOptions else {
                 throw ExportError.etaxFormRequired
@@ -930,7 +955,7 @@ enum ExportCoordinator {
                 return .data(PDFExportService.exportWithholdingStatementPayeePDF(document: document))
             }
 
-        case (.fixedAssets, .csv):
+        case (.fixedAssetRegister, .csv):
             let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
             let support = AccountingReadSupport(modelContext: modelContext)
             return .text(ReportCSVExportService.exportFixedAssetsCSV(
@@ -956,7 +981,7 @@ enum ExportCoordinator {
                 }
             ))
 
-        case (.fixedAssets, .pdf):
+        case (.fixedAssetRegister, .pdf):
             let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
             let support = AccountingReadSupport(modelContext: modelContext)
             return .data(PDFExportService.exportFixedAssetsPDF(
@@ -981,6 +1006,17 @@ enum ExportCoordinator {
                         priorAccumulatedDepreciation: prior
                     )?.annualAmount ?? 0
                 }
+            ))
+
+        case (.fixedAssetDepreciation, .pdf):
+            let assets = FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+            let rows = DepreciationScheduleBuilder.build(
+                assets: assets,
+                fiscalYear: fiscalYear
+            )
+            return .data(PDFExportService.exportFixedAssetDepreciationPDF(
+                rows: rows,
+                fiscalYear: fiscalYear
             ))
 
         default:

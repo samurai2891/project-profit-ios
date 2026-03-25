@@ -20,6 +20,7 @@ enum ConsumptionTaxReportService {
         let accountById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let counterpartyById = Dictionary(uniqueKeysWithValues: counterparties.map { ($0.id, $0) })
         let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
+        let deductionCalculator = InputTaxDeductionCalculator(profile: taxYearProfile)
 
         let relevantEntries = journalEntries
             .filter { $0.journalDate >= startDate && $0.journalDate <= endDate }
@@ -87,14 +88,22 @@ enum ConsumptionTaxReportService {
         let rawInputTaxTotal = worksheetLines
             .filter { $0.direction == .input }
             .reduce(0) { $0 + $1.taxAmount }
-        let deductibleInputTaxTotal = worksheetLines
+        let provisionalInputDeductibleTotal = worksheetLines
             .filter { $0.direction == .input }
             .reduce(0) { $0 + $1.deductibleTaxAmount }
+        let deductibleInputTaxTotal = deductionCalculator.worksheetDeductibleInputTaxTotal(
+            outputTaxTotal: outputTaxTotal,
+            provisionalInputDeductibleTotal: provisionalInputDeductibleTotal
+        )
+        let finalizedLines = deductionCalculator.distributeWorksheetDeduction(
+            targetDeductibleTaxAmount: deductibleInputTaxTotal,
+            lines: worksheetLines
+        )
 
         return ConsumptionTaxWorksheet(
             fiscalYear: fiscalYear,
             generatedAt: Date(),
-            lines: worksheetLines,
+            lines: finalizedLines,
             outputTaxTotal: outputTaxTotal,
             rawInputTaxTotal: rawInputTaxTotal,
             deductibleInputTaxTotal: deductibleInputTaxTotal
@@ -191,6 +200,7 @@ enum ConsumptionTaxReportService {
         let taxableTotal = taxableBusinessLines.reduce(0) { partial, entry in
             partial + decimalToInt(entry.0.amount)
         }
+        let deductionCalculator = InputTaxDeductionCalculator(profile: evaluator.profile)
 
         var remainingTaxPool = taxPool
         var worksheetLines: [ConsumptionTaxWorksheetLine] = []
@@ -225,7 +235,12 @@ enum ConsumptionTaxReportService {
                     amount: grossAmount
                 )
                 purchaseCreditMethod = creditMethod
-                deductibleTaxAmount = decimalToInt(Decimal(allocatedTaxAmount) * creditMethod.creditRate)
+                deductibleTaxAmount = decimalToInt(
+                    deductionCalculator.deductibleTaxAmount(
+                        taxAmount: Decimal(allocatedTaxAmount),
+                        creditMethod: creditMethod
+                    )
+                )
             } else {
                 purchaseCreditMethod = nil
                 deductibleTaxAmount = 0

@@ -33,8 +33,18 @@ struct FixedAssetScheduleView: View {
                 scheduleContent
             }
         }
-        .navigationTitle("固定資産台帳")
+        .navigationTitle("減価償却明細表")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if !rows.isEmpty {
+                    ExportMenuButton(
+                        target: .fixedAssetDepreciation,
+                        fiscalYear: fiscalYear
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Empty State
@@ -82,7 +92,7 @@ struct FixedAssetScheduleView: View {
                     .foregroundStyle(AppColors.primary)
             }
             Spacer()
-            Text("\(String(fiscalYear))年度")
+            Text("\(String(fiscalYear))年")
                 .font(.headline)
             Spacer()
             Button { fiscalYear += 1 } label: {

@@ -155,6 +155,10 @@ struct EtaxExportView: View {
                 }
                 .pickerStyle(.menu)
             }
+
+            Text("申告年分は暦年（1月〜12月）基準で判定します。会計年度設定とは別管理です。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(AppColors.surface)

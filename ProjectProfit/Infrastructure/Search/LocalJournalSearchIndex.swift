@@ -136,6 +136,7 @@ final class LocalJournalSearchIndex {
             relatedEvidences.compactMap { SearchIndexNormalizer.normalizeIdentifier($0.structuredFields?.registrationNumber) }
         )
         let projectIds = Set(relatedEvidences.flatMap(\.linkedProjectIds))
+            .union(journal.lines.compactMap(\.projectAllocationId))
         let fileHashes = Set(
             relatedEvidences.compactMap { SearchIndexNormalizer.normalizeIdentifier($0.fileHash) }
         )

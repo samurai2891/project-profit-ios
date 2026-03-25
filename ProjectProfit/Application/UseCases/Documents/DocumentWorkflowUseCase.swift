@@ -37,6 +37,17 @@ struct DocumentWorkflowUseCase {
         }
     }
 
+    func quarantinedDocuments(transactionId: UUID? = nil) -> [PPDocumentRecord] {
+        do {
+            return try documentRepository.allDocuments()
+                .filter { $0.deletionStatus == .quarantined }
+                .filter { transactionId == nil || $0.transactionId == transactionId }
+        } catch {
+            AppLogger.dataStore.error("Failed to fetch quarantined document records: \(error.localizedDescription)")
+            return []
+        }
+    }
+
     func document(id: UUID) -> PPDocumentRecord? {
         do {
             return try documentRepository.document(id: id)
@@ -135,37 +146,92 @@ struct DocumentWorkflowUseCase {
         guard let record = document(id: id) else {
             return .failed(message: "書類が見つかりません")
         }
+        guard record.deletionStatus == .active else {
+            return .failed(message: "この書類はすでに隔離保管中です")
+        }
 
         if let warning = record.retentionWarningMessage() {
             appendComplianceLog(
-                eventType: .retentionWarningShown,
+                eventType: .adminOverrideRequested,
                 message: warning,
                 documentId: record.id,
                 transactionId: record.transactionId
             )
-            return .warningRequired(message: warning)
+            return .adminOverrideRequired(message: warning)
         }
 
         return performDeletion(record: record, reason: nil)
     }
 
-    func confirmDeletion(id: UUID, reason: String) -> DocumentDeleteAttempt {
+    func confirmDeletion(
+        id: UUID,
+        reason: String,
+        approvedBy: String = "device-owner"
+    ) -> DocumentDeleteAttempt {
         guard let record = document(id: id) else {
             return .failed(message: "書類が見つかりません")
         }
-        return performDeletion(record: record, reason: reason)
+        let cleanedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedReason.isEmpty else {
+            return .failed(message: "管理者解除理由を入力してください")
+        }
+        return performDeletion(record: record, reason: cleanedReason, approvedBy: approvedBy)
     }
 
-    private func performDeletion(record: PPDocumentRecord, reason: String?) -> DocumentDeleteAttempt {
-        let fileName = record.storedFileName
+    func restoreDeletedDocument(id: UUID) -> DocumentDeleteAttempt {
+        guard let record = document(id: id) else {
+            return .failed(message: "書類が見つかりません")
+        }
+        guard record.deletionStatus == .quarantined,
+              let quarantineFileName = record.quarantineFileName else {
+            return .failed(message: "復元対象の隔離書類がありません")
+        }
+
+        do {
+            try ReceiptImageStore.restoreQuarantinedDocumentFile(
+                quarantineFileName: quarantineFileName,
+                targetFileName: record.storedFileName
+            )
+            record.deletionStatus = .active
+            record.deletionReason = nil
+            record.overrideApprovedAt = nil
+            record.overrideApprovedBy = nil
+            record.quarantinedAt = nil
+            record.quarantineFileName = nil
+            record.updatedAt = Date()
+            try documentRepository.saveChanges()
+            appendComplianceLog(
+                eventType: .documentRestored,
+                message: "隔離保管から復元: \(record.documentType.label) (\(record.originalFileName))",
+                documentId: record.id,
+                transactionId: record.transactionId
+            )
+            return .restored
+        } catch {
+            return .failed(message: "書類の復元に失敗しました")
+        }
+    }
+
+    private func performDeletion(
+        record: PPDocumentRecord,
+        reason: String?,
+        approvedBy: String? = nil
+    ) -> DocumentDeleteAttempt {
         let requiresWarning = record.retentionWarningMessage() != nil
         let documentType = record.documentType
         let originalFileName = record.originalFileName
         let transactionId = record.transactionId
         let documentId = record.id
 
-        documentRepository.deleteDocument(record)
         do {
+            let quarantineFileName = try ReceiptImageStore.quarantineDocumentFile(fileName: record.storedFileName)
+            record.deletionStatus = .quarantined
+            record.deletionReason = reason
+            record.overrideApprovedAt = requiresWarning ? Date() : nil
+            record.overrideApprovedBy = requiresWarning ? approvedBy : nil
+            record.quarantinedAt = Date()
+            record.quarantineFileName = quarantineFileName
+            record.updatedAt = Date()
             try documentRepository.saveChanges()
         } catch {
             return .failed(
@@ -173,20 +239,23 @@ struct DocumentWorkflowUseCase {
             )
         }
 
-        ReceiptImageStore.deleteDocumentFile(fileName: fileName)
-
         if requiresWarning {
-            let cleanedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             appendComplianceLog(
-                eventType: .retentionWarningConfirmedDeletion,
-                message: "保存期間内削除を実行: \(documentType.label) / 理由: \(cleanedReason.isEmpty ? "未入力" : cleanedReason)",
+                eventType: .adminOverrideApproved,
+                message: "保存期間内の管理者解除を承認: \(documentType.label) / 理由: \(reason ?? "未入力")",
+                documentId: documentId,
+                transactionId: transactionId
+            )
+            appendComplianceLog(
+                eventType: .documentQuarantined,
+                message: "保存期間内の書類を隔離保管へ移動: \(documentType.label) (\(originalFileName))",
                 documentId: documentId,
                 transactionId: transactionId
             )
         } else {
             appendComplianceLog(
                 eventType: .documentDeleted,
-                message: "書類削除: \(documentType.label) (\(originalFileName))",
+                message: "保存期間経過後の書類を隔離保管へ移動: \(documentType.label) (\(originalFileName))",
                 documentId: documentId,
                 transactionId: transactionId
             )

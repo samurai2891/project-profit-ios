@@ -58,6 +58,32 @@ func currentFiscalYear(startMonth: Int) -> Int {
     fiscalYear(for: Date(), startMonth: startMonth)
 }
 
+/// Returns the calendar tax year for a given date.
+/// Tax filing flows are always resolved on a Jan-Dec basis.
+func taxYear(for date: Date) -> Int {
+    Calendar.current.component(.year, from: date)
+}
+
+/// Returns the start date of a tax year (Jan 1).
+func startOfTaxYear(_ year: Int) -> Date {
+    Calendar.current.date(from: DateComponents(year: year, month: 1, day: 1)) ?? Date()
+}
+
+/// Returns the end date of a tax year (Dec 31 23:59:59).
+func endOfTaxYear(_ year: Int) -> Date {
+    let calendar = Calendar.current
+    var components = DateComponents(year: year, month: 12, day: 31)
+    components.hour = 23
+    components.minute = 59
+    components.second = 59
+    return calendar.date(from: components) ?? Date()
+}
+
+/// Returns the current tax year based on today's date.
+func currentTaxYear(referenceDate: Date = Date()) -> Int {
+    taxYear(for: referenceDate)
+}
+
 /// Returns 12 (year, month) pairs for a fiscal year in chronological order.
 /// e.g. fiscalYear=2025, startMonth=4 -> [(2025,4), (2025,5), ..., (2025,12), (2026,1), (2026,2), (2026,3)]
 func fiscalYearCalendarMonths(fiscalYear fy: Int, startMonth: Int) -> [(year: Int, month: Int)] {

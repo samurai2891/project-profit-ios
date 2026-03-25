@@ -26,15 +26,19 @@ struct ExportMenuButton: View {
 
     var body: some View {
         Menu {
-            Button {
-                shareCSV()
-            } label: {
-                Label("CSVで共有", systemImage: "tablecells")
+            if supportedFormats.contains(.csv) {
+                Button {
+                    shareCSV()
+                } label: {
+                    Label("CSVで共有", systemImage: "tablecells")
+                }
             }
-            Button {
-                sharePDF()
-            } label: {
-                Label("PDFで共有", systemImage: "doc.richtext")
+            if supportedFormats.contains(.pdf) {
+                Button {
+                    sharePDF()
+                } label: {
+                    Label("PDFで共有", systemImage: "doc.richtext")
+                }
             }
         } label: {
             Image(systemName: "square.and.arrow.up")
@@ -66,6 +70,10 @@ struct ExportMenuButton: View {
 
     private func sharePDF() {
         exportAndShare(format: .pdf)
+    }
+
+    private var supportedFormats: Set<ExportCoordinator.ExportFormat> {
+        target.supportedFormats
     }
 
     private func exportAndShare(format: ExportCoordinator.ExportFormat) {

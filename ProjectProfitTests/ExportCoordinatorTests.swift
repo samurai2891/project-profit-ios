@@ -64,9 +64,9 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(ledgerFileName.hasPrefix("ledger_2026_"))
 
         let fixedAssetsFileName = ExportCoordinator.makeFileName(
-            target: .fixedAssets, fiscalYear: 2026, format: .csv
+            target: .fixedAssetRegister, fiscalYear: 2026, format: .csv
         )
-        XCTAssertTrue(fixedAssetsFileName.hasPrefix("fixed_assets_2026_"))
+        XCTAssertTrue(fixedAssetsFileName.hasPrefix("fixed_asset_register_2026_"))
 
         let etaxFileName = ExportCoordinator.makeFileName(
             target: .etax, fiscalYear: 2025, format: .xtx
@@ -85,7 +85,8 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.label, "補助簿")
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.label, "e-Tax")
         XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.label, "支払調書")
-        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.label, "固定資産台帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.label, "固定資産台帳")
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.label, "減価償却明細表")
         XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.label, "旧台帳（互換）")
     }
 
@@ -106,10 +107,11 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssets.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.supportedFormats, [.pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.etax.supportedFormats, [.csv, .xtx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.legacyLedgerBook.supportedFormats, [.csv, .pdf, .xlsx])
     }
@@ -120,7 +122,8 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(ExportCoordinator.ExportTarget.trialBalance.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.journal.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.ledger.requiresPreflight)
-        XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssets.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssetRegister.requiresPreflight)
+        XCTAssertTrue(ExportCoordinator.ExportTarget.fixedAssetDepreciation.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.etax.requiresPreflight)
         XCTAssertTrue(ExportCoordinator.ExportTarget.withholdingStatement.requiresPreflight)
         XCTAssertFalse(ExportCoordinator.ExportTarget.transactions.requiresPreflight)
@@ -154,7 +157,7 @@ final class ExportCoordinatorTests: XCTestCase {
         assertUnsupportedFormat(target: .ledger, format: .xtx, fiscalYear: 2025)
         assertUnsupportedFormat(target: .etax, format: .pdf, fiscalYear: 2025)
         assertUnsupportedFormat(target: .transactions, format: .pdf, fiscalYear: 2025)
-        assertUnsupportedFormat(target: .subLedger, format: .pdf, fiscalYear: 2025)
+        assertUnsupportedFormat(target: .fixedAssetDepreciation, format: .csv, fiscalYear: 2025)
     }
 
     func testSubLedgerExportDoesNotRequirePreflight() throws {

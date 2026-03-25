@@ -121,7 +121,7 @@ final class EtaxExportViewModelTests: XCTestCase {
         XCTAssertTrue(message.contains("未対応"))
     }
 
-    func testGeneratePreviewRespectsFiscalStartMonthBoundary() {
+    func testGeneratePreviewUsesCalendarTaxYearEvenWhenFiscalStartMonthChanges() {
         let businessId = try! XCTUnwrap(dataStore.businessProfile?.id)
         let viewModel = makeViewModel()
         viewModel.formType = .blueReturn
@@ -161,7 +161,7 @@ final class EtaxExportViewModelTests: XCTestCase {
             return XCTFail("プレビューが生成されるべき")
         }
         let revenueField = form.fields.first { $0.id == "revenue_sales_revenue" }
-        XCTAssertEqual(revenueField?.value.numberValue, 200_000)
+        XCTAssertEqual(revenueField?.value.numberValue, 300_000)
     }
 
     func testGeneratePreviewUsesCanonicalProfileInsteadOfLegacyProfile() {

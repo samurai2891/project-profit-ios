@@ -69,9 +69,25 @@ enum LegalDocumentType: String, Codable, CaseIterable, Sendable {
 
 enum ComplianceEventType: String, Codable, CaseIterable, Sendable {
     case documentAdded
-    case retentionWarningShown
-    case retentionWarningConfirmedDeletion
+    case adminOverrideRequested
+    case adminOverrideApproved
+    case documentQuarantined
+    case documentRestored
     case documentDeleted
+}
+
+enum DocumentDeletionStatus: String, Codable, CaseIterable, Sendable {
+    case active
+    case quarantined
+
+    var label: String {
+        switch self {
+        case .active:
+            "保存中"
+        case .quarantined:
+            "隔離保管"
+        }
+    }
 }
 
 @Model
@@ -88,6 +104,12 @@ final class PPDocumentRecord {
     var contentHash: String?
     var issueDate: Date
     var note: String
+    var deletionStatus: DocumentDeletionStatus
+    var deletionReason: String?
+    var overrideApprovedAt: Date?
+    var overrideApprovedBy: String?
+    var quarantinedAt: Date?
+    var quarantineFileName: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -104,6 +126,12 @@ final class PPDocumentRecord {
         contentHash: String? = nil,
         issueDate: Date = Date(),
         note: String = "",
+        deletionStatus: DocumentDeletionStatus = .active,
+        deletionReason: String? = nil,
+        overrideApprovedAt: Date? = nil,
+        overrideApprovedBy: String? = nil,
+        quarantinedAt: Date? = nil,
+        quarantineFileName: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -120,6 +148,12 @@ final class PPDocumentRecord {
         self.contentHash = contentHash
         self.issueDate = issueDate
         self.note = note
+        self.deletionStatus = deletionStatus
+        self.deletionReason = deletionReason
+        self.overrideApprovedAt = overrideApprovedAt
+        self.overrideApprovedBy = overrideApprovedBy
+        self.quarantinedAt = quarantinedAt
+        self.quarantineFileName = quarantineFileName
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -136,9 +170,13 @@ extension PPDocumentRecord {
     func retentionWarningMessage(referenceDate: Date = Date()) -> String? {
         let now = Calendar.current.startOfDay(for: referenceDate)
         if now < retentionDeadline {
-            return "\(documentType.label) は保存期間（\(retentionYears)年）内です。削除前に要否を確認してください。"
+            return "\(documentType.label) は保存期間（\(retentionYears)年）内です。通常削除はできません。管理者解除理由を記録した上で隔離保管へ移動してください。"
         }
         return nil
+    }
+
+    var isQuarantined: Bool {
+        deletionStatus == .quarantined
     }
 }
 

@@ -73,7 +73,10 @@ extension DataStore {
 
     func purgeDocumentRecords(for transactionId: UUID) -> [String] {
         let records = listDocumentRecords(transactionId: transactionId)
-        let fileNames = records.map(\.storedFileName)
+            + documentWorkflowUseCase.quarantinedDocuments(transactionId: transactionId)
+        let fileNames = records.flatMap { record in
+            [record.storedFileName, record.quarantineFileName].compactMap { $0 }
+        }
         for record in records {
             modelContext.delete(record)
         }

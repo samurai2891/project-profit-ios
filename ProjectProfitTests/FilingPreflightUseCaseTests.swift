@@ -92,6 +92,31 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         XCTAssertTrue(report.blockingIssues.contains { $0.code == .suspenseBalanceRemaining })
     }
 
+    func testExportPreflightUsesCalendarTaxYearEvenWhenFiscalStartMonthChanges() throws {
+        let key = FiscalYearSettings.userDefaultsKey
+        let previousStartMonth = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(4, forKey: key)
+        defer { UserDefaults.standard.set(previousStartMonth, forKey: key) }
+
+        _ = mutations(dataStore).addManualJournalEntry(
+            date: makeDate(year: 2025, month: 3, day: 31),
+            memo: "calendar year suspense",
+            lines: [
+                (accountId: AccountingConstants.suspenseAccountId, debit: 900, credit: 0, memo: ""),
+                (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 900, memo: ""),
+            ]
+        )
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: 2025,
+            context: .export
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .suspenseBalanceRemaining })
+    }
+
     func testClosingPreflightRequiresClosingEntryForTaxClose() throws {
         let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
             businessId: businessId,

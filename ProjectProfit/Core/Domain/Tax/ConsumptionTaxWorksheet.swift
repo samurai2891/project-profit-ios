@@ -35,4 +35,21 @@ struct ConsumptionTaxWorksheetLine: Identifiable, Sendable, Equatable {
     let deductibleTaxAmount: Int
     let purchaseCreditMethod: InputTaxCreditMethod?
     let taxRateBreakdown: TaxRateBreakdown
+
+    func withDeductibleTaxAmount(_ amount: Int) -> ConsumptionTaxWorksheetLine {
+        ConsumptionTaxWorksheetLine(
+            id: id,
+            journalId: journalId,
+            journalDate: journalDate,
+            direction: direction,
+            taxCode: taxCode,
+            accountId: accountId,
+            counterpartyId: counterpartyId,
+            taxableAmount: taxableAmount,
+            taxAmount: taxAmount,
+            deductibleTaxAmount: amount,
+            purchaseCreditMethod: purchaseCreditMethod,
+            taxRateBreakdown: taxRateBreakdown
+        )
+    }
 }

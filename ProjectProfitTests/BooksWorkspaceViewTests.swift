@@ -29,6 +29,17 @@ final class BooksWorkspaceViewTests: XCTestCase {
         XCTAssertEqual(ReportView.titleText, "分析レポート")
     }
 
+    func testBooksWorkspaceIncludesReleaseLegacyLedgerRoutes() {
+        XCTAssertEqual(
+            BooksWorkspaceView.legacyLedgerItems.map(\.destinationID),
+            [.depositBooks, .transportationExpense, .whiteTaxBookkeeping, .compatibilityHome]
+        )
+        XCTAssertEqual(
+            BooksWorkspaceView.legacyLedgerItems.map(\.title),
+            ["預金出納帳", "交通費精算書", "白色申告用 簡易帳簿", "11帳簿管理"]
+        )
+    }
+
     func testFilingDashboardUsesBooksWorkspaceEntryCopy() {
         XCTAssertEqual(FilingDashboardView.booksWorkspaceTitle, "帳簿ワークスペース")
         XCTAssertEqual(FilingDashboardView.booksWorkspaceSubtitle, "仕訳確認・分析・申告準備の入口")

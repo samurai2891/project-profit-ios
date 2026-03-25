@@ -54,7 +54,7 @@ struct FilingDashboardView: View {
     @State private var yearLockState: YearLockState = .open
 
     init() {
-        let fy = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        let fy = currentTaxYear() - 1
         _selectedFiscalYear = State(initialValue: fy)
     }
 
@@ -100,6 +100,13 @@ struct FilingDashboardView: View {
                     .foregroundStyle(AppColors.primary)
             }
         }
+        .overlay(alignment: .bottom) {
+            Text("申告年分は暦年（1月〜12月）で判定します")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .offset(y: 22)
+        }
+        .padding(.bottom, 24)
     }
 
     // MARK: - Year Lock

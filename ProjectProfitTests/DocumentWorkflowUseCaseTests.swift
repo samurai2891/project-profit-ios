@@ -23,6 +23,12 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
     override func tearDown() {
         for fileName in storedFileNames {
             ReceiptImageStore.deleteDocumentFile(fileName: fileName)
+            ReceiptImageStore.deleteQuarantinedDocumentFile(fileName: fileName)
+        }
+        for record in useCase?.quarantinedDocuments() ?? [] {
+            if let quarantineFileName = record.quarantineFileName {
+                ReceiptImageStore.deleteQuarantinedDocumentFile(fileName: quarantineFileName)
+            }
         }
         storedFileNames = []
         useCase = nil
@@ -91,47 +97,71 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         }
     }
 
-    func testRequestDeletionReturnsWarningWithinRetention() {
+    func testRequestDeletionRequiresAdminOverrideWithinRetention() {
         let record = try! XCTUnwrap(makeDocumentRecord())
 
         let attempt = useCase.requestDeletion(id: record.id)
 
         switch attempt {
-        case .warningRequired(let message):
+        case .adminOverrideRequired(let message):
             XCTAssertTrue(message.contains("保存期間"))
-            XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .retentionWarningShown)
+            XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .adminOverrideRequested)
         default:
-            XCTFail("Expected warningRequired")
+            XCTFail("Expected adminOverrideRequired")
         }
     }
 
-    func testConfirmDeletionRemovesRecordFileAndLogsConfirmedDeletion() {
+    func testConfirmDeletionQuarantinesRecordAndLogsAdminOverride() {
         let record = try! XCTUnwrap(makeDocumentRecord())
 
         let attempt = useCase.confirmDeletion(id: record.id, reason: "workflow-test")
 
         if case .deleted = attempt {
-            XCTAssertNil(useCase.document(id: record.id))
             XCTAssertFalse(ReceiptImageStore.documentFileExists(fileName: record.storedFileName))
-            XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .retentionWarningConfirmedDeletion)
-            storedFileNames.removeAll { $0 == record.storedFileName }
+            let storedRecord = try! XCTUnwrap(useCase.document(id: record.id))
+            XCTAssertEqual(storedRecord.deletionStatus, .quarantined)
+            XCTAssertEqual(storedRecord.deletionReason, "workflow-test")
+            XCTAssertNotNil(storedRecord.overrideApprovedAt)
+            XCTAssertEqual(storedRecord.overrideApprovedBy, "device-owner")
+            XCTAssertNotNil(storedRecord.quarantineFileName)
+            XCTAssertEqual(useCase.listDocuments(transactionId: record.transactionId).count, 0)
+            XCTAssertEqual(useCase.quarantinedDocuments(transactionId: record.transactionId).count, 1)
+            XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .documentQuarantined)
         } else {
             XCTFail("Expected deleted")
         }
     }
 
-    func testDeleteAfterRetentionLogsDocumentDeleted() {
+    func testDeleteAfterRetentionMovesRecordToQuarantineAndLogsDocumentDeleted() {
         let issueDate = Calendar.current.date(byAdding: .year, value: -8, to: Date())!
         let record = try! XCTUnwrap(makeDocumentRecord(issueDate: issueDate, documentType: .receipt))
 
         let firstAttempt = useCase.requestDeletion(id: record.id)
 
         if case .deleted = firstAttempt {
-            XCTAssertNil(useCase.document(id: record.id))
+            let storedRecord = try! XCTUnwrap(useCase.document(id: record.id))
+            XCTAssertEqual(storedRecord.deletionStatus, .quarantined)
             XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .documentDeleted)
-            storedFileNames.removeAll { $0 == record.storedFileName }
         } else {
             XCTFail("Expected deleted without warning")
+        }
+    }
+
+    func testRestoreDeletedDocumentReturnsRecordToActiveList() {
+        let record = try! XCTUnwrap(makeDocumentRecord())
+        _ = useCase.confirmDeletion(id: record.id, reason: "restore-test")
+
+        let attempt = useCase.restoreDeletedDocument(id: record.id)
+
+        if case .restored = attempt {
+            let restoredRecord = try! XCTUnwrap(useCase.document(id: record.id))
+            XCTAssertEqual(restoredRecord.deletionStatus, .active)
+            XCTAssertNil(restoredRecord.quarantineFileName)
+            XCTAssertTrue(ReceiptImageStore.documentFileExists(fileName: restoredRecord.storedFileName))
+            XCTAssertEqual(useCase.listDocuments(transactionId: record.transactionId).count, 1)
+            XCTAssertEqual(useCase.listComplianceLogs(limit: 10).first?.eventType, .documentRestored)
+        } else {
+            XCTFail("Expected restored")
         }
     }
 

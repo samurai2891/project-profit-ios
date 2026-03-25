@@ -209,6 +209,49 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertTrue(snapshot.expenseAccounts.contains(where: { $0.id == "acct-rent" }))
     }
 
+    func testProjectedReadModelsIncludeDepreciationSupplementalEntries() {
+        let asset = try! XCTUnwrap(
+            dataStore.addFixedAsset(
+                name: "Camera",
+                acquisitionDate: makeDate(year: 2025, month: 1, day: 1),
+                acquisitionCost: 240_000,
+                usefulLifeYears: 4
+            )
+        )
+        let depreciationEntry = try! XCTUnwrap(
+            dataStore.postDepreciation(assetId: asset.id, fiscalYear: 2025)
+        )
+
+        let journalSnapshot = JournalReadQueryUseCase(modelContext: context).listSnapshot(fiscalYear: 2025)
+        let journalItem = try! XCTUnwrap(journalSnapshot.entries.first { $0.id == depreciationEntry.id })
+        XCTAssertTrue(journalItem.isSupplemental)
+
+        let ledgerSnapshot = LedgerQueryUseCase(modelContext: context).snapshot(
+            accountId: AccountingConstants.depreciationExpenseAccountId
+        )
+        let expectedLedgerEntries = dataStore.getLedgerEntries(
+            accountId: AccountingConstants.depreciationExpenseAccountId
+        )
+        XCTAssertEqual(ledgerSnapshot.entries.map(\.id), expectedLedgerEntries.map(\.id))
+        XCTAssertEqual(ledgerSnapshot.entries.map(\.runningBalance), expectedLedgerEntries.map(\.runningBalance))
+
+        let startDate = makeDate(year: 2025, month: 1, day: 1)
+        let endDate = makeDate(year: 2025, month: 12, day: 31)
+        let subLedgerSnapshot = SubLedgerQueryUseCase(modelContext: context).snapshot(
+            type: .expenseBook,
+            year: 2025,
+            accountFilter: AccountingConstants.depreciationExpenseAccountId
+        )
+        let expectedSubLedgerEntries = dataStore.getSubLedgerEntries(
+            type: .expenseBook,
+            startDate: startDate,
+            endDate: endDate,
+            accountFilter: AccountingConstants.depreciationExpenseAccountId
+        )
+        XCTAssertEqual(subLedgerSnapshot.entries.map(\.id), expectedSubLedgerEntries.map(\.id))
+        XCTAssertEqual(subLedgerSnapshot.entries.map(\.runningBalance), expectedSubLedgerEntries.map(\.runningBalance))
+    }
+
     func testClosingQueryUseCaseResolvesDisplayLinesAndYearState() throws {
         createApprovedCanonicalJournal(
             debitLegacyAccountId: AccountingConstants.cashAccountId,

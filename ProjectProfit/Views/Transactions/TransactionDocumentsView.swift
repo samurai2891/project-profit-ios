@@ -9,6 +9,7 @@ struct TransactionDocumentsView: View {
     let transaction: PPTransaction
 
     @State private var records: [PPDocumentRecord] = []
+    @State private var quarantinedRecords: [PPDocumentRecord] = []
     @State private var selectedDocumentType: LegalDocumentType = .receipt
     @State private var issueDate: Date = Date()
     @State private var note: String = ""
@@ -30,6 +31,7 @@ struct TransactionDocumentsView: View {
         List {
             addSection
             documentListSection
+            quarantinedSection
         }
         .navigationTitle("書類添付")
         .navigationBarTitleDisplayMode(.inline)
@@ -45,7 +47,7 @@ struct TransactionDocumentsView: View {
         } message: {
             Text(alertMessage ?? "")
         }
-        .alert("保存期間内の削除", isPresented: Binding(
+        .alert("管理者解除が必要です", isPresented: Binding(
             get: { pendingWarningDeleteId != nil && pendingWarningMessage != nil },
             set: { if !$0 { pendingWarningDeleteId = nil; pendingWarningMessage = nil } }
         )) {
@@ -53,9 +55,9 @@ struct TransactionDocumentsView: View {
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
             }
-            Button("削除する", role: .destructive) {
+            Button("隔離保管する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let result = documentWorkflowUseCase.confirmDeletion(id: id, reason: "保存期間内削除を手動承認")
+                let result = documentWorkflowUseCase.confirmDeletion(id: id, reason: "取引書類画面で管理者解除")
                 handleDeleteAttempt(result)
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
@@ -148,7 +150,7 @@ struct TransactionDocumentsView: View {
 
                             Button("削除", role: .destructive) {
                                 let attempt = documentWorkflowUseCase.requestDeletion(id: record.id)
-                                if case .warningRequired(let message) = attempt {
+                                if case .adminOverrideRequired(let message) = attempt {
                                     pendingWarningDeleteId = record.id
                                     pendingWarningMessage = message
                                 } else {
@@ -157,6 +159,31 @@ struct TransactionDocumentsView: View {
                             }
                             .font(.caption.weight(.medium))
                         }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private var quarantinedSection: some View {
+        Section("隔離保管 (\(quarantinedRecords.count))") {
+            if quarantinedRecords.isEmpty {
+                Text("隔離保管中の書類はありません")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(quarantinedRecords, id: \.id) { record in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(record.originalFileName)
+                            .font(.subheadline.weight(.medium))
+                        Text(record.deletionReason ?? "解除理由なし")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("復元") {
+                            handleDeleteAttempt(documentWorkflowUseCase.restoreDeletedDocument(id: record.id))
+                        }
+                        .font(.caption.weight(.medium))
                     }
                     .padding(.vertical, 4)
                 }
@@ -223,9 +250,12 @@ struct TransactionDocumentsView: View {
     private func handleDeleteAttempt(_ attempt: DocumentDeleteAttempt) {
         switch attempt {
         case .deleted:
-            alertMessage = "書類を削除しました"
+            alertMessage = "書類を隔離保管へ移動しました"
             refresh()
-        case .warningRequired(let message):
+        case .restored:
+            alertMessage = "書類を復元しました"
+            refresh()
+        case .adminOverrideRequired(let message):
             pendingWarningMessage = message
         case .failed(let message):
             alertMessage = message
@@ -234,5 +264,6 @@ struct TransactionDocumentsView: View {
 
     private func refresh() {
         records = documentWorkflowUseCase.listDocuments(transactionId: transaction.id)
+        quarantinedRecords = documentWorkflowUseCase.quarantinedDocuments(transactionId: transaction.id)
     }
 }

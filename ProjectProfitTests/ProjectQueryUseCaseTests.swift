@@ -11,6 +11,7 @@ final class ProjectQueryUseCaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        FeatureFlags.clearOverrides()
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -19,6 +20,7 @@ final class ProjectQueryUseCaseTests: XCTestCase {
     }
 
     override func tearDown() {
+        FeatureFlags.clearOverrides()
         useCase = nil
         dataStore = nil
         context = nil
@@ -89,7 +91,65 @@ final class ProjectQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(snapshot.legacyTransactionMutationDisabledMessage, dataStore.legacyTransactionMutationDisabledMessage)
     }
 
+    func testDetailSnapshotYearlyProfitLossUsesCanonicalProjectAllocations() async throws {
+        FeatureFlags.useCanonicalPosting = true
+        let project = mutations(dataStore).addProject(name: "Canonical案件", description: "")
+
+        try await approveManualCandidate(
+            type: .expense,
+            amount: 12_000,
+            date: makeDate(year: 2026, month: 5, day: 10),
+            categoryId: "cat-tools",
+            memo: "canonical supplemental",
+            allocations: [(projectId: project.id, ratio: 100)],
+            candidateSource: .manual
+        )
+
+        let snapshot = useCase.detailSnapshot(projectId: project.id)
+
+        XCTAssertEqual(snapshot.summary?.totalExpense, 12_000)
+        XCTAssertEqual(snapshot.yearlyProfitLoss.map(\.expense), [12_000])
+        XCTAssertEqual(snapshot.yearlyProfitLoss.map(\.profit), [-12_000])
+        XCTAssertTrue(snapshot.recentTransactions.isEmpty)
+    }
+
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
         Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    private func approveManualCandidate(
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String = "acct-cash",
+        candidateSource: CandidateSource = .manual
+    ) async throws {
+        let result = await dataStore.saveManualPostingCandidate(
+            type: type,
+            amount: amount,
+            date: date,
+            categoryId: categoryId,
+            memo: memo,
+            allocations: allocations,
+            paymentAccountId: paymentAccountId,
+            candidateSource: candidateSource
+        )
+
+        let candidate: PostingCandidate
+        switch result {
+        case .success(let savedCandidate):
+            candidate = savedCandidate
+        case .failure(let error):
+            XCTFail("manual candidate save should succeed: \(error.localizedDescription)")
+            return
+        }
+
+        _ = try await dataStore.approvePostingCandidate(
+            candidateId: candidate.id,
+            description: "approved for project query test"
+        )
     }
 }

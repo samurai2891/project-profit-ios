@@ -7,6 +7,7 @@ struct LegalDocumentLedgerView: View {
     @State private var selectedCategory: RetentionCategory?
     @State private var searchForm = EvidenceSearchFormState()
     @State private var records: [PPDocumentRecord] = []
+    @State private var quarantinedRecords: [PPDocumentRecord] = []
     @State private var logs: [PPComplianceLog] = []
     @State private var availableProjects: [PPProject] = []
     @State private var matchingStoredFileNames: Set<String>?
@@ -99,7 +100,7 @@ struct LegalDocumentLedgerView: View {
 
                                 Button("削除", role: .destructive) {
                                     let attempt = documentWorkflowUseCase.requestDeletion(id: record.id)
-                                    if case .warningRequired(let message) = attempt {
+                                    if case .adminOverrideRequired(let message) = attempt {
                                         pendingWarningDeleteId = record.id
                                         pendingWarningMessage = message
                                     } else {
@@ -108,6 +109,29 @@ struct LegalDocumentLedgerView: View {
                                 }
                                 .font(.caption.weight(.medium))
                             }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            Section("隔離保管 (\(quarantinedRecords.count))") {
+                if quarantinedRecords.isEmpty {
+                    Text("隔離保管中の書類はありません")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(quarantinedRecords, id: \.id) { record in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(record.originalFileName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(record.deletionReason ?? "解除理由なし")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("復元") {
+                                handleDeleteAttempt(documentWorkflowUseCase.restoreDeletedDocument(id: record.id))
+                            }
+                            .font(.caption.weight(.medium))
                         }
                         .padding(.vertical, 4)
                     }
@@ -176,7 +200,7 @@ struct LegalDocumentLedgerView: View {
         } message: {
             Text(alertMessage ?? "")
         }
-        .alert("保存期間内の削除", isPresented: Binding(
+        .alert("管理者解除が必要です", isPresented: Binding(
             get: { pendingWarningDeleteId != nil && pendingWarningMessage != nil },
             set: { if !$0 { pendingWarningDeleteId = nil; pendingWarningMessage = nil } }
         )) {
@@ -184,9 +208,9 @@ struct LegalDocumentLedgerView: View {
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
             }
-            Button("削除する", role: .destructive) {
+            Button("隔離保管する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let attempt = documentWorkflowUseCase.confirmDeletion(id: id, reason: "書類台帳から手動削除")
+                let attempt = documentWorkflowUseCase.confirmDeletion(id: id, reason: "書類台帳で管理者解除")
                 handleDeleteAttempt(attempt)
                 pendingWarningDeleteId = nil
                 pendingWarningMessage = nil
@@ -206,9 +230,12 @@ struct LegalDocumentLedgerView: View {
     private func handleDeleteAttempt(_ attempt: DocumentDeleteAttempt) {
         switch attempt {
         case .deleted:
-            alertMessage = "書類を削除しました"
+            alertMessage = "書類を隔離保管へ移動しました"
             Task { await refresh() }
-        case .warningRequired(let message):
+        case .restored:
+            alertMessage = "書類を復元しました"
+            Task { await refresh() }
+        case .adminOverrideRequired(let message):
             pendingWarningMessage = message
         case .failed(let message):
             alertMessage = message
@@ -217,6 +244,7 @@ struct LegalDocumentLedgerView: View {
 
     private func refresh() async {
         records = documentWorkflowUseCase.listDocuments()
+        quarantinedRecords = documentWorkflowUseCase.quarantinedDocuments()
         logs = documentWorkflowUseCase.listComplianceLogs(limit: 10)
         availableProjects = documentWorkflowUseCase.availableProjects()
 

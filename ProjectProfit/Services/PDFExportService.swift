@@ -283,6 +283,75 @@ enum PDFExportService {
         )
     }
 
+    static func exportFixedAssetDepreciationPDF(
+        rows: [DepreciationScheduleRow],
+        fiscalYear: Int
+    ) -> Data {
+        let reiwa = fiscalYear - 2018
+        let dateFormatter = makeDateFormatter()
+        let columns: [Column] = [
+            Column(title: "資産名", width: 120, alignment: .left),
+            Column(title: "取得日", width: 70, alignment: .left),
+            Column(title: "当期償却", width: 75, alignment: .right),
+            Column(title: "累計償却", width: 75, alignment: .right),
+            Column(title: "帳簿価額", width: 75, alignment: .right),
+            Column(title: "経費算入", width: 80, alignment: .right),
+        ]
+
+        let pdfRows = rows.map { row in
+            [
+                row.assetName,
+                dateFormatter.string(from: row.acquisitionDate),
+                formatCurrency(row.currentYearAmount),
+                formatCurrency(row.accumulatedAmount),
+                formatCurrency(row.bookValue),
+                formatCurrency(row.currentYearAmount * row.businessUsePercent / 100),
+            ]
+        }
+
+        return renderPDF(
+            title: "減価償却明細表",
+            subtitle: "令和\(reiwa)年度（\(fiscalYear)年）",
+            columns: columns,
+            rows: pdfRows
+        )
+    }
+
+    static func exportSubLedgerPDF(
+        entries: [SubLedgerEntry],
+        fiscalYear: Int,
+        title: String
+    ) -> Data {
+        let reiwa = fiscalYear - 2018
+        let dateFormatter = makeDateFormatter()
+        let columns: [Column] = [
+            Column(title: "日付", width: 70, alignment: .left),
+            Column(title: "摘要", width: 180, alignment: .left),
+            Column(title: "科目", width: 90, alignment: .left),
+            Column(title: "借方", width: 75, alignment: .right),
+            Column(title: "貸方", width: 75, alignment: .right),
+            Column(title: "残高", width: 65, alignment: .right),
+        ]
+
+        let rows = entries.map { entry in
+            [
+                dateFormatter.string(from: entry.date),
+                entry.memo,
+                entry.accountName,
+                entry.debit > 0 ? formatCurrency(entry.debit) : "",
+                entry.credit > 0 ? formatCurrency(entry.credit) : "",
+                formatCurrency(entry.runningBalance),
+            ]
+        }
+
+        return renderPDF(
+            title: title,
+            subtitle: "令和\(reiwa)年度（\(fiscalYear)年）",
+            columns: columns,
+            rows: rows
+        )
+    }
+
     // MARK: - Export: Withholding Statements
 
     static func exportWithholdingStatementAnnualPDF(summary: WithholdingStatementAnnualSummary) -> Data {

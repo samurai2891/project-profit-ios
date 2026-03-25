@@ -1320,6 +1320,7 @@ struct CanonicalTransactionPostingBridge {
         }
 
         let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
+        let deductionCalculator = InputTaxDeductionCalculator(profile: taxYearProfile)
         let counterpartyInvoiceStatus = counterparty?.invoiceIssuerStatus ?? .unknown
         let grossAmount = Decimal(snapshot.amount)
         let creditMethod: InputTaxCreditMethod
@@ -1335,7 +1336,10 @@ struct CanonicalTransactionPostingBridge {
 
         let deductibleTaxAmount: Decimal
         if snapshot.type == .expense {
-            deductibleTaxAmount = Decimal(taxAmount) * creditMethod.creditRate
+            deductibleTaxAmount = deductionCalculator.deductibleTaxAmount(
+                taxAmount: Decimal(taxAmount),
+                creditMethod: creditMethod
+            )
         } else {
             deductibleTaxAmount = 0
         }

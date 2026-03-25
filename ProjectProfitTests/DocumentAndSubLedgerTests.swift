@@ -31,7 +31,7 @@ final class DocumentAndSubLedgerTests: XCTestCase {
         XCTAssertEqual(LegalDocumentType.invoice.retentionCategory.retentionYears, 5)
     }
 
-    func testDocumentDeletionFlow_requiresWarningBeforeDeletion() {
+    func testDocumentDeletionFlow_requiresAdminOverrideBeforeQuarantine() {
         let project = mutations(dataStore).addProject(name: "書類テスト", description: "doc")
         let tx = mutations(dataStore).addTransaction(
             type: .expense,
@@ -58,10 +58,10 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
         let firstAttempt = dataStore.requestDocumentDeletion(id: record.id)
         switch firstAttempt {
-        case .warningRequired(let message):
+        case .adminOverrideRequired(let message):
             XCTAssertTrue(message.contains("保存期間"))
         default:
-            XCTFail("Expected warningRequired")
+            XCTFail("Expected adminOverrideRequired")
         }
 
         let confirmed = dataStore.confirmDocumentDeletion(id: record.id, reason: "単体テスト")

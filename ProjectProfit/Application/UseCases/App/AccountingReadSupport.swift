@@ -59,6 +59,7 @@ struct JournalListItem: Identifiable {
         sourceKey.hasPrefix("manual:")
             || sourceKey.hasPrefix("opening:")
             || sourceKey.hasPrefix("closing:")
+            || sourceKey.hasPrefix("depreciation:")
     }
 }
 
@@ -855,36 +856,42 @@ struct AccountingHomeQueryUseCase {
 @MainActor
 struct AccountingReportQueryUseCase {
     private let support: AccountingReadSupport
+    private let projectedJournalQuery: ProjectedJournalReadModelQuery
 
     init(modelContext: ModelContext) {
         self.support = AccountingReadSupport(modelContext: modelContext)
+        self.projectedJournalQuery = ProjectedJournalReadModelQuery(support: support)
     }
 
     func reportBundle(fiscalYear: Int) -> AccountingReportBundle {
-        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
+        let projected = projectedJournalQuery.snapshot(fiscalYear: fiscalYear)
+        let accounts = support.fetchAccounts()
         let trialBalance = AccountingReportService.generateTrialBalance(
             fiscalYear: fiscalYear,
-            accounts: context.accounts,
-            journals: context.journals,
+            accounts: accounts,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: FiscalYearSettings.startMonth
         )
         let profitLoss = AccountingReportService.generateProfitLoss(
             fiscalYear: fiscalYear,
-            accounts: context.accounts,
-            journals: context.journals,
+            accounts: accounts,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: FiscalYearSettings.startMonth
         )
         let balanceSheet = AccountingReportService.generateBalanceSheet(
             fiscalYear: fiscalYear,
-            accounts: context.accounts,
-            journals: context.journals,
+            accounts: accounts,
+            journalEntries: projected.entries,
+            journalLines: projected.lines,
             startMonth: FiscalYearSettings.startMonth
         )
 
         return AccountingReportBundle(
-            trialBalance: LegacyAccountingReportAdapter.trialBalance(trialBalance),
-            profitLoss: LegacyAccountingReportAdapter.profitLoss(profitLoss),
-            balanceSheet: LegacyAccountingReportAdapter.balanceSheet(balanceSheet)
+            trialBalance: trialBalance,
+            profitLoss: profitLoss,
+            balanceSheet: balanceSheet
         )
     }
 }
@@ -898,48 +905,44 @@ struct JournalReadQueryUseCase {
     }
 
     func listSnapshot(fiscalYear: Int? = nil) -> JournalListSnapshot {
-        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
-        let journalsById = Dictionary(uniqueKeysWithValues: context.journals.map { ($0.id, $0) })
-        let entries = CanonicalBookService.generateJournalBook(
-            journals: context.journals,
-            accounts: context.accounts,
-            counterparties: context.counterpartiesById
-        )
+        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let linesByEntryId = Dictionary(grouping: projected.lines, by: \.entryId)
+        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0) })
         return JournalListSnapshot(
-            businessId: context.businessId,
+            businessId: projected.businessId,
             projects: support.fetchProjects(),
-            entries: entries.compactMap { entry in
-                guard let journal = journalsById[entry.id] else {
-                    return nil
-                }
-                return listItem(journal: journal, bookEntry: entry)
+            entries: projected.entries.map { entry in
+                listItem(
+                    entry: entry,
+                    lines: linesByEntryId[entry.id] ?? [],
+                    accountsById: accountsById
+                )
             },
             canCreateManualJournals: !FeatureFlags.useCanonicalPosting
         )
     }
 
     func detailSnapshot(entryId: UUID, fiscalYear: Int? = nil) -> JournalDetailSnapshot {
-        let context = support.canonicalReadContext(fiscalYear: fiscalYear)
-        let journal = context.journals.first { $0.id == entryId }
-        let bookEntry = CanonicalBookService.generateJournalBook(
-            journals: context.journals,
-            accounts: context.accounts,
-            counterparties: context.counterpartiesById
-        ).first { $0.id == entryId }
-        let entry = journal.flatMap { journal in
-            bookEntry.map { listItem(journal: journal, bookEntry: $0) }
+        let projected = support.projectedCanonicalJournals(fiscalYear: fiscalYear)
+        let accountsById = Dictionary(uniqueKeysWithValues: support.fetchAccounts().map { ($0.id, $0) })
+        let journal = projected.entries.first { $0.id == entryId }
+        let lines = projected.lines
+            .filter { $0.entryId == entryId }
+            .sorted { $0.displayOrder < $1.displayOrder }
+        let entry = journal.map {
+            listItem(entry: $0, lines: lines, accountsById: accountsById)
         }
         return JournalDetailSnapshot(
             entry: entry,
-            lines: (bookEntry?.lines ?? []).enumerated().map { index, line in
+            lines: lines.enumerated().map { index, line in
                 JournalLineItem(
                     id: line.id,
                     entryId: entryId,
-                    accountId: context.legacyAccountId(for: line.accountId),
-                    accountName: line.accountName,
-                    debit: decimalInt(line.debitAmount),
-                    credit: decimalInt(line.creditAmount),
-                    memo: "",
+                    accountId: line.accountId,
+                    accountName: accountsById[line.accountId]?.name ?? line.accountId,
+                    debit: line.debit,
+                    credit: line.credit,
+                    memo: line.memo,
                     displayOrder: index
                 )
             }
@@ -982,25 +985,26 @@ struct JournalReadQueryUseCase {
     }
 
     private func listItem(
-        journal: CanonicalJournalEntry,
-        bookEntry: CanonicalJournalBookEntry
+        entry: PPJournalEntry,
+        lines: [PPJournalLine],
+        accountsById: [String: PPAccount]
     ) -> JournalListItem {
         let searchableText = SearchIndexNormalizer.normalizeText(
-            ([journal.description] + bookEntry.lines.flatMap { line in
-                [line.accountName, line.counterpartyName ?? ""]
+            ([entry.memo] + lines.map { line in
+                accountsById[line.accountId]?.name ?? line.accountId
             }).joined(separator: " ")
         )
         return JournalListItem(
-            id: journal.id,
-            sourceKey: journalSourceKey(journal),
-            date: journal.journalDate,
-            entryType: legacyEntryType(for: journal.entryType),
-            memo: journal.description,
-            isPosted: journal.approvedAt != nil,
-            createdAt: journal.createdAt,
-            updatedAt: journal.updatedAt,
-            debitTotal: bookEntry.lines.reduce(0) { $0 + decimalInt($1.debitAmount) },
-            creditTotal: bookEntry.lines.reduce(0) { $0 + decimalInt($1.creditAmount) },
+            id: entry.id,
+            sourceKey: entry.sourceKey,
+            date: entry.date,
+            entryType: entry.entryType,
+            memo: entry.memo,
+            isPosted: entry.isPosted,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
+            debitTotal: lines.reduce(0) { $0 + $1.debit },
+            creditTotal: lines.reduce(0) { $0 + $1.credit },
             searchableText: searchableText
         )
     }
@@ -1374,13 +1378,15 @@ struct EtaxFormBuildQueryUseCase {
     }
 
     func snapshot(fiscalYear: Int) -> EtaxFormBuildSnapshot {
-        let readContext = support.canonicalReadContext(fiscalYear: fiscalYear)
-        let startMonth = FiscalYearSettings.startMonth
+        let readContext = support.canonicalReadContext()
+        let startMonth = 1
+        let dateRange = startOfTaxYear(fiscalYear)...endOfTaxYear(fiscalYear)
+        let journals = readContext.journals.filter { dateRange.contains($0.journalDate) }
         let businessProfile = support.fetchBusinessProfile()
         let taxYearProfile = readContext.businessId.flatMap {
             support.fetchTaxYearProfile(businessId: $0, taxYear: fiscalYear)
         }
-        let candidateIds = Set(readContext.journals.compactMap(\.sourceCandidateId))
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
         let candidatesById = support.fetchPostingCandidates(ids: candidateIds)
 
         return EtaxFormBuildSnapshot(
@@ -1399,16 +1405,16 @@ struct EtaxFormBuildQueryUseCase {
             canonicalProfitLoss: AccountingReportService.generateProfitLoss(
                 fiscalYear: fiscalYear,
                 accounts: readContext.accounts,
-                journals: readContext.journals,
+                journals: journals,
                 startMonth: startMonth
             ),
             canonicalBalanceSheet: AccountingReportService.generateBalanceSheet(
                 fiscalYear: fiscalYear,
                 accounts: readContext.accounts,
-                journals: readContext.journals,
+                journals: journals,
                 startMonth: startMonth
             ),
-            canonicalJournals: readContext.journals,
+            canonicalJournals: journals,
             candidateSummariesById: support.etaxCandidateSummaries(candidatesById: candidatesById)
         )
     }

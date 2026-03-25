@@ -40,7 +40,7 @@ struct FixedAssetListView: View {
                 HStack(spacing: 12) {
                     if !snapshot.assets.isEmpty {
                         ExportMenuButton(
-                            target: .fixedAssets,
+                            target: .fixedAssetRegister,
                             fiscalYear: currentYear
                         )
                         NavigationLink(destination: FixedAssetScheduleView()) {

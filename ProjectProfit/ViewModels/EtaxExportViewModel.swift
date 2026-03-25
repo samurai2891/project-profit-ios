@@ -53,7 +53,7 @@ final class EtaxExportViewModel {
         self.filingPreflightUseCase = FilingPreflightUseCase(modelContext: modelContext)
         self.formBuilder = formBuilder
         self.exporter = exporter
-        let preferredYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        let preferredYear = currentTaxYear() - 1
         self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
     }
 

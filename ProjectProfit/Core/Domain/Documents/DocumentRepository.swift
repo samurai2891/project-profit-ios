@@ -2,12 +2,14 @@ import Foundation
 
 enum DocumentDeleteAttempt {
     case deleted
-    case warningRequired(message: String)
+    case adminOverrideRequired(message: String)
+    case restored
     case failed(message: String)
 }
 
 @MainActor
 protocol DocumentRepository {
+    func allDocuments() throws -> [PPDocumentRecord]
     func listDocuments(transactionId: UUID?) throws -> [PPDocumentRecord]
     func document(id: UUID) throws -> PPDocumentRecord?
     func listComplianceLogs(limit: Int) throws -> [PPComplianceLog]

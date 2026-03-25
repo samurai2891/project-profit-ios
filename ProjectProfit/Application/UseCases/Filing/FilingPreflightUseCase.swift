@@ -86,7 +86,7 @@ struct FilingPreflightUseCase {
             fiscalYear: taxYear,
             accounts: snapshot.canonicalAccounts,
             journals: snapshot.canonicalJournals,
-            startMonth: FiscalYearSettings.startMonth
+            startMonth: 1
         )
         if !trialBalance.isBalanced {
             issues.append(
@@ -190,10 +190,10 @@ struct FilingPreflightUseCase {
         let canonicalAccounts = try modelContext.fetch(canonicalAccountDescriptor)
             .map(CanonicalAccountEntityMapper.toDomain)
 
+        let startDate = startOfTaxYear(taxYear)
+        let endDate = endOfTaxYear(taxYear)
         let journalDescriptor = FetchDescriptor<JournalEntryEntity>(
-            predicate: #Predicate {
-                $0.businessId == businessId && $0.taxYear == taxYear
-            },
+            predicate: #Predicate { $0.businessId == businessId },
             sortBy: [
                 SortDescriptor(\.journalDate, order: .reverse),
                 SortDescriptor(\.voucherNo, order: .reverse)
@@ -201,8 +201,8 @@ struct FilingPreflightUseCase {
         )
         let canonicalJournals = try modelContext.fetch(journalDescriptor)
             .map(CanonicalJournalEntryEntityMapper.toDomain)
+            .filter { $0.journalDate >= startDate && $0.journalDate <= endDate }
 
-        let (startDate, endDate) = fiscalYearDateRange(year: taxYear, startMonth: FiscalYearSettings.startMonth)
         let legacyDescriptor = FetchDescriptor<PPJournalEntry>(
             predicate: #Predicate<PPJournalEntry> { entry in
                 entry.date >= startDate && entry.date <= endDate && (
@@ -224,12 +224,11 @@ struct FilingPreflightUseCase {
         }
         let projected = LegacyProjectedJournalAssembler.assemble(
             businessId: businessId,
-            fiscalYear: taxYear,
             canonicalAccounts: canonicalAccounts,
             canonicalJournals: canonicalJournals,
             legacyEntries: legacyEntries,
             legacyLines: legacyLines,
-            supplementalSourcePrefixes: ["manual:", "opening:", "closing:"]
+            supplementalSourcePrefixes: ["manual:", "opening:", "closing:", "depreciation:"]
         )
 
         let linesByEntryId = Dictionary(grouping: projected.lines, by: \.entryId)
@@ -266,14 +265,18 @@ struct FilingPreflightUseCase {
     }
 
     private func fetchPendingCandidates(businessId: UUID, taxYear: Int) throws -> [PostingCandidate] {
+        let startDate = startOfTaxYear(taxYear)
+        let endDate = endOfTaxYear(taxYear)
         let descriptor = FetchDescriptor<PostingCandidateEntity>(
-            predicate: #Predicate {
-                $0.businessId == businessId && $0.taxYear == taxYear
-            }
+            predicate: #Predicate { $0.businessId == businessId }
         )
         return try modelContext.fetch(descriptor)
             .map(PostingCandidateEntityMapper.toDomain)
-            .filter { $0.status == .draft || $0.status == .needsReview }
+            .filter {
+                ($0.status == .draft || $0.status == .needsReview)
+                    && $0.candidateDate >= startDate
+                    && $0.candidateDate <= endDate
+            }
     }
 
     private func fetchUnmappedCategories() throws -> [PPCategory] {

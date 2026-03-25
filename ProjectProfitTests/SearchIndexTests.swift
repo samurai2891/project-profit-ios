@@ -243,6 +243,74 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(rebuiltIndexes.count, 1)
     }
 
+    func testJournalSearchUseCaseSearchesByCanonicalLineProjectAllocation() async throws {
+        let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        let evidenceProjectId = UUID()
+        let lineProjectId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "PROJECT-LINE-HASH",
+            projectId: evidenceProjectId,
+            counterpartyName: "案件別検索",
+            registrationNumber: "T8888888888888",
+            totalAmount: Decimal(string: "9800")!
+        )
+        try await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let candidate = PostingCandidate(
+            evidenceId: evidence.id,
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "9800")!,
+                    projectAllocationId: lineProjectId,
+                    memo: "案件別"
+                )
+            ],
+            status: .needsReview,
+            source: .ocr,
+            memo: "案件別"
+        )
+
+        try await workflow.saveCandidate(candidate)
+        let approved = try await workflow.approveCandidate(candidateId: candidate.id)
+
+        let useCase = JournalSearchUseCase(modelContext: context)
+        let results = try await useCase.search(
+            criteria: JournalSearchCriteria(
+                businessId: businessId,
+                projectId: lineProjectId
+            )
+        )
+
+        XCTAssertEqual(results, [approved.id])
+    }
+
     func testLocalJournalSearchIndexThrowsExplicitErrorForEachCorruptedJSONField() async throws {
         let businessId = UUID()
         let approved = try await seedIndexedJournal(businessId: businessId)

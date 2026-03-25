@@ -76,13 +76,18 @@ struct SubLedgerView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    exportSubLedger()
+                Menu {
+                    Button("CSVで共有") {
+                        exportSubLedger(format: .csv)
+                    }
+                    Button("PDFで共有") {
+                        exportSubLedger(format: .pdf)
+                    }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .disabled(entries.isEmpty)
-                .accessibilityLabel("CSV共有")
+                .accessibilityLabel("補助簿共有")
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -136,11 +141,11 @@ struct SubLedgerView: View {
         }
     }
 
-    private func exportSubLedger() {
+    private func exportSubLedger(format: ExportCoordinator.ExportFormat) {
         do {
             shareURL = try ExportCoordinator.export(
                 target: .subLedger,
-                format: .csv,
+                format: format,
                 fiscalYear: selectedYear,
                 modelContext: modelContext,
                 subLedgerOptions: .init(
