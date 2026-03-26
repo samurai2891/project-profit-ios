@@ -858,6 +858,9 @@ struct TestMutationDriver {
         counterparty: String?,
         createdAt: Date = Date()
     ) -> PPTransaction {
+        let resolvedCounterparty = counterpartyId.flatMap { id in
+            store.canonicalCounterparty(id: id)?.displayName
+        } ?? counterparty
         let normalizedAllocations = type == .transfer ? [] : calculateRatioAllocations(amount: amount, allocations: allocations)
         if let existing = store.allTransactions.first(where: { $0.id == id }) {
             existing.type = type
@@ -878,7 +881,7 @@ struct TestMutationDriver {
             existing.taxCategory = taxCategory
             existing.taxCodeId = TaxCode.resolve(legacyCategory: taxCategory, taxRate: taxRate)?.rawValue
             existing.counterpartyId = counterpartyId
-            existing.counterparty = counterparty
+            existing.counterparty = resolvedCounterparty
             existing.journalEntryId = journalEntryId
             existing.deletedAt = nil
             existing.updatedAt = Date()
@@ -905,7 +908,7 @@ struct TestMutationDriver {
             isTaxIncluded: isTaxIncluded,
             taxCategory: taxCategory,
             counterpartyId: counterpartyId,
-            counterparty: counterparty,
+            counterparty: resolvedCounterparty,
             createdAt: createdAt,
             updatedAt: Date()
         )

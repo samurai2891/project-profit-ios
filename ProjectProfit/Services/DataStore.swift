@@ -1172,14 +1172,18 @@ class DataStore {
             return
         }
 
-        let existingKeys = Set(
+        var existingKeys = Set(
             existingRecords.compactMap { record -> String? in
                 guard record.documentType == .receipt,
-                      let transactionId = record.transactionId else { return nil }
-                return "\(transactionId.uuidString)|\(record.originalFileName)"
+                      let transactionId = record.transactionId,
+                      let normalizedFileName = ReceiptImageStore.sanitizedFileName(record.originalFileName)
+                else {
+                    return nil
+                }
+                return "\(transactionId.uuidString)|\(normalizedFileName)"
             }
         )
-        let existingReceiptTransactionIds = Set(
+        var existingReceiptTransactionIds = Set(
             existingRecords.compactMap { record -> UUID? in
                 guard record.documentType == .receipt else { return nil }
                 return record.transactionId
@@ -1233,6 +1237,8 @@ class DataStore {
                     updatedAt: now
                 )
                 modelContext.insert(record)
+                existingKeys.insert(key)
+                existingReceiptTransactionIds.insert(transaction.id)
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 newDocumentFiles.append(storedFileName)

@@ -43,6 +43,7 @@ struct GoldenFixtureLoader {
         try applyCategories(fixture.categories, to: dataStore, context: context)
         let projectMap = try applyProjects(fixture.projects, to: dataStore)
         try await applyTransactions(fixture.transactions, projectMap: projectMap, to: dataStore)
+        try applyFixtureYearLockState(fixture, to: dataStore, context: context)
         dataStore.loadData()
 
         let businessProfile = try XCTUnwrap(dataStore.businessProfile)
@@ -88,11 +89,40 @@ struct GoldenFixtureLoader {
             simplifiedBusinessCategory: state.taxYearProfile.simplifiedBusinessCategory,
             invoiceIssuerStatusAtYear: state.taxYearProfile.invoiceIssuerStatusAtYear,
             electronicBookLevel: state.taxYearProfile.electronicBookLevel,
-            yearLockState: .taxClose,
+            yearLockState: state.taxYearProfile.yearLockState,
             taxYear: fixture.businessProfile.fiscalYear
         )
         _ = try await useCase.save(command: command, currentState: state)
         dataStore.loadData()
+    }
+
+    private static func applyFixtureYearLockState(
+        _ fixture: GoldenFixture,
+        to dataStore: ProjectProfit.DataStore,
+        context: ModelContext
+    ) throws {
+        let fiscalYear = fixture.businessProfile.fiscalYear
+
+        guard mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear) else {
+            throw fixtureSetupError(
+                "Golden fixture could not transition to soft close: \(dataStore.lastError?.localizedDescription ?? "unknown error")"
+            )
+        }
+
+        _ = try XCTUnwrap(
+            ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear),
+            "Golden fixture should generate a closing entry before tax close"
+        )
+
+        guard mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear) else {
+            throw fixtureSetupError(
+                "Golden fixture could not transition to tax close: \(dataStore.lastError?.localizedDescription ?? "unknown error")"
+            )
+        }
+    }
+
+    private static func fixtureSetupError(_ description: String) -> NSError {
+        NSError(domain: "GoldenFixtureLoader", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
     }
 
     private static func applyAccounts(

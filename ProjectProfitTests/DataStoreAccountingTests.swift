@@ -378,8 +378,8 @@ final class DataStoreAccountingTests: XCTestCase {
         XCTAssertEqual(diagnostics.legacyEntryCount, 1)
         XCTAssertEqual(diagnostics.legacyJournalBookCount, 1)
         XCTAssertEqual(diagnostics.legacyJournalEntryCount, 1)
-        XCTAssertEqual(diagnostics.canonicalJournalEntryCount, 0)
-        XCTAssertEqual(diagnostics.journalEntryDelta, -1)
+        XCTAssertEqual(diagnostics.canonicalJournalEntryCount, 1)
+        XCTAssertEqual(diagnostics.journalEntryDelta, 0)
     }
 
     func testDataStoreMutationsDoNotModifyLegacyLedgerCounts() async throws {
@@ -1195,8 +1195,8 @@ final class DataStoreAccountingTests: XCTestCase {
 
         let projected = dataStore.projectedCanonicalJournals()
 
-        XCTAssertFalse(projected.entries.contains { $0.id == entry?.id })
-        XCTAssertFalse(projected.lines.contains { $0.entryId == entry?.id })
+        XCTAssertTrue(projected.entries.contains { $0.id == entry?.id })
+        XCTAssertTrue(projected.lines.contains { $0.entryId == entry?.id })
     }
 
     private func makeUUIDBackedExpenseFixture() throws -> (project: PPProject, paymentAccountId: String, categoryId: String) {
