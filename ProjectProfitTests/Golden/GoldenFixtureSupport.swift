@@ -102,8 +102,9 @@ struct GoldenFixtureLoader {
         context: ModelContext
     ) async throws {
         let fiscalYear = fixture.businessProfile.fiscalYear
+        let businessProfileCandidate = try await SwiftDataBusinessProfileRepository(modelContext: context).findDefault()
         let businessProfile = try XCTUnwrap(
-            try await SwiftDataBusinessProfileRepository(modelContext: context).findDefault(),
+            businessProfileCandidate,
             "Golden fixture should create a canonical business profile before year lock setup"
         )
         let descriptor = FetchDescriptor<TaxYearProfileEntity>(
