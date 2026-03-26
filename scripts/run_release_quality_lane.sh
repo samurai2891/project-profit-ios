@@ -7,6 +7,7 @@ cd "$REPO_ROOT"
 lane="${RELEASE_QUALITY_LANE:-}"
 artifact_dir="${RELEASE_QUALITY_ARTIFACTS_DIR:-}"
 simulator_device="${RELEASE_QUALITY_SIMULATOR_DEVICE:-}"
+simulator_id="${RELEASE_QUALITY_SIMULATOR_ID:-}"
 only_testing="${RELEASE_QUALITY_ONLY_TESTING:-}"
 project_path="${RELEASE_QUALITY_PROJECT:-ProjectProfit.xcodeproj}"
 scheme_name="${RELEASE_QUALITY_SCHEME:-ProjectProfit}"
@@ -48,9 +49,9 @@ if [[ "$mode" != "test" && "$mode" != "build" && "$mode" != "archive" ]]; then
   exit 1
 fi
 
-if [[ "$mode" == "test" && -z "$simulator_device" ]]; then
+if [[ "$mode" == "test" && -z "$simulator_device" && -z "$simulator_id" ]]; then
   echo "status=error"
-  echo "reason=RELEASE_QUALITY_SIMULATOR_DEVICE is required for test mode"
+  echo "reason=RELEASE_QUALITY_SIMULATOR_DEVICE or RELEASE_QUALITY_SIMULATOR_ID is required for test mode"
   exit 1
 fi
 
@@ -94,6 +95,15 @@ rm -rf "$archive_path"
 rm -f "$metrics_path"
 
 command=(xcodebuild)
+test_destination=""
+
+if [[ "$mode" == "test" ]]; then
+  if [[ -n "$simulator_id" ]]; then
+    test_destination="platform=iOS Simulator,id=$simulator_id"
+  else
+    test_destination="platform=iOS Simulator,name=$simulator_device"
+  fi
+fi
 
 case "$mode" in
   test)
@@ -102,7 +112,7 @@ case "$mode" in
       -project "$project_path"
       -scheme "$scheme_name"
       -configuration "$configuration"
-      -destination "platform=iOS Simulator,name=$simulator_device"
+      -destination "$test_destination"
       -derivedDataPath "$derived_data_path"
       -resultBundlePath "$result_bundle_path"
       -parallel-testing-enabled NO
@@ -177,6 +187,9 @@ fi
   if [[ -n "$simulator_device" ]]; then
     echo "- simulator_device: $simulator_device"
   fi
+  if [[ -n "$simulator_id" ]]; then
+    echo "- simulator_id: $simulator_id"
+  fi
   if [[ "$mode" == "test" ]]; then
     echo "- xcresult: $result_bundle_path"
   fi
@@ -221,6 +234,9 @@ if [[ -n "$evidence_dir" ]]; then
     echo "- run_url: $release_run_url"
     if [[ -n "$simulator_device" ]]; then
       echo "- simulator_device: $simulator_device"
+    fi
+    if [[ -n "$simulator_id" ]]; then
+      echo "- simulator_id: $simulator_id"
     fi
     echo "- test_summary: $test_summary"
     echo "- summary_path: $summary_rel"

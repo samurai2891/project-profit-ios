@@ -7,7 +7,8 @@ set -euo pipefail
 # Output (stdout):
 #   status=ok|warn|error
 #   reason=<message>
-#   simulator_device=<device name when status=ok>
+#   simulator_device=<device name when status=ok|warn>
+#   simulator_id=<device UDID when status=ok|warn and available>
 #
 # Exit code:
 #   0: status=ok|warn
@@ -23,11 +24,15 @@ print_result() {
   local status="$1"
   local reason="$2"
   local device="${3:-}"
+  local simulator_id="${4:-}"
 
   echo "status=$status"
   echo "reason=$reason"
   if [[ -n "$device" ]]; then
     echo "simulator_device=$device"
+  fi
+  if [[ -n "$simulator_id" ]]; then
+    echo "simulator_id=$simulator_id"
   fi
 }
 
@@ -91,49 +96,63 @@ done < <(
     /^-- / { ios = 0 }
     ios && /iPhone/ {
       line = $0
-      sub(/^[[:space:]]+/, "", line)
-      sub(/ \(.*/, "", line)
-      printf "%d|%s\n", score, line
+      name = line
+      sub(/^[[:space:]]+/, "", name)
+      sub(/[[:space:]]+\([[:xdigit:]-]+\).*/, "", name)
+      uuid = line
+      sub(/^[^(]*\(/, "", uuid)
+      sub(/\).*/, "", uuid)
+      printf "%d|%s|%s\n", score, name, uuid
     }
   '
 )
 
-if ((${#ranked_devices[@]} > 0)); then
+ranked_devices_count="${#ranked_devices[@]}"
+if [[ "$ranked_devices_count" -gt 0 ]]; then
   IFS=$'\n' ranked_devices=($(printf '%s\n' "${ranked_devices[@]}" | sort -t'|' -k1,1nr -k2,2))
 fi
 
 device=""
+simulator_id=""
 fallback_used="false"
 
 for preferred in "${preferred_devices[@]}"; do
   for entry in "${ranked_devices[@]}"; do
     ranked_name="${entry#*|}"
+    ranked_name="${ranked_name%%|*}"
     if [[ "$ranked_name" == "$preferred" ]]; then
       device="$ranked_name"
+      simulator_id="${entry##*|}"
       break 2
     fi
   done
 done
 
-if [[ -z "$device" && ${#ranked_devices[@]} -gt 0 ]]; then
-  device="${ranked_devices[0]#*|}"
+if [[ -z "$device" && "$ranked_devices_count" -gt 0 ]]; then
+  first_entry="${ranked_devices[0]}"
+  device="${first_entry#*|}"
+  device="${device%%|*}"
+  simulator_id="${first_entry##*|}"
 fi
 
 if [[ -z "$device" ]]; then
   # fallback parser for environments where simctl output format differs
-  device="$(
+  fallback_device_info="$(
     xcrun xctrace list devices 2>&1 | awk '
       /iPhone/ {
         line = $0
         sub(/^[[:space:]]+/, "", line)
-        sub(/ \(.*/, "", line)
+        sub(/[[:space:]]*\([^)]*\)[[:space:]]*$/, "", line)
         sub(/ Simulator$/, "", line)
-        print line
+        printf "%s|\n", line
         exit
       }
     '
   )"
+  device="${fallback_device_info%%|*}"
+  simulator_id="${fallback_device_info#*|}"
   device="$(trim "$device")"
+  simulator_id="$(trim "$simulator_id")"
   if [[ -n "$device" ]]; then
     fallback_used="true"
   fi
@@ -145,8 +164,8 @@ if [[ -z "$device" ]]; then
 fi
 
 if [[ "$fallback_used" == "true" ]]; then
-  print_result "warn" "Simulator health check passed via xctrace fallback" "$device"
+  print_result "warn" "Simulator health check passed via xctrace fallback" "$device" "$simulator_id"
   exit 0
 fi
 
-print_result "ok" "Simulator health check passed (deterministic preference selection)" "$device"
+print_result "ok" "Simulator health check passed (deterministic preference selection)" "$device" "$simulator_id"

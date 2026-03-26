@@ -172,14 +172,22 @@ echo "$health_output"
 health_status="$(extract_output_field "status" "$health_output")"
 health_reason="$(extract_output_field "reason" "$health_output")"
 health_device="$(extract_output_field "simulator_device" "$health_output")"
+health_simulator_id="$(extract_output_field "simulator_id" "$health_output")"
 
 if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status" == "warn" ]]; then
   swift_lane_executed="true"
-  simulator_device="${ETAX_SIMULATOR_DEVICE:-iPhone 17}"
+  simulator_device="${ETAX_SIMULATOR_DEVICE:-$health_device}"
+  simulator_id="${ETAX_SIMULATOR_ID:-$health_simulator_id}"
   if [[ -z "$simulator_device" ]]; then
     simulator_device="iPhone 15"
   fi
-  echo "swift lane device: $simulator_device"
+  if [[ -n "$simulator_id" ]]; then
+    destination="platform=iOS Simulator,id=$simulator_id"
+    echo "swift lane device: ${simulator_device:-unknown} ($simulator_id)"
+  else
+    destination="platform=iOS Simulator,name=$simulator_device"
+    echo "swift lane device: $simulator_device"
+  fi
   xcodebuild_log="$artifact_dir/xcodebuild_etax.log"
   ETAX_XSD_BLUE_EXPORT_XML="$blue_export_xml" \
   ETAX_XSD_WHITE_EXPORT_XML="$white_export_xml" \
@@ -187,7 +195,7 @@ if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status"
   xcodebuild test \
     -project ProjectProfit.xcodeproj \
     -scheme ProjectProfit \
-    -destination "platform=iOS Simulator,name=$simulator_device" \
+    -destination "$destination" \
     -only-testing:ProjectProfitTests/TaxYearDefinitionLoaderTests \
     -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxWritesBlueFixtureWhenEnvIsSet \
     -only-testing:ProjectProfitTests/EtaxXtxExporterTests/testGenerateXtxBlueReturnProducesXmlForCurrentOfficialXsdValidation \

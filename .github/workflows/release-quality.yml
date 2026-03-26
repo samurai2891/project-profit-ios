@@ -67,6 +67,7 @@ jobs:
       status: ${{ steps.health.outputs.status }}
       reason: ${{ steps.health.outputs.reason }}
       simulator_device: ${{ steps.health.outputs.simulator_device }}
+      simulator_id: ${{ steps.health.outputs.simulator_id }}
 
     steps:
       - name: Checkout
@@ -86,6 +87,7 @@ jobs:
           status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
           reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
           simulator_device="$(awk -F= '/^simulator_device=/{print $2; exit}' <<< "$output")"
+          simulator_id="$(awk -F= '/^simulator_id=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -99,6 +101,9 @@ jobs:
           if [[ -n "$simulator_device" ]]; then
             echo "simulator_device=$simulator_device" >> "$GITHUB_OUTPUT"
           fi
+          if [[ -n "$simulator_id" ]]; then
+            echo "simulator_id=$simulator_id" >> "$GITHUB_OUTPUT"
+          fi
 
           {
             echo "### simulator-health"
@@ -106,6 +111,9 @@ jobs:
             echo "- reason: $reason"
             if [[ -n "$simulator_device" ]]; then
               echo "- simulator_device: $simulator_device"
+            fi
+            if [[ -n "$simulator_id" ]]; then
+              echo "- simulator_id: $simulator_id"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -200,6 +208,7 @@ jobs:
           RELEASE_QUALITY_LANE: golden-baseline
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/GoldenBaselineTests
         run: |
@@ -275,6 +284,7 @@ jobs:
           RELEASE_QUALITY_LANE: canonical-e2e
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/CanonicalFlowE2ETests
             ProjectProfitTests/DataStoreAccountingTests
@@ -353,6 +363,7 @@ jobs:
           RELEASE_QUALITY_LANE: migration-rehearsal
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/MigrationReportRunnerTests
             ProjectProfitTests/BackupRestoreServiceTests
@@ -431,6 +442,7 @@ jobs:
           RELEASE_QUALITY_LANE: performance-gate
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ReleasePerformanceGateTests
         run: |
@@ -511,6 +523,7 @@ jobs:
           RELEASE_QUALITY_LANE: books
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/AccountingReportServiceTests
             ProjectProfitTests/AccountingEngineTests
@@ -591,6 +604,7 @@ jobs:
           RELEASE_QUALITY_LANE: forms
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
+          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ShushiNaiyakushoBuilderTests
             ProjectProfitTests/EtaxFieldPopulatorTests

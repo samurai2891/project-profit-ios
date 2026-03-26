@@ -51,10 +51,10 @@ final class DataStoreDocumentsTests: XCTestCase {
             return
         }
 
-        let result = dataStore.purgeDocumentRecords(for: transaction.id)
+        let purgeResult = dataStore.purgeDocumentRecords(for: transaction.id)
 
-        XCTAssertEqual(result.processedCount, 1)
-        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(purgeResult.processedCount, 1)
+        XCTAssertTrue(purgeResult.isSuccess)
         let storedRecord = try XCTUnwrap(dataStore.getDocumentRecord(id: record.id))
         XCTAssertEqual(storedRecord.deletionStatus, .quarantined)
         XCTAssertEqual(storedRecord.deletionReason, "取引関連データの内部整理")
@@ -83,10 +83,10 @@ final class DataStoreDocumentsTests: XCTestCase {
         let quarantinedRecord = try XCTUnwrap(dataStore.getDocumentRecord(id: record.id))
         let quarantineFileName = try XCTUnwrap(quarantinedRecord.quarantineFileName)
 
-        let result = dataStore.purgeDocumentRecords(for: transaction.id)
+        let purgeResult = dataStore.purgeDocumentRecords(for: transaction.id)
 
-        XCTAssertEqual(result.processedCount, 1)
-        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(purgeResult.processedCount, 1)
+        XCTAssertTrue(purgeResult.isSuccess)
         let storedRecord = try XCTUnwrap(dataStore.getDocumentRecord(id: record.id))
         XCTAssertEqual(storedRecord.deletionStatus, .quarantined)
         XCTAssertEqual(storedRecord.quarantineFileName, quarantineFileName)
