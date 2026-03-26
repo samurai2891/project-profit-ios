@@ -17,7 +17,6 @@ jobs:
       status: ${{ steps.health.outputs.status }}
       reason: ${{ steps.health.outputs.reason }}
       simulator_device: ${{ steps.health.outputs.simulator_device }}
-      simulator_id: ${{ steps.health.outputs.simulator_id }}
 
     steps:
       - name: Checkout
@@ -142,7 +141,6 @@ jobs:
           ETAX_ARTIFACTS_DIR: /tmp/etax-unit-lane
           ETAX_TAG_INPUT_DIR: ${{ steps.cab-input.outputs.tag_input_dir }}
           ETAX_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          ETAX_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           ETAX_CAB_OVERLAY_JSON: tools/etax/fixtures/cab_overlay_2025.json
           ETAX_CAB_BLUE_FIELD_SPEC_XLSX: "${{ steps.cab-input.outputs.tag_input_dir }}/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx"
           ETAX_CAB_BLUE_FIELD_SPEC_SHEET: KOA210

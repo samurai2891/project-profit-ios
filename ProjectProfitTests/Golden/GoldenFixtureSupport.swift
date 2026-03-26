@@ -43,7 +43,7 @@ struct GoldenFixtureLoader {
         try applyCategories(fixture.categories, to: dataStore, context: context)
         let projectMap = try applyProjects(fixture.projects, to: dataStore)
         try await applyTransactions(fixture.transactions, projectMap: projectMap, to: dataStore)
-        try applyFixtureYearLockState(fixture, to: context)
+        try await applyFixtureYearLockState(fixture, context: context)
         dataStore.loadData()
 
         let businessProfile = try XCTUnwrap(dataStore.businessProfile)
@@ -100,10 +100,10 @@ struct GoldenFixtureLoader {
     private static func applyFixtureYearLockState(
         _ fixture: GoldenFixture,
         context: ModelContext
-    ) throws {
+    ) async throws {
         let fiscalYear = fixture.businessProfile.fiscalYear
         let businessProfile = try XCTUnwrap(
-            try SwiftDataBusinessProfileRepository(modelContext: context).findDefault(),
+            try await SwiftDataBusinessProfileRepository(modelContext: context).findDefault(),
             "Golden fixture should create a canonical business profile before year lock setup"
         )
         let descriptor = FetchDescriptor<TaxYearProfileEntity>(

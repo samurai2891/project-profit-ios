@@ -10,6 +10,7 @@ on:
 env:
   RELEASE_QUALITY_ARTIFACT_ROOT: ${{ github.workspace }}/artifacts/release-quality
   RELEASE_QUALITY_EVIDENCE_DIR: ${{ github.workspace }}/Docs/release/quality
+  XCODEGEN_VERSION: 2.45.3
 
 jobs:
   xcodegen-sync:
@@ -23,10 +24,21 @@ jobs:
       - name: Install XcodeGen
         shell: bash
         run: |
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
+          set -euo pipefail
+          install_root="$RUNNER_TEMP/xcodegen-${XCODEGEN_VERSION}"
+          archive_path="$RUNNER_TEMP/xcodegen-${XCODEGEN_VERSION}.zip"
+
+          if [[ ! -x "$install_root/xcodegen/bin/xcodegen" ]]; then
+            curl -LsSf \
+              "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
+              -o "$archive_path"
+            rm -rf "$install_root"
+            mkdir -p "$install_root"
+            unzip -q "$archive_path" -d "$install_root"
           fi
-          xcodegen --version
+
+          echo "$install_root/xcodegen/bin" >> "$GITHUB_PATH"
+          "$install_root/xcodegen/bin/xcodegen" --version
 
       - name: Verify project.yml and xcodeproj sync
         id: sync
@@ -208,7 +220,6 @@ jobs:
           RELEASE_QUALITY_LANE: golden-baseline
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/golden-baseline
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/GoldenBaselineTests
         run: |
@@ -284,7 +295,6 @@ jobs:
           RELEASE_QUALITY_LANE: canonical-e2e
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/canonical-e2e
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/CanonicalFlowE2ETests
             ProjectProfitTests/DataStoreAccountingTests
@@ -363,7 +373,6 @@ jobs:
           RELEASE_QUALITY_LANE: migration-rehearsal
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/migration-rehearsal
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/MigrationReportRunnerTests
             ProjectProfitTests/BackupRestoreServiceTests
@@ -442,7 +451,6 @@ jobs:
           RELEASE_QUALITY_LANE: performance-gate
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/performance-gate
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ReleasePerformanceGateTests
         run: |
@@ -523,7 +531,6 @@ jobs:
           RELEASE_QUALITY_LANE: books
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/books
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/AccountingReportServiceTests
             ProjectProfitTests/AccountingEngineTests
@@ -604,7 +611,6 @@ jobs:
           RELEASE_QUALITY_LANE: forms
           RELEASE_QUALITY_ARTIFACTS_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/forms
           RELEASE_QUALITY_SIMULATOR_DEVICE: ${{ needs.simulator-health.outputs.simulator_device }}
-          RELEASE_QUALITY_SIMULATOR_ID: ${{ needs.simulator-health.outputs.simulator_id }}
           RELEASE_QUALITY_ONLY_TESTING: |
             ProjectProfitTests/ShushiNaiyakushoBuilderTests
             ProjectProfitTests/EtaxFieldPopulatorTests

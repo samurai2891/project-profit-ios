@@ -176,8 +176,8 @@ health_simulator_id="$(extract_output_field "simulator_id" "$health_output")"
 
 if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status" == "warn" ]]; then
   swift_lane_executed="true"
-  simulator_device="${ETAX_SIMULATOR_DEVICE:-$health_device}"
-  simulator_id="${ETAX_SIMULATOR_ID:-$health_simulator_id}"
+  simulator_device="${health_device:-${ETAX_SIMULATOR_DEVICE:-}}"
+  simulator_id="${health_simulator_id:-${ETAX_SIMULATOR_ID:-}}"
   if [[ -z "$simulator_device" ]]; then
     simulator_device="iPhone 15"
   fi

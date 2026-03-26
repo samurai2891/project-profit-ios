@@ -3431,7 +3431,6 @@
 				};
 			};
 			buildConfigurationList = 799C09523F6D50068D64BE56 /* Build configuration list for PBXProject "ProjectProfit" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = ja;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -3444,6 +3443,7 @@
 				BBB12D96548EFF20E6960175 /* XCRemoteSwiftPackageReference "libxlsxwriter" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 958A9A9F4B50A1137DA86168 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

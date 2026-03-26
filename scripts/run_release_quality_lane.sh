@@ -21,6 +21,12 @@ release_head_sha="${RELEASE_QUALITY_HEAD_SHA:-${GITHUB_SHA:-}}"
 release_run_id="${RELEASE_QUALITY_RUN_ID:-${GITHUB_RUN_ID:-}}"
 release_run_url="${RELEASE_QUALITY_RUN_URL:-}"
 
+extract_output_field() {
+  local key="$1"
+  local payload="$2"
+  awk -F= -v key="$key" '$1 == key {print substr($0, index($0, "=") + 1); exit}' <<< "$payload"
+}
+
 to_repo_relative_path() {
   local target_path="$1"
   case "$target_path" in
@@ -98,9 +104,40 @@ command=(xcodebuild)
 test_destination=""
 
 if [[ "$mode" == "test" ]]; then
-  if [[ -n "$simulator_id" ]]; then
+  resolved_simulator_device="$simulator_device"
+  resolved_simulator_id=""
+  health_preferences="$simulator_device"
+
+  set +e
+  health_output="$(
+    RELEASE_QUALITY_SIMULATOR_PREFERENCES="$health_preferences" \
+      bash scripts/check_simulator_health.sh 2>&1
+  )"
+  health_exit=$?
+  set -e
+
+  printf '%s\n' "$health_output"
+
+  health_status="$(extract_output_field "status" "$health_output")"
+  health_device="$(extract_output_field "simulator_device" "$health_output")"
+  health_simulator_id="$(extract_output_field "simulator_id" "$health_output")"
+
+  if [[ "$health_exit" -eq 0 ]] && [[ "$health_status" == "ok" || "$health_status" == "warn" ]]; then
+    if [[ -n "$health_device" ]]; then
+      resolved_simulator_device="$health_device"
+    fi
+    if [[ -n "$health_simulator_id" ]]; then
+      resolved_simulator_id="$health_simulator_id"
+    fi
+  fi
+
+  if [[ -n "$resolved_simulator_id" ]]; then
+    simulator_id="$resolved_simulator_id"
+    simulator_device="${resolved_simulator_device:-$simulator_device}"
     test_destination="platform=iOS Simulator,id=$simulator_id"
   else
+    simulator_id=""
+    simulator_device="${resolved_simulator_device:-$simulator_device}"
     test_destination="platform=iOS Simulator,name=$simulator_device"
   fi
 fi
