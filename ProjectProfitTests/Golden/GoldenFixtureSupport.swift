@@ -152,16 +152,19 @@ struct GoldenFixtureLoader {
         context: ModelContext
     ) throws {
         for fixtureCategory in fixtureCategories {
+            let linkedAccountId = linkedAccountId(for: fixtureCategory)
             if let existing = dataStore.categories.first(where: { $0.id == fixtureCategory.id }) {
                 existing.name = fixtureCategory.name
                 existing.type = categoryType(from: fixtureCategory.type)
+                existing.linkedAccountId = linkedAccountId
             } else {
                 context.insert(
                     PPCategory(
                         id: fixtureCategory.id,
                         name: fixtureCategory.name,
                         type: categoryType(from: fixtureCategory.type),
-                        icon: "tag"
+                        icon: "tag",
+                        linkedAccountId: linkedAccountId
                     )
                 )
             }
@@ -271,6 +274,29 @@ struct GoldenFixtureLoader {
 
     private static func categoryType(from rawValue: String) -> CategoryType {
         rawValue == "income" ? .income : .expense
+    }
+
+    private static func linkedAccountId(for category: GoldenCategory) -> String? {
+        if let mappedAccountId = AccountingConstants.categoryToAccountMapping[category.id] {
+            return mappedAccountId
+        }
+
+        switch category.id {
+        case "cat-rent":
+            return "acct-rent"
+        case "cat-utilities":
+            return "acct-utilities"
+        case "cat-travel":
+            return "acct-travel"
+        case "cat-outsource":
+            return "acct-outsourcing"
+        case "cat-comms":
+            return "acct-communication"
+        case "cat-software":
+            return "acct-supplies"
+        default:
+            return nil
+        }
     }
 
     private static func projectStatus(from rawValue: String) -> ProjectStatus {

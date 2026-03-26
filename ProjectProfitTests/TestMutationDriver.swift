@@ -804,7 +804,7 @@ struct TestMutationDriver {
                 type: type,
                 amount: amount,
                 date: date,
-                categoryId: type == .transfer ? "" : categoryId,
+                categoryId: categoryId,
                 memo: memo,
                 recurringId: recurringId,
                 paymentAccountId: paymentAccountId,
@@ -866,7 +866,7 @@ struct TestMutationDriver {
             existing.type = type
             existing.amount = amount
             existing.date = date
-            existing.categoryId = type == .transfer ? "" : categoryId
+            existing.categoryId = categoryId
             existing.memo = memo
             existing.allocations = normalizedAllocations
             existing.recurringId = recurringId
@@ -893,7 +893,7 @@ struct TestMutationDriver {
             type: type,
             amount: amount,
             date: date,
-            categoryId: type == .transfer ? "" : categoryId,
+            categoryId: categoryId,
             memo: memo,
             allocations: normalizedAllocations,
             recurringId: recurringId,

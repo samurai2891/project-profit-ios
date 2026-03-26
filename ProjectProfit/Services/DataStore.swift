@@ -1156,7 +1156,7 @@ class DataStore {
     }
 
     /// レガシー `receiptImagePath` を法定書類台帳 (`PPDocumentRecord`) へバックフィルする。
-    /// 冪等性を担保するため、同一 transactionId + originalFileName の既存レコードがあれば再作成しない。
+    /// 冪等性を担保するため、同一 transactionId の active receipt があれば再作成しない。
     private func migrateLegacyReceiptImagesToDocumentRecords() {
         let legacyTransactions = transactions.filter {
             guard let path = $0.receiptImagePath else { return false }
@@ -1193,7 +1193,7 @@ class DataStore {
                 continue
             }
 
-            if existingReceiptRecordsByTransactionId[transaction.id] != nil {
+            if existingReceiptRecordsByTransactionId[transaction.id]?.isEmpty == false {
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 legacyFilesToDelete.append(safeLegacyPath)
@@ -1215,7 +1215,7 @@ class DataStore {
                     $0.deletionStatus == .active
                 })
                 if let existingRecord {
-                    existingReceiptRecordsByTransactionId[transaction.id, default: []].append(existingRecord)
+                    existingReceiptRecordsByTransactionId[transaction.id, default: []] = [existingRecord]
                     transaction.receiptImagePath = nil
                     transaction.updatedAt = now
                     legacyFilesToDelete.append(safeLegacyPath)
