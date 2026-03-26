@@ -27,8 +27,7 @@ final class AccountingBootstrapTests: XCTestCase {
     }
 
     func testNeedsBootstrap_WhenProfileExists() {
-        let profile = PPAccountingProfile(fiscalYear: 2026)
-        context.insert(profile)
+        context.insert(BusinessProfileEntity(businessId: UUID()))
         try! context.save()
 
         let service = AccountingBootstrapService(modelContext: context)
@@ -37,19 +36,17 @@ final class AccountingBootstrapTests: XCTestCase {
 
     // MARK: - Step 1: Profile Creation
 
-    func testStep1_CreatesProfile() {
+    func testStep1_CreatesCanonicalProfile() {
         let (categories, transactions) = seedTestData()
         let service = AccountingBootstrapService(modelContext: context)
 
         _ = service.execute(categories: categories, transactions: transactions)
 
-        let descriptor = FetchDescriptor<PPAccountingProfile>()
-        let profiles = try! context.fetch(descriptor)
-        XCTAssertEqual(profiles.count, 1)
-        XCTAssertEqual(profiles[0].id, "profile-default")
-        XCTAssertEqual(profiles[0].bookkeepingMode, .doubleEntry)
-        XCTAssertTrue(profiles[0].isBlueReturn)
-        XCTAssertEqual(profiles[0].defaultPaymentAccountId, "acct-cash")
+        let businessProfiles = try! context.fetch(FetchDescriptor<BusinessProfileEntity>())
+        let taxYearProfiles = try! context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        XCTAssertEqual(businessProfiles.count, 1)
+        XCTAssertEqual(businessProfiles[0].defaultPaymentAccountId, "acct-cash")
+        XCTAssertEqual(taxYearProfiles.count, 1)
     }
 
     // MARK: - Step 2: Default Accounts
@@ -60,11 +57,11 @@ final class AccountingBootstrapTests: XCTestCase {
 
         let result = service.execute(categories: categories, transactions: transactions)
 
-        XCTAssertEqual(result.accountsCreated, 34)
+        XCTAssertEqual(result.accountsCreated, AccountingConstants.defaultAccounts.count)
 
         let descriptor = FetchDescriptor<PPAccount>()
         let accounts = try! context.fetch(descriptor)
-        XCTAssertEqual(accounts.count, 34)
+        XCTAssertEqual(accounts.count, AccountingConstants.defaultAccounts.count)
     }
 
     func testStep2_IdempotentOnSecondRun() {
@@ -72,9 +69,8 @@ final class AccountingBootstrapTests: XCTestCase {
         let service = AccountingBootstrapService(modelContext: context)
 
         _ = service.execute(categories: categories, transactions: transactions)
-        // reset profile to force re-execution
-        let profileDescriptor = FetchDescriptor<PPAccountingProfile>()
-        if let profile = try? context.fetch(profileDescriptor).first {
+        let businessDescriptor = FetchDescriptor<BusinessProfileEntity>()
+        if let profile = try? context.fetch(businessDescriptor).first {
             context.delete(profile)
             try! context.save()
         }
@@ -163,7 +159,7 @@ final class AccountingBootstrapTests: XCTestCase {
 
     // MARK: - Step 7: Journal Entry Generation
 
-    func testStep7_GeneratesJournalEntries() {
+    func testStep7_GeneratesCanonicalJournalEntries() {
         let (categories, _) = seedTestData()
         let tx1 = PPTransaction(
             type: .income, amount: 100_000, date: Date(),
@@ -183,6 +179,8 @@ final class AccountingBootstrapTests: XCTestCase {
         XCTAssertEqual(result.journalEntriesGenerated, 2)
         XCTAssertNotNil(tx1.journalEntryId)
         XCTAssertNotNil(tx2.journalEntryId)
+        XCTAssertEqual(try! context.fetch(FetchDescriptor<JournalEntryEntity>()).count, 2)
+        XCTAssertEqual(try! context.fetch(FetchDescriptor<PostingCandidateEntity>()).count, 2)
     }
 
     func testStep7_SkipsAlreadyLinkedTransactions() {
@@ -216,7 +214,7 @@ final class AccountingBootstrapTests: XCTestCase {
         let service = AccountingBootstrapService(modelContext: context)
         let result = service.execute(categories: categories, transactions: [tx])
 
-        XCTAssertEqual(result.accountsCreated, 34)
+        XCTAssertEqual(result.accountsCreated, AccountingConstants.defaultAccounts.count)
         XCTAssertGreaterThan(result.categoriesLinked, 0)
         XCTAssertEqual(result.transactionsBackfilled, 1)
         XCTAssertEqual(result.journalEntriesGenerated, 1)

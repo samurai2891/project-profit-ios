@@ -1,7 +1,8 @@
+import SwiftData
 import SwiftUI
 
 struct BalanceSheetView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: AccountingReportViewModel?
 
     var body: some View {
@@ -15,19 +16,18 @@ struct BalanceSheetView: View {
         .navigationTitle("貸借対照表")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let viewModel, let report = viewModel.balanceSheet {
+            if let viewModel, viewModel.balanceSheet != nil {
                 ToolbarItem(placement: .primaryAction) {
                     ExportMenuButton(
                         target: .balanceSheet,
-                        fiscalYear: viewModel.fiscalYear,
-                        dataStore: dataStore
+                        fiscalYear: viewModel.fiscalYear
                     )
                 }
             }
         }
         .task {
             if viewModel == nil {
-                viewModel = AccountingReportViewModel(dataStore: dataStore)
+                viewModel = AccountingReportViewModel(modelContext: modelContext)
             }
         }
     }

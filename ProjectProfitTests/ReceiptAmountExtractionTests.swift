@@ -300,6 +300,16 @@ final class ReceiptAmountExtractionTests: XCTestCase {
         XCTAssertEqual(RegexReceiptParser.extractSubtotal(from: text), 0)
     }
 
+    func testExtractRegistrationNumber() {
+        let text = """
+        テスト商店
+        登録番号 T1234567890123
+        合計 ¥1,000
+        """
+
+        XCTAssertEqual(RegexReceiptParser.extractRegistrationNumber(from: text), "T1234567890123")
+    }
+
     // MARK: - Document/Type Inference
 
     func testDetectDocumentTypeInvoice() {

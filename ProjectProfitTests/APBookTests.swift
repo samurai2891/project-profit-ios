@@ -32,7 +32,7 @@ final class APBookTests: XCTestCase {
     /// Create a project for allocation purposes.
     @discardableResult
     private func makeProject(name: String = "テストPJ") -> PPProject {
-        dataStore.addProject(name: name, description: "")
+        mutations(dataStore).addProject(name: name, description: "")
     }
 
     /// Record a credit purchase (掛仕入): Dr 仕入高 / Cr 買掛金
@@ -45,7 +45,7 @@ final class APBookTests: XCTestCase {
         memo: String = "掛仕入",
         project: PPProject
     ) -> PPTransaction {
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: amount,
             date: date,
@@ -66,7 +66,7 @@ final class APBookTests: XCTestCase {
         counterparty: String? = nil,
         memo: String = "買掛金支払"
     ) -> PPTransaction {
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .transfer,
             amount: amount,
             date: date,
@@ -208,7 +208,7 @@ final class APBookTests: XCTestCase {
         addCreditPurchase(amount: 50000, date: date(2025, 3, 1), counterparty: "田町商店", project: project)
 
         // Entry without counterparty (manual journal entry has no counterparty)
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 5),
             memo: "取引先不明の仕入",
             lines: [
@@ -405,7 +405,7 @@ final class APBookTests: XCTestCase {
     func testAPBook_ManualJournalEntry_NoCounterparty() {
         // Manual journal entries don't have a linked PPTransaction,
         // so counterparty will be nil.
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 8, 1),
             memo: "手動仕訳テスト",
             lines: [

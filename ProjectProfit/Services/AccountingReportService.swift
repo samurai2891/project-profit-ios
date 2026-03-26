@@ -2,6 +2,17 @@ import Foundation
 
 @MainActor
 enum AccountingReportService {
+    private struct LegacyAccountTotals {
+        let activeAccounts: [PPAccount]
+        let debitByAccount: [String: Int]
+        let creditByAccount: [String: Int]
+    }
+
+    private struct CanonicalAccountTotals {
+        let activeAccounts: [CanonicalAccount]
+        let debitByAccount: [UUID: Decimal]
+        let creditByAccount: [UUID: Decimal]
+    }
 
     // MARK: - Trial Balance
 
@@ -12,24 +23,22 @@ enum AccountingReportService {
         journalLines: [PPJournalLine],
         startMonth: Int = 1
     ) -> TrialBalanceReport {
-        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate,
-            excludeTypes: [.closing]
+        let totals = accumulateLegacyAccountTotals(
+            fiscalYear: fiscalYear,
+            accounts: accounts,
+            journalEntries: journalEntries,
+            journalLines: journalLines,
+            startMonth: startMonth
         )
 
-        let rows = accounts.filter(\.isActive).compactMap { account -> TrialBalanceRow? in
-            let lines = journalLines.filter { $0.accountId == account.id && postedEntryIds.contains($0.entryId) }
-            let debitTotal = lines.reduce(0) { $0 + $1.debit }
-            let creditTotal = lines.reduce(0) { $0 + $1.credit }
+        let rows = totals.activeAccounts.compactMap { account -> TrialBalanceRow? in
+            let debitTotal = totals.debitByAccount[account.id] ?? 0
+            let creditTotal = totals.creditByAccount[account.id] ?? 0
             guard debitTotal > 0 || creditTotal > 0 else { return nil }
 
-            let balance: Int
-            if account.normalBalance == .debit {
-                balance = debitTotal - creditTotal
-            } else {
-                balance = creditTotal - debitTotal
-            }
+            let balance = account.normalBalance == .debit
+                ? debitTotal - creditTotal
+                : creditTotal - debitTotal
 
             return TrialBalanceRow(
                 id: account.id,
@@ -59,36 +68,43 @@ enum AccountingReportService {
         journalLines: [PPJournalLine],
         startMonth: Int = 1
     ) -> ProfitLossReport {
-        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate,
-            excludeTypes: [.closing]
+        let totals = accumulateLegacyAccountTotals(
+            fiscalYear: fiscalYear,
+            accounts: accounts,
+            journalEntries: journalEntries,
+            journalLines: journalLines,
+            startMonth: startMonth
         )
 
-        let revenueAccounts = accounts.filter { $0.accountType == .revenue && $0.isActive }
-        let expenseAccounts = accounts.filter { $0.accountType == .expense && $0.isActive }
+        let revenueItems = totals.activeAccounts
+            .filter { $0.accountType == .revenue }
+            .compactMap { account -> ProfitLossItem? in
+                let amount = (totals.creditByAccount[account.id] ?? 0) - (totals.debitByAccount[account.id] ?? 0)
+                guard amount != 0 else { return nil }
+                return ProfitLossItem(
+                    id: account.id,
+                    code: account.code,
+                    name: account.name,
+                    amount: amount,
+                    deductibleAmount: amount
+                )
+            }
+            .sorted { $0.code < $1.code }
 
-        let revenueItems = revenueAccounts.compactMap { account -> ProfitLossItem? in
-            let lines = journalLines.filter { $0.accountId == account.id && postedEntryIds.contains($0.entryId) }
-            let amount = lines.reduce(0) { $0 + $1.credit } - lines.reduce(0) { $0 + $1.debit }
-            guard amount != 0 else { return nil }
-            return ProfitLossItem(
-                id: account.id, code: account.code, name: account.name,
-                amount: amount, deductibleAmount: amount
-            )
-        }
-        .sorted { $0.code < $1.code }
-
-        let expenseItems = expenseAccounts.compactMap { account -> ProfitLossItem? in
-            let lines = journalLines.filter { $0.accountId == account.id && postedEntryIds.contains($0.entryId) }
-            let amount = lines.reduce(0) { $0 + $1.debit } - lines.reduce(0) { $0 + $1.credit }
-            guard amount != 0 else { return nil }
-            return ProfitLossItem(
-                id: account.id, code: account.code, name: account.name,
-                amount: amount, deductibleAmount: amount
-            )
-        }
-        .sorted { $0.code < $1.code }
+        let expenseItems = totals.activeAccounts
+            .filter { $0.accountType == .expense }
+            .compactMap { account -> ProfitLossItem? in
+                let amount = (totals.debitByAccount[account.id] ?? 0) - (totals.creditByAccount[account.id] ?? 0)
+                guard amount != 0 else { return nil }
+                return ProfitLossItem(
+                    id: account.id,
+                    code: account.code,
+                    name: account.name,
+                    amount: amount,
+                    deductibleAmount: amount
+                )
+            }
+            .sorted { $0.code < $1.code }
 
         return ProfitLossReport(
             fiscalYear: fiscalYear,
@@ -107,49 +123,7 @@ enum AccountingReportService {
         journalLines: [PPJournalLine],
         startMonth: Int = 1
     ) -> BalanceSheetReport {
-        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        let postedEntryIds = postedEntryIdsInRange(
-            entries: journalEntries, start: startDate, end: endDate,
-            excludeTypes: [.closing]
-        )
-
-        func buildItems(type: AccountType) -> [BalanceSheetItem] {
-            accounts
-                .filter { $0.accountType == type && $0.isActive }
-                .compactMap { account -> BalanceSheetItem? in
-                    let lines = journalLines.filter { $0.accountId == account.id && postedEntryIds.contains($0.entryId) }
-                    let debit = lines.reduce(0) { $0 + $1.debit }
-                    let credit = lines.reduce(0) { $0 + $1.credit }
-                    guard debit > 0 || credit > 0 else { return nil }
-
-                    let balance: Int
-                    switch type {
-                    case .asset:
-                        // 資産は借方正常: debit - credit
-                        balance = debit - credit
-                    case .liability:
-                        // 負債は貸方正常: credit - debit
-                        balance = credit - debit
-                    case .equity:
-                        // 資本: 借方正常（事業主貸等）は貸方正常から控除
-                        if account.normalBalance == .debit {
-                            balance = -(debit - credit)  // 控除項目として符号反転
-                        } else {
-                            balance = credit - debit
-                        }
-                    case .revenue, .expense:
-                        balance = 0  // B/Sには含まれないが、安全策
-                    }
-                    guard balance != 0 else { return nil }
-                    return BalanceSheetItem(
-                        id: account.id, code: account.code, name: account.name, balance: balance
-                    )
-                }
-                .sorted { $0.code < $1.code }
-        }
-
-        // P&L → 当期純利益を資本に加算
-        let pl = generateProfitLoss(
+        let totals = accumulateLegacyAccountTotals(
             fiscalYear: fiscalYear,
             accounts: accounts,
             journalEntries: journalEntries,
@@ -157,13 +131,57 @@ enum AccountingReportService {
             startMonth: startMonth
         )
 
+        func buildItems(type: AccountType) -> [BalanceSheetItem] {
+            totals.activeAccounts
+                .filter { $0.accountType == type }
+                .compactMap { account -> BalanceSheetItem? in
+                    let debit = totals.debitByAccount[account.id] ?? 0
+                    let credit = totals.creditByAccount[account.id] ?? 0
+                    guard debit > 0 || credit > 0 else { return nil }
+
+                    let balance: Int
+                    switch type {
+                    case .asset:
+                        balance = debit - credit
+                    case .liability:
+                        balance = credit - debit
+                    case .equity:
+                        balance = account.normalBalance == .debit
+                            ? -(debit - credit)
+                            : credit - debit
+                    case .revenue, .expense:
+                        balance = 0
+                    }
+                    guard balance != 0 else { return nil }
+
+                    return BalanceSheetItem(
+                        id: account.id,
+                        code: account.code,
+                        name: account.name,
+                        balance: balance
+                    )
+                }
+                .sorted { $0.code < $1.code }
+        }
+
+        let netIncome = totals.activeAccounts.reduce(into: 0) { result, account in
+            switch account.accountType {
+            case .revenue:
+                result += (totals.creditByAccount[account.id] ?? 0) - (totals.debitByAccount[account.id] ?? 0)
+            case .expense:
+                result -= (totals.debitByAccount[account.id] ?? 0) - (totals.creditByAccount[account.id] ?? 0)
+            case .asset, .liability, .equity:
+                break
+            }
+        }
+
         var equityItems = buildItems(type: .equity)
-        if pl.netIncome != 0 {
+        if netIncome != 0 {
             equityItems.append(BalanceSheetItem(
                 id: "retained-earnings",
                 code: "399",
                 name: "当期純利益",
-                balance: pl.netIncome
+                balance: netIncome
             ))
         }
 
@@ -184,30 +202,15 @@ enum AccountingReportService {
         journals: [CanonicalJournalEntry],
         startMonth: Int = 1
     ) -> CanonicalTrialBalanceReport {
-        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        let filteredJournals = journals.filter { entry in
-            entry.approvedAt != nil
-                && entry.journalDate >= startDate
-                && entry.journalDate <= endDate
-                && entry.entryType != .closing
-        }
+        let totals = accumulateCanonicalAccountTotals(
+            accounts: accounts,
+            journals: journals,
+            dateRange: fiscalYearRange(year: fiscalYear, startMonth: startMonth)
+        )
 
-        let activeAccounts = accounts.filter { $0.archivedAt == nil }
-        let accountsById = Dictionary(uniqueKeysWithValues: activeAccounts.map { ($0.id, $0) })
-
-        var debitByAccount: [UUID: Decimal] = [:]
-        var creditByAccount: [UUID: Decimal] = [:]
-
-        for journal in filteredJournals {
-            for line in journal.lines {
-                debitByAccount[line.accountId, default: 0] += line.debitAmount
-                creditByAccount[line.accountId, default: 0] += line.creditAmount
-            }
-        }
-
-        let rows = activeAccounts.compactMap { account -> CanonicalTrialBalanceRow? in
-            let debit = debitByAccount[account.id] ?? 0
-            let credit = creditByAccount[account.id] ?? 0
+        let rows = totals.activeAccounts.compactMap { account -> CanonicalTrialBalanceRow? in
+            let debit = totals.debitByAccount[account.id] ?? 0
+            let credit = totals.creditByAccount[account.id] ?? 0
             guard debit > 0 || credit > 0 else { return nil }
 
             let balance: Decimal = account.normalBalance == .debit
@@ -243,55 +246,19 @@ enum AccountingReportService {
         dateRange: ClosedRange<Date>? = nil,
         startMonth: Int = 1
     ) -> CanonicalProfitLossReport {
-        let range: (Date, Date)
-        if let dateRange {
-            range = (dateRange.lowerBound, dateRange.upperBound)
-        } else {
-            range = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        }
-
-        let filteredJournals = journals.filter { entry in
-            entry.approvedAt != nil
-                && entry.journalDate >= range.0
-                && entry.journalDate <= range.1
-                && entry.entryType != .closing
-        }
-
-        let activeAccounts = accounts.filter { $0.archivedAt == nil }
-
-        var debitByAccount: [UUID: Decimal] = [:]
-        var creditByAccount: [UUID: Decimal] = [:]
-
-        for journal in filteredJournals {
-            for line in journal.lines {
-                debitByAccount[line.accountId, default: 0] += line.debitAmount
-                creditByAccount[line.accountId, default: 0] += line.creditAmount
-            }
-        }
-
-        let revenueItems = activeAccounts
-            .filter { $0.accountType == .revenue }
-            .compactMap { account -> CanonicalProfitLossItem? in
-                let amount = (creditByAccount[account.id] ?? 0) - (debitByAccount[account.id] ?? 0)
-                guard amount != 0 else { return nil }
-                return CanonicalProfitLossItem(id: account.id, code: account.code, name: account.name, amount: amount)
-            }
-            .sorted { $0.code < $1.code }
-
-        let expenseItems = activeAccounts
-            .filter { $0.accountType == .expense }
-            .compactMap { account -> CanonicalProfitLossItem? in
-                let amount = (debitByAccount[account.id] ?? 0) - (creditByAccount[account.id] ?? 0)
-                guard amount != 0 else { return nil }
-                return CanonicalProfitLossItem(id: account.id, code: account.code, name: account.name, amount: amount)
-            }
-            .sorted { $0.code < $1.code }
+        let totals = accumulateCanonicalAccountTotals(
+            accounts: accounts,
+            journals: journals,
+            dateRange: dateRange.map { ($0.lowerBound, $0.upperBound) }
+                ?? fiscalYearRange(year: fiscalYear, startMonth: startMonth)
+        )
+        let breakdown = canonicalProfitLossBreakdown(from: totals)
 
         return CanonicalProfitLossReport(
             fiscalYear: fiscalYear,
             generatedAt: Date(),
-            revenueItems: revenueItems,
-            expenseItems: expenseItems
+            revenueItems: breakdown.revenueItems,
+            expenseItems: breakdown.expenseItems
         )
     }
 
@@ -305,33 +272,19 @@ enum AccountingReportService {
         startMonth: Int = 1
     ) -> CanonicalBalanceSheetReport {
         let (startDate, fiscalEnd) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
-        let endDate = asOf ?? fiscalEnd
-
-        let filteredJournals = journals.filter { entry in
-            entry.approvedAt != nil
-                && entry.journalDate >= startDate
-                && entry.journalDate <= endDate
-                && entry.entryType != .closing
-        }
-
-        let activeAccounts = accounts.filter { $0.archivedAt == nil }
-
-        var debitByAccount: [UUID: Decimal] = [:]
-        var creditByAccount: [UUID: Decimal] = [:]
-
-        for journal in filteredJournals {
-            for line in journal.lines {
-                debitByAccount[line.accountId, default: 0] += line.debitAmount
-                creditByAccount[line.accountId, default: 0] += line.creditAmount
-            }
-        }
+        let totals = accumulateCanonicalAccountTotals(
+            accounts: accounts,
+            journals: journals,
+            dateRange: (startDate, asOf ?? fiscalEnd)
+        )
+        let profitLossBreakdown = canonicalProfitLossBreakdown(from: totals)
 
         func buildItems(type: CanonicalAccountType) -> [CanonicalBalanceSheetItem] {
-            activeAccounts
+            totals.activeAccounts
                 .filter { $0.accountType == type }
                 .compactMap { account -> CanonicalBalanceSheetItem? in
-                    let debit = debitByAccount[account.id] ?? 0
-                    let credit = creditByAccount[account.id] ?? 0
+                    let debit = totals.debitByAccount[account.id] ?? 0
+                    let credit = totals.creditByAccount[account.id] ?? 0
                     guard debit > 0 || credit > 0 else { return nil }
 
                     let balance: Decimal
@@ -348,25 +301,24 @@ enum AccountingReportService {
                         balance = 0
                     }
                     guard balance != 0 else { return nil }
-                    return CanonicalBalanceSheetItem(id: account.id, code: account.code, name: account.name, balance: balance)
+
+                    return CanonicalBalanceSheetItem(
+                        id: account.id,
+                        code: account.code,
+                        name: account.name,
+                        balance: balance
+                    )
                 }
                 .sorted { $0.code < $1.code }
         }
 
-        let pl = generateProfitLoss(
-            fiscalYear: fiscalYear,
-            accounts: accounts,
-            journals: journals,
-            startMonth: startMonth
-        )
-
         var equityItems = buildItems(type: .equity)
-        if pl.netIncome != 0 {
+        if profitLossBreakdown.netIncome != 0 {
             equityItems.append(CanonicalBalanceSheetItem(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000399")!,
                 code: "399",
                 name: "当期純利益",
-                balance: pl.netIncome
+                balance: profitLossBreakdown.netIncome
             ))
         }
 
@@ -385,7 +337,6 @@ enum AccountingReportService {
         let calendar = Calendar(identifier: .gregorian)
         let start = calendar.date(from: DateComponents(year: year, month: startMonth, day: 1))!
         let end = calendar.date(byAdding: DateComponents(year: 1, day: -1), to: start)!
-        // end を日末に設定
         let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: end)!
         return (start, endOfDay)
     }
@@ -404,5 +355,88 @@ enum AccountingReportService {
                 }
                 .map(\.id)
         )
+    }
+
+    private static func accumulateLegacyAccountTotals(
+        fiscalYear: Int,
+        accounts: [PPAccount],
+        journalEntries: [PPJournalEntry],
+        journalLines: [PPJournalLine],
+        startMonth: Int
+    ) -> LegacyAccountTotals {
+        let (startDate, endDate) = fiscalYearRange(year: fiscalYear, startMonth: startMonth)
+        let postedEntryIds = postedEntryIdsInRange(
+            entries: journalEntries,
+            start: startDate,
+            end: endDate,
+            excludeTypes: [.closing]
+        )
+
+        var debitByAccount: [String: Int] = [:]
+        var creditByAccount: [String: Int] = [:]
+        for line in journalLines where postedEntryIds.contains(line.entryId) {
+            debitByAccount[line.accountId, default: 0] += line.debit
+            creditByAccount[line.accountId, default: 0] += line.credit
+        }
+
+        return LegacyAccountTotals(
+            activeAccounts: accounts.filter(\.isActive),
+            debitByAccount: debitByAccount,
+            creditByAccount: creditByAccount
+        )
+    }
+
+    private static func accumulateCanonicalAccountTotals(
+        accounts: [CanonicalAccount],
+        journals: [CanonicalJournalEntry],
+        dateRange: (start: Date, end: Date)
+    ) -> CanonicalAccountTotals {
+        var debitByAccount: [UUID: Decimal] = [:]
+        var creditByAccount: [UUID: Decimal] = [:]
+
+        for journal in journals where
+            journal.approvedAt != nil &&
+            journal.journalDate >= dateRange.start &&
+            journal.journalDate <= dateRange.end &&
+            journal.entryType != .closing
+        {
+            for line in journal.lines {
+                debitByAccount[line.accountId, default: 0] += line.debitAmount
+                creditByAccount[line.accountId, default: 0] += line.creditAmount
+            }
+        }
+
+        return CanonicalAccountTotals(
+            activeAccounts: accounts.filter { $0.archivedAt == nil },
+            debitByAccount: debitByAccount,
+            creditByAccount: creditByAccount
+        )
+    }
+
+    private static func canonicalProfitLossBreakdown(
+        from totals: CanonicalAccountTotals
+    ) -> (revenueItems: [CanonicalProfitLossItem], expenseItems: [CanonicalProfitLossItem], netIncome: Decimal) {
+        let revenueItems = totals.activeAccounts
+            .filter { $0.accountType == .revenue }
+            .compactMap { account -> CanonicalProfitLossItem? in
+                let amount = (totals.creditByAccount[account.id] ?? 0) - (totals.debitByAccount[account.id] ?? 0)
+                guard amount != 0 else { return nil }
+                return CanonicalProfitLossItem(id: account.id, code: account.code, name: account.name, amount: amount)
+            }
+            .sorted { $0.code < $1.code }
+
+        let expenseItems = totals.activeAccounts
+            .filter { $0.accountType == .expense }
+            .compactMap { account -> CanonicalProfitLossItem? in
+                let amount = (totals.debitByAccount[account.id] ?? 0) - (totals.creditByAccount[account.id] ?? 0)
+                guard amount != 0 else { return nil }
+                return CanonicalProfitLossItem(id: account.id, code: account.code, name: account.name, amount: amount)
+            }
+            .sorted { $0.code < $1.code }
+
+        let netIncome = revenueItems.reduce(Decimal.zero) { $0 + $1.amount }
+            - expenseItems.reduce(Decimal.zero) { $0 + $1.amount }
+
+        return (revenueItems: revenueItems, expenseItems: expenseItems, netIncome: netIncome)
     }
 }

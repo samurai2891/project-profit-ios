@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FixedAssetFormView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let editingAsset: PPFixedAsset?
@@ -14,6 +14,7 @@ struct FixedAssetFormView: View {
     @State private var salvageValue: Int = 1
     @State private var businessUsePercent: Int = 100
     @State private var memo: String = ""
+    @State private var errorMessage: String?
 
     init(editingAsset: PPFixedAsset? = nil) {
         self.editingAsset = editingAsset
@@ -34,6 +35,10 @@ struct FixedAssetFormView: View {
         if cost < 200_000 { return .threeYearEqual }
         if cost < 300_000 { return .smallBusiness }
         return .straightLine
+    }
+
+    private var fixedAssetWorkflowUseCase: FixedAssetWorkflowUseCase {
+        FixedAssetWorkflowUseCase(modelContext: modelContext)
     }
 
     var body: some View {
@@ -113,32 +118,37 @@ struct FixedAssetFormView: View {
                 memo = asset.memo ?? ""
             }
         }
+        .alert("固定資産を保存できません", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func saveAsset() -> Bool {
-        if let asset = editingAsset {
-            return dataStore.updateFixedAsset(
-                id: asset.id,
-                name: name,
-                acquisitionDate: acquisitionDate,
-                acquisitionCost: acquisitionCost,
-                usefulLifeYears: usefulLifeYears,
-                depreciationMethod: depreciationMethod,
-                salvageValue: salvageValue,
-                businessUsePercent: businessUsePercent,
-                memo: memo.isEmpty ? nil : memo
+        do {
+            try fixedAssetWorkflowUseCase.saveAsset(
+                existingAssetId: editingAsset?.id,
+                input: FixedAssetUpsertInput(
+                    name: name,
+                    acquisitionDate: acquisitionDate,
+                    acquisitionCost: acquisitionCost,
+                    usefulLifeYears: usefulLifeYears,
+                    depreciationMethod: depreciationMethod,
+                    salvageValue: salvageValue,
+                    businessUsePercent: businessUsePercent,
+                    memo: memo.isEmpty ? nil : memo
+                )
             )
-        } else {
-            return dataStore.addFixedAsset(
-                name: name,
-                acquisitionDate: acquisitionDate,
-                acquisitionCost: acquisitionCost,
-                usefulLifeYears: usefulLifeYears,
-                depreciationMethod: depreciationMethod,
-                salvageValue: salvageValue,
-                businessUsePercent: businessUsePercent,
-                memo: memo.isEmpty ? nil : memo
-            ) != nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 }

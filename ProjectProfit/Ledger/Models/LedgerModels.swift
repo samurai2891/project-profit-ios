@@ -344,14 +344,18 @@ struct FixedAssetDepreciationEntry: Codable, Identifiable {
     var acquisitionDate: String       // 取得日
     var acquisitionCost: Int          // 取得価額
     var depreciationMethod: DepreciationMethod // 償却方法
+    var depreciationMethodLabel: String? // 償却方法の表示ラベル
     var usefulLife: Int               // 耐用年数
     var depreciationRate: Double      // 償却率
     var depreciationMonths: Int       // 償却月数
     var openingBookValue: Int         // 期首帳簿価額
     var midYearChange: Int?           // 期中増減
-    // computed: depreciationExpense, specialDepreciation, totalDepreciation
-    // computed: deductibleAmount, yearEndBalance
+    var depreciationExpense: Int?     // 減価償却費
+    var specialDepreciation: Int?     // 特別(割増)償却費
+    var totalDepreciation: Int?       // 償却費合計
     var businessUseRatio: Double      // 事業専用割合（0.0〜1.0）
+    var deductibleAmount: Int?        // 必要経費算入額
+    var yearEndBalance: Int?          // 本年末残高
     var remarks: String?              // 摘要
     
     init(account: String, assetCode: String, assetName: String, assetType: String,
@@ -359,7 +363,15 @@ struct FixedAssetDepreciationEntry: Codable, Identifiable {
          depreciationMethod: DepreciationMethod, usefulLife: Int,
          depreciationRate: Double, depreciationMonths: Int,
          openingBookValue: Int, businessUseRatio: Double,
-         quantity: Int? = nil, midYearChange: Int? = nil, remarks: String? = nil) {
+         quantity: Int? = nil,
+         midYearChange: Int? = nil,
+         depreciationMethodLabel: String? = nil,
+         depreciationExpense: Int? = nil,
+         specialDepreciation: Int? = nil,
+         totalDepreciation: Int? = nil,
+         deductibleAmount: Int? = nil,
+         yearEndBalance: Int? = nil,
+         remarks: String? = nil) {
         self.id = UUID()
         self.account = account
         self.assetCode = assetCode
@@ -370,12 +382,18 @@ struct FixedAssetDepreciationEntry: Codable, Identifiable {
         self.acquisitionDate = acquisitionDate
         self.acquisitionCost = acquisitionCost
         self.depreciationMethod = depreciationMethod
+        self.depreciationMethodLabel = depreciationMethodLabel
         self.usefulLife = usefulLife
         self.depreciationRate = depreciationRate
         self.depreciationMonths = depreciationMonths
         self.openingBookValue = openingBookValue
         self.midYearChange = midYearChange
+        self.depreciationExpense = depreciationExpense
+        self.specialDepreciation = specialDepreciation
+        self.totalDepreciation = totalDepreciation
         self.businessUseRatio = businessUseRatio
+        self.deductibleAmount = deductibleAmount
+        self.yearEndBalance = yearEndBalance
         self.remarks = remarks
     }
 }

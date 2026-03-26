@@ -30,7 +30,7 @@ final class PlannedEndDateTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     private func makeDate(year: Int, month: Int, day: Int) -> Date {
@@ -42,13 +42,72 @@ final class PlannedEndDateTests: XCTestCase {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    private struct GeneratedRecurringPosting {
+        let id: UUID
+        let date: Date
+        let memo: String
+        let recurringId: UUID?
+        let allocations: [Allocation]
+    }
+
+    private func fetchGeneratedRecurringTransactions() -> [GeneratedRecurringPosting] {
+        let journals = dataStore.canonicalJournalEntries()
+            .filter { $0.entryType == .recurring }
+            .sorted { $0.journalDate < $1.journalDate }
+        guard !journals.isEmpty else {
+            return []
+        }
+
+        let candidateIds = Set(journals.compactMap(\.sourceCandidateId))
+        let descriptor = FetchDescriptor<PostingCandidateEntity>()
+        let candidates = ((try? context.fetch(descriptor)) ?? [])
+            .map(PostingCandidateEntityMapper.toDomain)
+            .filter { candidateIds.contains($0.id) }
+        let candidatesById = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        return journals.compactMap { journal in
+            guard let candidateId = journal.sourceCandidateId,
+                  let candidate = candidatesById[candidateId],
+                  let snapshot = candidate.legacySnapshot else {
+                return nil
+            }
+
+            let relevantLines = candidate.proposedLines.filter { line in
+                switch snapshot.type {
+                case .income:
+                    return line.creditAccountId != nil
+                case .expense:
+                    return line.debitAccountId != nil
+                case .transfer:
+                    return false
+                }
+            }
+            let amount = relevantLines.reduce(into: [UUID: Int]()) { result, line in
+                guard let projectId = line.projectAllocationId else { return }
+                result[projectId, default: 0] += NSDecimalNumber(decimal: line.amount).intValue
+            }
+            let allocations = amount.map { projectId, allocationAmount in
+                Allocation(projectId: projectId, ratio: 0, amount: allocationAmount)
+            }
+            .sorted { $0.projectId.uuidString < $1.projectId.uuidString }
+
+            return GeneratedRecurringPosting(
+                id: journal.id,
+                date: journal.journalDate,
+                memo: journal.description,
+                recurringId: snapshot.recurringId,
+                allocations: allocations
+            )
+        }
+    }
+
     // MARK: - Test 1: effectiveEndDate returns completedAt when both set
 
     func testEffectiveEndDate_completedAtTakesPrecedence() {
         let project = makeProject()
         let completedAt = makeDate(year: 2026, month: 6, day: 30)
         let plannedEndDate = makeDate(year: 2026, month: 9, day: 30)
-        dataStore.updateProject(
+        mutations(dataStore).updateProject(
             id: project.id,
             status: .completed,
             completedAt: completedAt,
@@ -65,7 +124,7 @@ final class PlannedEndDateTests: XCTestCase {
     func testEffectiveEndDate_usesPlannedEndDateWhenNoCompletedAt() {
         let project = makeProject()
         let plannedEndDate = makeDate(year: 2026, month: 9, day: 30)
-        dataStore.updateProject(id: project.id, plannedEndDate: plannedEndDate)
+        mutations(dataStore).updateProject(id: project.id, plannedEndDate: plannedEndDate)
 
         let updated = dataStore.getProject(id: project.id)!
         XCTAssertEqual(updated.effectiveEndDate, plannedEndDate)
@@ -89,7 +148,7 @@ final class PlannedEndDateTests: XCTestCase {
 
         // Add a transaction for March 2026 (31 days)
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -103,7 +162,7 @@ final class PlannedEndDateTests: XCTestCase {
 
         // Set plannedEndDate to March 15 for project A (15 days active)
         let plannedEndDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.updateProject(id: projectA.id, plannedEndDate: plannedEndDate)
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: plannedEndDate)
 
         let transactions = fetchAllTransactions()
         let allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -121,7 +180,7 @@ final class PlannedEndDateTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -134,14 +193,14 @@ final class PlannedEndDateTests: XCTestCase {
         )
 
         // First set plannedEndDate to March 15
-        dataStore.updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 15))
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 15))
 
         var transactions = fetchAllTransactions()
         var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
         XCTAssertEqual(allocA.amount, 7500, "First: 15500 * 15 / 31")
 
         // Change to March 20
-        dataStore.updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 20))
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 20))
 
         transactions = fetchAllTransactions()
         allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -159,7 +218,7 @@ final class PlannedEndDateTests: XCTestCase {
         let projectB = makeProject(name: "Project B")
 
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -172,14 +231,14 @@ final class PlannedEndDateTests: XCTestCase {
         )
 
         // Set plannedEndDate
-        dataStore.updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 15))
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: makeDate(year: 2026, month: 3, day: 15))
 
         var transactions = fetchAllTransactions()
         var allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
         XCTAssertNotEqual(allocA.amount, 15500, "Should be pro-rated, not original")
 
         // Clear plannedEndDate
-        dataStore.updateProject(id: projectA.id, plannedEndDate: .some(nil))
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: .some(nil))
 
         transactions = fetchAllTransactions()
         allocA = transactions.first!.allocations.first { $0.projectId == projectA.id }!
@@ -194,7 +253,7 @@ final class PlannedEndDateTests: XCTestCase {
 
         // Add a transaction for March 2026 (31 days)
         let transactionDate = makeDate(year: 2026, month: 3, day: 15)
-        dataStore.addTransaction(
+        mutations(dataStore).addTransaction(
             type: .expense,
             amount: 31000,
             date: transactionDate,
@@ -229,7 +288,7 @@ final class PlannedEndDateTests: XCTestCase {
 
     func testAddProject_withPlannedEndDate() {
         let plannedEndDate = makeDate(year: 2026, month: 12, day: 31)
-        let project = dataStore.addProject(name: "Planned Project", description: "desc", plannedEndDate: plannedEndDate)
+        let project = mutations(dataStore).addProject(name: "Planned Project", description: "desc", plannedEndDate: plannedEndDate)
 
         XCTAssertNotNil(project.plannedEndDate)
         let comps = calendar.dateComponents([.year, .month, .day], from: project.plannedEndDate!)
@@ -254,10 +313,10 @@ final class PlannedEndDateTests: XCTestCase {
         let lastMonth = month == 1 ? 12 : month - 1
         let lastMonthYear = month == 1 ? year - 1 : year
         let plannedEndDate = makeDate(year: lastMonthYear, month: lastMonth, day: 15)
-        dataStore.updateProject(id: projectA.id, plannedEndDate: plannedEndDate)
+        mutations(dataStore).updateProject(id: projectA.id, plannedEndDate: plannedEndDate)
 
         // Create manual recurring
-        dataStore.addRecurring(
+        mutations(dataStore).addRecurring(
             name: "Manual Monthly",
             type: .expense,
             amount: 10000,
@@ -272,14 +331,17 @@ final class PlannedEndDateTests: XCTestCase {
             dayOfMonth: 1
         )
 
-        let transactions = fetchAllTransactions()
+        XCTAssertEqual(mutations(dataStore).processRecurringTransactions(), 1, "Should generate one recurring posting")
+
+        let transactions = fetchGeneratedRecurringTransactions()
         let recurringTx = transactions.filter { $0.memo.contains("[定期]") }
         XCTAssertFalse(recurringTx.isEmpty, "Should have generated a recurring transaction")
 
         if let tx = recurringTx.first {
-            let allocA = tx.allocations.first { $0.projectId == projectA.id }!
-            // Project A has plannedEndDate last month, so for this month it gets 0 active days
-            XCTAssertEqual(allocA.amount, 0, "Project A should get 0 (plannedEndDate before this month)")
+            let allocA = tx.allocations.first { $0.projectId == projectA.id }
+            let allocB = tx.allocations.first { $0.projectId == projectB.id }
+            XCTAssertNil(allocA, "Project A should be excluded once plannedEndDate leaves it with 0 active days")
+            XCTAssertEqual(allocB?.amount, 10000, "Project B should receive the full amount")
         }
     }
 }

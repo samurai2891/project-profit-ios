@@ -1,5 +1,22 @@
 import Foundation
 
+struct PostingCandidateLegacySnapshot: Codable, Sendable, Equatable {
+    let type: TransactionType
+    let categoryId: String
+    let recurringId: UUID?
+    let paymentAccountId: String?
+    let transferToAccountId: String?
+    let taxDeductibleRate: Int?
+    let taxAmount: Int?
+    let taxCodeId: String?
+    let taxRate: Int?
+    let isTaxIncluded: Bool?
+    let taxCategory: TaxCategory?
+    let receiptImagePath: String?
+    let lineItems: [ReceiptLineItem]
+    let counterpartyName: String?
+}
+
 /// 仕訳候補（Evidence → Candidate → PostedJournal の中間段階）
 /// OCR → 即確定仕訳にしない。必ず Candidate 経由で承認を経る
 struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
@@ -15,6 +32,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
     let status: CandidateStatus
     let source: CandidateSource
     let memo: String?
+    let legacySnapshot: PostingCandidateLegacySnapshot?
     let createdAt: Date
     let updatedAt: Date
 
@@ -31,6 +49,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
         status: CandidateStatus = .draft,
         source: CandidateSource = .manual,
         memo: String? = nil,
+        legacySnapshot: PostingCandidateLegacySnapshot? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -46,6 +65,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
         self.status = status
         self.source = source
         self.memo = memo
+        self.legacySnapshot = legacySnapshot
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -72,6 +92,7 @@ struct PostingCandidate: Identifiable, Codable, Sendable, Equatable {
             status: status ?? self.status,
             source: self.source,
             memo: memo ?? self.memo,
+            legacySnapshot: self.legacySnapshot,
             createdAt: self.createdAt,
             updatedAt: Date()
         )

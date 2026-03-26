@@ -7,6 +7,7 @@ extension DataStore {
 
     // MARK: - CRUD
 
+#if DEBUG
     @discardableResult
     func addInventoryRecord(
         fiscalYear: Int,
@@ -61,6 +62,7 @@ extension DataStore {
         refreshInventoryRecords()
         return true
     }
+#endif
 
     func getInventoryRecord(fiscalYear: Int) -> PPInventoryRecord? {
         inventoryRecords.first { $0.fiscalYear == fiscalYear }

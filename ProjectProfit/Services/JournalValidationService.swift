@@ -48,7 +48,8 @@ enum JournalValidationService {
         _ entry: PPJournalEntry,
         lines: [PPJournalLine],
         accounts: [PPAccount] = [],
-        profile: PPAccountingProfile? = nil
+        yearLockState: YearLockState? = nil,
+        fiscalYear: Int? = nil
     ) -> [JournalValidationIssue] {
         var issues: [JournalValidationIssue] = []
 
@@ -76,12 +77,13 @@ enum JournalValidationService {
             }
         }
 
-        // 年度ロックチェック（profile が渡された場合のみ）
-        if let profile, profile.isLocked {
+        // 年度ロックチェック（yearLockState が渡された場合のみ）
+        if let yearLockState, yearLockState != .open {
             let calendar = Calendar(identifier: .gregorian)
             let entryYear = calendar.component(.year, from: entry.date)
-            if entryYear == profile.fiscalYear {
-                issues.append(.lockedFiscalYear(year: profile.fiscalYear))
+            let targetYear = fiscalYear ?? entryYear
+            if entryYear == targetYear {
+                issues.append(.lockedFiscalYear(year: targetYear))
             }
         }
 

@@ -229,4 +229,45 @@ enum ReportCSVExportService {
 
         return buildCSV(headers: headers, rows: rows)
     }
+
+    // MARK: - Withholding Statement CSV
+
+    static func exportWithholdingStatementAnnualCSV(summary: WithholdingStatementAnnualSummary) -> String {
+        let headers = [
+            "年度", "支払先", "源泉区分", "支払件数", "支払総額", "源泉徴収税額", "実支払額", "住所", "登録番号",
+        ]
+        let rows = summary.documents.map { document in
+            [
+                String(summary.fiscalYear),
+                document.counterpartyName,
+                document.withholdingTaxCode.displayName,
+                String(document.paymentCount),
+                NSDecimalNumber(decimal: document.totalGrossAmount).stringValue,
+                NSDecimalNumber(decimal: document.totalWithholdingTaxAmount).stringValue,
+                NSDecimalNumber(decimal: document.totalNetAmount).stringValue,
+                document.payeeAddress ?? "",
+                document.payeeRegistrationNumber ?? "",
+            ]
+        }
+        return buildCSV(headers: headers, rows: rows)
+    }
+
+    static func exportWithholdingStatementPayeeCSV(document: WithholdingStatementDocument) -> String {
+        let headers = [
+            "年度", "支払日", "摘要", "支払総額", "源泉徴収税額", "実支払額", "支払先", "源泉区分",
+        ]
+        let rows = document.rows.map { row in
+            [
+                String(document.fiscalYear),
+                formatDate(row.date),
+                row.description,
+                NSDecimalNumber(decimal: row.grossAmount).stringValue,
+                NSDecimalNumber(decimal: row.withholdingTaxAmount).stringValue,
+                NSDecimalNumber(decimal: row.netAmount).stringValue,
+                document.counterpartyName,
+                document.withholdingTaxCode.displayName,
+            ]
+        }
+        return buildCSV(headers: headers, rows: rows)
+    }
 }

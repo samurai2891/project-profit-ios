@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct AccountFormView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -29,6 +28,7 @@ struct AccountFormView: View {
     private var isValid: Bool {
         !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedLegalReportLineId != nil
     }
 
     init(account: CanonicalAccount? = nil, onSaved: (() -> Void)? = nil) {
@@ -163,7 +163,15 @@ struct AccountFormView: View {
     }
 
     private func save() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        let snapshot: TransactionFormSnapshot
+        do {
+            snapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        guard let businessId = snapshot.businessId else {
             errorMessage = "事業者情報が未設定です"
             return
         }

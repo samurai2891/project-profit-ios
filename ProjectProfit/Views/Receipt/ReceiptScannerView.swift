@@ -1,6 +1,8 @@
+import PDFKit
 import PhotosUI
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Scanner View
 
@@ -8,15 +10,23 @@ struct ReceiptScannerView: View {
     @Environment(\.dismiss) private var dismiss
 
     let defaultProjectId: UUID?
+    let sharedImportItem: SharedImportInboxItem?
 
     @State private var selectedImage: UIImage?
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showCamera = false
+    @State private var showPDFImporter = false
+    @State private var showFileImporter = false
     @State private var selectedSourceType: EvidenceSourceType = .manualNoFile
     @State private var scannerService = ReceiptScannerService()
+    @State private var originalImportedFileData: Data?
+    @State private var originalImportedFileMimeType: String?
+    @State private var importError: String?
+    @State private var hasHandledInitialSharedImport = false
 
-    init(defaultProjectId: UUID? = nil) {
+    init(defaultProjectId: UUID? = nil, sharedImportItem: SharedImportInboxItem? = nil) {
         self.defaultProjectId = defaultProjectId
+        self.sharedImportItem = sharedImportItem
     }
 
     var body: some View {
@@ -33,7 +43,10 @@ struct ReceiptScannerView: View {
                         ocrText: output.ocrText,
                         receiptImage: selectedImage,
                         evidenceSourceType: selectedSourceType,
+                        originalFileData: originalImportedFileData,
+                        originalFileMimeType: originalImportedFileMimeType,
                         defaultProjectId: defaultProjectId,
+                        onIntakeSucceeded: consumeSharedImportIfNeeded,
                         onDismiss: { dismiss() }
                     )
                 case .failed(let message):
@@ -53,8 +66,31 @@ struct ReceiptScannerView: View {
                 CameraView(image: $selectedImage)
                     .ignoresSafeArea()
             }
+            .fileImporter(
+                isPresented: $showPDFImporter,
+                allowedContentTypes: [.pdf]
+            ) { result in
+                handleFileImport(result: result)
+            }
+            .fileImporter(
+                isPresented: $showFileImporter,
+                allowedContentTypes: [.image, .pdf]
+            ) { result in
+                handleFileImport(result: result)
+            }
             .onChange(of: photoPickerItem) { _, newItem in
                 loadPhoto(from: newItem)
+            }
+            .task(id: sharedImportItem?.id) {
+                importSharedItemIfNeeded()
+            }
+            .alert("読み込みエラー", isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )) {
+                Button("OK", role: .cancel) { importError = nil }
+            } message: {
+                Text(importError ?? "ファイルの読み込みに失敗しました")
             }
         }
     }
@@ -81,7 +117,7 @@ struct ReceiptScannerView: View {
             Text("レシート・請求書・領収書を読み取り")
                 .font(.title3.weight(.semibold))
 
-            Text("カメラで撮影するか\nフォトライブラリから選択してください")
+            Text("カメラで撮影、フォトライブラリから選択、\nまたはPDF・ファイルを読み込んでください")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -128,6 +164,48 @@ struct ReceiptScannerView: View {
                 }
                 .accessibilityLabel("フォトライブラリから選択")
                 .accessibilityHint("写真アプリから書類画像を選択")
+
+                Button {
+                    showPDFImporter = true
+                } label: {
+                    HStack {
+                        Image(systemName: "doc.fill")
+                        Text("PDFを読み込む")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(AppColors.surface)
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppColors.primary, lineWidth: 1)
+                    )
+                }
+                .accessibilityLabel("PDFを読み込む")
+                .accessibilityHint("ファイルアプリからPDF書類を選択")
+
+                Button {
+                    showFileImporter = true
+                } label: {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                        Text("ファイルから読み込む")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(AppColors.surface)
+                    .foregroundStyle(AppColors.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppColors.primary, lineWidth: 1)
+                    )
+                }
+                .accessibilityLabel("ファイルから読み込む")
+                .accessibilityHint("ファイルアプリから画像またはPDFを選択")
             }
             .padding(.horizontal, 20)
 
@@ -153,10 +231,7 @@ struct ReceiptScannerView: View {
 
             HStack(spacing: 12) {
                 Button {
-                    selectedImage = nil
-                    photoPickerItem = nil
-                    selectedSourceType = .manualNoFile
-                    scannerService.reset()
+                    resetSelection()
                 } label: {
                     Text("やり直す")
                         .fontWeight(.medium)
@@ -236,10 +311,7 @@ struct ReceiptScannerView: View {
                 .multilineTextAlignment(.center)
 
                 Button {
-                    selectedImage = nil
-                    photoPickerItem = nil
-                    selectedSourceType = .manualNoFile
-                    scannerService.reset()
+                    resetSelection()
                 } label: {
                 Text("もう一度試す")
                     .fontWeight(.semibold)
@@ -257,11 +329,25 @@ struct ReceiptScannerView: View {
         .padding(20)
     }
 
+    // MARK: - Selection Reset
+
+    private func resetSelection() {
+        selectedImage = nil
+        photoPickerItem = nil
+        originalImportedFileData = nil
+        originalImportedFileMimeType = nil
+        selectedSourceType = .manualNoFile
+        scannerService.reset()
+        hasHandledInitialSharedImport = sharedImportItem != nil
+    }
+
     // MARK: - Photo Loading
 
     private func loadPhoto(from item: PhotosPickerItem?) {
         guard let item else { return }
         selectedSourceType = .photoLibrary
+        originalImportedFileData = nil
+        originalImportedFileMimeType = nil
         Task {
             if let data = try? await item.loadTransferable(type: Data.self),
                let uiImage = UIImage(data: data)
@@ -269,6 +355,115 @@ struct ReceiptScannerView: View {
                 selectedImage = uiImage
             }
         }
+    }
+
+    // MARK: - File Import
+
+    private func handleFileImport(result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            guard url.startAccessingSecurityScopedResource() else {
+                importError = "ファイルへのアクセス権限がありません"
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+
+            do {
+                let fileData = try Data(contentsOf: url)
+                let isPDF = url.pathExtension.lowercased() == "pdf"
+                    || UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true
+
+                if isPDF {
+                    guard let renderResult = PDFPageRenderer.renderFirstPage(from: fileData) else {
+                        importError = "PDFの読み込みに失敗しました。有効なPDFファイルを選択してください"
+                        return
+                    }
+                    selectedSourceType = .importedPDF
+                    originalImportedFileData = renderResult.originalData
+                    originalImportedFileMimeType = "application/pdf"
+                    selectedImage = renderResult.image
+                } else {
+                    guard let uiImage = UIImage(data: fileData) else {
+                        importError = "画像の読み込みに失敗しました。対応形式の画像を選択してください"
+                        return
+                    }
+                    selectedSourceType = .importedImage
+                    originalImportedFileData = fileData
+                    originalImportedFileMimeType = resolvedImageMimeType(
+                        fileURL: url,
+                        typeIdentifier: nil
+                    )
+                    selectedImage = uiImage
+                }
+            } catch {
+                importError = "ファイルの読み込みに失敗しました: \(error.localizedDescription)"
+            }
+
+        case .failure(let error):
+            // User cancelled - no error to show
+            if (error as NSError).code == NSUserCancelledError { return }
+            importError = "ファイルの選択に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func importSharedItemIfNeeded() {
+        guard !hasHandledInitialSharedImport else { return }
+        hasHandledInitialSharedImport = true
+        guard let sharedImportItem else { return }
+        guard let fileURL = ShareImportInboxService.fileURL(for: sharedImportItem) else {
+            importError = "共有ファイルが見つかりません。再度共有してください"
+            return
+        }
+
+        do {
+            let fileData = try Data(contentsOf: fileURL)
+            let isPDF = sharedImportItem.typeIdentifier == UTType.pdf.identifier
+                || UTType(sharedImportItem.typeIdentifier)?.conforms(to: .pdf) == true
+                || fileURL.pathExtension.lowercased() == "pdf"
+
+            if isPDF {
+                guard let renderResult = PDFPageRenderer.renderFirstPage(from: fileData) else {
+                    importError = "共有PDFの読み込みに失敗しました"
+                    return
+                }
+                selectedSourceType = .importedPDF
+                originalImportedFileData = renderResult.originalData
+                originalImportedFileMimeType = "application/pdf"
+                selectedImage = renderResult.image
+            } else {
+                guard let image = UIImage(data: fileData) else {
+                    importError = "共有画像の読み込みに失敗しました"
+                    return
+                }
+                selectedSourceType = .emailAttachment
+                originalImportedFileData = fileData
+                originalImportedFileMimeType = resolvedImageMimeType(
+                    fileURL: fileURL,
+                    typeIdentifier: sharedImportItem.typeIdentifier
+                )
+                selectedImage = image
+            }
+        } catch {
+            importError = "共有ファイルの読み込みに失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func resolvedImageMimeType(fileURL: URL, typeIdentifier: String?) -> String {
+        if let typeIdentifier,
+           let mimeType = UTType(typeIdentifier)?.preferredMIMEType,
+           mimeType.hasPrefix("image/") {
+            return mimeType
+        }
+        if let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType,
+           mimeType.hasPrefix("image/") {
+            return mimeType
+        }
+        return "image/jpeg"
+    }
+
+    private func consumeSharedImportIfNeeded() {
+        guard let sharedImportItem else { return }
+        ShareImportInboxService.markConsumed(sharedImportItem)
     }
 }
 

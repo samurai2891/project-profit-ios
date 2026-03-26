@@ -11,6 +11,9 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
     let projectAllocationId: UUID?
     let memo: String?
     let evidenceLineReferenceId: UUID?
+    let withholdingTaxCodeId: String?
+    let withholdingTaxAmount: Decimal?
+    let withholdingTaxBaseAmount: Decimal?
 
     init(
         id: UUID = UUID(),
@@ -21,7 +24,10 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
         legalReportLineId: String? = nil,
         projectAllocationId: UUID? = nil,
         memo: String? = nil,
-        evidenceLineReferenceId: UUID? = nil
+        evidenceLineReferenceId: UUID? = nil,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
+        withholdingTaxBaseAmount: Decimal? = nil
     ) {
         self.id = id
         self.debitAccountId = debitAccountId
@@ -32,6 +38,39 @@ struct PostingCandidateLine: Identifiable, Codable, Sendable, Equatable {
         self.projectAllocationId = projectAllocationId
         self.memo = memo
         self.evidenceLineReferenceId = evidenceLineReferenceId
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
+        self.withholdingTaxBaseAmount = withholdingTaxBaseAmount
+    }
+
+    /// イミュータブル更新
+    func updated(
+        debitAccountId: UUID?? = nil,
+        creditAccountId: UUID?? = nil,
+        amount: Decimal? = nil,
+        taxCodeId: String?? = nil,
+        legalReportLineId: String?? = nil,
+        projectAllocationId: UUID?? = nil,
+        memo: String?? = nil,
+        evidenceLineReferenceId: UUID?? = nil,
+        withholdingTaxCodeId: String?? = nil,
+        withholdingTaxAmount: Decimal?? = nil,
+        withholdingTaxBaseAmount: Decimal?? = nil
+    ) -> PostingCandidateLine {
+        PostingCandidateLine(
+            id: self.id,
+            debitAccountId: debitAccountId ?? self.debitAccountId,
+            creditAccountId: creditAccountId ?? self.creditAccountId,
+            amount: amount ?? self.amount,
+            taxCodeId: taxCodeId ?? self.taxCodeId,
+            legalReportLineId: legalReportLineId ?? self.legalReportLineId,
+            projectAllocationId: projectAllocationId ?? self.projectAllocationId,
+            memo: memo ?? self.memo,
+            evidenceLineReferenceId: evidenceLineReferenceId ?? self.evidenceLineReferenceId,
+            withholdingTaxCodeId: withholdingTaxCodeId ?? self.withholdingTaxCodeId,
+            withholdingTaxAmount: withholdingTaxAmount ?? self.withholdingTaxAmount,
+            withholdingTaxBaseAmount: withholdingTaxBaseAmount ?? self.withholdingTaxBaseAmount
+        )
     }
 }
 

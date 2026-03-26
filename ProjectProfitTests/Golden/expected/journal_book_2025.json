@@ -8,14 +8,26 @@
         {
           "accountId" : "acct-misc",
           "credit" : 0,
-          "debit" : 110000,
+          "debit" : 55000,
           "displayOrder" : 0
         },
         {
-          "accountId" : "acct-cash",
-          "credit" : 110000,
-          "debit" : 0,
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 55000,
           "displayOrder" : 1
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 55000,
+          "debit" : 0,
+          "displayOrder" : 2
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 55000,
+          "debit" : 0,
+          "displayOrder" : 3
         }
       ],
       "memo" : "事務所家賃 1月分"
@@ -208,14 +220,38 @@
         {
           "accountId" : "acct-misc",
           "credit" : 0,
-          "debit" : 110000,
+          "debit" : 37400,
           "displayOrder" : 0
         },
         {
-          "accountId" : "acct-cash",
-          "credit" : 110000,
-          "debit" : 0,
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 36300,
           "displayOrder" : 1
+        },
+        {
+          "accountId" : "acct-misc",
+          "credit" : 0,
+          "debit" : 36300,
+          "displayOrder" : 2
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 37400,
+          "debit" : 0,
+          "displayOrder" : 3
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 36300,
+          "debit" : 0,
+          "displayOrder" : 4
+        },
+        {
+          "accountId" : "acct-cash",
+          "credit" : 36300,
+          "debit" : 0,
+          "displayOrder" : 5
         }
       ],
       "memo" : "事務所家賃 6月分（全プロジェクト均等配賦）"

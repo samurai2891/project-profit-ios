@@ -352,6 +352,71 @@ class EtaxTagPipelineTests(unittest.TestCase):
             self.assertNotEqual(validate.returncode, 0)
             self.assertIn("xmlTag 重複", validate.stdout)
 
+    def test_validate_allows_known_repeated_xml_tags_in_filing_pack(self) -> None:
+        filing_dir = self.repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / "2025" / "filing"
+        validate = self.run_cmd(
+            "python3",
+            str(self.validate_script),
+            "--filing-dir",
+            str(filing_dir),
+        )
+        self.assertEqual(validate.returncode, 0, msg=validate.stdout + validate.stderr)
+
+    def test_validate_filing_dir_detects_leaf_only_mapping_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            source_dir = self.repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / "2025" / "filing"
+            for name in ("common.json", "blue_general.json", "blue_cash_basis.json", "white_shushi.json"):
+                shutil.copy2(source_dir / name, temp_dir / name)
+
+            white_path = temp_dir / "white_shushi.json"
+            with white_path.open("r", encoding="utf-8") as fp:
+                white_pack = json.load(fp)
+            white_pack["sections"][0]["fields"].append(
+                {
+                    "internalKey": "invalid_container_field",
+                    "fieldLabel": "不正コンテナ",
+                    "xmlTag": "AIG00020",
+                    "dataType": "number",
+                }
+            )
+            with white_path.open("w", encoding="utf-8") as fp:
+                json.dump(white_pack, fp, ensure_ascii=False, indent=2)
+                fp.write("\n")
+
+            validate = self.run_cmd(
+                "python3",
+                str(self.validate_script),
+                "--filing-dir",
+                str(temp_dir),
+            )
+            self.assertNotEqual(validate.returncode, 0)
+            self.assertIn("leaf-only mapping 違反", validate.stdout)
+
+    def test_validate_filing_dir_detects_pack_coverage_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            temp_dir = Path(td)
+            source_dir = self.repo_root / "ProjectProfit" / "Resources" / "TaxYearPacks" / "2025" / "filing"
+            for name in ("common.json", "blue_general.json", "blue_cash_basis.json", "white_shushi.json"):
+                shutil.copy2(source_dir / name, temp_dir / name)
+
+            cash_path = temp_dir / "blue_cash_basis.json"
+            with cash_path.open("r", encoding="utf-8") as fp:
+                cash_pack = json.load(fp)
+            cash_pack["sections"][2]["fields"] = []
+            with cash_path.open("w", encoding="utf-8") as fp:
+                json.dump(cash_pack, fp, ensure_ascii=False, indent=2)
+                fp.write("\n")
+
+            validate = self.run_cmd(
+                "python3",
+                str(self.validate_script),
+                "--filing-dir",
+                str(temp_dir),
+            )
+            self.assertNotEqual(validate.returncode, 0)
+            self.assertIn("pack coverage 不足 [blue_cash_basis]", validate.stdout)
+
     def test_apply_fails_on_missing_without_allow_missing_flag(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             temp_dir = Path(td)

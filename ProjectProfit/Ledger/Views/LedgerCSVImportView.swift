@@ -7,13 +7,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LedgerCSVImportView: View {
+    @Environment(\.modelContext) private var modelContext
     @Environment(LedgerDataStore.self) private var ledgerStore
     @Environment(\.dismiss) private var dismiss
 
     let bookId: UUID
 
     @State private var showFilePicker = false
-    @State private var importResult: LedgerCSVImportResult?
+    @State private var importResult: CSVImportResult?
     @State private var isImporting = false
     @State private var previewRows: [[String]] = []
     @State private var selectedURL: URL?
@@ -21,6 +22,17 @@ struct LedgerCSVImportView: View {
 
     private var book: SDLedgerBook? {
         ledgerStore.book(for: bookId)
+    }
+
+    private var importCoordinator: LedgerImportCoordinator? {
+        guard let ledgerType = book?.ledgerType else {
+            return nil
+        }
+        return LedgerImportCoordinator(
+            modelContext: modelContext,
+            ledgerType: ledgerType,
+            metadataJSON: book?.metadataJSON
+        )
     }
 
     var body: some View {
@@ -110,7 +122,7 @@ struct LedgerCSVImportView: View {
                                 Text("\(result.errorCount)件")
                                     .font(.headline)
                             }
-                            ForEach(result.errors.prefix(10), id: \.line) { error in
+                            ForEach(result.lineErrors.prefix(10)) { error in
                                 Text("行\(error.line): \(error.reason)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -172,8 +184,7 @@ struct LedgerCSVImportView: View {
 
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
-            let cleaned = content.replacingOccurrences(of: "\u{FEFF}", with: "")
-            previewRows = CSVImportService.shared.parseCSV(cleaned)
+            previewRows = importCoordinator?.preparePreview(content: content) ?? []
         } catch {
             errorMessage = "ファイル読み込みエラー: \(error.localizedDescription)"
         }
@@ -185,7 +196,7 @@ struct LedgerCSVImportView: View {
             return
         }
         guard let url = selectedURL,
-              let ledgerType = book?.ledgerType else { return }
+              let importCoordinator else { return }
 
         isImporting = true
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -198,13 +209,10 @@ struct LedgerCSVImportView: View {
         defer { url.stopAccessingSecurityScopedResource() }
 
         do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            let cleaned = content.replacingOccurrences(of: "\u{FEFF}", with: "")
-            let result = LedgerCSVImportService.shared.importCSV(
-                content: cleaned,
-                ledgerType: ledgerType,
-                ledgerStore: ledgerStore,
-                bookId: bookId
+            let fileData = try Data(contentsOf: url)
+            let result = try await importCoordinator.importFile(
+                fileData: fileData,
+                originalFileName: url.lastPathComponent
             )
             importResult = result
             errorMessage = nil

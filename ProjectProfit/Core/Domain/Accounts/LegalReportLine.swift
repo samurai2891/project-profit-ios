@@ -1,7 +1,7 @@
 import Foundation
 
-/// 青色申告決算書の表示行ID
-/// 勘定科目がどの決算書行に表示されるかを定義する
+/// 法定帳票/決算書の表示行ID
+/// 勘定科目がどの表示行に対応するかを定義する
 enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
     // 損益計算書 — 収入
     case salesRevenue = "sales_revenue"          // ア 売上（収入）金額
@@ -11,6 +11,7 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
     case openingInventory = "opening_inventory"  // 期首商品棚卸高
     case purchases = "purchases"                 // 仕入金額
     case closingInventory = "closing_inventory"  // 期末商品棚卸高
+    case costOfGoodsSold = "cost_of_goods_sold"  // 売上原価
 
     // 損益計算書 — 経費
     case salaries = "salaries"                   // 給料賃金
@@ -35,11 +36,22 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
     case cash = "cash"                           // 現金
     case deposits = "deposits"                   // 預金
     case accountsReceivable = "accounts_receivable" // 売掛金
+    case prepaidExpenses = "prepaid_expenses"    // 前払費用
+    case creditCard = "credit_card"              // クレジットカード
     case inventory = "inventory"                 // 棚卸資産
     case fixedAssets = "fixed_assets"            // 固定資産
+    case accumulatedDepreciation = "accumulated_depreciation" // 減価償却累計額
+    case inputTax = "input_tax"                  // 仮払消費税
+    case suspense = "suspense"                   // 仮勘定
     case accountsPayable = "accounts_payable"    // 買掛金
+    case accruedExpenses = "accrued_expenses"    // 未払費用
+    case withholdingTaxPayable = "withholding_tax_payable" // 源泉所得税預り金
+    case outputTax = "output_tax"                // 仮受消費税
+    case taxPayable = "tax_payable"              // 未払消費税
     case borrowings = "borrowings"               // 借入金
+    case ownerContributions = "owner_contributions" // 事業主借
     case capital = "capital"                     // 元入金
+    case ownerDrawings = "owner_drawings"        // 事業主貸
 
     var id: String { rawValue }
 
@@ -50,6 +62,7 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
         case .openingInventory: "期首商品棚卸高"
         case .purchases: "仕入金額"
         case .closingInventory: "期末商品棚卸高"
+        case .costOfGoodsSold: "売上原価"
         case .salaries: "給料賃金"
         case .outsourcing: "外注工賃"
         case .depreciation: "減価償却費"
@@ -70,11 +83,22 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
         case .cash: "現金"
         case .deposits: "預金"
         case .accountsReceivable: "売掛金"
+        case .prepaidExpenses: "前払費用"
+        case .creditCard: "クレジットカード"
         case .inventory: "棚卸資産"
         case .fixedAssets: "固定資産"
+        case .accumulatedDepreciation: "減価償却累計額"
+        case .inputTax: "仮払消費税"
+        case .suspense: "仮勘定"
         case .accountsPayable: "買掛金"
+        case .accruedExpenses: "未払費用"
+        case .withholdingTaxPayable: "源泉所得税預り金"
+        case .outputTax: "仮受消費税"
+        case .taxPayable: "未払消費税"
         case .borrowings: "借入金"
+        case .ownerContributions: "事業主借"
         case .capital: "元入金"
+        case .ownerDrawings: "事業主貸"
         }
     }
 
@@ -83,16 +107,95 @@ enum LegalReportLine: String, CaseIterable, Codable, Sendable, Identifiable {
         switch self {
         case .salesRevenue, .miscIncome:
             return .revenue
-        case .openingInventory, .purchases, .closingInventory:
+        case .openingInventory, .purchases, .closingInventory, .costOfGoodsSold:
             return .costOfSales
         case .salaries, .outsourcing, .depreciation, .taxes, .travelTransport,
              .communication, .advertising, .entertainment, .insurance,
              .repair, .consumables, .welfare, .rent, .utilities,
              .packagingShipping, .interest, .miscExpense:
             return .expenses
-        case .cash, .deposits, .accountsReceivable, .inventory, .fixedAssets,
-             .accountsPayable, .borrowings, .capital:
+        case .cash, .deposits, .accountsReceivable, .prepaidExpenses, .creditCard,
+             .inventory, .fixedAssets, .accumulatedDepreciation, .inputTax, .suspense,
+             .accountsPayable, .accruedExpenses, .withholdingTaxPayable, .outputTax, .taxPayable,
+             .borrowings, .ownerContributions, .capital, .ownerDrawings:
             return .balanceSheet
+        }
+    }
+
+    static func defaultLine(for subtype: AccountSubtype) -> LegalReportLine? {
+        switch subtype {
+        case .cash:
+            return .cash
+        case .ordinaryDeposit:
+            return .deposits
+        case .accountsReceivable:
+            return .accountsReceivable
+        case .prepaidExpenses:
+            return .prepaidExpenses
+        case .creditCard:
+            return .creditCard
+        case .accountsPayable:
+            return .accountsPayable
+        case .accruedExpenses:
+            return .accruedExpenses
+        case .withholdingTaxPayable:
+            return .withholdingTaxPayable
+        case .ownerCapital:
+            return .capital
+        case .ownerContributions:
+            return .ownerContributions
+        case .ownerDrawings:
+            return .ownerDrawings
+        case .suspense:
+            return .suspense
+        case .openingBalance:
+            return nil
+        case .accumulatedDepreciation:
+            return .accumulatedDepreciation
+        case .salesRevenue:
+            return .salesRevenue
+        case .otherIncome:
+            return .miscIncome
+        case .inputTax:
+            return .inputTax
+        case .outputTax:
+            return .outputTax
+        case .taxPayable:
+            return .taxPayable
+        case .openingInventory:
+            return .openingInventory
+        case .purchases:
+            return .purchases
+        case .closingInventory:
+            return .closingInventory
+        case .costOfGoodsSold:
+            return .costOfGoodsSold
+        case .rentExpense:
+            return .rent
+        case .utilitiesExpense:
+            return .utilities
+        case .travelExpense:
+            return .travelTransport
+        case .communicationExpense:
+            return .communication
+        case .advertisingExpense:
+            return .advertising
+        case .entertainmentExpense:
+            return .entertainment
+        case .depreciationExpense:
+            return .depreciation
+        case .insuranceExpense:
+            return .insurance
+        case .interestExpense:
+            return .interest
+        case .taxesExpense:
+            return .taxes
+        case .suppliesExpense:
+            return .consumables
+        case .outsourcingExpense:
+            return .outsourcing
+        case .miscExpense:
+            return .miscExpense
         }
     }
 }

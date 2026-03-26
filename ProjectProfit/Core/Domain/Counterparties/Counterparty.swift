@@ -1,5 +1,21 @@
 import Foundation
 
+enum RegistrationNumberNormalizer {
+    static func normalize(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+
+        let uppercased = trimmed.uppercased()
+        let digits = uppercased.hasPrefix("T") ? String(uppercased.dropFirst()) : uppercased
+        guard digits.count == 13, digits.allSatisfy(\.isNumber) else {
+            return nil
+        }
+        return "T\(digits)"
+    }
+}
+
 /// 取引先マスタ（独立したエンティティ）
 /// 現行の PPTransaction.counterparty: String → マスタに昇格
 struct Counterparty: Identifiable, Codable, Sendable, Equatable {
@@ -20,6 +36,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
     let defaultTaxCodeId: String?
     let defaultProjectId: UUID?
     let notes: String?
+    let payeeInfo: PayeeInfo?
     let createdAt: Date
     let updatedAt: Date
 
@@ -41,6 +58,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         defaultTaxCodeId: String? = nil,
         defaultProjectId: UUID? = nil,
         notes: String? = nil,
+        payeeInfo: PayeeInfo? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -61,6 +79,7 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         self.defaultTaxCodeId = defaultTaxCodeId
         self.defaultProjectId = defaultProjectId
         self.notes = notes
+        self.payeeInfo = payeeInfo
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -74,7 +93,8 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
         statusEffectiveFrom: Date?? = nil,
         statusEffectiveTo: Date?? = nil,
         defaultAccountId: UUID?? = nil,
-        defaultTaxCodeId: String?? = nil
+        defaultTaxCodeId: String?? = nil,
+        payeeInfo: PayeeInfo?? = nil
     ) -> Counterparty {
         Counterparty(
             id: self.id,
@@ -94,8 +114,13 @@ struct Counterparty: Identifiable, Codable, Sendable, Equatable {
             defaultTaxCodeId: defaultTaxCodeId ?? self.defaultTaxCodeId,
             defaultProjectId: self.defaultProjectId,
             notes: self.notes,
+            payeeInfo: payeeInfo ?? self.payeeInfo,
             createdAt: self.createdAt,
             updatedAt: Date()
         )
+    }
+
+    var normalizedInvoiceRegistrationNumber: String? {
+        RegistrationNumberNormalizer.normalize(invoiceRegistrationNumber)
     }
 }

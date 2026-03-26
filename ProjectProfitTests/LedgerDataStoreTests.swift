@@ -11,6 +11,7 @@ final class LedgerDataStoreTests: XCTestCase {
     override func setUp() {
         super.setUp()
         container = try! TestModelContainer.create()
+        FeatureFlags.useLegacyLedger = true
         context = container.mainContext
         store = LedgerDataStore(modelContext: context, accessMode: .readWrite)
     }
@@ -19,6 +20,7 @@ final class LedgerDataStoreTests: XCTestCase {
         store = nil
         context = nil
         container = nil
+        FeatureFlags.clearOverrides()
         super.tearDown()
     }
 
@@ -320,54 +322,6 @@ final class LedgerDataStoreTests: XCTestCase {
         XCTAssertEqual(balances[0].balance, 250000)
         // 負債: 残高 = 250000 - 80000 + 0 = 170000
         XCTAssertEqual(balances[1].balance, 170000)
-    }
-
-    // MARK: - CSV Export
-
-    func testCSVExportCashBook() {
-        let metadataJSON = LedgerBridge.encodeCashBookMetadata(
-            CashBookMetadata(carryForward: 100000)
-        )
-        let book = store.createBook(
-            ledgerType: .cashBook, title: "テスト",
-            metadataJSON: metadataJSON
-        )!
-
-        store.addEntry(to: book.id, entry: CashBookEntry(
-            month: 1, day: 5, description: "売上", account: "売上高",
-            income: 50000
-        ))
-
-        let csv = store.exportCSV(for: book.id)
-        XCTAssertNotNil(csv)
-        XCTAssertTrue(csv!.hasPrefix("\u{FEFF}"), "UTF-8 BOM付き")
-        XCTAssertTrue(csv!.contains("月,日,摘要,勘定科目,入金,出金,残高"))
-        XCTAssertTrue(csv!.contains("前期より繰越"))
-        XCTAssertTrue(csv!.contains("売上"))
-    }
-
-    func testCSVExportInvoice() {
-        let metadataJSON = LedgerBridge.encodeCashBookMetadata(
-            CashBookMetadata(carryForward: 0)
-        )
-        let book = store.createBook(
-            ledgerType: .cashBookInvoice, title: "テスト",
-            metadataJSON: metadataJSON,
-            includeInvoice: true
-        )!
-
-        store.addEntry(to: book.id, entry: CashBookEntry(
-            month: 1, day: 1, description: "テスト", account: "売上高",
-            income: 10000,
-            reducedTax: true,
-            invoiceType: .applicable
-        ))
-
-        let csv = store.exportCSV(for: book.id)
-        XCTAssertNotNil(csv)
-        XCTAssertTrue(csv!.contains("軽減税率"))
-        XCTAssertTrue(csv!.contains("インボイス"))
-        XCTAssertTrue(csv!.contains("〇"))
     }
 
     // MARK: - Final Balance

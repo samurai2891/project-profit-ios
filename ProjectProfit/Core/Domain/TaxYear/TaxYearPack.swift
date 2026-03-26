@@ -16,6 +16,8 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
     let localRateReduced: Decimal
     let smallAmountThreshold: Decimal
     let transitionalCreditRate: Decimal?
+    let transitionalMeasures: [TransitionalTaxCreditMeasure]
+    let simplifiedDeemedPurchaseRates: [Int: Decimal]
     let twoTenthsSpecialAvailable: Bool
     let blueDeductionOptions: [BlueDeductionLevel]
     let filingDeadlineMonth: Int
@@ -37,6 +39,8 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         case localRateReduced
         case smallAmountThreshold
         case transitionalCreditRate
+        case transitionalMeasures
+        case simplifiedDeemedPurchaseRates
         case twoTenthsSpecialAvailable
         case blueDeductionOptions
         case filingDeadlineMonth
@@ -59,6 +63,8 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         localRateReduced: Decimal = Decimal(string: "0.0176")!,
         smallAmountThreshold: Decimal = 10000,
         transitionalCreditRate: Decimal? = nil,
+        transitionalMeasures: [TransitionalTaxCreditMeasure] = TransitionalTaxCreditMeasure.defaultMeasures,
+        simplifiedDeemedPurchaseRates: [Int: Decimal] = Self.defaultSimplifiedDeemedPurchaseRates,
         twoTenthsSpecialAvailable: Bool = true,
         blueDeductionOptions: [BlueDeductionLevel] = BlueDeductionLevel.allCases,
         filingDeadlineMonth: Int = 3,
@@ -79,6 +85,8 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         self.localRateReduced = localRateReduced
         self.smallAmountThreshold = smallAmountThreshold
         self.transitionalCreditRate = transitionalCreditRate
+        self.transitionalMeasures = transitionalMeasures
+        self.simplifiedDeemedPurchaseRates = simplifiedDeemedPurchaseRates
         self.twoTenthsSpecialAvailable = twoTenthsSpecialAvailable
         self.blueDeductionOptions = blueDeductionOptions
         self.filingDeadlineMonth = filingDeadlineMonth
@@ -107,6 +115,14 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         self.localRateReduced = try container.decodeDecimalIfPresent(forKey: .localRateReduced) ?? Decimal(string: "0.0176")!
         self.smallAmountThreshold = try container.decodeDecimalIfPresent(forKey: .smallAmountThreshold) ?? 10000
         self.transitionalCreditRate = try container.decodeDecimalIfPresent(forKey: .transitionalCreditRate)
+        self.transitionalMeasures = try container.decodeIfPresent(
+            [TransitionalTaxCreditMeasure].self,
+            forKey: .transitionalMeasures
+        ) ?? TransitionalTaxCreditMeasure.defaultMeasures
+        self.simplifiedDeemedPurchaseRates = try container.decodeIfPresent(
+            [Int: Decimal].self,
+            forKey: .simplifiedDeemedPurchaseRates
+        ) ?? Self.defaultSimplifiedDeemedPurchaseRates
         self.twoTenthsSpecialAvailable = try container.decodeIfPresent(Bool.self, forKey: .twoTenthsSpecialAvailable) ?? true
         self.blueDeductionOptions = try container.decodeBlueDeductionOptionsIfPresent(forKey: .blueDeductionOptions) ?? BlueDeductionLevel.allCases
         self.filingDeadlineMonth = try container.decodeIfPresent(Int.self, forKey: .filingDeadlineMonth) ?? 3
@@ -115,6 +131,66 @@ struct TaxYearPack: Identifiable, Codable, Sendable, Equatable {
         self.effectiveFrom = try container.decodeIfPresent(Date.self, forKey: .effectiveFrom) ?? defaultEffectiveDate
         self.deprecatedAt = try container.decodeIfPresent(Date.self, forKey: .deprecatedAt)
     }
+
+    static let defaultSimplifiedDeemedPurchaseRates: [Int: Decimal] = [
+        1: Decimal(string: "0.90")!,
+        2: Decimal(string: "0.80")!,
+        3: Decimal(string: "0.70")!,
+        4: Decimal(string: "0.60")!,
+        5: Decimal(string: "0.50")!,
+        6: Decimal(string: "0.40")!
+    ]
+}
+
+struct TransitionalTaxCreditMeasure: Codable, Sendable, Equatable {
+    let id: String
+    let periodStart: Date
+    let periodEnd: Date
+    let creditRate: Decimal
+
+    fileprivate enum CodingKeys: String, CodingKey {
+        case id
+        case periodStart
+        case periodEnd
+        case creditRate
+    }
+
+    init(id: String, periodStart: Date, periodEnd: Date, creditRate: Decimal) {
+        self.id = id
+        self.periodStart = periodStart
+        self.periodEnd = periodEnd
+        self.creditRate = creditRate
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.periodStart = try container.decodeFlexibleDate(forKey: .periodStart)
+        self.periodEnd = try container.decodeFlexibleDate(forKey: .periodEnd)
+        self.creditRate = try container.decodeDecimal(forKey: .creditRate)
+    }
+
+    static let defaultMeasures: [TransitionalTaxCreditMeasure] = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return [
+            TransitionalTaxCreditMeasure(
+                id: "transitional_80",
+                periodStart: formatter.date(from: "2023-10-01") ?? .distantPast,
+                periodEnd: formatter.date(from: "2026-09-30") ?? .distantPast,
+                creditRate: Decimal(string: "0.8") ?? Decimal(0)
+            ),
+            TransitionalTaxCreditMeasure(
+                id: "transitional_50",
+                periodStart: formatter.date(from: "2026-10-01") ?? .distantPast,
+                periodEnd: formatter.date(from: "2029-09-30") ?? .distantPast,
+                creditRate: Decimal(string: "0.5") ?? Decimal(0)
+            )
+        ]
+    }()
 }
 
 /// 所得税率ブラケット
@@ -244,6 +320,50 @@ private extension KeyedDecodingContainer where Key == IncomeTaxBracket.CodingKey
         } catch {}
 
         return nil
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleDate(forKey key: Key) throws -> Date {
+        if let date = try? decode(Date.self, forKey: key) {
+            return date
+        }
+        if let stringValue = try? decode(String.self, forKey: key) {
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = "yyyy-MM-dd"
+            if let date = formatter.date(from: stringValue) {
+                return date
+            }
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: self,
+            debugDescription: "Date value is missing or invalid."
+        )
+    }
+
+    func decodeDecimal(forKey key: Key) throws -> Decimal {
+        if let string = try? decode(String.self, forKey: key),
+           let value = Decimal(string: string) {
+            return value
+        }
+        if let decimal = try? decode(Decimal.self, forKey: key) {
+            return decimal
+        }
+        if let doubleValue = try? decode(Double.self, forKey: key) {
+            return Decimal(doubleValue)
+        }
+        if let intValue = try? decode(Int.self, forKey: key) {
+            return Decimal(intValue)
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: self,
+            debugDescription: "Decimal value is missing or invalid."
+        )
     }
 }
 

@@ -112,8 +112,74 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(rebuiltIndex.count, 1)
     }
 
+    func testLocalEvidenceSearchIndexThrowsExplicitErrorForCorruptedProjectIdsJSON() async throws {
+        let repository = SwiftDataEvidenceRepository(modelContext: context)
+        let businessId = UUID()
+        let projectId = UUID()
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "BROKEN-EVIDENCE",
+            projectId: projectId,
+            counterpartyName: "破損証憑",
+            registrationNumber: "T3333333333333",
+            totalAmount: Decimal(string: "6600")!
+        )
+
+        try await repository.save(evidence)
+
+        let descriptor = FetchDescriptor<EvidenceSearchIndexEntity>(
+            predicate: #Predicate { $0.evidenceId == evidence.id }
+        )
+        guard let entry = try context.fetch(descriptor).first else {
+            return XCTFail("Evidence search index entry was not created")
+        }
+        entry.projectIdsJSON = "{broken"
+        try context.save()
+
+        let index = LocalEvidenceSearchIndex(modelContext: context)
+
+        do {
+            _ = try index.search(
+                criteria: EvidenceSearchCriteria(
+                    businessId: businessId,
+                    projectId: projectId
+                )
+            )
+            XCTFail("Expected corrupted evidence search index to throw")
+        } catch let error as CanonicalRepositoryError {
+            switch error {
+            case .searchIndexCorrupted(let indexName, let recordId, let field):
+                XCTAssertEqual(indexName, LocalEvidenceSearchIndex.indexName)
+                XCTAssertEqual(recordId, evidence.id)
+                XCTAssertEqual(field, "projectIdsJSON")
+            default:
+                XCTFail("Unexpected canonical repository error: \(error)")
+            }
+        }
+    }
+
     func testJournalSearchUseCaseSearchesEvidenceBackedJournalsAndRebuildsIndex() async throws {
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let evidence = makeEvidence(
             businessId: businessId,
             fileHash: "JOURNAL-HASH",
@@ -132,8 +198,8 @@ final class SearchIndexTests: XCTestCase {
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "8800")!,
                     memo: "検索テスト"
                 )
@@ -177,8 +243,151 @@ final class SearchIndexTests: XCTestCase {
         XCTAssertEqual(rebuiltIndexes.count, 1)
     }
 
+    func testJournalSearchUseCaseSearchesByCanonicalLineProjectAllocation() async throws {
+        let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        let evidenceProjectId = UUID()
+        let lineProjectId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "PROJECT-LINE-HASH",
+            projectId: evidenceProjectId,
+            counterpartyName: "案件別検索",
+            registrationNumber: "T8888888888888",
+            totalAmount: Decimal(string: "9800")!
+        )
+        try await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let candidate = PostingCandidate(
+            evidenceId: evidence.id,
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "9800")!,
+                    projectAllocationId: lineProjectId,
+                    memo: "案件別"
+                )
+            ],
+            status: .needsReview,
+            source: .ocr,
+            memo: "案件別"
+        )
+
+        try await workflow.saveCandidate(candidate)
+        let approved = try await workflow.approveCandidate(candidateId: candidate.id)
+
+        let useCase = JournalSearchUseCase(modelContext: context)
+        let results = try await useCase.search(
+            criteria: JournalSearchCriteria(
+                businessId: businessId,
+                projectId: lineProjectId
+            )
+        )
+
+        XCTAssertEqual(results, [approved.id])
+    }
+
+    func testLocalJournalSearchIndexThrowsExplicitErrorForEachCorruptedJSONField() async throws {
+        let businessId = UUID()
+        let approved = try await seedIndexedJournal(businessId: businessId)
+        let descriptor = FetchDescriptor<JournalSearchIndexEntity>(
+            predicate: #Predicate { $0.journalId == approved.id }
+        )
+        guard let entry = try context.fetch(descriptor).first else {
+            return XCTFail("Journal search index entry was not created")
+        }
+
+        let mutations: [(field: String, apply: (JournalSearchIndexEntity) -> Void)] = [
+            (
+                field: "counterpartyNamesJSON",
+                apply: { $0.counterpartyNamesJSON = "{broken" }
+            ),
+            (
+                field: "registrationNumbersJSON",
+                apply: { $0.registrationNumbersJSON = "{broken" }
+            ),
+            (
+                field: "projectIdsJSON",
+                apply: { $0.projectIdsJSON = "{broken" }
+            ),
+            (
+                field: "fileHashesJSON",
+                apply: { $0.fileHashesJSON = "{broken" }
+            )
+        ]
+
+        let index = LocalJournalSearchIndex(modelContext: context)
+
+        for mutation in mutations {
+            try index.rebuild(businessId: businessId, taxYear: 2025)
+            guard let refreshedEntry = try context.fetch(descriptor).first else {
+                return XCTFail("Journal search index entry disappeared")
+            }
+            mutation.apply(refreshedEntry)
+            try context.save()
+
+            do {
+                _ = try index.search(criteria: JournalSearchCriteria(businessId: businessId))
+                XCTFail("Expected corrupted journal search index to throw for \(mutation.field)")
+            } catch let error as CanonicalRepositoryError {
+                switch error {
+                case .searchIndexCorrupted(let indexName, let recordId, let field):
+                    XCTAssertEqual(indexName, LocalJournalSearchIndex.indexName)
+                    XCTAssertEqual(recordId, approved.id)
+                    XCTAssertEqual(field, mutation.field)
+                default:
+                    XCTFail("Unexpected canonical repository error: \(error)")
+                }
+            }
+        }
+    }
+
     func testJournalSearchUseCaseExcludesCancelledEntriesWhenRequested() async throws {
         let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
         let evidence = makeEvidence(
             businessId: businessId,
             fileHash: "CANCELLED-HASH",
@@ -197,8 +406,8 @@ final class SearchIndexTests: XCTestCase {
             candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
             proposedLines: [
                 PostingCandidateLine(
-                    debitAccountId: UUID(),
-                    creditAccountId: UUID(),
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
                     amount: Decimal(string: "5000")!,
                     memo: "取消検索"
                 )
@@ -265,5 +474,81 @@ final class SearchIndexTests: XCTestCase {
             linkedProjectIds: [projectId],
             complianceStatus: .pendingReview
         )
+    }
+
+    private func seedIndexedJournal(businessId: UUID) async throws -> CanonicalJournalEntry {
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        try await seedAccount(
+            id: debitAccountId,
+            businessId: businessId,
+            code: "611",
+            name: "雑費",
+            accountType: .expense,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.miscExpense.rawValue
+        )
+        try await seedAccount(
+            id: creditAccountId,
+            businessId: businessId,
+            code: "101",
+            name: "現金",
+            accountType: .asset,
+            normalBalance: .debit,
+            defaultLegalReportLineId: LegalReportLine.cash.rawValue
+        )
+        let projectId = UUID()
+        let evidence = makeEvidence(
+            businessId: businessId,
+            fileHash: "JOURNAL-HASH",
+            projectId: projectId,
+            counterpartyName: "検索取引先",
+            registrationNumber: "T7777777777777",
+            totalAmount: Decimal(string: "8800")!
+        )
+        try await EvidenceCatalogUseCase(modelContext: context).save(evidence)
+
+        let workflow = PostingWorkflowUseCase(modelContext: context)
+        let candidate = PostingCandidate(
+            evidenceId: evidence.id,
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "8800")!,
+                    memo: "検索テスト"
+                )
+            ],
+            status: .needsReview,
+            source: .ocr,
+            memo: "検索テスト"
+        )
+
+        try await workflow.saveCandidate(candidate)
+        return try await workflow.approveCandidate(candidateId: candidate.id)
+    }
+
+    private func seedAccount(
+        id: UUID,
+        businessId: UUID,
+        code: String,
+        name: String,
+        accountType: CanonicalAccountType,
+        normalBalance: NormalBalance,
+        defaultLegalReportLineId: String
+    ) async throws {
+        let account = CanonicalAccount(
+            id: id,
+            businessId: businessId,
+            code: code,
+            name: name,
+            accountType: accountType,
+            normalBalance: normalBalance,
+            defaultLegalReportLineId: defaultLegalReportLineId
+        )
+        try await ChartOfAccountsUseCase(modelContext: context).save(account)
     }
 }

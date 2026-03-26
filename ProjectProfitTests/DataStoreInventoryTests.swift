@@ -23,7 +23,7 @@ final class DataStoreInventoryTests: XCTestCase {
     // MARK: - CRUD
 
     func testAddInventoryRecord() {
-        let record = dataStore.addInventoryRecord(
+        let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -37,7 +37,7 @@ final class DataStoreInventoryTests: XCTestCase {
     }
 
     func testUpdateInventoryRecord() {
-        guard let record = dataStore.addInventoryRecord(
+        guard let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -47,7 +47,7 @@ final class DataStoreInventoryTests: XCTestCase {
             return
         }
 
-        let updatedResult = dataStore.updateInventoryRecord(
+        let updatedResult = mutations(dataStore).updateInventoryRecord(
             id: record.id,
             openingInventory: 120_000,
             closingInventory: 60_000,
@@ -62,7 +62,7 @@ final class DataStoreInventoryTests: XCTestCase {
     }
 
     func testDeleteInventoryRecord() {
-        guard let record = dataStore.addInventoryRecord(
+        guard let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -72,7 +72,7 @@ final class DataStoreInventoryTests: XCTestCase {
             return
         }
 
-        let deleted = dataStore.deleteInventoryRecord(id: record.id)
+        let deleted = mutations(dataStore).deleteInventoryRecord(id: record.id)
         XCTAssertTrue(deleted)
         XCTAssertTrue(dataStore.inventoryRecords.isEmpty)
     }
@@ -82,7 +82,7 @@ final class DataStoreInventoryTests: XCTestCase {
     func testAddInventoryRecord_BlockedWhenYearLocked() {
         setupProfileAndLockYear(2025)
 
-        let record = dataStore.addInventoryRecord(
+        let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -99,7 +99,7 @@ final class DataStoreInventoryTests: XCTestCase {
     }
 
     func testUpdateInventoryRecord_BlockedWhenYearLocked() {
-        guard let record = dataStore.addInventoryRecord(
+        guard let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -111,7 +111,7 @@ final class DataStoreInventoryTests: XCTestCase {
         }
         setupProfileAndLockYear(2025)
 
-        let updatedResult = dataStore.updateInventoryRecord(
+        let updatedResult = mutations(dataStore).updateInventoryRecord(
             id: record.id,
             openingInventory: 300_000,
             memo: "更新後"
@@ -129,7 +129,7 @@ final class DataStoreInventoryTests: XCTestCase {
     }
 
     func testDeleteInventoryRecord_BlockedWhenYearLocked() {
-        guard let record = dataStore.addInventoryRecord(
+        guard let record = mutations(dataStore).addInventoryRecord(
             fiscalYear: 2025,
             openingInventory: 100_000,
             purchases: 500_000,
@@ -140,7 +140,7 @@ final class DataStoreInventoryTests: XCTestCase {
         }
         setupProfileAndLockYear(2025)
 
-        let deleted = dataStore.deleteInventoryRecord(id: record.id)
+        let deleted = mutations(dataStore).deleteInventoryRecord(id: record.id)
         XCTAssertFalse(deleted)
 
         XCTAssertEqual(dataStore.inventoryRecords.count, 1)
@@ -154,15 +154,16 @@ final class DataStoreInventoryTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupProfileAndLockYear(_ year: Int) {
-        if dataStore.accountingProfile == nil {
+        if dataStore.businessProfile == nil {
+            // Insert legacy profile so migration auto-creates canonical profiles
             let profile = PPAccountingProfile(
                 fiscalYear: year,
                 bookkeepingMode: .doubleEntry
             )
             dataStore.modelContext.insert(profile)
             dataStore.save()
-            dataStore.accountingProfile = profile
+            dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 }

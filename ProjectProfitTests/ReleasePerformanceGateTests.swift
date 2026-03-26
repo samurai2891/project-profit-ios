@@ -5,11 +5,16 @@ import XCTest
 
 @MainActor
 final class ReleasePerformanceGateTests: XCTestCase {
+    private enum CorpusSize {
+        static let search = 1_000
+        static let migration = 1_000
+    }
+
     private enum Threshold {
         static let projectionSeconds = 0.75
-        static let searchSeconds = 0.25
+        static let searchSeconds = 0.80
         static let exportSeconds = 1.50
-        static let migrationSeconds = 0.25
+        static let migrationSeconds = 0.80
     }
 
     private var container: ModelContainer!
@@ -31,6 +36,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        FeatureFlags.clearOverrides()
         if let previousFiscalYearStartMonth {
             UserDefaults.standard.set(previousFiscalYearStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
         } else {
@@ -64,7 +70,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     func testSearchQueriesStayUnderGate() async throws {
-        try await seedEvidenceAndJournalSearchCorpus(count: 300, fiscalYear: 2025)
+        try await seedEvidenceAndJournalSearchCorpus(count: CorpusSize.search, fiscalYear: 2025)
 
         let elapsed = try await measureSecondsAsync {
             _ = try await EvidenceCatalogUseCase(modelContext: context).search(
@@ -93,8 +99,8 @@ final class ReleasePerformanceGateTests: XCTestCase {
         var previewForm: EtaxForm?
         var exportResult: EtaxExportViewModel.ExportResult?
         let elapsed = measureSeconds {
-            let viewModel = EtaxExportViewModel(dataStore: dataStore)
-            viewModel.fiscalYear = 2025
+            let viewModel = makeEtaxExportViewModel()
+            viewModel.taxYear = 2025
             viewModel.generatePreview()
             previewForm = viewModel.exportedForm
             viewModel.exportCsv()
@@ -115,8 +121,43 @@ final class ReleasePerformanceGateTests: XCTestCase {
         XCTAssertLessThan(elapsed, Threshold.exportSeconds)
     }
 
+    private func makeEtaxExportViewModel() -> EtaxExportViewModel {
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
+        return EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { taxYear in
+                EtaxExportContext(
+                    businessId: self.dataStore.businessProfile?.id,
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == taxYear
+                        ? self.dataStore.currentTaxYearProfile
+                        : contextQueryUseCase.context(taxYear: taxYear).fallbackTaxYearProfile
+                )
+            },
+            snapshotProvider: { taxYear in
+                formBuildQueryUseCase.snapshot(taxYear: taxYear)
+            },
+            formBuilder: { filingStyle, snapshot in
+                try FormEngine.build(
+                    filingStyle: filingStyle,
+                    input: FormEngine.BuildInput(snapshot: snapshot)
+                )
+            },
+            exporter: { format, form in
+                try ExportCoordinator.export(
+                    target: .etax,
+                    format: format,
+                    fiscalYear: form.fiscalYear,
+                    modelContext: self.context,
+                    skipPreflightValidation: true,
+                    etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                )
+            }
+        )
+    }
+
     func testMigrationDryRunStaysUnderGate() async throws {
-        try await seedMigrationCorpus(count: 300, fiscalYear: 2025)
+        try await seedMigrationCorpus(count: CorpusSize.migration, fiscalYear: 2025)
 
         let elapsed = try measureSecondsThrowing {
             _ = try MigrationReportRunner(modelContext: context).dryRun()
@@ -319,8 +360,13 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     private func ensureTaxClose(for fiscalYear: Int) throws {
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: fiscalYear))
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.taxClose, for: fiscalYear))
+        let previousUseCanonicalPosting = FeatureFlags.useCanonicalPosting
+        FeatureFlags.useCanonicalPosting = true
+        defer { FeatureFlags.useCanonicalPosting = previousUseCanonicalPosting }
+
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertNotNil(try ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
     }
 
     private func canonicalAccount(legacyAccountId: String) async throws -> CanonicalAccount {

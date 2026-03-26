@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct CounterpartyListView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var counterparties: [Counterparty] = []
@@ -66,7 +65,7 @@ struct CounterpartyListView: View {
                 .accessibilityLabel("取引先を追加")
             }
         }
-        .task(id: dataStore.businessProfile?.id) {
+        .task {
             await loadCounterparties()
         }
         .refreshable {
@@ -125,8 +124,8 @@ struct CounterpartyListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if let regNum = counterparty.invoiceRegistrationNumber, !regNum.isEmpty {
-                Text("T\(regNum)")
+            if let regNum = counterparty.normalizedInvoiceRegistrationNumber {
+                Text(regNum)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -143,8 +142,18 @@ struct CounterpartyListView: View {
     }
 
     private func loadCounterparties() async {
-        guard let businessId = dataStore.businessProfile?.id else {
+        let snapshot: TransactionFormSnapshot
+        do {
+            snapshot = try TransactionFormQueryUseCase(modelContext: modelContext).snapshot()
+        } catch {
             counterparties = []
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        guard let businessId = snapshot.businessId else {
+            counterparties = []
+            errorMessage = nil
             return
         }
         isLoading = true
@@ -155,6 +164,7 @@ struct CounterpartyListView: View {
             counterparties = loaded.sorted {
                 ($0.kana ?? $0.displayName) < ($1.kana ?? $1.displayName)
             }
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }

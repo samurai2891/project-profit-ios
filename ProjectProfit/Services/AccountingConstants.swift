@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - Default Account Definitions
 
-/// デフォルト勘定科目定義（34勘定科目）
-/// Todo.md 4B-1 準拠: 資産9, 負債4, 資本3, 収益2, 費用16(e-Tax+在庫/COGS), 特殊1
+/// デフォルト勘定科目定義（35勘定科目）
+/// Todo.md 4B-1 準拠。内訳は `defaultAccounts` の定義を正とする。
 /// コード体系: 1xx資産, 2xx負債, 3xx資本, 4xx収益, 5xx費用, 9xx特殊
 struct DefaultAccountDefinition {
     let id: String
@@ -12,7 +12,32 @@ struct DefaultAccountDefinition {
     let accountType: AccountType
     let normalBalance: NormalBalance
     let subtype: AccountSubtype
+    let defaultLegalReportLineId: String
     let displayOrder: Int
+
+    init(
+        id: String,
+        code: String,
+        name: String,
+        accountType: AccountType,
+        normalBalance: NormalBalance,
+        subtype: AccountSubtype,
+        defaultLegalReportLineId: String? = nil,
+        displayOrder: Int
+    ) {
+        self.id = id
+        self.code = code
+        self.name = name
+        self.accountType = accountType
+        self.normalBalance = normalBalance
+        self.subtype = subtype
+        if let lineId = defaultLegalReportLineId ?? LegalReportLine.defaultLine(for: subtype)?.rawValue {
+            self.defaultLegalReportLineId = lineId
+        } else {
+            preconditionFailure("Default legal report line is missing for subtype \(subtype.rawValue)")
+        }
+        self.displayOrder = displayOrder
+    }
 }
 
 enum AccountingConstants {
@@ -32,6 +57,7 @@ enum AccountingConstants {
         // 負債 (Liabilities) — 2xx
         DefaultAccountDefinition(id: "acct-ap", code: "201", name: "買掛金", accountType: .liability, normalBalance: .credit, subtype: .accountsPayable, displayOrder: 10),
         DefaultAccountDefinition(id: "acct-accrued", code: "202", name: "未払費用", accountType: .liability, normalBalance: .credit, subtype: .accruedExpenses, displayOrder: 11),
+        DefaultAccountDefinition(id: "acct-withholding-tax-payable", code: "205", name: "源泉所得税預り金", accountType: .liability, normalBalance: .credit, subtype: .withholdingTaxPayable, displayOrder: 12),
 
         // 資本 (Equity) — 3xx
         DefaultAccountDefinition(id: "acct-owner-capital", code: "301", name: "元入金", accountType: .equity, normalBalance: .credit, subtype: .ownerCapital, displayOrder: 20),
@@ -79,6 +105,10 @@ enum AccountingConstants {
     static let defaultAccountsById: [String: DefaultAccountDefinition] = {
         Dictionary(uniqueKeysWithValues: defaultAccounts.map { ($0.id, $0) })
     }()
+
+    static func defaultLegalReportLineId(forLegacyAccountId legacyAccountId: String) -> String? {
+        defaultAccountsById[legacyAccountId]?.defaultLegalReportLineId
+    }
 
     // MARK: - Category → Account Mapping
 
@@ -138,6 +168,8 @@ enum AccountingConstants {
     static let outputTaxAccountId = "acct-output-tax"
     /// 未払消費税
     static let taxPayableAccountId = "acct-tax-payable"
+    /// 源泉所得税預り金
+    static let withholdingTaxPayableAccountId = "acct-withholding-tax-payable"
     /// 期首商品棚卸高
     static let openingInventoryAccountId = "acct-opening-inventory"
     /// 仕入高

@@ -15,6 +15,9 @@ final class JournalLineEntity {
     var genreTagIdsJSON: String
     var evidenceReferenceId: UUID?
     var sortOrder: Int
+    var withholdingTaxCodeId: String?
+    var withholdingTaxAmount: Decimal?
+    var withholdingTaxBaseAmount: Decimal?
 
     var journalEntry: JournalEntryEntity?
 
@@ -29,7 +32,10 @@ final class JournalLineEntity {
         projectAllocationId: UUID? = nil,
         genreTagIdsJSON: String = "[]",
         evidenceReferenceId: UUID? = nil,
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        withholdingTaxCodeId: String? = nil,
+        withholdingTaxAmount: Decimal? = nil,
+        withholdingTaxBaseAmount: Decimal? = nil
     ) {
         self.lineId = lineId
         self.accountId = accountId
@@ -42,5 +48,8 @@ final class JournalLineEntity {
         self.genreTagIdsJSON = genreTagIdsJSON
         self.evidenceReferenceId = evidenceReferenceId
         self.sortOrder = sortOrder
+        self.withholdingTaxCodeId = withholdingTaxCodeId
+        self.withholdingTaxAmount = withholdingTaxAmount
+        self.withholdingTaxBaseAmount = withholdingTaxBaseAmount
     }
 }

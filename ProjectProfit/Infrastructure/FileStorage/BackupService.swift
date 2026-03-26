@@ -94,7 +94,6 @@ struct BackupService {
         let allAccounts = try fetchAll(PPAccount.self)
         let allJournalEntries = try fetchAll(PPJournalEntry.self)
         let allJournalLines = try fetchAll(PPJournalLine.self)
-        let allProfiles = try fetchAll(PPAccountingProfile.self)
         let allUserRules = try fetchAll(PPUserRule.self)
         let allFixedAssets = try fetchAll(PPFixedAsset.self)
         let allInventory = try fetchAll(PPInventoryRecord.self)
@@ -156,7 +155,7 @@ struct BackupService {
                 switch scope {
                 case .full:
                     return true
-                case .taxYear:
+                case .taxYear(_):
                     if evidenceIds.contains(event.aggregateId) || candidateIds.contains(event.aggregateId) || journalIds.contains(event.aggregateId) {
                         return true
                     }
@@ -170,48 +169,157 @@ struct BackupService {
                 }
             }
 
+        let recurringTransactions: [PPRecurringTransaction]
+        switch scope {
+        case .full:
+            recurringTransactions = allRecurring
+        case .taxYear(_):
+            let recurringIds = Set(transactions.compactMap(\.recurringId))
+            recurringTransactions = allRecurring.filter { recurringIds.contains($0.id) }
+        }
+
+        let transactionProjectIds = transactions.flatMap { $0.allocations.map(\.projectId) }
+        let evidenceProjectIds = evidenceDocuments.flatMap(\.linkedProjectIds)
+        let postingCandidateProjectIds = postingCandidates.flatMap { $0.proposedLines.compactMap(\.projectAllocationId) }
+        let canonicalJournalProjectIds = canonicalJournals.flatMap { $0.lines.compactMap(\.projectAllocationId) }
+        let combinedProjectIds = transactionProjectIds
+            + evidenceProjectIds
+            + postingCandidateProjectIds
+            + canonicalJournalProjectIds
+        let projectIdsInScope = Set(combinedProjectIds)
+        let categoryIdsInScope = Set(transactions.map(\.categoryId) + recurringTransactions.map(\.categoryId))
+        let legacyAccountIds = transactions.compactMap(\.paymentAccountId)
+            + transactions.compactMap(\.transferToAccountId)
+            + recurringTransactions.compactMap(\.paymentAccountId)
+            + recurringTransactions.compactMap(\.transferToAccountId)
+            + journalLines.map(\.accountId)
+        let legacyAccountIdsInScope = Set(legacyAccountIds)
+
+        let postingCandidateAccountIds = postingCandidates.flatMap { candidate in
+            candidate.proposedLines.compactMap(\.debitAccountId) + candidate.proposedLines.compactMap(\.creditAccountId)
+        }
+        let canonicalAccountIds = canonicalJournals.flatMap { $0.lines.map(\.accountId) } + postingCandidateAccountIds
+        let canonicalAccountIdsInScope = Set(canonicalAccountIds)
+        let counterpartyIds = evidenceDocuments.compactMap(\.linkedCounterpartyId)
+            + postingCandidates.compactMap(\.counterpartyId)
+            + canonicalJournals.flatMap { $0.lines.compactMap(\.counterpartyId) }
+        let counterpartyIdsInScope = Set(counterpartyIds)
+        let businessIds = taxYearProfiles.map(\.businessId)
+            + evidenceDocuments.map(\.businessId)
+            + postingCandidates.map(\.businessId)
+            + canonicalJournals.map(\.businessId)
+        let businessIdsInScope = Set(businessIds)
+
+        let scopedProjects: [PPProject] = switch scope {
+        case .full:
+            allProjects
+        case .taxYear(_):
+            allProjects.filter { projectIdsInScope.contains($0.id) }
+        }
+        let scopedCategories: [PPCategory] = switch scope {
+        case .full:
+            allCategories
+        case .taxYear(_):
+            allCategories.filter { categoryIdsInScope.contains($0.id) }
+        }
+        let scopedLegacyAccounts: [PPAccount] = switch scope {
+        case .full:
+            allAccounts
+        case .taxYear(_):
+            allAccounts.filter { legacyAccountIdsInScope.contains($0.id) }
+        }
+        let scopedUserRules: [PPUserRule] = switch scope {
+        case .full:
+            allUserRules
+        case .taxYear(_):
+            []
+        }
+        let scopedFixedAssets: [PPFixedAsset] = switch scope {
+        case .full:
+            allFixedAssets
+        case .taxYear(_):
+            []
+        }
+        let scopedLedgerBooks: [SDLedgerBook] = switch scope {
+        case .full:
+            allLedgerBooks
+        case .taxYear(_):
+            []
+        }
+        let scopedLedgerEntries: [SDLedgerEntry] = switch scope {
+        case .full:
+            allLedgerEntries
+        case .taxYear(_):
+            []
+        }
+        let scopedBusinessProfiles: [BusinessProfile] = switch scope {
+        case .full:
+            businessProfiles
+        case .taxYear(_):
+            businessProfiles.filter { businessIdsInScope.contains($0.id) }
+        }
+        let scopedCounterparties: [Counterparty] = switch scope {
+        case .full:
+            counterparties
+        case .taxYear(_):
+            counterparties.filter { counterpartyIdsInScope.contains($0.id) }
+        }
+        let scopedCanonicalAccounts: [CanonicalAccount] = switch scope {
+        case .full:
+            canonicalAccounts
+        case .taxYear(_):
+            canonicalAccounts.filter { canonicalAccountIdsInScope.contains($0.id) }
+        }
+        let scopedDistributionRules: [DistributionRule] = switch scope {
+        case .full:
+            distributionRules
+        case .taxYear(_):
+            []
+        }
+
         return AppSnapshotPayload(
             fiscalStartMonth: fiscalStartMonth,
             legacy: LegacySnapshotSection(
-                projects: allProjects.map(LegacyProjectSnapshot.init),
-                categories: allCategories.map(LegacyCategorySnapshot.init),
-                recurringTransactions: allRecurring.map(LegacyRecurringTransactionSnapshot.init),
+                projects: scopedProjects.map(LegacyProjectSnapshot.init),
+                categories: scopedCategories.map(LegacyCategorySnapshot.init),
+                recurringTransactions: recurringTransactions.map(LegacyRecurringTransactionSnapshot.init),
                 transactions: transactions.map(LegacyTransactionSnapshot.init),
-                accounts: allAccounts.map(LegacyAccountSnapshot.init),
+                accounts: scopedLegacyAccounts.map(LegacyAccountSnapshot.init),
                 journalEntries: journalEntries.map(LegacyJournalEntrySnapshot.init),
                 journalLines: journalLines.map(LegacyJournalLineSnapshot.init),
-                accountingProfiles: allProfiles.map(LegacyAccountingProfileSnapshot.init),
-                userRules: allUserRules.map(LegacyUserRuleSnapshot.init),
-                fixedAssets: allFixedAssets.map(LegacyFixedAssetSnapshot.init),
+                // Legacy profile snapshots are restore-compat only. New backups use canonical profiles as the single source of truth.
+                accountingProfiles: [],
+                userRules: scopedUserRules.map(LegacyUserRuleSnapshot.init),
+                fixedAssets: scopedFixedAssets.map(LegacyFixedAssetSnapshot.init),
                 inventoryRecords: inventoryRecords.map(LegacyInventoryRecordSnapshot.init),
                 documentRecords: documentRecords.map(LegacyDocumentRecordSnapshot.init),
                 complianceLogs: complianceLogs.map(LegacyComplianceLogSnapshot.init),
                 transactionLogs: transactionLogs.map(LegacyTransactionLogSnapshot.init),
-                ledgerBooks: allLedgerBooks.map(LegacyLedgerBookSnapshot.init),
-                ledgerEntries: allLedgerEntries.map(LegacyLedgerEntrySnapshot.init)
+                ledgerBooks: scopedLedgerBooks.map(LegacyLedgerBookSnapshot.init),
+                ledgerEntries: scopedLedgerEntries.map(LegacyLedgerEntrySnapshot.init)
             ),
             canonical: CanonicalSnapshotSection(
-                businessProfiles: businessProfiles,
+                businessProfiles: scopedBusinessProfiles,
                 taxYearProfiles: taxYearProfiles,
                 evidenceDocuments: evidenceDocuments,
                 postingCandidates: postingCandidates,
                 journalEntries: canonicalJournals,
-                counterparties: counterparties,
-                accounts: canonicalAccounts,
-                distributionRules: distributionRules,
+                counterparties: scopedCounterparties,
+                accounts: scopedCanonicalAccounts,
+                distributionRules: scopedDistributionRules,
                 auditEvents: auditEvents
             )
         )
     }
 
     private func loadSecureProfiles(payload: AppSnapshotPayload) -> [SnapshotSecureProfile] {
-        let profileIds = Set(payload.legacy.accountingProfiles.map(\.id))
-            .union(payload.canonical.businessProfiles.map { $0.id.uuidString })
-        return profileIds.compactMap { profileId in
-            guard let payload = ProfileSecureStore.load(profileId: profileId) else {
+        // Secure profile payloads are exported only for canonical business profiles.
+        return payload.canonical.businessProfiles.compactMap { profile in
+            let canonicalProfileId = profile.id.uuidString
+            guard let payload = ProfileSecureStore.load(profileId: canonicalProfileId) else {
                 return nil
             }
-            return SnapshotSecureProfile(profileId: profileId, payload: payload)
+            return SnapshotSecureProfile(profileId: canonicalProfileId, payload: payload)
         }
     }
 

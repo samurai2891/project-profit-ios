@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import SwiftData
 import XCTest
 @testable import ProjectProfit
@@ -42,6 +43,7 @@ struct GoldenFixtureLoader {
         try applyCategories(fixture.categories, to: dataStore, context: context)
         let projectMap = try applyProjects(fixture.projects, to: dataStore)
         try await applyTransactions(fixture.transactions, projectMap: projectMap, to: dataStore)
+        try await applyFixtureYearLockState(fixture, context: context)
         dataStore.loadData()
 
         let businessProfile = try XCTUnwrap(dataStore.businessProfile)
@@ -50,6 +52,7 @@ struct GoldenFixtureLoader {
             taxYear: fixture.businessProfile.fiscalYear
         )
         let taxYearProfile = try XCTUnwrap(taxYearProfileCandidate)
+        XCTAssertEqual(taxYearProfile.yearLockState, .taxClose)
         return GoldenScenario(
             container: container,
             context: context,
@@ -68,7 +71,6 @@ struct GoldenFixtureLoader {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fixture.businessProfile.fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         let command = SaveProfileSettingsCommand(
@@ -88,11 +90,36 @@ struct GoldenFixtureLoader {
             simplifiedBusinessCategory: state.taxYearProfile.simplifiedBusinessCategory,
             invoiceIssuerStatusAtYear: state.taxYearProfile.invoiceIssuerStatusAtYear,
             electronicBookLevel: state.taxYearProfile.electronicBookLevel,
-            yearLockState: .open,
+            yearLockState: state.taxYearProfile.yearLockState,
             taxYear: fixture.businessProfile.fiscalYear
         )
         _ = try await useCase.save(command: command, currentState: state)
         dataStore.loadData()
+    }
+
+    private static func applyFixtureYearLockState(
+        _ fixture: GoldenFixture,
+        context: ModelContext
+    ) async throws {
+        let fiscalYear = fixture.businessProfile.fiscalYear
+        let businessProfileCandidate = try await SwiftDataBusinessProfileRepository(modelContext: context).findDefault()
+        let businessProfile = try XCTUnwrap(
+            businessProfileCandidate,
+            "Golden fixture should create a canonical business profile before year lock setup"
+        )
+        let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessProfile.id && $0.taxYear == fiscalYear
+            }
+        )
+        let entity = try XCTUnwrap(
+            try context.fetch(descriptor).first,
+            "Golden fixture should create a tax year profile before year lock setup"
+        )
+        // Golden fixtures replay a known snapshot and intentionally bypass closing preflight.
+        entity.yearLockStateRaw = YearLockState.taxClose.rawValue
+        entity.updatedAt = Date()
+        try context.save()
     }
 
     private static func applyAccounts(
@@ -125,16 +152,19 @@ struct GoldenFixtureLoader {
         context: ModelContext
     ) throws {
         for fixtureCategory in fixtureCategories {
+            let linkedAccountId = linkedAccountId(for: fixtureCategory)
             if let existing = dataStore.categories.first(where: { $0.id == fixtureCategory.id }) {
                 existing.name = fixtureCategory.name
                 existing.type = categoryType(from: fixtureCategory.type)
+                existing.linkedAccountId = linkedAccountId
             } else {
                 context.insert(
                     PPCategory(
                         id: fixtureCategory.id,
                         name: fixtureCategory.name,
                         type: categoryType(from: fixtureCategory.type),
-                        icon: "tag"
+                        icon: "tag",
+                        linkedAccountId: linkedAccountId
                     )
                 )
             }
@@ -149,14 +179,14 @@ struct GoldenFixtureLoader {
         for fixtureProject in fixtureProjects {
             let startDate = fixtureProject.startDate.flatMap { dateFormatter.date(from: $0) }
             let completedAt = fixtureProject.completedAt.flatMap { dateFormatter.date(from: $0) }
-            let project = dataStore.addProject(
+            let project = mutations(dataStore).addProject(
                 name: fixtureProject.name,
                 description: fixtureProject.name,
                 startDate: startDate,
                 plannedEndDate: completedAt
             )
             let status = projectStatus(from: fixtureProject.status)
-            dataStore.updateProject(
+            mutations(dataStore).updateProject(
                 id: project.id,
                 status: status,
                 startDate: .some(startDate),
@@ -181,7 +211,7 @@ struct GoldenFixtureLoader {
                 return (projectId, allocation.ratio)
             }
             let date = try XCTUnwrap(GoldenSnapshotStore.dateFormatter.date(from: fixtureTransaction.date))
-            let transaction = dataStore.addTransaction(
+            let transaction = mutations(dataStore).addTransaction(
                 type: transactionType(from: fixtureTransaction.type),
                 amount: fixtureTransaction.amount,
                 date: date,
@@ -195,10 +225,7 @@ struct GoldenFixtureLoader {
                 counterparty: fixtureTransaction.counterparty,
                 candidateSource: .manual
             )
-            _ = await dataStore.syncCanonicalArtifacts(
-                forTransactionId: transaction.id,
-                source: .manual
-            )
+            XCTAssertNotNil(transaction.journalEntryId)
         }
     }
 
@@ -247,6 +274,29 @@ struct GoldenFixtureLoader {
 
     private static func categoryType(from rawValue: String) -> CategoryType {
         rawValue == "income" ? .income : .expense
+    }
+
+    private static func linkedAccountId(for category: GoldenCategory) -> String? {
+        if let mappedAccountId = AccountingConstants.categoryToAccountMapping[category.id] {
+            return mappedAccountId
+        }
+
+        switch category.id {
+        case "cat-rent":
+            return "acct-rent"
+        case "cat-utilities":
+            return "acct-utilities"
+        case "cat-travel":
+            return "acct-travel"
+        case "cat-outsource":
+            return "acct-outsourcing"
+        case "cat-comms":
+            return "acct-communication"
+        case "cat-software":
+            return "acct-supplies"
+        default:
+            return nil
+        }
     }
 
     private static func projectStatus(from rawValue: String) -> ProjectStatus {
@@ -359,6 +409,22 @@ struct GoldenMigrationOrphanSnapshot: Codable, Equatable {
     let message: String
 }
 
+struct GoldenLedgerExportSnapshot: Codable, Equatable {
+    let fiscalYear: Int
+    let ledgers: [GoldenLedgerArtifactSnapshot]
+}
+
+struct GoldenLedgerArtifactSnapshot: Codable, Equatable {
+    let target: String
+    let formats: [String]
+    let csvLines: [String]
+    let csvContainsInvoiceColumn: Bool
+    let csvContainsCarryForward: Bool
+    let csvContainsRunningBalanceOrTotal: Bool
+    let pdfPageCount: Int
+    let pdfLines: [String]
+}
+
 @MainActor
 struct GoldenSnapshotBuilder {
     static func journalBookSnapshot(from scenario: GoldenScenario) -> GoldenJournalBookSnapshot {
@@ -422,7 +488,7 @@ struct GoldenSnapshotBuilder {
     static func blueReturnSnapshot(from scenario: GoldenScenario) -> GoldenEtaxFormSnapshot {
         let fiscalYear = scenario.fixture.businessProfile.fiscalYear
         let projected = scenario.dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
-        let profile = scenario.dataStore.etaxExportProfile(for: fiscalYear)
+        let canonical = scenario.dataStore.canonicalExportProfiles(for: fiscalYear)
         let form = EtaxFieldPopulator.populate(
             fiscalYear: fiscalYear,
             profitLoss: AccountingReportService.generateProfitLoss(
@@ -441,7 +507,9 @@ struct GoldenSnapshotBuilder {
             ),
             formType: .blueReturn,
             accounts: scenario.dataStore.accounts,
-            profile: profile,
+            businessProfile: canonical?.business,
+            taxYearProfile: canonical?.taxYear,
+            sensitivePayload: canonical?.sensitive,
             inventoryRecord: scenario.dataStore.getInventoryRecord(fiscalYear: fiscalYear)
         )
         return GoldenEtaxFormSnapshot(
@@ -537,6 +605,82 @@ struct GoldenSnapshotBuilder {
         )
     }
 
+    static func ledgerExportSnapshot(from scenario: GoldenScenario) throws -> GoldenLedgerExportSnapshot {
+        let fiscalYear = scenario.fixture.businessProfile.fiscalYear
+        let transportationBook = try seedTransportationExpenseBookIfNeeded(in: scenario.context, fiscalYear: fiscalYear)
+        try seedFixedAssetIfNeeded(in: scenario.context, fiscalYear: fiscalYear)
+
+        let artifacts = try [
+            exportLedgerArtifact(
+                target: .cashBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .cashBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .bankAccountBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .depositBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .accountsReceivableBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .accountsReceivableBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .accountsPayableBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .accountsPayableBook, startDate: nil, endDate: nil, accountFilter: nil, counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .expenseBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                subLedgerOptions: .init(type: .expenseBook, startDate: nil, endDate: nil, accountFilter: "acct-rent", counterpartyFilter: nil)
+            ),
+            exportLedgerArtifact(
+                target: .generalLedger,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                ledgerOptions: .init(accountId: "acct-rent", accountName: "地代家賃", accountCode: "622")
+            ),
+            exportLedgerArtifact(
+                target: .journalBook,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .transportationExpense,
+                fiscalYear: fiscalYear,
+                context: scenario.context,
+                ledgerBookSelectionOptions: .init(bookId: transportationBook.id, ledgerType: .transportationExpense)
+            ),
+            exportLedgerArtifact(
+                target: .whiteTaxBookkeeping,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .fixedAssetRegister,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+            exportLedgerArtifact(
+                target: .fixedAssetDepreciation,
+                fiscalYear: fiscalYear,
+                context: scenario.context
+            ),
+        ]
+
+        return GoldenLedgerExportSnapshot(
+            fiscalYear: fiscalYear,
+            ledgers: artifacts.sorted { $0.target < $1.target }
+        )
+    }
+
     private static func valueType(of value: EtaxFieldValue) -> String {
         switch value {
         case .number:
@@ -546,6 +690,137 @@ struct GoldenSnapshotBuilder {
         case .flag:
             return "flag"
         }
+    }
+
+    private static func exportLedgerArtifact(
+        target: ExportCoordinator.ExportTarget,
+        fiscalYear: Int,
+        context: ModelContext,
+        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil,
+        subLedgerOptions: ExportCoordinator.SubLedgerExportOptions? = nil,
+        ledgerBookSelectionOptions: ExportCoordinator.LedgerBookSelectionOptions? = nil
+    ) throws -> GoldenLedgerArtifactSnapshot {
+        let csvURL = try ExportCoordinator.export(
+            target: target,
+            format: .csv,
+            fiscalYear: fiscalYear,
+            modelContext: context,
+            ledgerOptions: ledgerOptions,
+            subLedgerOptions: subLedgerOptions,
+            ledgerBookSelectionOptions: ledgerBookSelectionOptions
+        )
+        let pdfURL = try ExportCoordinator.export(
+            target: target,
+            format: .pdf,
+            fiscalYear: fiscalYear,
+            modelContext: context,
+            ledgerOptions: ledgerOptions,
+            subLedgerOptions: subLedgerOptions,
+            ledgerBookSelectionOptions: ledgerBookSelectionOptions
+        )
+
+        let csvText = try String(contentsOf: csvURL, encoding: .utf8)
+        let pdfData = try Data(contentsOf: pdfURL)
+        let csvLines = normalizedLines(csvText)
+        let pdfLines = normalizedPDFLines(pdfData)
+
+        return GoldenLedgerArtifactSnapshot(
+            target: target.label,
+            formats: ["csv", "pdf"],
+            csvLines: Array(csvLines.prefix(14)),
+            csvContainsInvoiceColumn: csvLines.contains { $0.contains("インボイス") },
+            csvContainsCarryForward: csvLines.contains { $0.contains("前期より繰越") },
+            csvContainsRunningBalanceOrTotal: csvLines.contains {
+                $0.contains("残高") || $0.contains("累計") || $0.contains("差引残高")
+            },
+            pdfPageCount: PDFDocument(data: pdfData)?.pageCount ?? 0,
+            pdfLines: Array(pdfLines.prefix(20))
+        )
+    }
+
+    private static func normalizedLines(_ text: String) -> [String] {
+        text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizedPDFLines(_ data: Data) -> [String] {
+        guard let document = PDFDocument(data: data) else {
+            return []
+        }
+        let text = (0..<document.pageCount)
+            .compactMap { document.page(at: $0)?.string }
+            .joined(separator: "\n")
+        return normalizedLines(text)
+    }
+
+    private static func seedTransportationExpenseBookIfNeeded(
+        in context: ModelContext,
+        fiscalYear: Int
+    ) throws -> SDLedgerBook {
+        FeatureFlags.useLegacyLedger = true
+        let store = LedgerDataStore(modelContext: context, accessMode: .readWrite)
+        if let existing = store.books(ofType: .transportationExpense).sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+            return existing
+        }
+
+        let metadata = TransportationExpenseMetadata(
+            year: fiscalYear,
+            monthPeriod: 3,
+            department: "開発",
+            employeeName: "山田太郎",
+            requestDate: "\(fiscalYear)-03-31",
+            settlementDate: "\(fiscalYear)-03-31"
+        )
+        guard let book = store.createBook(
+            ledgerType: .transportationExpense,
+            title: "交通費精算書",
+            metadataJSON: LedgerBridge.encodeTransportationExpenseMetadata(metadata)
+        ) else {
+            throw XCTSkip("failed to seed transportation expense book")
+        }
+        store.addEntry(
+            to: book.id,
+            entry: TransportationExpenseEntry(
+                id: UUID(),
+                date: "\(fiscalYear)-03-05",
+                destination: "渋谷",
+                purpose: "打ち合わせ",
+                transportMethod: "電車",
+                routeFrom: "新宿",
+                routeTo: "渋谷",
+                tripType: .roundTrip,
+                amount: 1296
+            )
+        )
+        return book
+    }
+
+    private static func seedFixedAssetIfNeeded(
+        in context: ModelContext,
+        fiscalYear: Int
+    ) throws {
+        let descriptor = FetchDescriptor<PPFixedAsset>()
+        if ((try? context.fetch(descriptor).count) ?? 0) > 0 {
+            return
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let acquisitionDate = calendar.date(from: DateComponents(year: fiscalYear, month: 1, day: 10)) ?? Date()
+        context.insert(
+            PPFixedAsset(
+                name: "MacBook Pro",
+                acquisitionDate: acquisitionDate,
+                acquisitionCost: 360_000,
+                usefulLifeYears: 4,
+                depreciationMethod: .straightLine,
+                memo: "golden fixture asset",
+                businessUsePercent: 100
+            )
+        )
+        try context.save()
     }
 }
 

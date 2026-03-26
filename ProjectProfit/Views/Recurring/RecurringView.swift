@@ -2,7 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct RecurringView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
+    @Environment(NotificationService.self) private var notificationService
 
     @State private var viewModel: RecurringViewModel?
     @State private var showFormSheet = false
@@ -43,9 +44,11 @@ struct RecurringView: View {
                 .accessibilityHint("タップして新しい定期取引を作成")
             }
         }
-        .sheet(isPresented: $showFormSheet, onDismiss: { editingRecurring = nil }) {
+        .sheet(isPresented: $showFormSheet, onDismiss: {
+            editingRecurring = nil
+            viewModel?.reload()
+        }) {
             RecurringFormView(recurring: editingRecurring)
-                .environment(dataStore)
         }
         .alert("次回をスキップ", isPresented: $showSkipAlert) {
             Button("キャンセル", role: .cancel) {
@@ -102,11 +105,17 @@ struct RecurringView: View {
         }
         .sheet(item: $historyTarget) { target in
             RecurringHistoryView(recurringId: target.id)
-                .environment(dataStore)
         }
         .task {
             if viewModel == nil {
-                viewModel = RecurringViewModel(dataStore: dataStore)
+                viewModel = RecurringViewModel(
+                    modelContext: modelContext,
+                    onRecurringScheduleChanged: { recurrings in
+                        Task { @MainActor in
+                            await notificationService.rescheduleAll(recurringTransactions: recurrings)
+                        }
+                    }
+                )
             }
         }
     }
@@ -461,5 +470,5 @@ struct RecurringView: View {
 
 #Preview {
     RecurringView()
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
+        .environment(NotificationService())
 }

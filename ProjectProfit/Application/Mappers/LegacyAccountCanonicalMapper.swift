@@ -22,7 +22,10 @@ enum LegacyAccountCanonicalMapper {
             name: legacyAccount.name,
             accountType: accountType,
             normalBalance: legacyAccount.normalBalance,
-            defaultLegalReportLineId: existing?.defaultLegalReportLineId,
+            defaultLegalReportLineId:
+                existing?.defaultLegalReportLineId
+                ?? AccountingConstants.defaultLegalReportLineId(forLegacyAccountId: legacyAccount.id)
+                ?? legacyAccount.subtype.flatMap { LegalReportLine.defaultLine(for: $0)?.rawValue },
             defaultTaxCodeId: existing?.defaultTaxCodeId,
             projectAllocatable: existing?.projectAllocatable ?? true,
             householdProrationAllowed: existing?.householdProrationAllowed ?? false,

@@ -1,6 +1,6 @@
 // ============================================================
 // LedgerExportService.swift
-// CSV書き出し・読み込み & PDF生成サービス
+// CSV書き出しサービス
 // Excel原本と完全同一フォーマットで出力
 // ============================================================
 
@@ -12,7 +12,7 @@ import PDFKit
 
 // MARK: - CSV Export Service
 
-class CSVExportService {
+final class CSVExportService {
     
     static let shared = CSVExportService()
     
@@ -347,6 +347,166 @@ class CSVExportService {
         
         return bom + lines.joined(separator: "\n")
     }
+
+    // MARK: - 交通費精算書 CSV
+
+    func exportTransportationExpense(
+        metadata: TransportationExpenseMetadata,
+        entries: [TransportationExpenseEntry]
+    ) -> String {
+        var lines: [String] = []
+
+        lines.append(csvRow(["年", "\(metadata.year)"]))
+        lines.append(csvRow(["月度", "\(metadata.monthPeriod)"]))
+        if !metadata.department.isEmpty {
+            lines.append(csvRow(["所属", metadata.department]))
+        }
+        if !metadata.employeeName.isEmpty {
+            lines.append(csvRow(["氏名", metadata.employeeName]))
+        }
+        if !metadata.requestDate.isEmpty {
+            lines.append(csvRow(["申請日", metadata.requestDate]))
+        }
+        if !metadata.settlementDate.isEmpty {
+            lines.append(csvRow(["精算日", metadata.settlementDate]))
+        }
+        lines.append("")
+        lines.append(csvRow(["日付", "行先", "目的（用件）", "交通機関（手段）", "区間（起点）", "区間（終点）", "片/往", "金額"]))
+
+        for entry in entries {
+            lines.append(csvRow([
+                entry.date,
+                entry.destination,
+                entry.purpose,
+                entry.transportMethod,
+                entry.routeFrom,
+                entry.routeTo,
+                entry.tripType.rawValue,
+                String(entry.amount)
+            ]))
+        }
+
+        return bom + lines.joined(separator: "\n")
+    }
+
+    // MARK: - 固定資産台帳 CSV
+
+    func exportFixedAssetRegister(
+        metadata: FixedAssetRegisterMetadata,
+        entries: [FixedAssetRegisterEntry]
+    ) -> String {
+        var lines: [String] = []
+
+        if !metadata.assetName.isEmpty {
+            lines.append(csvRow(["名称", metadata.assetName]))
+        }
+        if !metadata.assetNumber.isEmpty {
+            lines.append(csvRow(["番号", metadata.assetNumber]))
+        }
+        if !metadata.assetType.isEmpty {
+            lines.append(csvRow(["種類", metadata.assetType]))
+        }
+        if !metadata.acquisitionDate.isEmpty {
+            lines.append(csvRow(["取得年月日", metadata.acquisitionDate]))
+        }
+        if !metadata.location.isEmpty {
+            lines.append(csvRow(["所在", metadata.location]))
+        }
+        if metadata.usefulLife > 0 {
+            lines.append(csvRow(["耐用年数", String(metadata.usefulLife)]))
+        }
+        if !metadata.depreciationMethod.isEmpty {
+            lines.append(csvRow(["償却方法", metadata.depreciationMethod]))
+        }
+        if metadata.depreciationRate > 0 {
+            lines.append(csvRow(["償却率", String(format: "%.3f", metadata.depreciationRate)]))
+        }
+        if !lines.isEmpty {
+            lines.append("")
+        }
+        lines.append(csvRow(["年月日", "摘要", "取得数量", "取得単価", "取得金額", "償却額", "異動数量", "異動金額", "現在数量", "現在金額", "事業専用割合", "必要経費算入額", "備考"]))
+
+        for entry in entries {
+            let acquiredQuantity = entry.acquiredQuantity ?? 0
+            let acquiredAmount = entry.acquiredAmount ?? 0
+            let disposalQuantity = entry.disposalQuantity ?? 0
+            let disposalAmount = entry.disposalAmount ?? 0
+            let currentQuantity = acquiredQuantity - disposalQuantity
+            let currentAmount = acquiredAmount - disposalAmount
+            let businessUseRatio = entry.businessUseRatio ?? 1.0
+            let depreciationAmount = entry.depreciationAmount ?? 0
+            let deductibleAmount = Int(Double(depreciationAmount) * businessUseRatio)
+            lines.append(csvRow([
+                entry.date,
+                entry.description,
+                optStr(entry.acquiredQuantity),
+                optStr(entry.acquiredUnitPrice),
+                optStr(entry.acquiredAmount),
+                optStr(entry.depreciationAmount),
+                optStr(entry.disposalQuantity),
+                optStr(entry.disposalAmount),
+                currentQuantity == 0 ? "" : String(currentQuantity),
+                currentAmount == 0 ? "" : String(currentAmount),
+                entry.businessUseRatio.map { String(format: "%.2f", $0) } ?? "",
+                deductibleAmount == 0 ? "" : String(deductibleAmount),
+                entry.remarks ?? ""
+            ]))
+        }
+
+        return bom + lines.joined(separator: "\n")
+    }
+
+    // MARK: - 固定資産台帳兼減価償却計算表 CSV
+
+    func exportFixedAssetDepreciation(
+        metadata: FixedAssetDepreciationMetadata,
+        entries: [FixedAssetDepreciationEntry]
+    ) -> String {
+        var lines: [String] = []
+
+        if !metadata.fiscalYear.isEmpty {
+            lines.append(csvRow(["年分", metadata.fiscalYear]))
+            lines.append("")
+        }
+        lines.append(csvRow([
+            "勘定科目", "資産コード", "資産名", "資産の種類", "状態", "数量", "取得日", "取得価額",
+            "償却方法", "耐用年数", "償却率", "償却月数", "期首帳簿価額", "期中増減", "減価償却費",
+            "特別(割増)償却費", "償却費合計", "事業専用割合", "必要経費算入額", "本年末残高", "摘要"
+        ]))
+
+        for entry in entries {
+            let depreciationExpense = entry.depreciationExpense ?? 0
+            let specialDepreciation = entry.specialDepreciation ?? 0
+            let totalDepreciation = entry.totalDepreciation ?? (depreciationExpense + specialDepreciation)
+            let deductibleAmount = entry.deductibleAmount ?? Int(Double(totalDepreciation) * entry.businessUseRatio)
+            let yearEndBalance = entry.yearEndBalance ?? max(0, entry.openingBookValue + (entry.midYearChange ?? 0) - totalDepreciation)
+            lines.append(csvRow([
+                entry.account,
+                entry.assetCode,
+                entry.assetName,
+                entry.assetType,
+                entry.status,
+                optStr(entry.quantity),
+                entry.acquisitionDate,
+                String(entry.acquisitionCost),
+                entry.depreciationMethodLabel ?? entry.depreciationMethod.rawValue,
+                String(entry.usefulLife),
+                String(format: "%.3f", entry.depreciationRate),
+                String(entry.depreciationMonths),
+                String(entry.openingBookValue),
+                optStr(entry.midYearChange),
+                String(depreciationExpense),
+                specialDepreciation == 0 ? "" : String(specialDepreciation),
+                String(totalDepreciation),
+                String(format: "%.2f", entry.businessUseRatio),
+                String(deductibleAmount),
+                String(yearEndBalance),
+                entry.remarks ?? ""
+            ]))
+        }
+
+        return bom + lines.joined(separator: "\n")
+    }
     
     // MARK: - Helper
 
@@ -373,42 +533,6 @@ class CSVExportService {
             }
             return val
         }.joined(separator: ",")
-    }
-}
-
-// MARK: - CSV Import Service
-
-class CSVImportService {
-    
-    static let shared = CSVImportService()
-    
-    func parseCSV(_ content: String) -> [[String]] {
-        var rows: [[String]] = []
-        let lines = content.components(separatedBy: .newlines)
-        for line in lines {
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            rows.append(parseCSVLine(line))
-        }
-        return rows
-    }
-    
-    private func parseCSVLine(_ line: String) -> [String] {
-        var fields: [String] = []
-        var current = ""
-        var inQuotes = false
-        
-        for char in line {
-            if char == "\"" {
-                inQuotes.toggle()
-            } else if char == "," && !inQuotes {
-                fields.append(current)
-                current = ""
-            } else {
-                current.append(char)
-            }
-        }
-        fields.append(current)
-        return fields
     }
 }
 

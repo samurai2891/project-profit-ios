@@ -1,13 +1,15 @@
+import SwiftData
 import SwiftUI
 
 struct SubLedgerView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
 
     let type: SubLedgerType
 
     @State private var selectedYear = Calendar.current.component(.year, from: Date())
     @State private var showShareSheet = false
-    @State private var csvText = ""
+    @State private var shareURL: URL?
+    @State private var exportErrorMessage: String?
     // 経費帳: 科目フィルタ
     @State private var selectedExpenseAccountId: String?
     // 売掛帳/買掛帳: 取引先フィルタ
@@ -21,42 +23,35 @@ struct SubLedgerView: View {
     private var periodStart: Date { startOfYear(selectedYear) }
     private var periodEnd: Date { endOfYear(selectedYear) }
 
+    private var queryUseCase: SubLedgerQueryUseCase {
+        SubLedgerQueryUseCase(modelContext: modelContext)
+    }
+
     /// 全エントリ（フィルタなし） — counterparties/summary の算出元
-    private var allEntries: [SubLedgerEntry] {
-        dataStore.getSubLedgerEntries(
+    private var allSnapshot: SubLedgerSnapshot {
+        queryUseCase.snapshot(
             type: type,
-            startDate: periodStart,
-            endDate: periodEnd
+            year: selectedYear
         )
     }
 
     /// 表示用エントリ（フィルタ適用済み）
-    private var entries: [SubLedgerEntry] {
-        var result = allEntries
-
-        // 経費帳: 科目フィルタ
-        if type == .expenseBook, let accountId = selectedExpenseAccountId {
-            result = result.filter { $0.accountId == accountId }
-        }
-
-        // 売掛帳/買掛帳: 取引先フィルタ
-        if (type == .accountsReceivableBook || type == .accountsPayableBook),
-           let cp = selectedCounterparty {
-            result = result.filter { ($0.counterparty ?? "") == (cp.isEmpty ? "" : cp) }
-        }
-
-        return result
+    private var filteredSnapshot: SubLedgerSnapshot {
+        queryUseCase.snapshot(
+            type: type,
+            year: selectedYear,
+            accountFilter: selectedExpenseAccountId,
+            counterpartyFilter: selectedCounterparty
+        )
     }
 
     /// サマリー（全エントリから算出）
     private var summary: SubLedgerSummary {
-        SubLedgerSummary(
-            count: allEntries.count,
-            debitTotal: allEntries.reduce(0) { $0 + $1.debit },
-            creditTotal: allEntries.reduce(0) { $0 + $1.credit },
-            periodStart: periodStart,
-            periodEnd: periodEnd
-        )
+        allSnapshot.summary
+    }
+
+    private var entries: [SubLedgerEntry] {
+        filteredSnapshot.entries
     }
 
     var body: some View {
@@ -81,20 +76,34 @@ struct SubLedgerView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    csvText = dataStore.exportSubLedgerCSV(
-                        type: type, startDate: periodStart, endDate: periodEnd
-                    )
-                    showShareSheet = true
+                Menu {
+                    Button("CSVで共有") {
+                        exportSubLedger(format: .csv)
+                    }
+                    Button("PDFで共有") {
+                        exportSubLedger(format: .pdf)
+                    }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .disabled(entries.isEmpty)
-                .accessibilityLabel("CSV共有")
+                .accessibilityLabel("補助簿共有")
             }
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheetView(activityItems: [csvText])
+            if let shareURL {
+                ShareSheetView(activityItems: [shareURL])
+            }
+        }
+        .alert("出力エラー", isPresented: Binding(
+            get: { exportErrorMessage != nil },
+            set: { if !$0 { exportErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportErrorMessage = nil
+            }
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -123,12 +132,54 @@ struct SubLedgerView: View {
         switch type {
         case .cashBook:
             cashBookContent
+        case .depositBook:
+            depositBookContent
         case .expenseBook:
             expenseBookContent
         case .accountsReceivableBook:
             arBookContent
         case .accountsPayableBook:
             apBookContent
+        }
+    }
+
+    private func exportSubLedger(format: ExportCoordinator.ExportFormat) {
+        do {
+            shareURL = try ExportCoordinator.export(
+                target: type.exportTarget,
+                format: format,
+                fiscalYear: selectedYear,
+                modelContext: modelContext,
+                subLedgerOptions: .init(
+                    type: type,
+                    startDate: periodStart,
+                    endDate: periodEnd,
+                    accountFilter: selectedExpenseAccountId,
+                    counterpartyFilter: selectedCounterparty
+                )
+            )
+            showShareSheet = true
+        } catch {
+            shareURL = nil
+            showShareSheet = false
+            exportErrorMessage = error.localizedDescription
+        }
+    }
+}
+
+private extension SubLedgerType {
+    var exportTarget: ExportCoordinator.ExportTarget {
+        switch self {
+        case .cashBook:
+            return .cashBook
+        case .depositBook:
+            return .bankAccountBook
+        case .accountsReceivableBook:
+            return .accountsReceivableBook
+        case .accountsPayableBook:
+            return .accountsPayableBook
+        case .expenseBook:
+            return .expenseBook
         }
     }
 }
@@ -232,14 +283,77 @@ extension SubLedgerView {
     }
 }
 
+// MARK: - 預金出納帳 (Deposit Book)
+
+extension SubLedgerView {
+
+    private var depositBookContent: some View {
+        List {
+            summarySection
+            depositBookHeader
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                depositBookRow(entry)
+                    .listRowBackground(rowBackground(index))
+            }
+            taxMarkFooter
+        }
+        .listStyle(.plain)
+    }
+
+    private var depositBookHeader: some View {
+        HStack(spacing: 0) {
+            Text("月日")
+                .frame(width: 44, alignment: .leading)
+            Text("摘要")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("科目")
+                .frame(width: 90, alignment: .leading)
+            Text("預入")
+                .frame(width: 76, alignment: .trailing)
+            Text("引出")
+                .frame(width: 76, alignment: .trailing)
+            Text("残高")
+                .frame(width: 76, alignment: .trailing)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    private func depositBookRow(_ entry: SubLedgerEntry) -> some View {
+        HStack(spacing: 0) {
+            Text(monthDay(entry.date))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+
+            Text(entryDescription(entry))
+                .font(.caption)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(entry.accountName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 90, alignment: .leading)
+
+            CurrencyText(amount: entry.debit, font: .caption, emptyWhenZero: true)
+                .frame(width: 76, alignment: .trailing)
+
+            CurrencyText(amount: entry.credit, font: .caption, emptyWhenZero: true)
+                .frame(width: 76, alignment: .trailing)
+
+            CurrencyText(amount: entry.runningBalance, font: .caption.weight(.medium))
+                .frame(width: 76, alignment: .trailing)
+        }
+    }
+}
+
 // MARK: - 経費帳 (Expense Book) — NTA p.15
 
 extension SubLedgerView {
 
     private var expenseAccounts: [PPAccount] {
-        dataStore.accounts
-            .filter { $0.isActive && $0.accountType == .expense }
-            .sorted { $0.displayOrder < $1.displayOrder }
+        allSnapshot.expenseAccounts
     }
 
     private var expenseBookContent: some View {
@@ -534,7 +648,7 @@ extension SubLedgerView {
 
     /// 取引先一覧（売掛帳/買掛帳共用）
     private var counterparties: [String] {
-        let cps = Set(allEntries.compactMap(\.counterparty).filter { !$0.isEmpty })
+        let cps = Set(allSnapshot.entries.compactMap(\.counterparty).filter { !$0.isEmpty })
         return cps.sorted()
     }
 
@@ -550,7 +664,7 @@ extension SubLedgerView {
                         selectedCounterparty = cp
                     }
                 }
-                let hasUnknown = allEntries.contains { ($0.counterparty ?? "").isEmpty }
+                let hasUnknown = allSnapshot.entries.contains { ($0.counterparty ?? "").isEmpty }
                 if hasUnknown {
                     FilterChip(label: "不明", isSelected: selectedCounterparty == "") {
                         selectedCounterparty = ""

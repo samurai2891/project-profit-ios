@@ -5,6 +5,8 @@ enum ConsumptionTaxReportService {
 
     // MARK: - Canonical Worksheet
 
+    /// production path 用。canonical `JournalLine.taxCodeId` を唯一の税区分入力として扱う。
+
     static func generateWorksheet(
         fiscalYear: Int,
         taxYearProfile: TaxYearProfile,
@@ -18,6 +20,8 @@ enum ConsumptionTaxReportService {
         let accountById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let counterpartyById = Dictionary(uniqueKeysWithValues: counterparties.map { ($0.id, $0) })
         let evaluator = TaxRuleEvaluator(profile: taxYearProfile, pack: pack)
+        let deductionCalculator = InputTaxDeductionCalculator()
+        let worksheetCalculationMode = evaluator.inputTaxDeductionCalculationMode()
 
         let relevantEntries = journalEntries
             .filter { $0.journalDate >= startDate && $0.journalDate <= endDate }
@@ -85,14 +89,23 @@ enum ConsumptionTaxReportService {
         let rawInputTaxTotal = worksheetLines
             .filter { $0.direction == .input }
             .reduce(0) { $0 + $1.taxAmount }
-        let deductibleInputTaxTotal = worksheetLines
+        let provisionalInputDeductibleTotal = worksheetLines
             .filter { $0.direction == .input }
             .reduce(0) { $0 + $1.deductibleTaxAmount }
+        let deductibleInputTaxTotal = deductionCalculator.worksheetDeductibleInputTaxTotal(
+            outputTaxTotal: outputTaxTotal,
+            provisionalInputDeductibleTotal: provisionalInputDeductibleTotal,
+            calculationMode: worksheetCalculationMode
+        )
+        let finalizedLines = deductionCalculator.distributeWorksheetDeduction(
+            targetDeductibleTaxAmount: deductibleInputTaxTotal,
+            lines: worksheetLines
+        )
 
         return ConsumptionTaxWorksheet(
             fiscalYear: fiscalYear,
             generatedAt: Date(),
-            lines: worksheetLines,
+            lines: finalizedLines,
             outputTaxTotal: outputTaxTotal,
             rawInputTaxTotal: rawInputTaxTotal,
             deductibleInputTaxTotal: deductibleInputTaxTotal
@@ -135,6 +148,7 @@ enum ConsumptionTaxReportService {
     // MARK: - Legacy Compatibility
 
     /// 旧 `PPJournalEntry` / `PPJournalLine` ベースの集計を維持する互換 API。
+    /// canonical tax aggregation の正本ではない。
     static func generateSummary(
         fiscalYear: Int,
         journalEntries: [PPJournalEntry],
@@ -188,6 +202,7 @@ enum ConsumptionTaxReportService {
         let taxableTotal = taxableBusinessLines.reduce(0) { partial, entry in
             partial + decimalToInt(entry.0.amount)
         }
+        let deductionCalculator = InputTaxDeductionCalculator()
 
         var remainingTaxPool = taxPool
         var worksheetLines: [ConsumptionTaxWorksheetLine] = []
@@ -216,13 +231,18 @@ enum ConsumptionTaxReportService {
                     .flatMap { counterpartyById[$0]?.invoiceIssuerStatus }
                     ?? .unknown
                 let grossAmount = Decimal(taxableAmount + allocatedTaxAmount)
-                let creditMethod = evaluator.evaluateInputTaxCreditMethod(
+                let decision = evaluator.evaluateInputTaxDeductionDecision(
                     transactionDate: entry.journalDate,
                     counterpartyInvoiceStatus: counterpartyStatus,
                     amount: grossAmount
                 )
-                purchaseCreditMethod = creditMethod
-                deductibleTaxAmount = decimalToInt(Decimal(allocatedTaxAmount) * creditMethod.creditRate)
+                purchaseCreditMethod = decision.creditMethod
+                deductibleTaxAmount = decimalToInt(
+                    deductionCalculator.deductibleTaxAmount(
+                        taxAmount: Decimal(allocatedTaxAmount),
+                        decision: decision
+                    )
+                )
             } else {
                 purchaseCreditMethod = nil
                 deductibleTaxAmount = 0

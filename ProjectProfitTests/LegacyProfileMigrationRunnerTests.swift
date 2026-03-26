@@ -63,7 +63,7 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
             isBlueReturn: false,
             defaultPaymentAccountId: "acct-bank",
             openingDate: Date(timeIntervalSince1970: 1_700_000_000),
-            lockedYears: [2026]
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_100)
         )
         legacy.ownerNameKana = "タナカタロウ"
         legacy.postalCode = "1000001"
@@ -77,11 +77,14 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         XCTAssertEqual(first.outcome, .executed)
         XCTAssertTrue(first.createdBusinessProfile)
         XCTAssertTrue(first.createdTaxYearProfile)
+        XCTAssertEqual(first.deletedLegacyProfiles, 1)
 
         let businesses = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
         let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         XCTAssertEqual(businesses.count, 1)
         XCTAssertEqual(taxYears.count, 1)
+        XCTAssertTrue(legacyProfiles.isEmpty)
 
         let business = try XCTUnwrap(businesses.first)
         XCTAssertEqual(business.ownerName, "田中太郎")
@@ -99,6 +102,7 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
 
         let second = runner.executeIfNeeded()
         XCTAssertEqual(second.outcome, .alreadyMigrated)
+        XCTAssertEqual(second.deletedLegacyProfiles, 0)
     }
 
     func testExecuteIfNeededDoesNotOverwriteExistingCanonicalProfiles() throws {
@@ -141,14 +145,108 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         let runner = LegacyProfileMigrationRunner(modelContext: context)
         let report = runner.executeIfNeeded()
 
-        XCTAssertEqual(report.outcome, .alreadyMigrated)
+        XCTAssertEqual(report.outcome, .executed)
+        XCTAssertEqual(report.deletedLegacyProfiles, 1)
 
         let businesses = try context.fetch(FetchDescriptor<BusinessProfileEntity>())
         let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
         XCTAssertEqual(businesses.first?.ownerName, "Canonical Owner")
         XCTAssertEqual(businesses.first?.businessName, "Canonical商店")
         XCTAssertEqual(taxYears.first?.filingStyleRaw, FilingStyle.blueGeneral.rawValue)
         XCTAssertEqual(taxYears.first?.yearLockStateRaw, YearLockState.softClose.rawValue)
+        XCTAssertTrue(legacyProfiles.isEmpty)
+    }
+
+    func testExecuteIfNeededAlreadyMigratedDoesNotMoveLegacySecurePayload() throws {
+        let container = try makeCanonicalContainer()
+        let context = container.mainContext
+        let businessId = UUID()
+        let legacyProfileId = "legacy-secure-only"
+        let canonicalPayload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "カノニカル",
+            postalCode: "1000001",
+            address: "東京都千代田区1-1-1",
+            phoneNumber: "0311111111",
+            dateOfBirth: nil,
+            businessCategory: "IT",
+            myNumberFlag: true
+        )
+        let legacyPayload = ProfileSensitivePayload.fromLegacyProfile(
+            ownerNameKana: "レガシー",
+            postalCode: "5300001",
+            address: "大阪府大阪市",
+            phoneNumber: "0611111111",
+            dateOfBirth: nil,
+            businessCategory: "Legacy",
+            myNumberFlag: false
+        )
+        defer {
+            _ = ProfileSecureStore.delete(profileId: businessId.uuidString)
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        }
+
+        context.insert(BusinessProfileEntity(
+            businessId: businessId,
+            ownerName: "Canonical Owner",
+            ownerNameKana: "カノニカル",
+            businessName: "Canonical商店",
+            businessAddress: "東京都港区1-1-1",
+            postalCode: "1070001",
+            phoneNumber: "0311111111",
+            taxOfficeCode: "9999"
+        ))
+        context.insert(TaxYearProfileEntity(
+            businessId: businessId,
+            taxYear: 2026,
+            filingStyleRaw: FilingStyle.blueGeneral.rawValue,
+            blueDeductionLevelRaw: BlueDeductionLevel.sixtyFive.rawValue,
+            bookkeepingBasisRaw: BookkeepingBasis.doubleEntry.rawValue,
+            yearLockStateRaw: YearLockState.softClose.rawValue,
+            taxPackVersion: "2026-v1"
+        ))
+        try context.save()
+
+        XCTAssertTrue(ProfileSecureStore.save(canonicalPayload, profileId: businessId.uuidString))
+        XCTAssertTrue(ProfileSecureStore.save(legacyPayload, profileId: legacyProfileId))
+
+        let runner = LegacyProfileMigrationRunner(modelContext: context)
+        let report = runner.executeIfNeeded()
+
+        XCTAssertEqual(report.outcome, .alreadyMigrated)
+        XCTAssertEqual(ProfileSecureStore.load(profileId: businessId.uuidString), canonicalPayload)
+        XCTAssertEqual(ProfileSecureStore.load(profileId: legacyProfileId), legacyPayload)
+    }
+
+    func testExecuteMapsLegacyLockToCanonicalStateAndDeletesLegacyProfile() throws {
+        let container = try makeCanonicalContainer()
+        let context = container.mainContext
+        let legacyId = "legacy-compat-profile"
+        let legacy = PPAccountingProfile(
+            id: legacyId,
+            fiscalYear: 2027,
+            bookkeepingMode: .doubleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            isBlueReturn: true,
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_200)
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let runner = LegacyProfileMigrationRunner(modelContext: context)
+        let report = runner.execute()
+
+        XCTAssertEqual(report.outcome, .executed)
+        XCTAssertEqual(report.deletedLegacyProfiles, 1)
+
+        let taxYears = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+        let migratedTaxYear = try XCTUnwrap(taxYears.first(where: { $0.taxYear == 2027 }))
+        XCTAssertEqual(migratedTaxYear.yearLockStateRaw, YearLockState.finalLock.rawValue)
+
+        let legacyProfiles = try context.fetch(FetchDescriptor<PPAccountingProfile>())
+        XCTAssertTrue(legacyProfiles.isEmpty)
+        XCTAssertNil(ProfileSecureStore.load(profileId: legacyId))
     }
 
     func testLegacyOnlyContainerDoesNotReturnDryRunReadyOrCrash() throws {
@@ -172,6 +270,34 @@ final class LegacyProfileMigrationRunnerTests: XCTestCase {
         store.loadData()
 
         XCTAssertFalse(store.isLoading)
-        XCTAssertNotNil(store.accountingProfile)
+        // After loadData, canonical businessProfile should be populated
+        // (bootstrap creates legacy profile which auto-migrates)
+        XCTAssertNotNil(store.businessProfile)
+    }
+
+    func testReloadProfileSettingsMigratesLegacyProfileWithoutPriorLoadData() async throws {
+        let container = try TestModelContainer.create()
+        let context = container.mainContext
+        let legacy = PPAccountingProfile(
+            fiscalYear: 2026,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy User",
+            taxOfficeCode: "4321",
+            isBlueReturn: false,
+            defaultPaymentAccountId: "acct-bank"
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let store = DataStore(modelContext: context)
+        let didReload = await store.reloadProfileSettings()
+
+        XCTAssertTrue(didReload)
+        XCTAssertEqual(store.businessProfile?.businessName, "Legacy商店")
+        XCTAssertEqual(store.businessProfile?.ownerName, "Legacy User")
+        XCTAssertEqual(store.currentTaxYearProfile?.taxYear, 2026)
+        XCTAssertEqual(store.currentTaxYearProfile?.filingStyle, .white)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PPAccountingProfile>()).isEmpty)
     }
 }

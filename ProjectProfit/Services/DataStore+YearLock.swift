@@ -58,14 +58,12 @@ extension DataStore {
         if let canonicalState = persistedYearLockState(for: year) {
             return canonicalState
         }
-        if accountingProfile?.isYearLocked(year) == true {
-            return .finalLock
-        }
         return .open
     }
 
     // MARK: - Lock / Unlock
 
+#if DEBUG
     /// 指定年度をロックする
     func lockFiscalYear(_ year: Int) {
         forceUpdateYearLockState(.finalLock, for: year)
@@ -106,6 +104,7 @@ extension DataStore {
             return false
         }
     }
+#endif
 
     private func persistedYearLockState(for year: Int) -> YearLockState? {
         if let currentTaxYearProfile, currentTaxYearProfile.taxYear == year {
@@ -153,7 +152,8 @@ extension DataStore {
                     businessId: businessId,
                     taxYear: year,
                     yearLockState: state,
-                    taxPackVersion: "\(year)-v1"
+                    taxPackVersion: (try? BundledTaxYearPackProvider(bundle: .main).packSync(for: year).version)
+                        ?? "\(year)-v1"
                 )
                 modelContext.insert(TaxYearProfileEntityMapper.toEntity(profile))
                 if currentTaxYearProfile?.taxYear == year {

@@ -33,8 +33,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 収入取引に設定した取引先が、現金勘定の元帳エントリに反映されること
     func testLedgerEntry_CounterpartyFromTransaction() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 50000,
             date: date(2025, 6, 15),
@@ -56,8 +56,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 経費取引の軽減税率が元帳エントリに反映されること
     func testLedgerEntry_TaxCategoryFromTransaction() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 10000,
             date: date(2025, 7, 1),
@@ -78,8 +78,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 標準税率の取引が元帳エントリに正しく反映されること
     func testLedgerEntry_StandardRateTaxCategory() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 100000,
             date: date(2025, 8, 10),
@@ -103,7 +103,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 手動仕訳にはソーストランザクションがないため counterparty は nil であること
     func testLedgerEntry_ManualJournal_NilCounterparty() {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 1),
             memo: "決算整理仕訳",
             lines: [
@@ -121,7 +121,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 手動仕訳にはソーストランザクションがないため taxCategory は nil であること
     func testLedgerEntry_ManualJournal_NilTaxCategory() {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 2),
             memo: "減価償却仕訳",
             lines: [
@@ -141,9 +141,9 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 借方正常勘定（現金）の残高推移: 入金 +50000、出金 -20000 → 50000, 30000
     func testLedgerEntry_RunningBalance_DebitNormal() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 50000,
             date: date(2025, 6, 1),
@@ -153,7 +153,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
             paymentAccountId: "acct-cash"
         )
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 20000,
             date: date(2025, 6, 2),
@@ -175,9 +175,9 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 貸方正常勘定（売上高）の残高推移: 売上計上 +100000 → 残高 100000
     func testLedgerEntry_RunningBalance_CreditNormal() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 100000,
             date: date(2025, 7, 1),
@@ -200,10 +200,10 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 異なる日付の3取引が日付昇順でソートされること
     func testLedgerEntry_MultipleTransactions_ChronologicalOrder() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // 意図的に日付を逆順で登録
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 30000,
             date: date(2025, 6, 15),
@@ -214,7 +214,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
             counterparty: "B社"
         )
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 10000,
             date: date(2025, 6, 1),
@@ -225,7 +225,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
             counterparty: "A社"
         )
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5000,
             date: date(2025, 6, 30),
@@ -262,8 +262,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 取引先とメモが同時に元帳エントリに存在し、表示用データとして利用可能であること
     func testLedgerEntry_DescriptionIncludesCounterparty() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 80000,
             date: date(2025, 10, 1),
@@ -289,8 +289,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 軽減税率の元帳エントリで ※ マーク表示用の taxCategory データが利用可能であること
     func testLedgerEntry_ReducedRateTaxMark() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 5400,
             date: date(2025, 11, 1),
@@ -317,8 +317,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// taxAmount が nil の取引では taxCategory も nil であること（後方互換性）
     func testLedgerEntry_NilTaxAmount_NoTaxCategory() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 3000,
             date: date(2025, 5, 1),
@@ -341,8 +341,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// counterparty と taxCategory の両方が同時に正しく反映されること
     func testLedgerEntry_BothCounterpartyAndTaxCategory() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 200000,
             date: date(2025, 12, 1),
@@ -367,8 +367,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 非課税取引の taxCategory が正しく反映されること
     func testLedgerEntry_ExemptTaxCategory() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 50000,
             date: date(2025, 4, 1),
@@ -393,10 +393,10 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 自動仕訳と手動仕訳が混在する場合、自動仕訳のみ enrichment されること
     func testLedgerEntry_MixedAutoAndManual_OnlyAutoEnriched() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // 自動仕訳（取引から生成）
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income,
             amount: 40000,
             date: date(2025, 3, 1),
@@ -410,7 +410,7 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
         )
 
         // 手動仕訳
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 15),
             memo: "手動調整",
             lines: [
@@ -437,8 +437,8 @@ final class GeneralLedgerEnrichmentTests: XCTestCase {
 
     /// 自動仕訳の entryType が .auto であること
     func testLedgerEntry_AutoEntryType() {
-        let project = dataStore.addProject(name: "P1", description: "")
-        _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 15000,
             date: date(2025, 5, 15),

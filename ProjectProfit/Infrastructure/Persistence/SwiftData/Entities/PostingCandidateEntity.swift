@@ -12,6 +12,7 @@ final class PostingCandidateEntity {
     var counterpartyId: UUID?
     var proposedLinesJSON: String
     var taxAnalysisJSON: String?
+    var legacySnapshotJSON: String?
     var confidenceScore: Double
     var statusRaw: String
     var sourceRaw: String
@@ -28,6 +29,7 @@ final class PostingCandidateEntity {
         counterpartyId: UUID? = nil,
         proposedLinesJSON: String = "[]",
         taxAnalysisJSON: String? = nil,
+        legacySnapshotJSON: String? = nil,
         confidenceScore: Double = 0.0,
         statusRaw: String = "draft",
         sourceRaw: String = "manual",
@@ -43,6 +45,7 @@ final class PostingCandidateEntity {
         self.counterpartyId = counterpartyId
         self.proposedLinesJSON = proposedLinesJSON
         self.taxAnalysisJSON = taxAnalysisJSON
+        self.legacySnapshotJSON = legacySnapshotJSON
         self.confidenceScore = confidenceScore
         self.statusRaw = statusRaw
         self.sourceRaw = sourceRaw

@@ -4,6 +4,8 @@ import Foundation
 /// 年分プロフィールと取引情報から適用される税務ルールを決定する
 struct TaxRuleEvaluator: Sendable {
 
+    private static let twoTenthsCreditRate = Decimal(string: "0.8")!
+
     let profile: TaxYearProfile
     let pack: TaxYearPack?
 
@@ -12,64 +14,80 @@ struct TaxRuleEvaluator: Sendable {
         self.pack = pack
     }
 
-    /// 仕入税額控除の方式を判定
-    func evaluateInputTaxCreditMethod(
+    func inputTaxDeductionCalculationMode() -> InputTaxDeductionCalculationMode {
+        guard profile.isTaxable else {
+            return .lineBased
+        }
+
+        if profile.isTwoTenthsSpecial && (pack?.twoTenthsSpecialAvailable ?? true) {
+            return .twoTenths(creditRate: Self.twoTenthsCreditRate)
+        }
+
+        if profile.isSimplifiedTaxation {
+            guard let deemedPurchaseRate = simplifiedDeemedPurchaseRate else {
+                return .reviewRequired
+            }
+            return .simplified(deemedPurchaseRate: deemedPurchaseRate)
+        }
+
+        return .lineBased
+    }
+
+    /// 仕入税額控除の判定と控除計算モードの解決
+    func evaluateInputTaxDeductionDecision(
         transactionDate: Date,
         counterpartyInvoiceStatus: InvoiceIssuerStatus,
         amount: Decimal
-    ) -> InputTaxCreditMethod {
-        // 免税事業者は控除なし
+    ) -> InputTaxDeductionDecision {
         guard profile.isTaxable else {
-            return .notApplicable
+            return makeDecision(
+                creditMethod: .notApplicable,
+                calculationMode: .lineBased,
+                creditRate: 0,
+                deemedPurchaseRate: nil,
+                requiresReview: false
+            )
         }
 
-        // 2割特例の場合は概算控除
-        if profile.isTwoTenthsSpecial && (pack?.twoTenthsSpecialAvailable ?? true) {
-            return .twoTenthsEstimate
+        switch inputTaxDeductionCalculationMode() {
+        case .twoTenths(let creditRate):
+            return makeDecision(
+                creditMethod: .twoTenthsEstimate,
+                calculationMode: .twoTenths(creditRate: creditRate),
+                creditRate: creditRate,
+                deemedPurchaseRate: nil,
+                requiresReview: false
+            )
+        case .simplified(let deemedPurchaseRate):
+            return makeDecision(
+                creditMethod: .simplifiedEstimate,
+                calculationMode: .simplified(deemedPurchaseRate: deemedPurchaseRate),
+                creditRate: deemedPurchaseRate,
+                deemedPurchaseRate: deemedPurchaseRate,
+                requiresReview: false
+            )
+        case .reviewRequired:
+            return makeDecision(
+                creditMethod: .requiresReview,
+                calculationMode: .reviewRequired,
+                creditRate: 0,
+                deemedPurchaseRate: nil,
+                requiresReview: true
+            )
+        case .lineBased:
+            let method = evaluateLineBasedCreditMethod(
+                transactionDate: transactionDate,
+                counterpartyInvoiceStatus: counterpartyInvoiceStatus,
+                amount: amount
+            )
+            return makeDecision(
+                creditMethod: method,
+                calculationMode: .lineBased,
+                creditRate: Self.creditRate(for: method),
+                deemedPurchaseRate: nil,
+                requiresReview: method == .requiresReview
+            )
         }
-
-        // 簡易課税の場合はみなし仕入率
-        if profile.isSimplifiedTaxation {
-            return .simplifiedEstimate
-        }
-
-        // 一般課税: インボイスの有無で判定
-        switch counterpartyInvoiceStatus {
-        case .registered:
-            return .qualifiedInvoice
-        case .unregistered:
-            return evaluateTransitionalCredit(transactionDate: transactionDate, amount: amount)
-        case .unknown:
-            return .requiresReview
-        }
-    }
-
-    /// 経過措置の判定
-    private func evaluateTransitionalCredit(
-        transactionDate: Date,
-        amount: Decimal
-    ) -> InputTaxCreditMethod {
-        let calendar = Calendar(identifier: .gregorian)
-        let year = calendar.component(.year, from: transactionDate)
-        let month = calendar.component(.month, from: transactionDate)
-
-        // 少額特例: 税込1万円未満（基準期間の課税売上高1億円以下）
-        if amount < (pack?.smallAmountThreshold ?? 10000) {
-            return .smallAmountSpecial
-        }
-
-        // 経過措置80%: 2023/10/01 - 2026/09/30
-        if (year < 2026) || (year == 2026 && month <= 9) {
-            return .transitional80
-        }
-
-        // 経過措置50%: 2026/10/01 - 2029/09/30
-        if (year < 2029) || (year == 2029 && month <= 9) {
-            return .transitional50
-        }
-
-        // 経過措置終了後: 控除不可
-        return .notDeductible
     }
 
     /// 消費税率の判定
@@ -88,6 +106,88 @@ struct TaxRuleEvaluator: Sendable {
                 nationalRate: pack?.nationalRateStandard ?? Decimal(string: "0.078")!,
                 localRate: pack?.localRateStandard ?? Decimal(string: "0.022")!
             )
+        }
+    }
+
+    private var simplifiedDeemedPurchaseRate: Decimal? {
+        guard let category = profile.simplifiedBusinessCategory else {
+            return nil
+        }
+        let rates = pack?.simplifiedDeemedPurchaseRates ?? TaxYearPack.defaultSimplifiedDeemedPurchaseRates
+        return rates[category]
+    }
+
+    private func makeDecision(
+        creditMethod: InputTaxCreditMethod,
+        calculationMode: InputTaxDeductionCalculationMode,
+        creditRate: Decimal,
+        deemedPurchaseRate: Decimal?,
+        requiresReview: Bool
+    ) -> InputTaxDeductionDecision {
+        InputTaxDeductionDecision(
+            creditMethod: creditMethod,
+            calculationMode: calculationMode,
+            creditRate: creditRate,
+            deemedPurchaseRate: deemedPurchaseRate,
+            requiresReview: requiresReview
+        )
+    }
+
+    private func evaluateLineBasedCreditMethod(
+        transactionDate: Date,
+        counterpartyInvoiceStatus: InvoiceIssuerStatus,
+        amount: Decimal
+    ) -> InputTaxCreditMethod {
+        switch counterpartyInvoiceStatus {
+        case .registered:
+            return .qualifiedInvoice
+        case .unregistered:
+            return evaluateTransitionalCredit(transactionDate: transactionDate, amount: amount)
+        case .unknown:
+            return .requiresReview
+        }
+    }
+
+    /// 経過措置の判定
+    private func evaluateTransitionalCredit(
+        transactionDate: Date,
+        amount: Decimal
+    ) -> InputTaxCreditMethod {
+        if amount < (pack?.smallAmountThreshold ?? 10000) {
+            return .smallAmountSpecial
+        }
+
+        let measures = (pack?.transitionalMeasures ?? TransitionalTaxCreditMeasure.defaultMeasures)
+            .sorted { $0.periodStart < $1.periodStart }
+        for measure in measures where measure.periodStart <= transactionDate && transactionDate <= measure.periodEnd {
+            switch measure.id {
+            case "transitional_80":
+                return .transitional80
+            case "transitional_50":
+                return .transitional50
+            default:
+                if measure.creditRate == Decimal(string: "0.8") {
+                    return .transitional80
+                }
+                if measure.creditRate == Decimal(string: "0.5") {
+                    return .transitional50
+                }
+            }
+        }
+
+        return .notDeductible
+    }
+
+    private static func creditRate(for method: InputTaxCreditMethod) -> Decimal {
+        switch method {
+        case .qualifiedInvoice, .simplifiedQualifiedInvoice, .smallAmountSpecial:
+            return Decimal(1)
+        case .transitional80:
+            return Decimal(string: "0.8")!
+        case .transitional50:
+            return Decimal(string: "0.5")!
+        case .notDeductible, .notApplicable, .requiresReview, .simplifiedEstimate, .twoTenthsEstimate:
+            return 0
         }
     }
 }
@@ -114,22 +214,6 @@ enum InputTaxCreditMethod: String, Codable, Sendable {
     case notApplicable
     /// 確認が必要
     case requiresReview
-
-    /// 控除率（%）
-    var creditRate: Decimal {
-        switch self {
-        case .qualifiedInvoice, .simplifiedQualifiedInvoice, .smallAmountSpecial:
-            return Decimal(1)
-        case .transitional80:
-            return Decimal(string: "0.8")!
-        case .transitional50:
-            return Decimal(string: "0.5")!
-        case .notDeductible, .notApplicable, .requiresReview:
-            return Decimal(0)
-        case .simplifiedEstimate, .twoTenthsEstimate:
-            return Decimal(0)  // 別途計算
-        }
-    }
 
     var displayName: String {
         switch self {

@@ -1,11 +1,13 @@
 import SwiftUI
 
 struct FilterView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @Binding var filter: TransactionFilter
 
+    @State private var projects: [PPProject] = []
+    @State private var categories: [PPCategory] = []
     @State private var startDate: Date = Date()
     @State private var endDate: Date = Date()
     @State private var hasStartDate = false
@@ -36,7 +38,7 @@ struct FilterView: View {
                 Section("プロジェクト") {
                     Picker("プロジェクト", selection: $projectId) {
                         Text("すべて").tag(UUID?.none)
-                        ForEach(dataStore.projects, id: \.id) { p in
+                        ForEach(projects, id: \.id) { p in
                             Text(p.name).tag(UUID?.some(p.id))
                         }
                     }
@@ -45,7 +47,7 @@ struct FilterView: View {
                 Section("カテゴリ") {
                     Picker("カテゴリ", selection: $categoryId) {
                         Text("すべて").tag(String?.none)
-                        ForEach(dataStore.categories, id: \.id) { c in
+                        ForEach(categories, id: \.id) { c in
                             Text(c.name).tag(String?.some(c.id))
                         }
                     }
@@ -98,8 +100,18 @@ struct FilterView: View {
                     Button("適用") { applyFilter() }
                 }
             }
-            .onAppear { loadCurrentFilter() }
+            .onAppear {
+                loadCurrentFilter()
+                loadSourceData()
+            }
         }
+    }
+
+    private func loadSourceData() {
+        let projectSnapshot = ProjectQueryUseCase(modelContext: modelContext).listSnapshot()
+        let categorySnapshot = CategoryQueryUseCase(modelContext: modelContext).snapshot()
+        projects = projectSnapshot.activeProjects + projectSnapshot.archivedProjects
+        categories = categorySnapshot.categories
     }
 
     private func loadCurrentFilter() {

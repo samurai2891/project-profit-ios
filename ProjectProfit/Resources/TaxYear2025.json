@@ -554,11 +554,21 @@
     }
   ],
   "forms": {
+    "common": {
+      "formId": "COMMON",
+      "formVer": "1.0",
+      "rootTag": "COMMON"
+    },
     "blue_general": {
       "formId": "KOA210",
       "formVer": "11.0",
       "rootTag": "KOA210",
       "mappingFile": "tools/etax/mapping_rules_2025.json"
+    },
+    "blue_cash_basis": {
+      "formId": "KOA230",
+      "formVer": "10.0",
+      "rootTag": "KOA230"
     },
     "white_shushi": {
       "formId": "KOA110",

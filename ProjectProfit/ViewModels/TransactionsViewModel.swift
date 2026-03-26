@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 // MARK: - TransactionGroup
@@ -5,7 +6,7 @@ import SwiftUI
 struct TransactionGroup: Identifiable {
     let yearMonth: String
     let displayLabel: String
-    let transactions: [PPTransaction]
+    let transactions: [CanonicalTransactionListItem]
     let income: Int
     let expense: Int
     let transfer: Int
@@ -24,7 +25,7 @@ struct LedgerRow: Identifiable {
     let debit: Int
     let credit: Int
     let runningBalance: Int
-    let transaction: PPTransaction
+    let transaction: CanonicalTransactionListItem
 }
 
 // MARK: - TransactionsViewModel
@@ -32,7 +33,8 @@ struct LedgerRow: Identifiable {
 @MainActor
 @Observable
 final class TransactionsViewModel {
-    let dataStore: DataStore
+    private let transactionHistoryUseCase: TransactionHistoryUseCase
+    private var refreshVersion = 0
     var filter = TransactionFilter()
     var sort = TransactionSort()
 
@@ -51,14 +53,21 @@ final class TransactionsViewModel {
         )}
     }
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(transactionHistoryUseCase: TransactionHistoryUseCase) {
+        self.transactionHistoryUseCase = transactionHistoryUseCase
+    }
+
+    convenience init(modelContext: ModelContext) {
+        self.init(transactionHistoryUseCase: TransactionHistoryUseCase(modelContext: modelContext))
     }
 
     // MARK: - Computed Properties
 
-    var filteredTransactions: [PPTransaction] {
-        dataStore.getFilteredTransactions(filter: filter, sort: sort)
+    var filteredTransactions: [CanonicalTransactionListItem] {
+        _ = refreshVersion
+        return transactionHistoryUseCase
+            .filteredTransactions(filter: filter, sort: sort)
+            .map { CanonicalTransactionListItem($0, focusedProjectId: filter.projectId) }
     }
 
     var groupedTransactions: [TransactionGroup] {
@@ -94,6 +103,14 @@ final class TransactionsViewModel {
         selectedType == .transfer
     }
 
+    var canMutateLegacyTransactions: Bool {
+        transactionHistoryUseCase.canMutateLegacyTransactions
+    }
+
+    var legacyTransactionMutationDisabledMessage: String {
+        transactionHistoryUseCase.legacyMutationDisabledMessage
+    }
+
     var hasActiveFilter: Bool {
         filter.startDate != nil
             || filter.endDate != nil
@@ -117,7 +134,8 @@ final class TransactionsViewModel {
                 type: filter.type,
                 searchText: newValue,
                 amountMin: filter.amountMin,
-                amountMax: filter.amountMax
+                amountMax: filter.amountMax,
+                counterparty: filter.counterparty
             )
         }
     }
@@ -141,12 +159,11 @@ final class TransactionsViewModel {
                 credit = 0
             }
             balance += credit - debit
-            let categoryName = dataStore.getCategory(id: t.categoryId)?.name ?? "未分類"
             return LedgerRow(
                 id: t.id,
                 date: t.date,
                 memo: t.memo,
-                categoryName: categoryName,
+                categoryName: categoryName(for: t),
                 type: t.type,
                 debit: debit,
                 credit: credit,
@@ -156,29 +173,65 @@ final class TransactionsViewModel {
         }
     }
 
-    // MARK: - Actions
-
-    func deleteTransaction(id: UUID) {
-        dataStore.deleteTransaction(id: id)
+    func exportURL(exportAll: Bool = false) throws -> URL {
+        _ = refreshVersion
+        let target: [PPTransaction]
+        if exportAll {
+            target = transactionHistoryUseCase.allTransactions()
+        } else {
+            target = transactionHistoryUseCase.exportableTransactions(
+                for: filteredTransactions.map { item in
+                    CanonicalTransactionDisplayItem(
+                        id: item.id,
+                        journalId: item.journalId,
+                        sourceCandidateId: item.sourceCandidateId,
+                        sourceEvidenceId: item.sourceEvidenceId,
+                        legacyTransactionId: item.legacyTransactionId,
+                        date: item.date,
+                        type: item.type,
+                        amount: item.amount,
+                        projectAmount: item.projectAmount,
+                        projectRatio: item.projectRatio,
+                        projectAllocations: item.projectAllocations,
+                        categoryId: item.categoryId,
+                        memo: item.memo,
+                        lineItems: item.lineItems,
+                        receiptImagePath: item.receiptImagePath,
+                        counterpartyId: item.counterpartyId,
+                        counterpartyName: item.counterpartyName,
+                        recurringId: item.recurringId,
+                        isCanonicalOnly: item.isCanonicalOnly,
+                        canOpenLegacyTransactionDetail: item.canOpenLegacyTransactionDetail
+                    )
+                }
+            )
+            guard !target.isEmpty else {
+                throw ExportCoordinator.ExportError.dataUnavailable
+            }
+        }
+        return try transactionHistoryUseCase.exportCSV(transactions: target)
     }
 
-    func generateCSVText(exportAll: Bool = false) -> String {
-        let target = exportAll ? dataStore.transactions : filteredTransactions
-        return generateCSV(
-            transactions: target,
-            getCategory: { self.dataStore.getCategory(id: $0) },
-            getProject: { self.dataStore.getProject(id: $0) }
-        )
+    func categoryName(for transaction: CanonicalTransactionListItem) -> String {
+        transactionHistoryUseCase.categoryName(for: transaction.categoryId)
+    }
+
+    func projectNames(for transaction: CanonicalTransactionListItem) -> [String] {
+        transaction.projectAllocations.compactMap { $0.projectName }
+    }
+
+    func refresh() {
+        refreshVersion &+= 1
     }
 
     // MARK: - Private Helpers
 
-    private func yearMonthKey(for transaction: PPTransaction) -> String {
+    private func yearMonthKey(for transaction: CanonicalTransactionListItem) -> String {
         let comps = Calendar.current.dateComponents([.year, .month], from: transaction.date)
         return String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
     }
 
-    private func createTransactionGroup(yearMonth: String, transactions: [PPTransaction]) -> TransactionGroup {
+    private func createTransactionGroup(yearMonth: String, transactions: [CanonicalTransactionListItem]) -> TransactionGroup {
         TransactionGroup(
             yearMonth: yearMonth,
             displayLabel: displayLabel(from: yearMonth),
@@ -201,7 +254,7 @@ final class TransactionsViewModel {
         return formatYearMonth(date)
     }
 
-    private func sortTransactions(_ transactions: [PPTransaction]) -> [PPTransaction] {
+    private func sortTransactions(_ transactions: [CanonicalTransactionListItem]) -> [CanonicalTransactionListItem] {
         switch sort.field {
         case .date:
             return sort.order == .desc
@@ -209,22 +262,28 @@ final class TransactionsViewModel {
                 : transactions.sorted { $0.date < $1.date }
         case .amount:
             return sort.order == .desc
-                ? transactions.sorted { $0.amount > $1.amount }
-                : transactions.sorted { $0.amount < $1.amount }
+                ? transactions.sorted { effectiveAmount(for: $0) > effectiveAmount(for: $1) }
+                : transactions.sorted { effectiveAmount(for: $0) < effectiveAmount(for: $1) }
         }
     }
 
-    private func totalByType(_ type: TransactionType, from transactions: [PPTransaction]) -> Int {
+    private func totalByType(_ type: TransactionType, from transactions: [CanonicalTransactionListItem]) -> Int {
         transactions
             .filter { $0.type == type }
             .reduce(0) { $0 + effectiveAmount(for: $1) }
     }
 
     /// プロジェクトフィルタ適用時は配分額、未適用時は取引全額を返す
-    private func effectiveAmount(for transaction: PPTransaction) -> Int {
+    private func effectiveAmount(for transaction: CanonicalTransactionListItem) -> Int {
         guard let projectId = filter.projectId else {
             return transaction.amount
         }
-        return transaction.allocations.first { $0.projectId == projectId }?.amount ?? transaction.amount
+        if let projectAmount = transaction.projectAmount {
+            return projectAmount
+        }
+        if let projectAmount = transaction.projectAllocations.first(where: { $0.projectId == projectId })?.amount {
+            return projectAmount
+        }
+        return transaction.amount
     }
 }

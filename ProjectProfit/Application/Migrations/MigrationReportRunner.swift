@@ -188,10 +188,13 @@ struct MigrationReportRunner {
         }
 
         let warnings = deltas.compactMap { delta -> String? in
-            guard delta.executeSupported, delta.legacyCount > 0, delta.canonicalCount == 0 else {
+            guard delta.executeSupported, delta.legacyCount > 0 else {
                 return nil
             }
-            return "\(delta.modelName) canonical data is empty while legacy data exists"
+            if delta.canonicalCount == 0 {
+                return "\(delta.modelName) canonical data is empty while legacy data exists"
+            }
+            return "\(delta.modelName) legacy data remains after canonical migration"
         }
 
         return MigrationDryRunReport(

@@ -32,7 +32,7 @@ final class CashBookTests: XCTestCase {
     /// Dr cash 50000 / Cr sales 50000
     /// entry.debit=50000, entry.counterAccountId="acct-sales"
     func testCashSale_DebitWithSalesCounterAccount() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 15),
             memo: "現金売上",
             lines: [
@@ -61,7 +61,7 @@ final class CashBookTests: XCTestCase {
     /// Dr purchases 30000 / Cr cash 30000
     /// entry.credit=30000, entry.counterAccountId="acct-purchases"
     func testCashPurchase_CreditWithPurchasesCounterAccount() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 7, 10),
             memo: "仕入",
             lines: [
@@ -89,7 +89,7 @@ final class CashBookTests: XCTestCase {
     /// Dr cash 20000 / Cr ar 20000 (売掛金回収)
     /// entry.debit=20000, entry.counterAccountId="acct-ar"
     func testOtherDeposit_DebitWithNonSalesCounter() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 8, 1),
             memo: "売掛金回収",
             lines: [
@@ -119,7 +119,7 @@ final class CashBookTests: XCTestCase {
     /// Dr rent 80000 / Cr cash 80000
     /// entry.credit=80000, entry.counterAccountId="acct-rent"
     func testOtherWithdrawal_CreditWithNonPurchasesCounter() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 9, 1),
             memo: "家賃支払",
             lines: [
@@ -148,7 +148,7 @@ final class CashBookTests: XCTestCase {
 
     /// 2 deposits (50000, 30000) -> running balances 50000, 80000
     func testRunningBalance_IncrementsOnDebit() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 1),
             memo: "入金1",
             lines: [
@@ -157,7 +157,7 @@ final class CashBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 5),
             memo: "入金2",
             lines: [
@@ -181,7 +181,7 @@ final class CashBookTests: XCTestCase {
 
     /// Deposit 100000 then withdrawal 40000 -> balances 100000, 60000
     func testRunningBalance_DecrementsOnCredit() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 1),
             memo: "入金",
             lines: [
@@ -190,7 +190,7 @@ final class CashBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 10),
             memo: "出金",
             lines: [
@@ -215,7 +215,7 @@ final class CashBookTests: XCTestCase {
     /// Entries from Jan, Feb, Mar -> sorted by date ascending
     func testMultipleTransactions_ChronologicalOrder() {
         // Insert in reverse order to verify sorting
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 3, 15),
             memo: "3月取引",
             lines: [
@@ -224,7 +224,7 @@ final class CashBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 10),
             memo: "1月取引",
             lines: [
@@ -233,7 +233,7 @@ final class CashBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 20),
             memo: "2月取引",
             lines: [
@@ -262,7 +262,7 @@ final class CashBookTests: XCTestCase {
 
     /// 2025 and 2026 entries, filter for 2025 only
     func testCashBook_YearFilter() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "2025年取引",
             lines: [
@@ -271,7 +271,7 @@ final class CashBookTests: XCTestCase {
             ]
         )
 
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2026, 1, 15),
             memo: "2026年取引",
             lines: [
@@ -320,7 +320,7 @@ final class CashBookTests: XCTestCase {
     /// Running balances: 100k, 50k, 130k, 110k
     func testCashBook_MixedIncomeExpense_RunningBalance() {
         // Sale 100,000
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 5),
             memo: "売上1",
             lines: [
@@ -330,7 +330,7 @@ final class CashBookTests: XCTestCase {
         )
 
         // Rent payment 50,000
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 10),
             memo: "家賃",
             lines: [
@@ -340,7 +340,7 @@ final class CashBookTests: XCTestCase {
         )
 
         // Sale 80,000
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 15),
             memo: "売上2",
             lines: [
@@ -350,7 +350,7 @@ final class CashBookTests: XCTestCase {
         )
 
         // Supplies 20,000
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 1, 20),
             memo: "消耗品",
             lines: [
@@ -394,7 +394,7 @@ final class CashBookTests: XCTestCase {
     /// Dr cash 10000 / Cr sales 7000 + Cr other-income 3000
     /// counterAccountId = "acct-sales" (max amount heuristic)
     func testCompoundEntry_MaxAmountCounterAccount() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 1),
             memo: "複合仕訳",
             lines: [
@@ -424,9 +424,9 @@ final class CashBookTests: XCTestCase {
 
     /// Transaction with reducedRate -> entry.taxCategory = .reducedRate
     func testCashBook_TaxMarks() {
-        let project = dataStore.addProject(name: "税テスト", description: "")
+        let project = mutations(dataStore).addProject(name: "税テスト", description: "")
 
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1_080,
             date: date(2025, 10, 5),
@@ -479,7 +479,7 @@ final class CashBookTests: XCTestCase {
 
         for entry in monthlyAmounts {
             if entry.isDeposit {
-                dataStore.addManualJournalEntry(
+                mutations(dataStore).addManualJournalEntry(
                     date: date(2025, entry.month, 15),
                     memo: "\(entry.month)月売上",
                     lines: [
@@ -488,7 +488,7 @@ final class CashBookTests: XCTestCase {
                     ]
                 )
             } else {
-                dataStore.addManualJournalEntry(
+                mutations(dataStore).addManualJournalEntry(
                     date: date(2025, entry.month, 15),
                     memo: "\(entry.month)月家賃",
                     lines: [
@@ -559,7 +559,7 @@ final class CashBookTests: XCTestCase {
 
     /// Verify that account metadata is correctly populated on entries
     func testCashBook_AccountMetadata() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 2, 1),
             memo: "メタデータ確認",
             lines: [
@@ -585,7 +585,7 @@ final class CashBookTests: XCTestCase {
 
     /// Verify that accounts payable withdrawal shows as その他出金
     func testCashBook_AccountsPayableWithdrawal() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 11, 1),
             memo: "買掛金支払",
             lines: [
@@ -611,7 +611,7 @@ final class CashBookTests: XCTestCase {
 
     /// Verify travel expense withdrawal shows in その他出金 column
     func testCashBook_TravelExpenseWithdrawal() {
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 4, 20),
             memo: "出張交通費",
             lines: [
@@ -634,7 +634,7 @@ final class CashBookTests: XCTestCase {
     /// Only cash-account lines appear in cash book, not other accounts
     func testCashBook_OnlyCashAccountLines() {
         // This entry has no cash line -- it should not appear in cash book
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 10),
             memo: "銀行振替",
             lines: [
@@ -644,7 +644,7 @@ final class CashBookTests: XCTestCase {
         )
 
         // This entry has a cash line
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 5, 11),
             memo: "現金入金",
             lines: [
@@ -667,7 +667,7 @@ final class CashBookTests: XCTestCase {
     /// Unposted (unbalanced) entries should not appear in cash book
     func testCashBook_UnpostedEntriesExcluded() {
         // Balanced entry -> posted
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 1),
             memo: "正常仕訳",
             lines: [
@@ -677,7 +677,7 @@ final class CashBookTests: XCTestCase {
         )
 
         // Unbalanced entry -> not posted
-        dataStore.addManualJournalEntry(
+        mutations(dataStore).addManualJournalEntry(
             date: date(2025, 6, 2),
             memo: "不均衡仕訳",
             lines: [

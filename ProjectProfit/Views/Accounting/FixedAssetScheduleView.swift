@@ -1,13 +1,18 @@
+import SwiftData
 import SwiftUI
 
 /// 固定資産台帳 — NTA「帳簿の記帳のしかた」p.16-17 準拠レイアウト
 struct FixedAssetScheduleView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var fiscalYear: Int = Calendar.current.component(.year, from: Date())
+
+    private var assets: [PPFixedAsset] {
+        FixedAssetQueryUseCase(modelContext: modelContext).listSnapshot(currentYear: fiscalYear).assets
+    }
 
     private var rows: [DepreciationScheduleRow] {
         DepreciationScheduleBuilder.build(
-            assets: dataStore.fixedAssets,
+            assets: assets,
             fiscalYear: fiscalYear
         )
     }
@@ -22,14 +27,24 @@ struct FixedAssetScheduleView: View {
 
     var body: some View {
         Group {
-            if dataStore.fixedAssets.isEmpty {
+            if assets.isEmpty {
                 emptyState
             } else {
                 scheduleContent
             }
         }
-        .navigationTitle("固定資産台帳")
+        .navigationTitle("減価償却明細表")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if !rows.isEmpty {
+                    ExportMenuButton(
+                        target: .fixedAssetDepreciation,
+                        fiscalYear: fiscalYear
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Empty State
@@ -77,7 +92,7 @@ struct FixedAssetScheduleView: View {
                     .foregroundStyle(AppColors.primary)
             }
             Spacer()
-            Text("\(String(fiscalYear))年度")
+            Text("\(String(fiscalYear))年")
                 .font(.headline)
             Spacer()
             Button { fiscalYear += 1 } label: {

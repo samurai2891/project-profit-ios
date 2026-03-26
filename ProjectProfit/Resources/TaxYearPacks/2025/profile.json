@@ -11,7 +11,7 @@
   "transitionalCreditRate": "0.8",
   "twoTenthsSpecialAvailable": true,
   "filingDeadlineMonth": 3,
-  "filingDeadlineDay": 17,
+  "filingDeadlineDay": 16,
   "incomeTaxRateBrackets": [
     { "lowerBound": "0", "upperBound": "1950000", "rate": "0.05", "deduction": "0" },
     { "lowerBound": "1950000", "upperBound": "3300000", "rate": "0.10", "deduction": "97500" },

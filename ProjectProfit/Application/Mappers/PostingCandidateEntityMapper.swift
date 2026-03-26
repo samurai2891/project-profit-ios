@@ -16,6 +16,7 @@ enum PostingCandidateEntityMapper {
             status: CandidateStatus(rawValue: entity.statusRaw) ?? .draft,
             source: CandidateSource(rawValue: entity.sourceRaw) ?? .manual,
             memo: entity.memo,
+            legacySnapshot: CanonicalJSONCoder.decodeIfPresent(PostingCandidateLegacySnapshot.self, from: entity.legacySnapshotJSON),
             createdAt: entity.createdAt,
             updatedAt: entity.updatedAt
         )
@@ -31,6 +32,7 @@ enum PostingCandidateEntityMapper {
             counterpartyId: domain.counterpartyId,
             proposedLinesJSON: CanonicalJSONCoder.encode(domain.proposedLines, fallback: "[]"),
             taxAnalysisJSON: CanonicalJSONCoder.encodeIfPresent(domain.taxAnalysis),
+            legacySnapshotJSON: CanonicalJSONCoder.encodeIfPresent(domain.legacySnapshot),
             confidenceScore: domain.confidenceScore,
             statusRaw: domain.status.rawValue,
             sourceRaw: domain.source.rawValue,
@@ -48,6 +50,7 @@ enum PostingCandidateEntityMapper {
         entity.counterpartyId = domain.counterpartyId
         entity.proposedLinesJSON = CanonicalJSONCoder.encode(domain.proposedLines, fallback: "[]")
         entity.taxAnalysisJSON = CanonicalJSONCoder.encodeIfPresent(domain.taxAnalysis)
+        entity.legacySnapshotJSON = CanonicalJSONCoder.encodeIfPresent(domain.legacySnapshot)
         entity.confidenceScore = domain.confidenceScore
         entity.statusRaw = domain.status.rawValue
         entity.sourceRaw = domain.source.rawValue

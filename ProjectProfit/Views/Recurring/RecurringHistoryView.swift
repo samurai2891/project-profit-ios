@@ -2,20 +2,16 @@ import SwiftData
 import SwiftUI
 
 struct RecurringHistoryView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     let recurringId: UUID
 
-    // MARK: - Computed Properties
+    @State private var historyEntries: [RecurringHistoryEntry] = []
 
-    private var historyTransactions: [PPTransaction] {
-        dataStore.transactions
-            .filter { $0.recurringId == recurringId }
-            .sorted { $0.date > $1.date }
+    private var recurringQueryUseCase: RecurringQueryUseCase {
+        RecurringQueryUseCase(modelContext: modelContext)
     }
-
-    // MARK: - Body
 
     var body: some View {
         NavigationStack {
@@ -23,7 +19,7 @@ struct RecurringHistoryView: View {
                 AppColors.surface
                     .ignoresSafeArea()
 
-                if historyTransactions.isEmpty {
+                if historyEntries.isEmpty {
                     emptyStateView
                 } else {
                     transactionList
@@ -39,9 +35,10 @@ struct RecurringHistoryView: View {
                 }
             }
         }
+        .task {
+            historyEntries = recurringQueryUseCase.historyEntries(recurringId: recurringId)
+        }
     }
-
-    // MARK: - Empty State
 
     private var emptyStateView: some View {
         VStack(spacing: 16) {
@@ -61,13 +58,11 @@ struct RecurringHistoryView: View {
         .padding(32)
     }
 
-    // MARK: - Transaction List
-
     private var transactionList: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
-                ForEach(historyTransactions) { transaction in
-                    transactionRow(transaction)
+                ForEach(historyEntries) { entry in
+                    transactionRow(entry)
                 }
             }
             .padding(.horizontal, 16)
@@ -75,30 +70,24 @@ struct RecurringHistoryView: View {
         }
     }
 
-    // MARK: - Transaction Row
-
-    private func transactionRow(_ transaction: PPTransaction) -> some View {
+    private func transactionRow(_ entry: RecurringHistoryEntry) -> some View {
         HStack(spacing: 12) {
-            // Date column
             VStack(spacing: 2) {
-                Text(formatDate(transaction.date))
+                Text(formatDate(entry.date))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .frame(width: 80, alignment: .leading)
 
-            // Details column
             VStack(alignment: .leading, spacing: 2) {
-                let categoryName = dataStore.getCategory(id: transaction.categoryId)?.name
-                if let categoryName {
+                if let categoryName = entry.categoryName {
                     Text(categoryName)
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                 }
 
-                let projectNames = projectNamesForTransaction(transaction)
-                if !projectNames.isEmpty {
-                    Text(projectNames)
+                if !entry.projectNames.isEmpty {
+                    Text(entry.projectNames.joined(separator: ", "))
                         .font(.caption)
                         .foregroundStyle(AppColors.muted)
                         .lineLimit(1)
@@ -107,12 +96,11 @@ struct RecurringHistoryView: View {
 
             Spacer()
 
-            // Amount
-            Text(formatCurrency(transaction.amount))
+            Text(formatCurrency(entry.amount))
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(
-                    transaction.type == .expense ? AppColors.error
-                        : transaction.type == .transfer ? AppColors.warning
+                    entry.type == .expense ? AppColors.error
+                        : entry.type == .transfer ? AppColors.warning
                         : AppColors.success
                 )
         }
@@ -120,18 +108,9 @@ struct RecurringHistoryView: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
-
-    // MARK: - Helpers
-
-    private func projectNamesForTransaction(_ transaction: PPTransaction) -> String {
-        let names = transaction.allocations.compactMap { allocation in
-            dataStore.getProject(id: allocation.projectId)?.name
-        }
-        return names.joined(separator: ", ")
-    }
 }
 
 #Preview {
     RecurringHistoryView(recurringId: UUID())
-        .environment(DataStore(modelContext: try! ModelContext(ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))))
+        .modelContainer(try! ModelContainer(for: PPProject.self, PPTransaction.self, PPCategory.self, PPRecurringTransaction.self))
 }

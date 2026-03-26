@@ -29,7 +29,7 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeProject(name: String = "TestProject") -> PPProject {
-        dataStore.addProject(name: name, description: "desc")
+        mutations(dataStore).addProject(name: name, description: "desc")
     }
 
     /// 今日の日付コンポーネント
@@ -80,7 +80,7 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Tests
 
     /// アクティブで期限内の定期取引に対してプレビューが生成される
-    func testPreviewReturnsItemsForDueRecurring() {
+    func testPreviewReturnsItemsForDueRecurring() async {
         let project = makeProject()
         let day = pastDayOfMonth
         let todayComps = todayComponents
@@ -96,7 +96,7 @@ final class RecurringPreviewTests: XCTestCase {
             dayOfMonth: day
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
 
         let matchingItems = preview.filter { $0.recurringId == recurring.id }
         XCTAssertFalse(matchingItems.isEmpty, "期限内のアクティブな定期取引にはプレビューが生成されるべき")
@@ -105,7 +105,7 @@ final class RecurringPreviewTests: XCTestCase {
     }
 
     /// 非アクティブな定期取引はプレビューに含まれない
-    func testPreviewSkipsInactiveRecurring() {
+    func testPreviewSkipsInactiveRecurring() async {
         let project = makeProject()
         let day = pastDayOfMonth
 
@@ -119,14 +119,14 @@ final class RecurringPreviewTests: XCTestCase {
             isActive: false
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
 
         let matchingItems = preview.filter { $0.recurringId == recurring.id }
         XCTAssertTrue(matchingItems.isEmpty, "非アクティブな定期取引はプレビューに含まれないべき")
     }
 
     /// スキップ日に設定された日付はプレビューに含まれない
-    func testPreviewSkipsSkippedDates() {
+    func testPreviewSkipsSkippedDates() async {
         let project = makeProject()
         let day = pastDayOfMonth
         let todayComps = todayComponents
@@ -147,7 +147,7 @@ final class RecurringPreviewTests: XCTestCase {
             skipDates: [skipDate]
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
 
         let skippedItems = preview.filter { item in
             item.recurringId == recurring.id
@@ -158,7 +158,7 @@ final class RecurringPreviewTests: XCTestCase {
     }
 
     /// endDate を過ぎた定期取引はプレビューに含まれない
-    func testPreviewRespectsEndDate() {
+    func testPreviewRespectsEndDate() async {
         let project = makeProject()
         let today = todayDate()
 
@@ -175,7 +175,7 @@ final class RecurringPreviewTests: XCTestCase {
             endDate: twoMonthsAgo
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
 
         let matchingItems = preview.filter { $0.recurringId == recurring.id }
         let itemsAfterEnd = matchingItems.filter { $0.scheduledDate > twoMonthsAgo }
@@ -183,8 +183,8 @@ final class RecurringPreviewTests: XCTestCase {
     }
 
     /// 定期取引が存在しない場合、プレビューは空
-    func testPreviewEmptyWhenNothingDue() {
-        let preview = dataStore.previewRecurringTransactions()
+    func testPreviewEmptyWhenNothingDue() async {
+        let preview = await dataStore.previewRecurringTransactions()
 
         XCTAssertTrue(preview.isEmpty, "定期取引がない場合プレビューは空であるべき")
     }
@@ -192,7 +192,7 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Allocation Info Tests
 
     /// プレビュー項目にアロケーション情報が含まれる
-    func testPreviewItemContainsAllocationInfo() {
+    func testPreviewItemContainsAllocationInfo() async {
         let project = makeProject(name: "テストPJ")
         let day = pastDayOfMonth
         let todayComps = todayComponents
@@ -207,7 +207,7 @@ final class RecurringPreviewTests: XCTestCase {
             dayOfMonth: day
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
         let item = preview.first { $0.recurringName == "配賦テスト" }
         XCTAssertNotNil(item)
         XCTAssertEqual(item?.projectName, "テストPJ")
@@ -217,17 +217,18 @@ final class RecurringPreviewTests: XCTestCase {
     // MARK: - Year Lock Tests
 
     private func setupProfileAndLockYear(_ year: Int) {
-        if dataStore.accountingProfile == nil {
+        if dataStore.businessProfile == nil {
+            // Insert legacy profile so migration auto-creates canonical profiles
             let profile = PPAccountingProfile(fiscalYear: year)
             context.insert(profile)
             try? context.save()
             dataStore.loadData()
         }
-        dataStore.lockFiscalYear(year)
+        mutations(dataStore).lockFiscalYear(year)
     }
 
     /// 年度ロック中の日付はプレビューからスキップされる
-    func testPreviewSkipsYearLockedDates() {
+    func testPreviewSkipsYearLockedDates() async {
         let project = makeProject()
         let todayComps = todayComponents
         let currentYear = todayComps.year!
@@ -243,7 +244,7 @@ final class RecurringPreviewTests: XCTestCase {
             dayOfMonth: pastDayOfMonth
         )
 
-        let preview = dataStore.previewRecurringTransactions()
+        let preview = await dataStore.previewRecurringTransactions()
         let lockedItems = preview.filter { item in
             calendar.component(.year, from: item.scheduledDate) == currentYear
                 && item.recurringName == "ロック年度テスト"
@@ -251,6 +252,6 @@ final class RecurringPreviewTests: XCTestCase {
         XCTAssertTrue(lockedItems.isEmpty, "年度ロック中の日付はプレビューに含まれないべき")
 
         // Unlock for cleanup
-        dataStore.unlockFiscalYear(currentYear)
+        mutations(dataStore).unlockFiscalYear(currentYear)
     }
 }

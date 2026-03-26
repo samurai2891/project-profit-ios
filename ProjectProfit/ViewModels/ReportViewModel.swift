@@ -1,17 +1,25 @@
+import SwiftData
 import SwiftUI
 
 @MainActor
 @Observable
 final class ReportViewModel {
-    let dataStore: DataStore
-    var selectedFiscalYear: Int
+    private let reportingUseCase: ReportingQueryUseCase
+    private var refreshVersion = 0
+    var selectedFiscalYear: Int {
+        didSet { refresh() }
+    }
     private(set) var startMonth: Int
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
+    init(reportingUseCase: ReportingQueryUseCase) {
+        self.reportingUseCase = reportingUseCase
         let sm = FiscalYearSettings.startMonth
         self.startMonth = sm
         self.selectedFiscalYear = currentFiscalYear(startMonth: sm)
+    }
+
+    convenience init(modelContext: ModelContext) {
+        self.init(reportingUseCase: ReportingQueryUseCase(modelContext: modelContext))
     }
 
     /// Reload when fiscal year setting changes.
@@ -20,6 +28,7 @@ final class ReportViewModel {
         guard sm != startMonth else { return }
         startMonth = sm
         selectedFiscalYear = currentFiscalYear(startMonth: sm)
+        refresh()
     }
 
     var fiscalYearLabelText: String {
@@ -56,41 +65,47 @@ final class ReportViewModel {
     // MARK: - Overall Summary
 
     var overallSummary: OverallSummary {
-        dataStore.getOverallSummary(startDate: dateRange.start, endDate: dateRange.end)
+        _ = refreshVersion
+        return reportingUseCase.overallSummary(startDate: dateRange.start, endDate: dateRange.end)
     }
 
     // MARK: - Monthly Trend
 
     var monthlySummaries: [MonthlySummary] {
-        dataStore.getMonthlySummaries(fiscalYear: selectedFiscalYear, startMonth: startMonth)
+        _ = refreshVersion
+        return reportingUseCase.monthlySummaries(fiscalYear: selectedFiscalYear, startMonth: startMonth)
     }
 
     // MARK: - Expense Categories
 
     var expenseCategories: [CategorySummary] {
-        dataStore.getCategorySummaries(type: .expense, startDate: dateRange.start, endDate: dateRange.end)
+        _ = refreshVersion
+        return reportingUseCase.categorySummaries(type: .expense, startDate: dateRange.start, endDate: dateRange.end)
     }
 
     // MARK: - Income Categories
 
     var incomeCategories: [CategorySummary] {
-        dataStore.getCategorySummaries(type: .income, startDate: dateRange.start, endDate: dateRange.end)
+        _ = refreshVersion
+        return reportingUseCase.categorySummaries(type: .income, startDate: dateRange.start, endDate: dateRange.end)
     }
 
     // MARK: - Project Ranking
 
     var projectRanking: [ProjectSummary] {
-        dataStore.getAllProjectSummaries(startDate: dateRange.start, endDate: dateRange.end)
+        _ = refreshVersion
+        return reportingUseCase.projectSummaries(startDate: dateRange.start, endDate: dateRange.end)
             .sorted { $0.profit > $1.profit }
     }
 
     // MARK: - Year-over-Year Comparison
 
     var previousYearSummary: OverallSummary {
+        _ = refreshVersion
         let prevFY = selectedFiscalYear - 1
         let prevStart = startOfFiscalYear(prevFY, startMonth: startMonth)
         let prevEnd = endOfFiscalYear(prevFY, startMonth: startMonth)
-        return dataStore.getOverallSummary(startDate: prevStart, endDate: prevEnd)
+        return reportingUseCase.overallSummary(startDate: prevStart, endDate: prevEnd)
     }
 
     var yoyIncomeChange: Int {
@@ -108,6 +123,6 @@ final class ReportViewModel {
     // MARK: - Actions
 
     func refresh() {
-        dataStore.loadData()
+        refreshVersion &+= 1
     }
 }

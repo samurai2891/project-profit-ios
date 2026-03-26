@@ -24,11 +24,11 @@ final class AccountingReportServiceTests: XCTestCase {
     }
 
     private func addTestData() {
-        let project = dataStore.addProject(name: "TestProject", description: "")
+        let project = mutations(dataStore).addProject(name: "TestProject", description: "")
         let year = Calendar.current.component(.year, from: Date())
 
         // 収入: 100,000円
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100000,
             date: Calendar.current.date(from: DateComponents(year: year, month: 3, day: 15))!,
             categoryId: "cat-project-income", memo: "売上",
@@ -37,7 +37,7 @@ final class AccountingReportServiceTests: XCTestCase {
         )
 
         // 経費: 30,000円 (全額経費)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense, amount: 30000,
             date: Calendar.current.date(from: DateComponents(year: year, month: 4, day: 1))!,
             categoryId: "cat-tools", memo: "ツール",
@@ -47,7 +47,7 @@ final class AccountingReportServiceTests: XCTestCase {
         )
 
         // 経費: 20,000円 (家事按分50%)
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .expense, amount: 20000,
             date: Calendar.current.date(from: DateComponents(year: year, month: 5, day: 1))!,
             categoryId: "cat-hosting", memo: "サーバー",
@@ -57,16 +57,22 @@ final class AccountingReportServiceTests: XCTestCase {
         )
     }
 
+    private func projectedJournals(for fiscalYear: Int) -> (entries: [PPJournalEntry], lines: [PPJournalLine]) {
+        dataStore.projectedCanonicalJournals(fiscalYear: fiscalYear)
+    }
+
     // MARK: - Trial Balance
 
     func testTrialBalanceIsBalanced() {
         addTestData()
+        let fiscalYear = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: fiscalYear)
 
         let report = AccountingReportService.generateTrialBalance(
-            fiscalYear: Calendar.current.component(.year, from: Date()),
+            fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: projected.entries,
+            journalLines: projected.lines
         )
 
         XCTAssertTrue(report.isBalanced, "Trial balance should be balanced: debit=\(report.debitTotal), credit=\(report.creditTotal)")
@@ -75,11 +81,13 @@ final class AccountingReportServiceTests: XCTestCase {
     }
 
     func testTrialBalanceEmpty() {
+        let fiscalYear = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: fiscalYear)
         let report = AccountingReportService.generateTrialBalance(
-            fiscalYear: Calendar.current.component(.year, from: Date()),
+            fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: projected.entries,
+            journalLines: projected.lines
         )
 
         XCTAssertTrue(report.rows.isEmpty)
@@ -90,12 +98,14 @@ final class AccountingReportServiceTests: XCTestCase {
 
     func testProfitLossNetIncome() {
         addTestData()
+        let fiscalYear = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: fiscalYear)
 
         let report = AccountingReportService.generateProfitLoss(
-            fiscalYear: Calendar.current.component(.year, from: Date()),
+            fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: projected.entries,
+            journalLines: projected.lines
         )
 
         XCTAssertEqual(report.totalRevenue, 100000)
@@ -107,12 +117,14 @@ final class AccountingReportServiceTests: XCTestCase {
 
     func testProfitLossRevenueMinusExpensesEqualsNetIncome() {
         addTestData()
+        let fiscalYear = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: fiscalYear)
 
         let report = AccountingReportService.generateProfitLoss(
-            fiscalYear: Calendar.current.component(.year, from: Date()),
+            fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: projected.entries,
+            journalLines: projected.lines
         )
 
         XCTAssertEqual(report.totalRevenue - report.totalExpenses, report.netIncome)
@@ -122,12 +134,14 @@ final class AccountingReportServiceTests: XCTestCase {
 
     func testBalanceSheetEquation() {
         addTestData()
+        let fiscalYear = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: fiscalYear)
 
         let report = AccountingReportService.generateBalanceSheet(
-            fiscalYear: Calendar.current.component(.year, from: Date()),
+            fiscalYear: fiscalYear,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: projected.entries,
+            journalLines: projected.lines
         )
 
         // 資産 = 負債 + 資本（当期純利益含む）
@@ -141,11 +155,11 @@ final class AccountingReportServiceTests: XCTestCase {
     // MARK: - Date Filter
 
     func testReportFiltersbyFiscalYear() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
         let year = Calendar.current.component(.year, from: Date())
 
         // 今年のトランザクション
-        _ = dataStore.addTransaction(
+        _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50000,
             date: Calendar.current.date(from: DateComponents(year: year, month: 6, day: 1))!,
             categoryId: "cat-project-income", memo: "",
@@ -153,12 +167,15 @@ final class AccountingReportServiceTests: XCTestCase {
             paymentAccountId: "acct-cash"
         )
 
+        let thisYearProjected = projectedJournals(for: year)
+        let lastYearProjected = projectedJournals(for: year - 1)
+
         // 前年のレポートは空になるべき
         let lastYearReport = AccountingReportService.generateProfitLoss(
             fiscalYear: year - 1,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: lastYearProjected.entries,
+            journalLines: lastYearProjected.lines
         )
 
         XCTAssertEqual(lastYearReport.totalRevenue, 0)
@@ -168,8 +185,8 @@ final class AccountingReportServiceTests: XCTestCase {
         let thisYearReport = AccountingReportService.generateProfitLoss(
             fiscalYear: year,
             accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries,
-            journalLines: dataStore.journalLines
+            journalEntries: thisYearProjected.entries,
+            journalLines: thisYearProjected.lines
         )
 
         XCTAssertEqual(thisYearReport.totalRevenue, 50000)
@@ -180,18 +197,19 @@ final class AccountingReportServiceTests: XCTestCase {
     func testTrialBalancePLBSConsistency() {
         addTestData()
         let year = Calendar.current.component(.year, from: Date())
+        let projected = projectedJournals(for: year)
 
         let tb = AccountingReportService.generateTrialBalance(
             fiscalYear: year, accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries, journalLines: dataStore.journalLines
+            journalEntries: projected.entries, journalLines: projected.lines
         )
         let pl = AccountingReportService.generateProfitLoss(
             fiscalYear: year, accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries, journalLines: dataStore.journalLines
+            journalEntries: projected.entries, journalLines: projected.lines
         )
         let bs = AccountingReportService.generateBalanceSheet(
             fiscalYear: year, accounts: dataStore.accounts,
-            journalEntries: dataStore.journalEntries, journalLines: dataStore.journalLines
+            journalEntries: projected.entries, journalLines: projected.lines
         )
 
         // 試算表の貸借一致

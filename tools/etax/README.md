@@ -10,6 +10,11 @@
 - `schemas/tag_dictionary.schema.json`: `TagDictionary` 形式
 - `fixtures/`: CAB未投入時の検証データ
 
+## 参照資料の置き場所
+- `e-taxall/` は repo 管理対象ではありません。
+- 既定では `ETAX_REFERENCE_ROOT`、`/Users/yutaro/project-profit-ios/e-taxall`、`/Users/yutaro/project-profit-ios-local/e-taxall` の順で参照します。
+- repo 外に退避する場合は `ETAX_REFERENCE_ROOT=/absolute/path/to/e-taxall` を指定してください。
+
 ## 実行例
 ```bash
 cd /Users/yutaro/project-profit-ios
@@ -32,9 +37,9 @@ python3 scripts/etax_apply_cab_overlay.py \
 
 python3 scripts/etax_generate_cab_overlay.py \
   --taxyear-json ProjectProfit/Resources/TaxYear2025.json \
-  --blue-spec-xlsx 'e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx' \
+  --blue-spec-xlsx "$ETAX_REFERENCE_ROOT/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver11x.xlsx" \
   --blue-sheet KOA210 \
-  --white-spec-xlsx 'e-taxall/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx' \
+  --white-spec-xlsx "$ETAX_REFERENCE_ROOT/09XML構造設計書等【所得税】/帳票フィールド仕様書(所得-申告)Ver12x.xlsx" \
   --white-sheet KOA110 \
   --out-overlay /tmp/cab_overlay_2025.generated.json \
   --out-report /tmp/cab_overlay_2025.generated.report.json

@@ -16,41 +16,73 @@ enum CashBasisReturnBuilder {
         }
     }
 
-    /// 現金主義用の EtaxForm を生成
+    /// 現金主義用の EtaxForm を生成（canonical profile ベース）
     static func build(
-        fiscalYear: Int,
-        dataStore: DataStore,
-        profile: PPAccountingProfile?
+        input: FormEngine.BuildInput
     ) throws -> EtaxForm {
-        let startMonth = FiscalYearSettings.startMonth
-        let startDate = startOfFiscalYear(fiscalYear, startMonth: startMonth)
-        let endDate = endOfFiscalYear(fiscalYear, startMonth: startMonth)
+        var fields = try buildCoreFields(input: input)
 
-        // 現金主義: 取引の date ベースで集計（発生主義ではなく入出金日）
-        let yearTransactions = dataStore.transactions.filter { tx in
-            tx.date >= startDate && tx.date <= endDate
+        if let businessProfile = input.businessProfile {
+            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(
+                businessProfile: businessProfile,
+                sensitivePayload: input.sensitivePayload
+            ))
         }
 
-        guard !yearTransactions.isEmpty else {
+        return EtaxForm(
+            fiscalYear: input.fiscalYear,
+            formType: .blueCashBasis,
+            fields: fields,
+            generatedAt: Date()
+        )
+    }
+
+    /// 収支フィールドの共通生成ロジック
+    private static func buildCoreFields(
+        input: FormEngine.BuildInput
+    ) throws -> [EtaxField] {
+        var totalIncome = 0
+        var totalExpense = 0
+        var expenseByCategory: [String: Int] = [:]
+
+        for journal in input.canonicalJournals where journal.approvedAt != nil {
+            guard let candidateId = journal.sourceCandidateId,
+                  let summary = input.candidateSummariesById[candidateId]
+            else {
+                continue
+            }
+
+            let amount = journal.lines.reduce(0) { partialResult, line in
+                switch summary.transactionType {
+                case .income:
+                    guard line.creditAmount > 0 else { return partialResult }
+                    return partialResult + NSDecimalNumber(decimal: line.creditAmount).intValue
+                case .expense:
+                    guard line.debitAmount > 0 else { return partialResult }
+                    return partialResult + NSDecimalNumber(decimal: line.debitAmount).intValue
+                case .transfer:
+                    return partialResult
+                }
+            }
+
+            guard amount != 0 else {
+                continue
+            }
+
+            switch summary.transactionType {
+            case .income:
+                totalIncome += amount
+            case .expense:
+                totalExpense += amount
+                expenseByCategory[summary.resolvedCategoryId, default: 0] += amount
+            case .transfer:
+                break
+            }
+        }
+
+        guard totalIncome > 0 || totalExpense > 0 else {
             throw BuildError.noTransactions
         }
-
-        let totalIncome = yearTransactions
-            .filter { $0.type == .income }
-            .reduce(0) { $0 + $1.amount }
-        let totalExpense = yearTransactions
-            .filter { $0.type == .expense }
-            .reduce(0) { $0 + $1.amount }
-
-        // 経費をカテゴリ別に集計
-        let expenseByCategory = Dictionary(
-            grouping: yearTransactions.filter { $0.type == .expense },
-            by: \.categoryId
-        ).mapValues { txs in txs.reduce(0) { $0 + $1.amount } }
-
-        let categoryMap = Dictionary(
-            uniqueKeysWithValues: dataStore.categories.map { ($0.id, $0.name) }
-        )
 
         var fields: [EtaxField] = []
 
@@ -65,8 +97,13 @@ enum CashBasisReturnBuilder {
 
         // 必要経費
         var expenseIndex = 1
-        for (categoryId, amount) in expenseByCategory.sorted(by: { $0.value > $1.value }) {
-            let categoryName = categoryMap[categoryId] ?? categoryId
+        for (categoryId, amount) in expenseByCategory.sorted(by: {
+            if $0.value == $1.value {
+                return $0.key < $1.key
+            }
+            return $0.value > $1.value
+        }) {
+            let categoryName = input.categoryNamesById[categoryId] ?? categoryId
             let label = "\(expenseFieldLabel(index: expenseIndex)) \(categoryName)"
             fields.append(EtaxField(
                 id: "cash_basis_expense_\(expenseIndex)",
@@ -95,17 +132,7 @@ enum CashBasisReturnBuilder {
             section: .income
         ))
 
-        // 申告者情報
-        if let profile {
-            fields.append(contentsOf: EtaxFieldPopulator.populateDeclarantInfo(profile: profile))
-        }
-
-        return EtaxForm(
-            fiscalYear: fiscalYear,
-            formType: .blueCashBasis,
-            fields: fields,
-            generatedAt: Date()
-        )
+        return fields
     }
 
     // MARK: - Helpers

@@ -92,6 +92,16 @@ final class AccountingConstantsTests: XCTestCase {
         XCTAssertEqual(insurance?.subtype, .insuranceExpense)
     }
 
+    func testAllDefaultAccountsHaveLegalReportLineMapping() {
+        for account in AccountingConstants.defaultAccounts {
+            XCTAssertFalse(account.defaultLegalReportLineId.isEmpty, "\(account.id) の決算書表示行が未設定です")
+            XCTAssertNotNil(
+                LegalReportLine(rawValue: account.defaultLegalReportLineId),
+                "\(account.id) の決算書表示行 \(account.defaultLegalReportLineId) が LegalReportLine に存在しません"
+            )
+        }
+    }
+
     func testCodeSchemeConsistency() {
         for account in AccountingConstants.defaultAccounts {
             let codePrefix = account.code.prefix(1)

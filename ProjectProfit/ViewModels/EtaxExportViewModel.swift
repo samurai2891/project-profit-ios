@@ -1,18 +1,52 @@
 import Foundation
-import os
+import SwiftData
 import SwiftUI
 
 @Observable
 @MainActor
 final class EtaxExportViewModel {
-    let dataStore: DataStore
+    private struct PreviewState {
+        let taxYear: Int
+        let formType: EtaxFormType
+        let dataRevision: Int
+    }
 
-    var fiscalYear: Int
+    private let contextProvider: @MainActor (Int) -> EtaxExportContext
+    private let snapshotProvider: @MainActor (Int) -> EtaxFormBuildSnapshot
+    private let modelContext: ModelContext
+    private let taxYearStateUseCase: TaxYearStateUseCase
+    private let filingPreflightUseCase: FilingPreflightUseCase
+    private let formBuilder: @MainActor (FilingStyle, EtaxFormBuildSnapshot) throws -> EtaxForm
+    private let exporter: @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
+
+    var taxYear: Int
     var formType: EtaxFormType = .blueReturn
     var validationErrors: [EtaxExportError] = []
     var exportedForm: EtaxForm?
     var isExporting = false
     var exportResult: ExportResult?
+    private var previewState: PreviewState?
+
+    var supportStatusRows: [TaxYearDefinitionLoader.EtaxSupportStatusRow] {
+        TaxYearDefinitionLoader.etaxSupportStatusRows()
+    }
+
+    var selectedFormTypeSupportedYears: [Int] {
+        TaxYearDefinitionLoader.supportedYears(formType: formType)
+    }
+
+    var selectedFormTypeSupportDescription: String {
+        let years = selectedFormTypeSupportedYears
+        guard !years.isEmpty else {
+            return "\(formType.exportSelectionLabel)で利用可能な申告年分はありません"
+        }
+        let yearList = years.map { "\($0)年" }.joined(separator: ", ")
+        return "\(formType.exportSelectionLabel)の利用可能年分: \(yearList)"
+    }
+
+    var unsupportedYearReasonDescription: String {
+        "一覧にない年分は、その様式の税制パック未収録のため選択できません。"
+    }
 
     enum ExportResult: Identifiable {
         case success(url: URL)
@@ -26,126 +60,151 @@ final class EtaxExportViewModel {
         }
     }
 
-    init(dataStore: DataStore) {
-        self.dataStore = dataStore
-        let preferredYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
-        self.fiscalYear = Self.resolveSupportedFiscalYear(formType: .blueReturn, preferredYear: preferredYear)
-    }
-
-    private var taxYearStateUseCase: TaxYearStateUseCase {
-        TaxYearStateUseCase(modelContext: dataStore.modelContext)
-    }
-
-    private var filingPreflightUseCase: FilingPreflightUseCase {
-        FilingPreflightUseCase(modelContext: dataStore.modelContext)
+    init(
+        modelContext: ModelContext,
+        contextProvider: @escaping @MainActor (Int) -> EtaxExportContext,
+        snapshotProvider: @escaping @MainActor (Int) -> EtaxFormBuildSnapshot,
+        formBuilder: @escaping @MainActor (FilingStyle, EtaxFormBuildSnapshot) throws -> EtaxForm,
+        exporter: @escaping @MainActor (ExportCoordinator.ExportFormat, EtaxForm) throws -> URL
+    ) {
+        self.modelContext = modelContext
+        self.contextProvider = contextProvider
+        self.snapshotProvider = snapshotProvider
+        self.taxYearStateUseCase = TaxYearStateUseCase(modelContext: modelContext)
+        self.filingPreflightUseCase = FilingPreflightUseCase(modelContext: modelContext)
+        self.formBuilder = formBuilder
+        self.exporter = exporter
+        let preferredYear = currentTaxYear() - 1
+        self.taxYear = Self.resolveSupportedTaxYear(formType: .blueReturn, preferredYear: preferredYear)
     }
 
     // MARK: - Generate Preview
 
     func generatePreview() {
-        guard TaxYearDefinitionLoader.isSupported(year: fiscalYear, formType: formType) else {
+        let exportContext = contextProvider(taxYear)
+        guard TaxYearDefinitionLoader.isSupported(year: taxYear, formType: formType) else {
             exportedForm = nil
-            validationErrors = [.unsupportedTaxYear(year: fiscalYear)]
+            validationErrors = [.unsupportedTaxYear(year: taxYear)]
+            previewState = nil
             return
         }
 
-        let preflightErrors = preflightErrors(context: .export)
+        let preflightErrors = preflightErrors(context: .export, exportContext: exportContext)
         guard preflightErrors.isEmpty else {
             exportedForm = nil
             validationErrors = preflightErrors
+            previewState = nil
             return
         }
 
-        let filingStyle: FilingStyle
-        switch formType {
-        case .blueReturn:
-            filingStyle = .blueGeneral
-        case .blueCashBasis:
-            filingStyle = .blueCashBasis
-        case .whiteReturn:
-            filingStyle = .white
-        }
-
-        let form: EtaxForm
         do {
-            form = try FormEngine.build(
-                filingStyle: filingStyle,
-                dataStore: dataStore,
-                fiscalYear: fiscalYear
+            let snapshot = snapshotProvider(taxYear)
+            let revision = currentDataRevision(
+                businessId: exportContext.businessId,
+                taxYear: taxYear,
+                fallbackSnapshot: snapshot
+            )
+            let form = try buildExportParityForm(snapshot: snapshot)
+            validationErrors = EtaxCharacterValidator.validateForm(form)
+            exportedForm = form
+            previewState = PreviewState(
+                taxYear: taxYear,
+                formType: formType,
+                dataRevision: revision
             )
         } catch {
             exportedForm = nil
             validationErrors = [.validationFailed(reasons: [error.localizedDescription])]
+            previewState = nil
             return
         }
-
-        validationErrors = EtaxCharacterValidator.validateForm(Self.exportableForm(from: form))
-        exportedForm = form
     }
 
     // MARK: - Export
 
     func exportXtx() {
-        guard let form = exportedForm else { return }
-        guard form.fiscalYear == fiscalYear else {
-            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
-            return
-        }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
-            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
-            return
-        }
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
-            return
-        }
-        isExporting = true
-
-        let result = EtaxXtxExporter.generateXtx(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "xtx") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
-        }
-
-        isExporting = false
+        export(format: .xtx)
     }
 
     func exportCsv() {
-        guard let form = exportedForm else { return }
-        guard form.fiscalYear == fiscalYear else {
-            exportResult = .failure(message: "年度を変更したため、プレビューを再生成してください")
+        export(format: .csv)
+    }
+
+    private func export(format: ExportCoordinator.ExportFormat) {
+        guard exportedForm != nil else { return }
+        guard exportedForm?.fiscalYear == taxYear else {
+            exportResult = .failure(message: "申告年分を変更したため、プレビューを再生成してください")
             return
         }
-        guard TaxYearDefinitionLoader.isSupported(year: form.fiscalYear, formType: form.formType) else {
-            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: form.fiscalYear).description)
+        guard TaxYearDefinitionLoader.isSupported(year: taxYear, formType: formType) else {
+            exportResult = .failure(message: EtaxExportError.unsupportedTaxYear(year: taxYear).description)
             return
         }
-        let preflightErrors = preflightErrors(context: .export)
-        guard preflightErrors.isEmpty else {
-            validationErrors = preflightErrors
-            exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
+
+        let exportContext = contextProvider(taxYear)
+        let currentRevision = currentDataRevision(
+            businessId: exportContext.businessId,
+            taxYear: taxYear,
+            fallbackSnapshot: nil
+        )
+        let shouldRebuild = previewState?.taxYear != taxYear
+            || previewState?.formType != formType
+            || previewState?.dataRevision != currentRevision
+
+        let currentForm: EtaxForm
+        do {
+            if shouldRebuild {
+                let preflightErrors = preflightErrors(context: .export, exportContext: exportContext)
+                guard preflightErrors.isEmpty else {
+                    validationErrors = preflightErrors
+                    exportResult = .failure(message: preflightErrors.map(\.description).joined(separator: "\n"))
+                    return
+                }
+
+                let snapshot = snapshotProvider(taxYear)
+                currentForm = try buildExportParityForm(snapshot: snapshot)
+                exportedForm = currentForm
+                previewState = PreviewState(
+                    taxYear: taxYear,
+                    formType: formType,
+                    dataRevision: currentRevision
+                )
+            } else if let exportedForm {
+                currentForm = exportedForm
+            } else {
+                let snapshot = snapshotProvider(taxYear)
+                currentForm = try buildExportParityForm(snapshot: snapshot)
+                exportedForm = currentForm
+                previewState = PreviewState(
+                    taxYear: taxYear,
+                    formType: formType,
+                    dataRevision: currentRevision
+                )
+            }
+        } catch {
+            validationErrors = [.validationFailed(reasons: [error.localizedDescription])]
+            exportResult = .failure(message: error.localizedDescription)
             return
         }
+
+        let exportValidationErrors = if shouldRebuild || previewState == nil {
+            EtaxCharacterValidator.validateForm(currentForm)
+        } else {
+            validationErrors
+        }
+        validationErrors = exportValidationErrors
+        guard exportValidationErrors.isEmpty else {
+            exportResult = .failure(message: exportValidationErrors.map(\.description).joined(separator: "\n"))
+            return
+        }
+
         isExporting = true
 
-        let result = EtaxXtxExporter.generateCsv(form: Self.exportableForm(from: form))
-        switch result {
-        case .success(let data):
-            if let url = saveToTempFile(data: data, extension: "csv") {
-                exportResult = .success(url: url)
-            } else {
-                exportResult = .failure(message: "ファイルの保存に失敗しました")
-            }
-        case .failure(let error):
-            exportResult = .failure(message: error.description)
+        do {
+            let url = try exporter(format, currentForm)
+            exportResult = .success(url: url)
+        } catch {
+            exportResult = .failure(message: error.localizedDescription)
         }
 
         isExporting = false
@@ -153,9 +212,7 @@ final class EtaxExportViewModel {
 
     // MARK: - File Handling
 
-    private static let logger = Logger(subsystem: "com.projectprofit", category: "EtaxExport")
-
-    private static func resolveSupportedFiscalYear(formType: EtaxFormType, preferredYear: Int) -> Int {
+    private static func resolveSupportedTaxYear(formType: EtaxFormType, preferredYear: Int) -> Int {
         let years = TaxYearDefinitionLoader.supportedYears(formType: formType)
         if years.contains(preferredYear) {
             return preferredYear
@@ -163,24 +220,268 @@ final class EtaxExportViewModel {
         return years.last ?? preferredYear
     }
 
-    private func saveToTempFile(data: Data, extension ext: String) -> URL? {
-        let fileName = "etax_\(fiscalYear)_\(formType.rawValue).\(ext)"
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
+    private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
+        let exportContext = contextProvider(taxYear)
+        return preflightErrors(context: context, exportContext: exportContext)
+    }
 
-        do {
-            try data.write(to: fileURL)
-            return fileURL
-        } catch {
-            Self.logger.error("ファイル保存失敗: \(fileURL.path), error: \(error.localizedDescription)")
-            return nil
+    private func preflightErrors(
+        context: FilingPreflightContext,
+        exportContext: EtaxExportContext
+    ) -> [EtaxExportError] {
+        var errors = taxStatePreflightErrors(context: exportContext)
+        errors.append(contentsOf: accountingPreflightErrors(context: context, exportContext: exportContext))
+        return errors
+    }
+
+    private func filingStyle(for formType: EtaxFormType) -> FilingStyle {
+        switch formType {
+        case .blueReturn:
+            return .blueGeneral
+        case .blueCashBasis:
+            return .blueCashBasis
+        case .whiteReturn:
+            return .white
         }
     }
 
-    private func preflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        var errors = taxStatePreflightErrors()
-        errors.append(contentsOf: accountingPreflightErrors(context: context))
-        return errors
+    private func buildExportParityForm(snapshot: EtaxFormBuildSnapshot) throws -> EtaxForm {
+        let rawForm = try formBuilder(filingStyle(for: formType), snapshot)
+        return Self.exportableForm(from: rawForm)
+    }
+
+    private func dataRevision(for snapshot: EtaxFormBuildSnapshot) -> Int {
+        var hasher = Hasher()
+        hasher.combine(snapshot.taxYear)
+        hasher.combine(snapshot.startMonth)
+
+        if let businessProfile = snapshot.businessProfile {
+            hasher.combine(businessProfile.id)
+            hasher.combine(businessProfile.ownerName)
+            hasher.combine(businessProfile.businessName)
+            hasher.combine(businessProfile.businessAddress)
+            hasher.combine(businessProfile.postalCode)
+            hasher.combine(businessProfile.phoneNumber)
+            hasher.combine(businessProfile.updatedAt.timeIntervalSinceReferenceDate)
+        } else {
+            hasher.combine("businessProfile:nil")
+        }
+
+        if let taxYearProfile = snapshot.taxYearProfile {
+            hasher.combine(taxYearProfile.id)
+            hasher.combine(taxYearProfile.taxYear)
+            hasher.combine(taxYearProfile.filingStyle.rawValue)
+            hasher.combine(taxYearProfile.yearLockState.rawValue)
+            hasher.combine(taxYearProfile.taxPackVersion)
+            hasher.combine(taxYearProfile.updatedAt.timeIntervalSinceReferenceDate)
+        } else {
+            hasher.combine("taxYearProfile:nil")
+        }
+
+        hasher.combine(snapshot.canonicalAccounts.count)
+        for account in snapshot.canonicalAccounts.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(account.id)
+            hasher.combine(account.code)
+            hasher.combine(account.name)
+            hasher.combine(account.updatedAt.timeIntervalSinceReferenceDate)
+        }
+
+        let sortedCategoryNames = snapshot.categoryNamesById.sorted { lhs, rhs in
+            lhs.key < rhs.key
+        }
+        hasher.combine(sortedCategoryNames.count)
+        for entry in sortedCategoryNames {
+            hasher.combine(entry.key)
+            hasher.combine(entry.value)
+        }
+
+        hasher.combine(snapshot.fixedAssets.count)
+        for asset in snapshot.fixedAssets.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(asset.id)
+            hasher.combine(asset.name)
+            hasher.combine(asset.acquisitionCost)
+            hasher.combine(asset.businessUsePercent)
+            hasher.combine(asset.updatedAt.timeIntervalSinceReferenceDate)
+        }
+
+        if let inventoryRecord = snapshot.inventoryRecord {
+            hasher.combine(inventoryRecord.id)
+            hasher.combine(inventoryRecord.fiscalYear)
+            hasher.combine(inventoryRecord.openingInventory)
+            hasher.combine(inventoryRecord.purchases)
+            hasher.combine(inventoryRecord.closingInventory)
+            hasher.combine(inventoryRecord.updatedAt.timeIntervalSinceReferenceDate)
+        } else {
+            hasher.combine("inventoryRecord:nil")
+        }
+
+        hasher.combine(decimalString(snapshot.canonicalProfitLoss.totalRevenue))
+        hasher.combine(decimalString(snapshot.canonicalProfitLoss.totalExpenses))
+        hasher.combine(decimalString(snapshot.canonicalProfitLoss.netIncome))
+        hasher.combine(decimalString(snapshot.canonicalBalanceSheet.totalAssets))
+        hasher.combine(decimalString(snapshot.canonicalBalanceSheet.totalLiabilities))
+        hasher.combine(decimalString(snapshot.canonicalBalanceSheet.totalEquity))
+
+        hasher.combine(snapshot.canonicalJournals.count)
+        for journal in snapshot.canonicalJournals.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(journal.id)
+            hasher.combine(journal.voucherNo)
+            hasher.combine(journal.updatedAt.timeIntervalSinceReferenceDate)
+            hasher.combine(decimalString(journal.totalDebit))
+            hasher.combine(decimalString(journal.totalCredit))
+        }
+
+        let sortedCandidateSummaries = snapshot.candidateSummariesById.sorted { lhs, rhs in
+            lhs.key.uuidString < rhs.key.uuidString
+        }
+        hasher.combine(sortedCandidateSummaries.count)
+        for entry in sortedCandidateSummaries {
+            hasher.combine(entry.key)
+            hasher.combine(entry.value.transactionType.rawValue)
+            hasher.combine(entry.value.resolvedCategoryId)
+        }
+
+        return hasher.finalize()
+    }
+
+    private func decimalString(_ value: Decimal) -> String {
+        NSDecimalNumber(decimal: value).stringValue
+    }
+
+    private func currentDataRevision(
+        businessId: UUID?,
+        taxYear: Int,
+        fallbackSnapshot: EtaxFormBuildSnapshot?
+    ) -> Int {
+        do {
+            var hasher = Hasher()
+            hasher.combine(taxYear)
+
+            if let businessId {
+                if let businessProfile = try modelContext.fetch(
+                    FetchDescriptor<BusinessProfileEntity>(
+                        predicate: #Predicate { $0.businessId == businessId },
+                        sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+                    )
+                ).first {
+                    hasher.combine(businessProfile.businessId)
+                    hasher.combine(businessProfile.updatedAt.timeIntervalSinceReferenceDate)
+                } else {
+                    hasher.combine("businessProfile:nil")
+                }
+
+                if let taxYearProfile = try modelContext.fetch(
+                    FetchDescriptor<TaxYearProfileEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == taxYear
+                        },
+                        sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+                    )
+                ).first {
+                    hasher.combine(taxYearProfile.profileId)
+                    hasher.combine(taxYearProfile.updatedAt.timeIntervalSinceReferenceDate)
+                    hasher.combine(taxYearProfile.taxPackVersion)
+                    hasher.combine(taxYearProfile.yearLockStateRaw)
+                } else {
+                    hasher.combine("taxYearProfile:nil")
+                }
+
+                let accounts = try modelContext.fetch(
+                    FetchDescriptor<CanonicalAccountEntity>(
+                        predicate: #Predicate { $0.businessId == businessId },
+                        sortBy: [SortDescriptor(\.accountId)]
+                    )
+                )
+                hasher.combine(accounts.count)
+                for account in accounts {
+                    hasher.combine(account.accountId)
+                    hasher.combine(account.code)
+                    hasher.combine(account.name)
+                    hasher.combine(account.updatedAt.timeIntervalSinceReferenceDate)
+                }
+
+                let journals = try modelContext.fetch(
+                    FetchDescriptor<JournalEntryEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == taxYear
+                        },
+                        sortBy: [SortDescriptor(\.journalId)]
+                    )
+                )
+                hasher.combine(journals.count)
+                for journal in journals {
+                    hasher.combine(journal.journalId)
+                    hasher.combine(journal.voucherNo)
+                    hasher.combine(journal.updatedAt.timeIntervalSinceReferenceDate)
+                    hasher.combine(journal.approvedAt?.timeIntervalSinceReferenceDate ?? 0)
+                }
+
+                let candidates = try modelContext.fetch(
+                    FetchDescriptor<PostingCandidateEntity>(
+                        predicate: #Predicate {
+                            $0.businessId == businessId && $0.taxYear == taxYear
+                        },
+                        sortBy: [SortDescriptor(\.candidateId)]
+                    )
+                )
+                hasher.combine(candidates.count)
+                for candidate in candidates {
+                    hasher.combine(candidate.candidateId)
+                    hasher.combine(candidate.statusRaw)
+                    hasher.combine(candidate.updatedAt.timeIntervalSinceReferenceDate)
+                }
+            }
+
+            let categories = try modelContext.fetch(
+                FetchDescriptor<PPCategory>(
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(categories.count)
+            for category in categories {
+                hasher.combine(category.id)
+                hasher.combine(category.name)
+                hasher.combine(category.archivedAt?.timeIntervalSinceReferenceDate ?? 0)
+                hasher.combine(category.linkedAccountId ?? "")
+            }
+
+            let fixedAssets = try modelContext.fetch(
+                FetchDescriptor<PPFixedAsset>(
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(fixedAssets.count)
+            for asset in fixedAssets {
+                hasher.combine(asset.id)
+                hasher.combine(asset.updatedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(asset.name)
+                hasher.combine(asset.acquisitionCost)
+                hasher.combine(asset.businessUsePercent)
+            }
+
+            let inventoryRecords = try modelContext.fetch(
+                FetchDescriptor<PPInventoryRecord>(
+                    predicate: #Predicate { $0.fiscalYear == taxYear },
+                    sortBy: [SortDescriptor(\.id)]
+                )
+            )
+            hasher.combine(inventoryRecords.count)
+            for record in inventoryRecords {
+                hasher.combine(record.id)
+                hasher.combine(record.updatedAt.timeIntervalSinceReferenceDate)
+                hasher.combine(record.openingInventory)
+                hasher.combine(record.purchases)
+                hasher.combine(record.closingInventory)
+            }
+
+            return hasher.finalize()
+        } catch {
+            if let fallbackSnapshot {
+                return dataRevision(for: fallbackSnapshot)
+            }
+            let fallbackSnapshot = snapshotProvider(taxYear)
+            return dataRevision(for: fallbackSnapshot)
+        }
     }
 
     static func exportableForm(from form: EtaxForm) -> EtaxForm {
@@ -196,27 +497,29 @@ final class EtaxExportViewModel {
                 }
         )
 
+        let allowCashBasisDynamicExpenses = form.formType == .blueCashBasis
+
         return EtaxForm(
             fiscalYear: form.fiscalYear,
             formType: form.formType,
-            fields: form.fields.filter { exportableKeys.contains($0.id) },
+            fields: form.fields.filter {
+                exportableKeys.contains($0.id)
+                    || (allowCashBasisDynamicExpenses && $0.id.hasPrefix("cash_basis_expense_") && $0.id != "cash_basis_expense_total")
+            },
             generatedAt: form.generatedAt
         )
     }
 
-    private func taxStatePreflightErrors() -> [EtaxExportError] {
-        guard let businessId = dataStore.businessProfile?.id else {
+    private func taxStatePreflightErrors(context: EtaxExportContext) -> [EtaxExportError] {
+        guard let businessId = context.businessId else {
             return []
         }
 
         do {
-            let fallbackProfile = dataStore.currentTaxYearProfile?.taxYear == fiscalYear
-                ? dataStore.currentTaxYearProfile
-                : nil
             let issues = try taxYearStateUseCase.filingPreflightIssues(
                 businessId: businessId,
-                taxYear: fiscalYear,
-                fallbackProfile: fallbackProfile
+                taxYear: taxYear,
+                fallbackProfile: context.fallbackTaxYearProfile
             )
             let errors = issues
                 .filter { $0.severity == .error }
@@ -230,15 +533,18 @@ final class EtaxExportViewModel {
         }
     }
 
-    private func accountingPreflightErrors(context: FilingPreflightContext) -> [EtaxExportError] {
-        guard let businessId = dataStore.businessProfile?.id else {
+    private func accountingPreflightErrors(
+        context: FilingPreflightContext,
+        exportContext: EtaxExportContext
+    ) -> [EtaxExportError] {
+        guard let businessId = exportContext.businessId else {
             return []
         }
 
         do {
             let report = try filingPreflightUseCase.preflightReport(
                 businessId: businessId,
-                taxYear: fiscalYear,
+                taxYear: taxYear,
                 context: context
             )
             guard !report.blockingIssues.isEmpty else {

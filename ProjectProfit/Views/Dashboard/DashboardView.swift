@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 enum ViewMode: String, CaseIterable {
@@ -13,9 +14,13 @@ enum ViewMode: String, CaseIterable {
 }
 
 struct DashboardView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: DashboardViewModel?
     @State private var showAddProjectSheet = false
+
+    private var dataRevisionUseCase: DataRevisionQueryUseCase {
+        DataRevisionQueryUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
         Group {
@@ -25,11 +30,17 @@ struct DashboardView: View {
                 ProgressView()
             }
         }
-        .task {
+        .task(id: dataRevisionKey) {
             if viewModel == nil {
-                viewModel = DashboardViewModel(dataStore: dataStore)
+                viewModel = DashboardViewModel(modelContext: modelContext)
+            } else {
+                viewModel?.refresh()
             }
         }
+    }
+
+    private var dataRevisionKey: String {
+        dataRevisionUseCase.dashboardRevisionKey()
     }
 
     private func dashboardContent(viewModel: DashboardViewModel) -> some View {

@@ -32,8 +32,8 @@ final class ARBookTests: XCTestCase {
     func testARBook_CreditSale_DebitEntry() {
         // Dr acct-ar 100000 / Cr acct-sales 100000 with counterparty "上野商店"
         // → AR book entry should have debit = 100000 (売上金額)
-        let project = dataStore.addProject(name: "P1", description: "")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 1, 15),
             categoryId: "cat-sales", memo: "掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -59,8 +59,8 @@ final class ARBookTests: XCTestCase {
         // First, create the credit sale to set up the AR balance.
         // Then receive payment via transfer (Dr cash / Cr AR).
         // → AR book should show credit entry for the payment (受入金額).
-        let project = dataStore.addProject(name: "P1", description: "")
-        let _ = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 1, 15),
             categoryId: "cat-sales", memo: "掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -69,7 +69,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // Payment received: transfer from AR → cash
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .transfer, amount: 100_000, date: date(2025, 2, 10),
             categoryId: "", memo: "上野商店入金",
             allocations: [],
@@ -97,10 +97,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 3. Per-Counterparty Running Balance
 
     func testARBook_PerCounterpartyRunningBalance() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // 上野商店: sale 100k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 1, 10),
             categoryId: "cat-sales", memo: "上野商店掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -109,7 +109,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // 上野商店: payment 60k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .transfer, amount: 60_000, date: date(2025, 1, 20),
             categoryId: "", memo: "上野商店入金",
             allocations: [],
@@ -119,7 +119,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // 田中商店: sale 80k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 80_000, date: date(2025, 1, 25),
             categoryId: "cat-sales", memo: "田中商店掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -152,24 +152,24 @@ final class ARBookTests: XCTestCase {
     // MARK: - 4. Counterparty Filter
 
     func testARBook_CounterpartyFilter() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // Create AR entries for multiple counterparties
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: date(2025, 3, 1),
             categoryId: "cat-sales", memo: "上野商店売上",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-ar",
             counterparty: "上野商店"
         )
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 70_000, date: date(2025, 3, 5),
             categoryId: "cat-sales", memo: "田中商店売上",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-ar",
             counterparty: "田中商店"
         )
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: date(2025, 3, 10),
             categoryId: "cat-sales", memo: "上野商店追加売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -194,10 +194,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 5. Empty Counterparty Filter
 
     func testARBook_EmptyCounterpartyFilter() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // AR entry with counterparty
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: date(2025, 4, 1),
             categoryId: "cat-sales", memo: "上野商店売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -206,7 +206,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // AR entry without counterparty (nil)
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 20_000, date: date(2025, 4, 5),
             categoryId: "cat-sales", memo: "取引先不明売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -230,23 +230,23 @@ final class ARBookTests: XCTestCase {
     // MARK: - 6. Get Counterparties
 
     func testARBook_GetCounterparties() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: date(2025, 5, 1),
             categoryId: "cat-sales", memo: "上野商店売上",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-ar",
             counterparty: "上野商店"
         )
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 60_000, date: date(2025, 5, 10),
             categoryId: "cat-sales", memo: "田中商店売上",
             allocations: [(projectId: project.id, ratio: 100)],
             paymentAccountId: "acct-ar",
             counterparty: "田中商店"
         )
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 30_000, date: date(2025, 5, 20),
             categoryId: "cat-sales", memo: "上野商店追加",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -254,7 +254,7 @@ final class ARBookTests: XCTestCase {
             counterparty: "上野商店"
         )
         // Entry with nil counterparty (should NOT appear in counterparties list)
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 10_000, date: date(2025, 5, 25),
             categoryId: "cat-sales", memo: "不明売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -275,10 +275,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 7. All Counterparties with Independent Balances
 
     func testARBook_AllCounterparties_IndependentBalances() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // 上野商店: sale 100k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 6, 1),
             categoryId: "cat-sales", memo: "上野商店掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -287,7 +287,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // 田中商店: sale 80k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 80_000, date: date(2025, 6, 5),
             categoryId: "cat-sales", memo: "田中商店掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -296,7 +296,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // 上野商店: payment 50k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .transfer, amount: 50_000, date: date(2025, 6, 10),
             categoryId: "", memo: "上野商店入金",
             allocations: [],
@@ -333,10 +333,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 8. Date Filter
 
     func testARBook_DateFilter() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // January sale
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 1, 15),
             categoryId: "cat-sales", memo: "1月売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -345,7 +345,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // March sale
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: date(2025, 3, 15),
             categoryId: "cat-sales", memo: "3月売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -354,7 +354,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // May sale
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 150_000, date: date(2025, 5, 15),
             categoryId: "cat-sales", memo: "5月売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -390,10 +390,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 10. Multiple Sales and Payments (Full Year Scenario)
 
     func testARBook_MultipleSalesAndPayments() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // Jan: credit sale 100k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 1, 15),
             categoryId: "cat-sales", memo: "1月掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -402,7 +402,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // Feb: payment received 50k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .transfer, amount: 50_000, date: date(2025, 2, 10),
             categoryId: "", memo: "2月入金",
             allocations: [],
@@ -412,7 +412,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // Mar: additional sale 80k
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 80_000, date: date(2025, 3, 15),
             categoryId: "cat-sales", memo: "3月掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -421,7 +421,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // Apr: payment received 130k (clears remaining balance)
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .transfer, amount: 130_000, date: date(2025, 4, 10),
             categoryId: "", memo: "4月入金",
             allocations: [],
@@ -463,9 +463,9 @@ final class ARBookTests: XCTestCase {
     // MARK: - 11. Tax Category Preserved
 
     func testARBook_TaxCategory_Preserved() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 108_000, date: date(2025, 7, 1),
             categoryId: "cat-sales", memo: "軽減税率掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -490,9 +490,9 @@ final class ARBookTests: XCTestCase {
 
     func testARBook_CounterAccountId() {
         // Dr acct-ar / Cr acct-sales → counterAccountId = "acct-sales"
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 8, 1),
             categoryId: "cat-sales", memo: "掛売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -513,10 +513,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 13. Counterparties with Date Range
 
     func testARBook_GetCounterparties_WithDateRange() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // Q1 counterparty
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: date(2025, 2, 15),
             categoryId: "cat-sales", memo: "Q1売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -525,7 +525,7 @@ final class ARBookTests: XCTestCase {
         )
 
         // Q2 counterparty (different)
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 60_000, date: date(2025, 5, 15),
             categoryId: "cat-sales", memo: "Q2売上",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -555,10 +555,10 @@ final class ARBookTests: XCTestCase {
     // MARK: - 14. Running Balance resets per counterparty within unfiltered view
 
     func testARBook_UnfilteredView_RunningBalancePerCounterparty() {
-        let project = dataStore.addProject(name: "P1", description: "")
+        let project = mutations(dataStore).addProject(name: "P1", description: "")
 
         // Interleaved transactions from different counterparties
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 100_000, date: date(2025, 9, 1),
             categoryId: "cat-sales", memo: "上野商店売上1",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -566,7 +566,7 @@ final class ARBookTests: XCTestCase {
             counterparty: "上野商店"
         )
 
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 200_000, date: date(2025, 9, 2),
             categoryId: "cat-sales", memo: "田中商店売上1",
             allocations: [(projectId: project.id, ratio: 100)],
@@ -574,7 +574,7 @@ final class ARBookTests: XCTestCase {
             counterparty: "田中商店"
         )
 
-        let _ = dataStore.addTransaction(
+        let _ = mutations(dataStore).addTransaction(
             type: .income, amount: 50_000, date: date(2025, 9, 3),
             categoryId: "cat-sales", memo: "上野商店売上2",
             allocations: [(projectId: project.id, ratio: 100)],

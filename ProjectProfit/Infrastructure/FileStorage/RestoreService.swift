@@ -69,9 +69,16 @@ struct RestoreService {
             }
         }
 
+        let profileIntegrity = profileSnapshotIntegrity(payload: payload)
+        issues.append(contentsOf: profileIntegrity.issues)
+        warnings.append(contentsOf: profileIntegrity.warnings)
         issues.append(contentsOf: payloadIntegrityIssues(payload: payload, fileRecordByPath: fileRecordByPath))
 
-        let conflicts = try existingConflicts(for: payload, scope: manifest.scope)
+        let conflicts = try existingConflicts(
+            for: payload,
+            scope: manifest.scope,
+            fiscalStartMonth: manifest.fiscalStartMonth
+        )
         if secureProfiles.isEmpty,
            (!payload.legacy.accountingProfiles.isEmpty || !payload.canonical.businessProfiles.isEmpty) {
             warnings.append("secure profile payload is empty")
@@ -94,16 +101,22 @@ struct RestoreService {
         let extracted = try extractSnapshot(snapshotURL: snapshotURL)
         defer { try? FileManager.default.removeItem(at: extracted.directory) }
         let rollback = try backupService.export(scope: report.manifest.scope)
-        let filesToDelete = try clearScope(report.manifest.scope)
+        let filesToDelete = try clearScope(
+            report.manifest.scope,
+            fiscalStartMonth: report.manifest.fiscalStartMonth
+        )
 
         do {
-            try restoreFiles(from: extracted.directory, records: report.manifest.fileRecords)
-            try restoreSecureProfiles(extracted.secureProfiles)
             try restorePayload(extracted.payload)
             try modelContext.save()
+            try restoreFiles(from: extracted.directory, records: report.manifest.fileRecords)
+            try restoreSecureProfiles(extracted.secureProfiles)
+            try normalizeSecureProfilesIfNeeded(payload: extracted.payload)
             try searchIndexRebuilder.rebuildAll()
         } catch {
+            modelContext.rollback()
             cleanupFiles(filesToDelete)
+            bestEffortRestoreFromRollback(archiveURL: rollback.archiveURL)
             throw error
         }
 
@@ -269,11 +282,50 @@ struct RestoreService {
         return issues
     }
 
+    private func profileSnapshotIntegrity(
+        payload: AppSnapshotPayload
+    ) -> (issues: [String], warnings: [String]) {
+        let hasCanonicalBusinessProfiles = !payload.canonical.businessProfiles.isEmpty
+        let hasCanonicalTaxYearProfiles = !payload.canonical.taxYearProfiles.isEmpty
+
+        var issues: [String] = []
+        var warnings: [String] = []
+
+        if hasCanonicalBusinessProfiles != hasCanonicalTaxYearProfiles {
+            issues.append("canonical profile snapshot is incomplete")
+        }
+
+        let canonicalBusinessIds = Set(payload.canonical.businessProfiles.map(\.id))
+        for profile in payload.canonical.taxYearProfiles where !canonicalBusinessIds.contains(profile.businessId) {
+            issues.append("canonical tax year profile business missing: \(profile.taxYear)")
+        }
+
+        if hasCanonicalTaxYearProfiles && !payload.legacy.accountingProfiles.isEmpty {
+            let canonicalStatesByYear = Dictionary(
+                grouping: payload.canonical.taxYearProfiles,
+                by: \.taxYear
+            ).mapValues { Set($0.map(\.yearLockState)) }
+
+            for legacyProfile in payload.legacy.accountingProfiles {
+                let legacyState: YearLockState = legacyProfile.lockedAt == nil ? .open : .finalLock
+                guard let canonicalStates = canonicalStatesByYear[legacyProfile.fiscalYear],
+                      !canonicalStates.contains(legacyState) else {
+                    continue
+                }
+                warnings.append(
+                    "legacy accountingProfiles.lockedAt is ignored for taxYear \(legacyProfile.fiscalYear); canonical taxYearProfiles.yearLockState is authoritative"
+                )
+            }
+        }
+
+        return (issues, warnings)
+    }
+
     private func existingConflicts(
         for payload: AppSnapshotPayload,
-        scope: BackupScope
+        scope: BackupScope,
+        fiscalStartMonth: Int
     ) throws -> [RestoreConflict] {
-        let fiscalStartMonth = FiscalYearSettings.startMonth
         switch scope {
         case .full:
             return try [
@@ -301,7 +353,7 @@ struct RestoreService {
         }
     }
 
-    private func clearScope(_ scope: BackupScope) throws -> [SnapshotFileRecord] {
+    private func clearScope(_ scope: BackupScope, fiscalStartMonth: Int) throws -> [SnapshotFileRecord] {
         switch scope {
         case .full:
             let fileRecords = collectExistingFileRecords()
@@ -339,7 +391,6 @@ struct RestoreService {
             clearAllFiles()
             return fileRecords
         case let .taxYear(year):
-            let fiscalStartMonth = FiscalYearSettings.startMonth
             let transactions = try fetchAll(PPTransaction.self).filter { fiscalYear(for: $0.date, startMonth: fiscalStartMonth) == year }
             let transactionIds = Set(transactions.map(\.id))
             let journalEntries = try fetchAll(PPJournalEntry.self).filter { fiscalYear(for: $0.date, startMonth: fiscalStartMonth) == year }
@@ -409,7 +460,6 @@ struct RestoreService {
         try upsertLegacyAccounts(payload.legacy.accounts)
         try upsertLegacyJournalEntries(payload.legacy.journalEntries)
         try upsertLegacyJournalLines(payload.legacy.journalLines)
-        try upsertLegacyAccountingProfiles(payload.legacy.accountingProfiles)
         try upsertLegacyUserRules(payload.legacy.userRules)
         try upsertLegacyFixedAssets(payload.legacy.fixedAssets)
         try upsertLegacyInventory(payload.legacy.inventoryRecords)
@@ -428,6 +478,9 @@ struct RestoreService {
         try upsertCanonicalAccounts(payload.canonical.accounts)
         try upsertDistributionRules(payload.canonical.distributionRules)
         try upsertAuditEvents(payload.canonical.auditEvents)
+        if shouldRestoreCanonicalProfilesFromLegacySnapshots(payload) {
+            _ = try restoreCanonicalProfilesFromLegacySnapshots(payload.legacy.accountingProfiles)
+        }
     }
 
     private func restoreFiles(from directory: URL, records: [SnapshotFileRecord]) throws {
@@ -446,11 +499,87 @@ struct RestoreService {
     }
 
     private func restoreSecureProfiles(_ secureProfiles: [SnapshotSecureProfile]) throws {
+        var previousPayloadByProfileId: [String: ProfileSensitivePayload?] = [:]
         for profile in secureProfiles {
+            if previousPayloadByProfileId[profile.profileId] == nil {
+                previousPayloadByProfileId[profile.profileId] = ProfileSecureStore.load(profileId: profile.profileId)
+            }
             guard ProfileSecureStore.save(profile.payload, profileId: profile.profileId) else {
+                rollbackSecureProfileRestore(previousPayloadByProfileId)
                 throw SnapshotServiceError.restorePreflightFailed(["secure profile save failed: \(profile.profileId)"])
             }
         }
+    }
+
+    private func rollbackSecureProfileRestore(_ previousPayloadByProfileId: [String: ProfileSensitivePayload?]) {
+        for (profileId, payload) in previousPayloadByProfileId {
+            if let payload {
+                _ = ProfileSecureStore.save(payload, profileId: profileId)
+            } else {
+                _ = ProfileSecureStore.delete(profileId: profileId)
+            }
+        }
+    }
+
+    private func bestEffortRestoreFromRollback(archiveURL: URL) {
+        do {
+            let extracted = try extractSnapshot(snapshotURL: archiveURL)
+            defer { try? FileManager.default.removeItem(at: extracted.directory) }
+
+            _ = try clearScope(
+                extracted.manifest.scope,
+                fiscalStartMonth: extracted.manifest.fiscalStartMonth
+            )
+            try restorePayload(extracted.payload)
+            try modelContext.save()
+            try restoreFiles(from: extracted.directory, records: extracted.manifest.fileRecords)
+            try restoreSecureProfiles(extracted.secureProfiles)
+            try normalizeSecureProfilesIfNeeded(payload: extracted.payload)
+            try searchIndexRebuilder.rebuildAll()
+        } catch {
+            AppLogger.dataStore.error("Best-effort rollback restore failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func normalizeSecureProfilesIfNeeded(payload: AppSnapshotPayload) throws {
+        guard !payload.legacy.accountingProfiles.isEmpty,
+              let canonicalBusinessId = try defaultBusinessProfileId()?.uuidString else {
+            return
+        }
+        let secureIdMapping = Dictionary(
+            uniqueKeysWithValues: payload.legacy.accountingProfiles.map { ($0.id, canonicalBusinessId) }
+        )
+        try normalizeSecureProfiles(profileIdMapping: secureIdMapping)
+    }
+
+    private func normalizeSecureProfiles(profileIdMapping: [String: String]) throws {
+        for (legacyProfileId, canonicalProfileId) in profileIdMapping where legacyProfileId != canonicalProfileId {
+            let canonicalPayload = ProfileSecureStore.load(profileId: canonicalProfileId)
+            guard let legacyPayload = ProfileSecureStore.load(profileId: legacyProfileId) else {
+                continue
+            }
+
+            if canonicalPayload == nil {
+                guard ProfileSecureStore.save(legacyPayload, profileId: canonicalProfileId) else {
+                    throw SnapshotServiceError.restorePreflightFailed(["secure profile save failed: \(canonicalProfileId)"])
+                }
+            }
+
+            _ = ProfileSecureStore.delete(profileId: legacyProfileId)
+        }
+    }
+
+    private func defaultBusinessProfileId() throws -> UUID? {
+        let descriptor = FetchDescriptor<BusinessProfileEntity>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return try modelContext.fetch(descriptor).first?.businessId
+    }
+
+    private func shouldRestoreCanonicalProfilesFromLegacySnapshots(_ payload: AppSnapshotPayload) -> Bool {
+        payload.canonical.businessProfiles.isEmpty &&
+            payload.canonical.taxYearProfiles.isEmpty &&
+            !payload.legacy.accountingProfiles.isEmpty
     }
 
     private func collectExistingSecureProfileIds() throws -> Set<String> {

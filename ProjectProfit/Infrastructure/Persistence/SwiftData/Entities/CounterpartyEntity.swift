@@ -21,6 +21,8 @@ final class CounterpartyEntity {
     var defaultTaxCodeId: String?
     var defaultProjectId: UUID?
     var notes: String?
+    var payeeIsWithholdingSubject: Bool
+    var payeeWithholdingCategoryRaw: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -42,6 +44,8 @@ final class CounterpartyEntity {
         defaultTaxCodeId: String? = nil,
         defaultProjectId: UUID? = nil,
         notes: String? = nil,
+        payeeIsWithholdingSubject: Bool = false,
+        payeeWithholdingCategoryRaw: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -62,6 +66,8 @@ final class CounterpartyEntity {
         self.defaultTaxCodeId = defaultTaxCodeId
         self.defaultProjectId = defaultProjectId
         self.notes = notes
+        self.payeeIsWithholdingSubject = payeeIsWithholdingSubject
+        self.payeeWithholdingCategoryRaw = payeeWithholdingCategoryRaw
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

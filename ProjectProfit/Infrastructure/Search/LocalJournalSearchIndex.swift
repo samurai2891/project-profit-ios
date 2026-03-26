@@ -3,6 +3,8 @@ import SwiftData
 
 @MainActor
 final class LocalJournalSearchIndex {
+    static let indexName = "仕訳検索インデックス"
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -10,42 +12,19 @@ final class LocalJournalSearchIndex {
     }
 
     func search(criteria: JournalSearchCriteria) throws -> [UUID] {
-        let descriptor = FetchDescriptor<JournalSearchIndexEntity>(
-            sortBy: [
-                SortDescriptor(\.journalDate, order: .reverse),
-                SortDescriptor(\.updatedAt, order: .reverse)
-            ]
-        )
+        let descriptor = searchDescriptor(criteria: criteria)
         return try modelContext.fetch(descriptor)
             .filter { entry in
-                matches(entry, criteria: criteria)
+                try matches(entry, criteria: criteria)
             }
             .map(\.journalId)
     }
 
     func rebuild(businessId: UUID? = nil, taxYear: Int? = nil) throws {
-        let existingDescriptor = FetchDescriptor<JournalSearchIndexEntity>()
-        let existing = try modelContext.fetch(existingDescriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let existing = try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
         existing.forEach(modelContext.delete)
 
-        let journalDescriptor = FetchDescriptor<JournalEntryEntity>()
-        let journalEntities = try modelContext.fetch(journalDescriptor).filter { entity in
-            if let businessId, entity.businessId != businessId {
-                return false
-            }
-            if let taxYear, entity.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let journalEntities = try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear))
 
         let evidenceIds = Set(journalEntities.flatMap { entity in
             let lineEvidenceIds = entity.lines.compactMap(\.evidenceReferenceId)
@@ -55,8 +34,7 @@ final class LocalJournalSearchIndex {
             return lineEvidenceIds
         })
 
-        let evidenceDescriptor = FetchDescriptor<EvidenceRecordEntity>()
-        let evidences = try modelContext.fetch(evidenceDescriptor)
+        let evidences = try modelContext.fetch(evidenceDescriptor(businessId: businessId, taxYear: taxYear))
             .map(EvidenceRecordEntityMapper.toDomain)
             .filter { evidenceIds.contains($0.id) }
         let evidenceById = Dictionary(uniqueKeysWithValues: evidences.map { ($0.id, $0) })
@@ -80,32 +58,24 @@ final class LocalJournalSearchIndex {
     }
 
     func indexCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<JournalSearchIndexEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
     func sourceCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<JournalEntryEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
-    private func matches(_ entry: JournalSearchIndexEntity, criteria: JournalSearchCriteria) -> Bool {
+    func validateIntegrity(businessId: UUID? = nil, taxYear: Int? = nil) throws {
+        let entries = try scopedEntries(businessId: businessId, taxYear: taxYear)
+        for entry in entries {
+            _ = try decodeCounterpartyNames(from: entry)
+            _ = try decodeRegistrationNumbers(from: entry)
+            _ = try decodeProjectIds(from: entry)
+            _ = try decodeFileHashes(from: entry)
+        }
+    }
+
+    private func matches(_ entry: JournalSearchIndexEntity, criteria: JournalSearchCriteria) throws -> Bool {
         if let businessId = criteria.businessId, entry.businessId != businessId {
             return false
         }
@@ -122,24 +92,24 @@ final class LocalJournalSearchIndex {
             return false
         }
 
-        let counterparties = CanonicalJSONCoder.decode([String].self, from: entry.counterpartyNamesJSON, fallback: [])
+        let counterparties = try decodeCounterpartyNames(from: entry)
         if let counterpartyText = SearchIndexNormalizer.normalizeOptionalText(criteria.counterpartyText),
            !counterparties.contains(where: { $0.contains(counterpartyText) }) {
             return false
         }
 
-        let registrationNumbers = Set(CanonicalJSONCoder.decode([String].self, from: entry.registrationNumbersJSON, fallback: []))
+        let registrationNumbers = Set(try decodeRegistrationNumbers(from: entry))
         if let registrationNumber = SearchIndexNormalizer.normalizeIdentifier(criteria.registrationNumber),
            !registrationNumbers.contains(registrationNumber) {
             return false
         }
 
-        let projectIds = Set(CanonicalJSONCoder.decode([UUID].self, from: entry.projectIdsJSON, fallback: []))
+        let projectIds = Set(try decodeProjectIds(from: entry))
         if let projectId = criteria.projectId, !projectIds.contains(projectId) {
             return false
         }
 
-        let fileHashes = Set(CanonicalJSONCoder.decode([String].self, from: entry.fileHashesJSON, fallback: []))
+        let fileHashes = Set(try decodeFileHashes(from: entry))
         if let fileHash = SearchIndexNormalizer.normalizeIdentifier(criteria.fileHash),
            !fileHashes.contains(fileHash) {
             return false
@@ -166,6 +136,7 @@ final class LocalJournalSearchIndex {
             relatedEvidences.compactMap { SearchIndexNormalizer.normalizeIdentifier($0.structuredFields?.registrationNumber) }
         )
         let projectIds = Set(relatedEvidences.flatMap(\.linkedProjectIds))
+            .union(journal.lines.compactMap(\.projectAllocationId))
         let fileHashes = Set(
             relatedEvidences.compactMap { SearchIndexNormalizer.normalizeIdentifier($0.fileHash) }
         )
@@ -200,5 +171,206 @@ final class LocalJournalSearchIndex {
                 .compactMap { $0 }
         )
         return ids.compactMap { evidenceById[$0] }
+    }
+
+    private func scopedEntries(businessId: UUID? = nil, taxYear: Int? = nil) throws -> [JournalSearchIndexEntity] {
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
+    }
+
+    private func searchDescriptor(criteria: JournalSearchCriteria) -> FetchDescriptor<JournalSearchIndexEntity> {
+        let sortBy = [
+            SortDescriptor(\JournalSearchIndexEntity.journalDate, order: .reverse),
+            SortDescriptor(\JournalSearchIndexEntity.updatedAt, order: .reverse)
+        ]
+        let normalizedCounterparty = SearchIndexNormalizer.normalizeOptionalText(criteria.counterpartyText)
+        let normalizedRegistrationNumber = SearchIndexNormalizer.normalizeIdentifier(criteria.registrationNumber)
+        let normalizedFileHash = SearchIndexNormalizer.normalizeIdentifier(criteria.fileHash)
+        let normalizedTextQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery)
+
+        guard criteria.dateRange == nil,
+              criteria.amountRange == nil,
+              criteria.projectId == nil
+        else {
+            return scopedDescriptor(
+                businessId: criteria.businessId,
+                taxYear: criteria.taxYear,
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedCounterparty,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedCounterparty)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedRegistrationNumber,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedRegistrationNumber)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedFileHash,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedFileHash)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedTextQuery,
+           !criteria.includeCancelled
+        {
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && !$0.isCancelledOriginal
+                        && !$0.isReversal
+                        && $0.searchText.contains(normalizedTextQuery)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        return scopedDescriptor(
+            businessId: criteria.businessId,
+            taxYear: criteria.taxYear,
+            sortBy: sortBy
+        )
+    }
+
+    private func scopedDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil,
+        sortBy: [SortDescriptor<JournalSearchIndexEntity>] = []
+    ) -> FetchDescriptor<JournalSearchIndexEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                },
+                sortBy: sortBy
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: sortBy
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<JournalSearchIndexEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear },
+                sortBy: sortBy
+            )
+        case (nil, nil):
+            return FetchDescriptor<JournalSearchIndexEntity>(sortBy: sortBy)
+        }
+    }
+
+    private func sourceDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil
+    ) -> FetchDescriptor<JournalEntryEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<JournalEntryEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear }
+            )
+        case (nil, nil):
+            return FetchDescriptor<JournalEntryEntity>()
+        }
+    }
+
+    private func evidenceDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear }
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>()
+        }
+    }
+
+    private func decodeCounterpartyNames(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.counterpartyNamesJSON, recordId: entry.journalId, field: "counterpartyNamesJSON")
+    }
+
+    private func decodeRegistrationNumbers(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.registrationNumbersJSON, recordId: entry.journalId, field: "registrationNumbersJSON")
+    }
+
+    private func decodeProjectIds(from entry: JournalSearchIndexEntity) throws -> [UUID] {
+        try decode([UUID].self, from: entry.projectIdsJSON, recordId: entry.journalId, field: "projectIdsJSON")
+    }
+
+    private func decodeFileHashes(from entry: JournalSearchIndexEntity) throws -> [String] {
+        try decode([String].self, from: entry.fileHashesJSON, recordId: entry.journalId, field: "fileHashesJSON")
+    }
+
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        from json: String?,
+        recordId: UUID,
+        field: String
+    ) throws -> T {
+        do {
+            return try CanonicalJSONCoder.decodeStrict(type, from: json)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexCorrupted(
+                indexName: Self.indexName,
+                recordId: recordId,
+                field: field
+            )
+        }
     }
 }

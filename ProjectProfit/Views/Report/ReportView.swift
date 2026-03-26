@@ -1,50 +1,43 @@
+import SwiftData
 import SwiftUI
 
-enum ReportSegment: String, CaseIterable {
-    case annual = "年次レポート"
-    case taxFiling = "確定申告"
-}
-
 struct ReportView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ReportViewModel?
-    @State private var selectedSegment: ReportSegment = .annual
+
+    static let titleText = "分析レポート"
+    static let descriptionText = "収益・費用・月別推移を確認し、申告前の見直しに使います。"
+
+    private var dataRevisionUseCase: DataRevisionQueryUseCase {
+        DataRevisionQueryUseCase(modelContext: modelContext)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("レポート種別", selection: $selectedSegment) {
-                ForEach(ReportSegment.allCases, id: \.self) { segment in
-                    Text(segment.rawValue).tag(segment)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-
-            Group {
-                switch selectedSegment {
-                case .annual:
-                    if let viewModel {
-                        reportContent(viewModel: viewModel)
-                    } else {
-                        ProgressView()
-                    }
-                case .taxFiling:
-                    FilingDashboardView()
-                }
+        Group {
+            if let viewModel {
+                reportContent(viewModel: viewModel)
+            } else {
+                ProgressView()
             }
         }
-        .task {
+        .task(id: dataRevisionKey) {
             if viewModel == nil {
-                viewModel = ReportViewModel(dataStore: dataStore)
+                viewModel = ReportViewModel(modelContext: modelContext)
+            } else {
+                viewModel?.refresh()
             }
         }
+    }
+
+    private var dataRevisionKey: String {
+        dataRevisionUseCase.reportRevisionKey()
     }
 
     private func reportContent(viewModel: ReportViewModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 yearNavigator(viewModel: viewModel)
+                analyticsSummaryCard
                 overallSummaryCards(viewModel: viewModel)
                 yoyComparisonSection(viewModel: viewModel)
                 monthlyChartSection(viewModel: viewModel)
@@ -54,7 +47,7 @@ struct ReportView: View {
             }
             .padding(.bottom, 40)
         }
-        .navigationTitle("レポート")
+        .navigationTitle(Self.titleText)
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
             viewModel.reloadStartMonth()
@@ -62,6 +55,20 @@ struct ReportView: View {
         .refreshable {
             viewModel.refresh()
         }
+    }
+
+    private var analyticsSummaryCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.title3)
+                .foregroundStyle(AppColors.primary)
+
+            Text(Self.descriptionText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Year Navigator

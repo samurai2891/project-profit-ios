@@ -8,20 +8,32 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     private var container: ModelContainer!
     private var context: ModelContext!
     private var dataStore: ProjectProfit.DataStore!
+    private var tempDirectory: URL!
 
-    override func setUp() {
-        super.setUp()
-        container = try! TestModelContainer.create()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "DocumentAndSubLedgerTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        ReceiptImageStore.setBaseDirectoryOverride(tempDirectory)
+        container = try TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
+        ReceiptImageStore.setBaseDirectoryOverride(nil)
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
         dataStore = nil
         context = nil
         container = nil
-        super.tearDown()
+        tempDirectory = nil
+        try super.tearDownWithError()
     }
 
     func testLegalDocumentTypeRetentionPolicyDefaults() {
@@ -31,9 +43,9 @@ final class DocumentAndSubLedgerTests: XCTestCase {
         XCTAssertEqual(LegalDocumentType.invoice.retentionCategory.retentionYears, 5)
     }
 
-    func testDocumentDeletionFlow_requiresWarningBeforeDeletion() {
-        let project = dataStore.addProject(name: "書類テスト", description: "doc")
-        let tx = dataStore.addTransaction(
+    func testDocumentDeletionFlow_requiresAdminOverrideBeforeQuarantine() {
+        let project = mutations(dataStore).addProject(name: "書類テスト", description: "doc")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
@@ -58,13 +70,13 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
         let firstAttempt = dataStore.requestDocumentDeletion(id: record.id)
         switch firstAttempt {
-        case .warningRequired(let message):
+        case .adminOverrideRequired(let message):
             XCTAssertTrue(message.contains("保存期間"))
         default:
-            XCTFail("Expected warningRequired")
+            XCTFail("Expected adminOverrideRequired")
         }
 
-        let confirmed = dataStore.confirmDocumentDeletion(id: record.id, reason: "単体テスト")
+        let confirmed = dataStore.confirmDocumentDeletion(id: record.id, reason: "単体テスト", approvedBy: "管理者A")
         if case .deleted = confirmed {
             XCTAssertEqual(dataStore.documentCount(for: tx.id), 0)
         } else {
@@ -73,7 +85,7 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     }
 
     func testSubLedger_cashBookExtractsCashLines() {
-        let _ = dataStore.addManualJournalEntry(
+        let _ = mutations(dataStore).addManualJournalEntry(
             date: Date(),
             memo: "現金売上",
             lines: [
@@ -89,15 +101,16 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
     func testLegacyReceiptImageBackfill_migratesToDocumentRecordAndClearsPath() throws {
         let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
-        let project = dataStore.addProject(name: "移行テスト", description: "legacy")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "移行テスト", description: "legacy")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 980,
             date: Date(timeIntervalSince1970: 1_735_689_600),
             categoryId: "cat-other-expense",
             memo: "旧領収書",
             allocations: [(projectId: project.id, ratio: 100)],
-            receiptImagePath: legacyImageFile
+            receiptImagePath: legacyImageFile,
+            reloadStoreAfterMutation: false
         )
 
         let reloadedStore = ProjectProfit.DataStore(modelContext: context)
@@ -123,15 +136,16 @@ final class DocumentAndSubLedgerTests: XCTestCase {
 
     func testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists() throws {
         let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
-        let project = dataStore.addProject(name: "移行重複テスト", description: "legacy")
-        let tx = dataStore.addTransaction(
+        let project = mutations(dataStore).addProject(name: "移行重複テスト", description: "legacy")
+        let tx = mutations(dataStore).addTransaction(
             type: .expense,
             amount: 1200,
             date: Date(),
             categoryId: "cat-other-expense",
             memo: "既存書類あり",
             allocations: [(projectId: project.id, ratio: 100)],
-            receiptImagePath: legacyImageFile
+            receiptImagePath: legacyImageFile,
+            reloadStoreAfterMutation: false
         )
 
         let existingDocumentResult = dataStore.addDocumentRecord(

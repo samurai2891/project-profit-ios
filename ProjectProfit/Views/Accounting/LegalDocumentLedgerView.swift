@@ -2,22 +2,29 @@ import SwiftData
 import SwiftUI
 
 struct LegalDocumentLedgerView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.modelContext) private var modelContext
 
     @State private var selectedCategory: RetentionCategory?
     @State private var searchForm = EvidenceSearchFormState()
     @State private var records: [PPDocumentRecord] = []
+    @State private var quarantinedRecords: [PPDocumentRecord] = []
     @State private var logs: [PPComplianceLog] = []
+    @State private var availableProjects: [PPProject] = []
     @State private var matchingStoredFileNames: Set<String>?
     @State private var alertMessage: String?
     @State private var pendingWarningDeleteId: UUID?
     @State private var pendingWarningMessage: String?
+    @State private var deletionReasonInput = ""
+    @State private var deletionApprovedByInput = ""
     @State private var showShareSheet = false
     @State private var showSearchFilters = false
     @State private var shareItem: Any = ""
     @State private var isLoading = false
     @State private var isReindexing = false
+
+    private var documentWorkflowUseCase: DocumentWorkflowUseCase {
+        DocumentWorkflowUseCase(modelContext: modelContext)
+    }
 
     private var filteredRecords: [PPDocumentRecord] {
         records.filter { record in
@@ -94,8 +101,8 @@ struct LegalDocumentLedgerView: View {
                                 .font(.caption.weight(.medium))
 
                                 Button("削除", role: .destructive) {
-                                    let attempt = dataStore.requestDocumentDeletion(id: record.id)
-                                    if case .warningRequired(let message) = attempt {
+                                    let attempt = documentWorkflowUseCase.requestDeletion(id: record.id)
+                                    if case .adminOverrideRequired(let message) = attempt {
                                         pendingWarningDeleteId = record.id
                                         pendingWarningMessage = message
                                     } else {
@@ -104,6 +111,29 @@ struct LegalDocumentLedgerView: View {
                                 }
                                 .font(.caption.weight(.medium))
                             }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            Section("隔離保管 (\(quarantinedRecords.count))") {
+                if quarantinedRecords.isEmpty {
+                    Text("隔離保管中の書類はありません")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(quarantinedRecords, id: \.id) { record in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(record.originalFileName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(record.deletionReason ?? "解除理由なし")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("復元") {
+                                handleDeleteAttempt(documentWorkflowUseCase.restoreDeletedDocument(id: record.id))
+                            }
+                            .font(.caption.weight(.medium))
                         }
                         .padding(.vertical, 4)
                     }
@@ -158,7 +188,7 @@ struct LegalDocumentLedgerView: View {
         .sheet(isPresented: $showSearchFilters) {
             EvidenceSearchFilterSheet(
                 form: $searchForm,
-                projects: dataStore.projects
+                projects: availableProjects
             )
         }
         .sheet(isPresented: $showShareSheet) {
@@ -172,20 +202,26 @@ struct LegalDocumentLedgerView: View {
         } message: {
             Text(alertMessage ?? "")
         }
-        .alert("保存期間内の削除", isPresented: Binding(
+        .alert("管理者解除が必要です", isPresented: Binding(
             get: { pendingWarningDeleteId != nil && pendingWarningMessage != nil },
             set: { if !$0 { pendingWarningDeleteId = nil; pendingWarningMessage = nil } }
         )) {
+            TextField("解除理由", text: $deletionReasonInput)
+            TextField("承認者名", text: $deletionApprovedByInput)
             Button("キャンセル", role: .cancel) {
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                resetDeletionConfirmationState()
             }
-            Button("削除する", role: .destructive) {
+            Button("隔離保管する", role: .destructive) {
                 guard let id = pendingWarningDeleteId else { return }
-                let attempt = dataStore.confirmDocumentDeletion(id: id, reason: "書類台帳から手動削除")
+                let attempt = documentWorkflowUseCase.confirmDeletion(
+                    id: id,
+                    reason: deletionReasonInput,
+                    approvedBy: deletionApprovedByInput
+                )
                 handleDeleteAttempt(attempt)
-                pendingWarningDeleteId = nil
-                pendingWarningMessage = nil
+                if case .deleted = attempt {
+                    resetDeletionConfirmationState()
+                }
             }
         } message: {
             Text(pendingWarningMessage ?? "")
@@ -194,7 +230,6 @@ struct LegalDocumentLedgerView: View {
 
     private var reloadKey: String {
         [
-            dataStore.businessProfile?.id.uuidString ?? "none",
             selectedCategory?.rawValue ?? "all",
             searchForm.reloadToken
         ].joined(separator: ":")
@@ -203,9 +238,12 @@ struct LegalDocumentLedgerView: View {
     private func handleDeleteAttempt(_ attempt: DocumentDeleteAttempt) {
         switch attempt {
         case .deleted:
-            alertMessage = "書類を削除しました"
+            alertMessage = "書類を隔離保管へ移動しました"
             Task { await refresh() }
-        case .warningRequired(let message):
+        case .restored:
+            alertMessage = "書類を復元しました"
+            Task { await refresh() }
+        case .adminOverrideRequired(let message):
             pendingWarningMessage = message
         case .failed(let message):
             alertMessage = message
@@ -213,21 +251,16 @@ struct LegalDocumentLedgerView: View {
     }
 
     private func refresh() async {
-        records = dataStore.listDocumentRecords()
-        logs = dataStore.listComplianceLogs(limit: 10)
-
-        guard let businessId = dataStore.businessProfile?.id, searchForm.hasActiveFilters else {
-            matchingStoredFileNames = nil
-            return
-        }
+        records = documentWorkflowUseCase.listDocuments()
+        quarantinedRecords = documentWorkflowUseCase.quarantinedDocuments()
+        logs = documentWorkflowUseCase.listComplianceLogs(limit: 10)
+        availableProjects = documentWorkflowUseCase.availableProjects()
 
         isLoading = true
         defer { isLoading = false }
 
         do {
-            let evidences = try await EvidenceCatalogUseCase(modelContext: modelContext)
-                .search(searchForm.makeCriteria(businessId: businessId))
-            matchingStoredFileNames = Set(evidences.map(\.originalFilePath))
+            matchingStoredFileNames = try await documentWorkflowUseCase.matchingStoredFileNames(form: searchForm)
         } catch {
             matchingStoredFileNames = nil
             alertMessage = error.localizedDescription
@@ -235,16 +268,21 @@ struct LegalDocumentLedgerView: View {
     }
 
     private func rebuildEvidenceIndex() async {
-        guard let businessId = dataStore.businessProfile?.id else { return }
         isReindexing = true
         defer { isReindexing = false }
 
         do {
-            try SearchIndexRebuilder(modelContext: modelContext)
-                .rebuildEvidenceIndex(businessId: businessId)
+            try await documentWorkflowUseCase.rebuildEvidenceIndex()
             await refresh()
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    private func resetDeletionConfirmationState() {
+        pendingWarningDeleteId = nil
+        pendingWarningMessage = nil
+        deletionReasonInput = ""
+        deletionApprovedByInput = ""
     }
 }

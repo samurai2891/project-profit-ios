@@ -218,6 +218,12 @@ final class LedgerDataStore {
     // MARK: - Persistence Helpers
 
     private func ensureWriteAccess() -> Bool {
+        // REL-P0-01: canonical正本モード時は旧台帳への書き込みを拒否
+        guard FeatureFlags.useLegacyLedger else {
+            Self.logger.warning("Write access denied: legacy ledger is disabled (useLegacyLedger=false)")
+            lastError = .invalidInput(message: "旧台帳は読み取り専用です")
+            return false
+        }
         guard !isReadOnly else {
             Self.logger.warning("Write access denied: LedgerDataStore is read-only")
             lastError = .invalidInput(message: "旧台帳は読み取り専用です")

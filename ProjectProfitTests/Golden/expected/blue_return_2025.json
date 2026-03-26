@@ -1,32 +1,46 @@
 {
   "fields" : [
     {
-      "fieldLabel" : "売掛金",
-      "id" : "bs_asset_acct-ar",
+      "fieldLabel" : "bs_asset_accounts_receivable",
+      "id" : "bs_asset_accounts_receivable",
       "section" : "貸借対照表",
       "value" : "1595000",
       "valueType" : "number"
     },
     {
       "fieldLabel" : "普通預金",
-      "id" : "bs_asset_acct-bank",
+      "id" : "bs_asset_additional_1_closing",
       "section" : "貸借対照表",
       "value" : "-500000",
       "valueType" : "number"
     },
     {
-      "fieldLabel" : "現金",
-      "id" : "bs_asset_acct-cash",
+      "fieldLabel" : "普通預金",
+      "id" : "bs_asset_additional_1_name",
+      "section" : "貸借対照表",
+      "value" : "普通預金",
+      "valueType" : "text"
+    },
+    {
+      "fieldLabel" : "bs_asset_cash",
+      "id" : "bs_asset_cash",
       "section" : "貸借対照表",
       "value" : "25124",
       "valueType" : "number"
     },
     {
       "fieldLabel" : "当期純利益",
-      "id" : "bs_equity_retained-earnings",
+      "id" : "bs_equity_additional_1_closing",
       "section" : "貸借対照表",
       "value" : "1120124",
       "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "当期純利益",
+      "id" : "bs_equity_additional_1_name",
+      "section" : "貸借対照表",
+      "value" : "当期純利益",
+      "valueType" : "text"
     },
     {
       "fieldLabel" : "資産合計",
@@ -36,17 +50,10 @@
       "valueType" : "number"
     },
     {
-      "fieldLabel" : "資本合計",
-      "id" : "bs_total_equity",
+      "fieldLabel" : "負債資本合計",
+      "id" : "bs_total_liabilities_and_equity",
       "section" : "貸借対照表",
       "value" : "1120124",
-      "valueType" : "number"
-    },
-    {
-      "fieldLabel" : "負債合計",
-      "id" : "bs_total_liabilities",
-      "section" : "貸借対照表",
-      "value" : "0",
       "valueType" : "number"
     },
     {

@@ -1,15 +1,35 @@
 import Foundation
 import SwiftData
 
+@MainActor
+protocol EvidenceSearchIndexing: AnyObject {
+    func search(criteria: EvidenceSearchCriteria) throws -> [UUID]
+    func upsert(_ evidence: EvidenceDocument) throws
+    func remove(evidenceId: UUID) throws
+    func rebuild(businessId: UUID?, taxYear: Int?) throws
+    func indexCount(businessId: UUID?, taxYear: Int?) throws -> Int
+    func sourceCount(businessId: UUID?, taxYear: Int?) throws -> Int
+    func validateIntegrity(businessId: UUID?, taxYear: Int?) throws
+}
+
+extension LocalEvidenceSearchIndex: EvidenceSearchIndexing {}
+
 /// SwiftData による Evidence 永続化実装
 @MainActor
 final class SwiftDataEvidenceRepository: EvidenceRepository {
     private let modelContext: ModelContext
-    private let searchIndex: LocalEvidenceSearchIndex
+    private let searchIndex: any EvidenceSearchIndexing
 
-    init(modelContext: ModelContext) {
+    convenience init(modelContext: ModelContext) {
+        self.init(
+            modelContext: modelContext,
+            searchIndex: LocalEvidenceSearchIndex(modelContext: modelContext)
+        )
+    }
+
+    init(modelContext: ModelContext, searchIndex: any EvidenceSearchIndexing) {
         self.modelContext = modelContext
-        self.searchIndex = LocalEvidenceSearchIndex(modelContext: modelContext)
+        self.searchIndex = searchIndex
     }
 
     nonisolated func findById(_ id: UUID) async throws -> EvidenceDocument? {
@@ -40,7 +60,19 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
             guard !searchResultIds.isEmpty else { return [] }
 
             let order = Dictionary(uniqueKeysWithValues: searchResultIds.enumerated().map { ($1, $0) })
-            let descriptor = FetchDescriptor<EvidenceRecordEntity>()
+            if searchResultIds.count == 1, let evidenceId = searchResultIds.first {
+                let descriptor = evidenceDescriptor(criteria: criteria, evidenceId: evidenceId)
+                return try modelContext.fetch(descriptor)
+                    .map(EvidenceRecordEntityMapper.toDomain)
+                    .filter { evidence in
+                        if let counterpartyId = criteria.counterpartyId {
+                            return evidence.linkedCounterpartyId == counterpartyId
+                        }
+                        return true
+                    }
+            }
+
+            let descriptor = scopedEvidenceDescriptor(criteria: criteria)
             return try modelContext.fetch(descriptor)
                 .map(EvidenceRecordEntityMapper.toDomain)
                 .filter { evidence in
@@ -53,6 +85,68 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 .sorted {
                     (order[$0.id] ?? .max) < (order[$1.id] ?? .max)
                 }
+        }
+    }
+
+    private func evidenceDescriptor(
+        criteria: EvidenceSearchCriteria,
+        evidenceId: UUID
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (criteria.businessId, criteria.taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.businessId == businessId
+                        && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.businessId == businessId
+                }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.evidenceId == evidenceId
+                        && $0.taxYear == taxYear
+                }
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.evidenceId == evidenceId }
+            )
+        }
+    }
+
+    private func scopedEvidenceDescriptor(
+        criteria: EvidenceSearchCriteria
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (criteria.businessId, criteria.taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear },
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                sortBy: [SortDescriptor(\.receivedAt, order: .reverse)]
+            )
         }
     }
 
@@ -121,10 +215,65 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
     }
 
     private func autoRepairSearchIndexIfNeeded(criteria: EvidenceSearchCriteria) throws {
-        let indexCount = try searchIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
-        guard indexCount == 0 else { return }
         let sourceCount = try searchIndex.sourceCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
-        guard sourceCount > 0 else { return }
-        try searchIndex.rebuild(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        let indexCount = try searchIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+
+        if sourceCount == 0, indexCount == 0 {
+            return
+        }
+
+        let needsRepair = try indexCount != sourceCount || isIntegrityCorrupted(criteria: criteria)
+        guard needsRepair else { return }
+
+        do {
+            try searchIndex.rebuild(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalEvidenceSearchIndex.indexName,
+                underlying: error
+            )
+        }
+
+        try verifyRebuiltSearchIndex(criteria: criteria)
+    }
+
+    private func isIntegrityCorrupted(criteria: EvidenceSearchCriteria) throws -> Bool {
+        do {
+            try searchIndex.validateIntegrity(businessId: criteria.businessId, taxYear: criteria.taxYear)
+            return false
+        } catch let error as CanonicalRepositoryError {
+            switch error {
+            case .searchIndexCorrupted:
+                return true
+            default:
+                throw error
+            }
+        } catch {
+            throw error
+        }
+    }
+
+    private func verifyRebuiltSearchIndex(criteria: EvidenceSearchCriteria) throws {
+        let sourceCount = try searchIndex.sourceCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        let indexCount = try searchIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+
+        guard sourceCount == indexCount else {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalEvidenceSearchIndex.indexName,
+                underlying: SearchIndexRepairVerificationError.countMismatch(
+                    indexCount: indexCount,
+                    sourceCount: sourceCount
+                )
+            )
+        }
+
+        do {
+            try searchIndex.validateIntegrity(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalEvidenceSearchIndex.indexName,
+                underlying: error
+            )
+        }
     }
 }

@@ -1,13 +1,22 @@
+import SwiftData
 import SwiftUI
 
 struct ClosingEntryView: View {
-    @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
+
+    private struct DisplayLine: Identifiable {
+        let id: UUID
+        let accountName: String
+        let debit: Int
+        let credit: Int
+    }
 
     @State private var selectedYear: Int
     @State private var showDeleteConfirmation = false
     @State private var showRegenerateConfirmation = false
     @State private var pendingStateTransition: YearLockState?
     @State private var preflightReport: FilingPreflightReport?
+    @State private var reloadToken = 0
     @State private var stateTransitionErrorMessage: String?
 
     init() {
@@ -15,20 +24,40 @@ struct ClosingEntryView: View {
         _selectedYear = State(initialValue: currentYear)
     }
 
-    private var closingEntry: PPJournalEntry? {
-        let sourceKey = PPJournalEntry.closingSourceKey(year: selectedYear)
-        return dataStore.journalEntries.first { $0.sourceKey == sourceKey }
+    private var queryUseCase: ClosingQueryUseCase {
+        ClosingQueryUseCase(modelContext: modelContext)
     }
 
-    private var closingLines: [PPJournalLine] {
-        guard let entry = closingEntry else { return [] }
-        return dataStore.journalLines
-            .filter { $0.entryId == entry.id }
-            .sorted { $0.displayOrder < $1.displayOrder }
+    private var snapshot: ClosingEntrySnapshot {
+        _ = reloadToken
+        return queryUseCase.snapshot(year: selectedYear)
+    }
+
+    private var closingWorkflowUseCase: ClosingWorkflowUseCase {
+        ClosingWorkflowUseCase(modelContext: modelContext)
+    }
+
+    private var canonicalClosingEntry: CanonicalJournalEntry? {
+        snapshot.closingEntry
+    }
+
+    private var hasClosingEntry: Bool {
+        canonicalClosingEntry != nil
+    }
+
+    private var closingLines: [DisplayLine] {
+        snapshot.displayLines.map { line in
+            DisplayLine(
+                id: line.id,
+                accountName: line.accountName,
+                debit: line.debit,
+                credit: line.credit
+            )
+        }
     }
 
     private var currentYearState: YearLockState {
-        dataStore.yearLockState(for: selectedYear)
+        snapshot.yearState
     }
 
     private var availableStateTransitions: [YearLockState] {
@@ -48,7 +77,7 @@ struct ClosingEntryView: View {
                 yearPicker
                 statusSection
                 preflightSection
-                if closingEntry != nil {
+                if hasClosingEntry {
                     closingLinesSection
                 }
                 actionButtons
@@ -62,8 +91,13 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を削除しますか？", isPresented: $showDeleteConfirmation) {
             Button("削除", role: .destructive) {
-                dataStore.deleteClosingEntry(for: selectedYear)
-                refreshPreflightReport()
+                do {
+                    try closingWorkflowUseCase.deleteClosingEntry(for: selectedYear)
+                    reloadToken += 1
+                    refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -71,8 +105,13 @@ struct ClosingEntryView: View {
         }
         .alert("決算仕訳を再生成しますか？", isPresented: $showRegenerateConfirmation) {
             Button("再生成", role: .destructive) {
-                dataStore.regenerateClosingEntry(for: selectedYear)
-                refreshPreflightReport()
+                do {
+                    _ = try closingWorkflowUseCase.regenerateClosingEntry(for: selectedYear)
+                    reloadToken += 1
+                    refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
+                }
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
@@ -100,10 +139,12 @@ struct ClosingEntryView: View {
                     self.pendingStateTransition = nil
                     return
                 }
-                if !dataStore.transitionFiscalYearState(pendingStateTransition, for: selectedYear) {
-                    stateTransitionErrorMessage = dataStore.lastError?.localizedDescription ?? "年度状態の更新に失敗しました"
-                } else {
+                do {
+                    _ = try closingWorkflowUseCase.transitionFiscalYearState(pendingStateTransition, for: selectedYear)
+                    reloadToken += 1
                     refreshPreflightReport()
+                } catch {
+                    stateTransitionErrorMessage = error.localizedDescription
                 }
                 self.pendingStateTransition = nil
             }
@@ -156,9 +197,9 @@ struct ClosingEntryView: View {
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: closingEntry != nil ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(closingEntry != nil ? AppColors.success : .secondary)
-                Text(closingEntry != nil ? "決算仕訳 生成済み" : "決算仕訳 未生成")
+                Image(systemName: hasClosingEntry ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(hasClosingEntry ? AppColors.success : .secondary)
+                Text(hasClosingEntry ? "決算仕訳 生成済み" : "決算仕訳 未生成")
                     .font(.headline)
             }
 
@@ -221,7 +262,7 @@ struct ClosingEntryView: View {
 
             ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                 HStack {
-                    Text(accountName(for: line.accountId))
+                    Text(line.accountName)
                         .font(.subheadline)
                     Spacer()
                     if line.debit > 0 {
@@ -245,10 +286,6 @@ struct ClosingEntryView: View {
         .padding(14)
         .background(AppColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func accountName(for accountId: String) -> String {
-        dataStore.accounts.first(where: { $0.id == accountId })?.name ?? accountId
     }
 
     // MARK: - Action Buttons
@@ -275,10 +312,15 @@ struct ClosingEntryView: View {
                 }
             }
 
-            if closingEntry == nil {
+            if !hasClosingEntry {
                 Button {
-                    dataStore.generateClosingEntry(for: selectedYear)
-                    refreshPreflightReport()
+                    do {
+                        _ = try closingWorkflowUseCase.generateClosingEntry(for: selectedYear)
+                        reloadToken += 1
+                        refreshPreflightReport()
+                    } catch {
+                        stateTransitionErrorMessage = error.localizedDescription
+                    }
                 } label: {
                     Label("決算仕訳を生成", systemImage: "plus.circle")
                         .frame(maxWidth: .infinity)
@@ -341,11 +383,11 @@ struct ClosingEntryView: View {
     }
 
     private func closingPreflightReport(for state: YearLockState) -> FilingPreflightReport? {
-        guard let businessId = dataStore.businessProfile?.id else {
+        guard let businessId = snapshot.businessId else {
             return nil
         }
         do {
-            return try FilingPreflightUseCase(modelContext: dataStore.modelContext).preflightReport(
+            return try FilingPreflightUseCase(modelContext: modelContext).preflightReport(
                 businessId: businessId,
                 taxYear: selectedYear,
                 context: .closing(targetState: state)

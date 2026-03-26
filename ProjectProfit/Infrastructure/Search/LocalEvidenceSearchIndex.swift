@@ -3,6 +3,8 @@ import SwiftData
 
 @MainActor
 final class LocalEvidenceSearchIndex {
+    static let indexName = "証憑検索インデックス"
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -10,12 +12,10 @@ final class LocalEvidenceSearchIndex {
     }
 
     func search(criteria: EvidenceSearchCriteria) throws -> [UUID] {
-        let descriptor = FetchDescriptor<EvidenceSearchIndexEntity>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
+        let descriptor = searchDescriptor(criteria: criteria)
         return try modelContext.fetch(descriptor)
             .filter { entry in
-                matches(entry, criteria: criteria)
+                try matches(entry, criteria: criteria)
             }
             .map(\.evidenceId)
     }
@@ -42,28 +42,10 @@ final class LocalEvidenceSearchIndex {
     }
 
     func rebuild(businessId: UUID? = nil, taxYear: Int? = nil) throws {
-        let existingDescriptor = FetchDescriptor<EvidenceSearchIndexEntity>()
-        let existing = try modelContext.fetch(existingDescriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let existing = try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
         existing.forEach(modelContext.delete)
 
-        let sourceDescriptor = FetchDescriptor<EvidenceRecordEntity>()
-        let records = try modelContext.fetch(sourceDescriptor).filter { record in
-            if let businessId, record.businessId != businessId {
-                return false
-            }
-            if let taxYear, record.taxYear != taxYear {
-                return false
-            }
-            return true
-        }
+        let records = try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear))
         for record in records {
             let evidence = EvidenceRecordEntityMapper.toDomain(record)
             let entity = EvidenceSearchIndexEntity(evidenceId: evidence.id)
@@ -75,32 +57,21 @@ final class LocalEvidenceSearchIndex {
     }
 
     func indexCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<EvidenceSearchIndexEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
     func sourceCount(businessId: UUID? = nil, taxYear: Int? = nil) throws -> Int {
-        let descriptor = FetchDescriptor<EvidenceRecordEntity>()
-        return try modelContext.fetch(descriptor).filter { entry in
-            if let businessId, entry.businessId != businessId {
-                return false
-            }
-            if let taxYear, entry.taxYear != taxYear {
-                return false
-            }
-            return true
-        }.count
+        try modelContext.fetch(sourceDescriptor(businessId: businessId, taxYear: taxYear)).count
     }
 
-    private func matches(_ entry: EvidenceSearchIndexEntity, criteria: EvidenceSearchCriteria) -> Bool {
+    func validateIntegrity(businessId: UUID? = nil, taxYear: Int? = nil) throws {
+        let entries = try scopedEntries(businessId: businessId, taxYear: taxYear)
+        for entry in entries {
+            _ = try decodeProjectIds(from: entry)
+        }
+    }
+
+    private func matches(_ entry: EvidenceSearchIndexEntity, criteria: EvidenceSearchCriteria) throws -> Bool {
         if let businessId = criteria.businessId, entry.businessId != businessId {
             return false
         }
@@ -136,7 +107,7 @@ final class LocalEvidenceSearchIndex {
             return false
         }
         if let projectId = criteria.projectId {
-            let projectIds = Set(CanonicalJSONCoder.decode([UUID].self, from: entry.projectIdsJSON, fallback: []))
+            let projectIds = Set(try decodeProjectIds(from: entry))
             if !projectIds.contains(projectId) {
                 return false
             }
@@ -176,5 +147,156 @@ final class LocalEvidenceSearchIndex {
         entity.deletedAt = evidence.deletedAt
         entity.searchText = SearchIndexNormalizer.normalizeText(searchParts.compactMap { $0 }.joined(separator: " "))
         entity.updatedAt = evidence.updatedAt
+    }
+
+    private func scopedEntries(businessId: UUID? = nil, taxYear: Int? = nil) throws -> [EvidenceSearchIndexEntity] {
+        try modelContext.fetch(scopedDescriptor(businessId: businessId, taxYear: taxYear))
+    }
+
+    private func searchDescriptor(criteria: EvidenceSearchCriteria) -> FetchDescriptor<EvidenceSearchIndexEntity> {
+        let sortBy = [SortDescriptor(\EvidenceSearchIndexEntity.updatedAt, order: .reverse)]
+        let normalizedCounterparty = SearchIndexNormalizer.normalizeOptionalText(criteria.counterpartyText)
+        let normalizedRegistrationNumber = SearchIndexNormalizer.normalizeIdentifier(criteria.registrationNumber)
+        let normalizedFileHash = SearchIndexNormalizer.normalizeIdentifier(criteria.fileHash)
+        let normalizedTextQuery = SearchIndexNormalizer.normalizeOptionalText(criteria.textQuery)
+
+        guard criteria.dateRange == nil,
+              criteria.amountRange == nil,
+              criteria.legalDocumentTypes == nil,
+              criteria.complianceStatus == nil,
+              criteria.projectId == nil
+        else {
+            return scopedDescriptor(
+                businessId: criteria.businessId,
+                taxYear: criteria.taxYear,
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedCounterparty,
+           !criteria.includeDeleted
+        {
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && $0.deletedAt == nil
+                        && $0.counterpartyNameNormalized.contains(normalizedCounterparty)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedRegistrationNumber,
+           !criteria.includeDeleted
+        {
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && $0.deletedAt == nil
+                        && $0.registrationNumberNormalized == normalizedRegistrationNumber
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedFileHash,
+           !criteria.includeDeleted
+        {
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && $0.deletedAt == nil
+                        && $0.fileHashNormalized == normalizedFileHash
+                },
+                sortBy: sortBy
+            )
+        }
+
+        if let businessId = criteria.businessId,
+           let normalizedTextQuery,
+           !criteria.includeDeleted
+        {
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId
+                        && $0.deletedAt == nil
+                        && $0.searchText.contains(normalizedTextQuery)
+                },
+                sortBy: sortBy
+            )
+        }
+
+        return scopedDescriptor(
+            businessId: criteria.businessId,
+            taxYear: criteria.taxYear,
+            sortBy: sortBy
+        )
+    }
+
+    private func scopedDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil,
+        sortBy: [SortDescriptor<EvidenceSearchIndexEntity>] = []
+    ) -> FetchDescriptor<EvidenceSearchIndexEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                },
+                sortBy: sortBy
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate { $0.businessId == businessId },
+                sortBy: sortBy
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceSearchIndexEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear },
+                sortBy: sortBy
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceSearchIndexEntity>(sortBy: sortBy)
+        }
+    }
+
+    private func sourceDescriptor(
+        businessId: UUID? = nil,
+        taxYear: Int? = nil
+    ) -> FetchDescriptor<EvidenceRecordEntity> {
+        switch (businessId, taxYear) {
+        case let (.some(businessId), .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate {
+                    $0.businessId == businessId && $0.taxYear == taxYear
+                }
+            )
+        case let (.some(businessId), nil):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+        case let (nil, .some(taxYear)):
+            return FetchDescriptor<EvidenceRecordEntity>(
+                predicate: #Predicate { $0.taxYear == taxYear }
+            )
+        case (nil, nil):
+            return FetchDescriptor<EvidenceRecordEntity>()
+        }
+    }
+
+    private func decodeProjectIds(from entry: EvidenceSearchIndexEntity) throws -> [UUID] {
+        do {
+            return try CanonicalJSONCoder.decodeStrict([UUID].self, from: entry.projectIdsJSON)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexCorrupted(
+                indexName: Self.indexName,
+                recordId: entry.evidenceId,
+                field: "projectIdsJSON"
+            )
+        }
     }
 }

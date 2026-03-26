@@ -72,6 +72,9 @@ struct ReceiptExtraction {
     @Guide(description: "店舗名・発行者名")
     var storeName: String
 
+    @Guide(description: "適格請求書発行事業者の登録番号（T + 13桁数字。不明なら空文字）")
+    var registrationNumber: String
+
     @Guide(description: "推定カテゴリ: hosting, tools, ads, contractor, communication, supplies, transport, food, entertainment, other-expense のいずれか")
     var estimatedCategory: String
 
@@ -104,6 +107,7 @@ struct ReceiptData: Sendable, Hashable {
     let subtotalAmount: Int
     let date: String
     let storeName: String
+    let registrationNumber: String?
     let estimatedCategory: String
     let itemSummary: String
     let lineItems: [LineItem]
@@ -117,6 +121,7 @@ struct ReceiptData: Sendable, Hashable {
         subtotalAmount: Int = 0,
         date: String,
         storeName: String,
+        registrationNumber: String? = nil,
         estimatedCategory: String,
         itemSummary: String,
         lineItems: [LineItem] = [],
@@ -129,6 +134,7 @@ struct ReceiptData: Sendable, Hashable {
         self.subtotalAmount = subtotalAmount
         self.date = date
         self.storeName = storeName
+        self.registrationNumber = RegistrationNumberNormalizer.normalize(registrationNumber)
         self.estimatedCategory = estimatedCategory
         self.itemSummary = itemSummary
         self.lineItems = lineItems

@@ -3,7 +3,19 @@ import Foundation
 /// Counterparty ↔ CounterpartyEntity の変換
 enum CounterpartyEntityMapper {
     static func toDomain(_ entity: CounterpartyEntity) -> Counterparty {
-        Counterparty(
+        let payeeInfo: PayeeInfo? = entity.payeeIsWithholdingSubject
+            ? PayeeInfo(
+                isWithholdingSubject: true,
+                withholdingCategory: WithholdingTaxCode.resolve(id: entity.payeeWithholdingCategoryRaw)
+            )
+            : entity.payeeWithholdingCategoryRaw != nil
+                ? PayeeInfo(
+                    isWithholdingSubject: false,
+                    withholdingCategory: WithholdingTaxCode.resolve(id: entity.payeeWithholdingCategoryRaw)
+                )
+                : nil
+
+        return Counterparty(
             id: entity.counterpartyId,
             businessId: entity.businessId,
             displayName: entity.displayName,
@@ -21,6 +33,7 @@ enum CounterpartyEntityMapper {
             defaultTaxCodeId: entity.defaultTaxCodeId,
             defaultProjectId: entity.defaultProjectId,
             notes: entity.notes,
+            payeeInfo: payeeInfo,
             createdAt: entity.createdAt,
             updatedAt: entity.updatedAt
         )
@@ -45,6 +58,8 @@ enum CounterpartyEntityMapper {
             defaultTaxCodeId: domain.defaultTaxCodeId,
             defaultProjectId: domain.defaultProjectId,
             notes: domain.notes,
+            payeeIsWithholdingSubject: domain.payeeInfo?.isWithholdingSubject ?? false,
+            payeeWithholdingCategoryRaw: domain.payeeInfo?.withholdingCategory?.rawValue,
             createdAt: domain.createdAt,
             updatedAt: domain.updatedAt
         )
@@ -67,6 +82,8 @@ enum CounterpartyEntityMapper {
         entity.defaultTaxCodeId = domain.defaultTaxCodeId
         entity.defaultProjectId = domain.defaultProjectId
         entity.notes = domain.notes
+        entity.payeeIsWithholdingSubject = domain.payeeInfo?.isWithholdingSubject ?? false
+        entity.payeeWithholdingCategoryRaw = domain.payeeInfo?.withholdingCategory?.rawValue
         entity.updatedAt = domain.updatedAt
     }
 }

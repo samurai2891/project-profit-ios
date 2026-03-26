@@ -1,15 +1,23 @@
+import SwiftData
 import SwiftUI
 
 struct TransactionDetailView: View {
-    @Environment(DataStore.self) private var dataStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let transaction: PPTransaction
 
     @State private var showReceiptPreview = false
     @State private var showEditSheet = false
-    @State private var showDeleteAlert = false
     @State private var showRecurringHistory = false
+
+    private var transactionHistoryUseCase: TransactionHistoryUseCase {
+        TransactionHistoryUseCase(modelContext: modelContext)
+    }
+
+    private var canMutateLegacyTransaction: Bool {
+        transactionHistoryUseCase.canMutateLegacyTransactions
+    }
 
     private var typeColor: Color {
         switch transaction.type {
@@ -36,24 +44,24 @@ struct TransactionDetailView: View {
     }
 
     private var categoryName: String {
-        dataStore.getCategory(id: transaction.categoryId)?.name ?? "未分類"
+        transactionHistoryUseCase.categoryName(for: transaction.categoryId)
     }
 
     private var categoryIcon: String {
-        dataStore.getCategory(id: transaction.categoryId)?.icon ?? "ellipsis.circle"
+        transactionHistoryUseCase.categoryIcon(for: transaction.categoryId)
     }
 
     private var projectAllocations: [(projectId: UUID, name: String, ratio: Int, amount: Int)] {
-        transaction.allocations.compactMap { alloc in
-            guard let project = dataStore.getProject(id: alloc.projectId) else { return nil }
-            return (projectId: alloc.projectId, name: project.name, ratio: alloc.ratio, amount: alloc.amount)
-        }
+        transactionHistoryUseCase.projectAllocations(for: transaction)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    if !canMutateLegacyTransaction {
+                        canonicalCutoverNotice
+                    }
                     amountHeader
                     infoSection
                     if !transaction.lineItems.isEmpty {
@@ -83,10 +91,12 @@ struct TransactionDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("閉じる") { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("編集") { showEditSheet = true }
-                        .accessibilityLabel("編集")
-                        .accessibilityHint("タップして取引を編集")
+                if canMutateLegacyTransaction {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("編集") { showEditSheet = true }
+                            .accessibilityLabel("編集")
+                            .accessibilityHint("タップして取引を編集")
+                    }
                 }
             }
             .sheet(isPresented: $showEditSheet) {
@@ -102,15 +112,6 @@ struct TransactionDetailView: View {
             .navigationDestination(for: UUID.self) { projectId in
                 ProjectDetailView(projectId: projectId)
             }
-            .alert("取引を削除", isPresented: $showDeleteAlert) {
-                Button("キャンセル", role: .cancel) {}
-                Button("削除", role: .destructive) {
-                    dataStore.deleteTransaction(id: transaction.id)
-                    dismiss()
-                }
-            } message: {
-                Text("この取引を削除してもよろしいですか？")
-            }
             .sheet(isPresented: $showRecurringHistory) {
                 if let recurringId = transaction.recurringId {
                     RecurringHistoryView(recurringId: recurringId)
@@ -120,6 +121,24 @@ struct TransactionDetailView: View {
     }
 
     // MARK: - Amount Header
+
+    private var canonicalCutoverNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.doc")
+                .foregroundStyle(AppColors.warning)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("手動取引編集は停止中")
+                    .font(.subheadline.weight(.semibold))
+                Text(transactionHistoryUseCase.legacyMutationDisabledMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppColors.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
     private var amountHeader: some View {
         VStack(spacing: 8) {
@@ -196,7 +215,7 @@ struct TransactionDetailView: View {
     }
 
     private func recurringInfoRow(recurringId: UUID) -> some View {
-        let recurring = dataStore.getRecurring(id: recurringId)
+        let recurringDisplayName = transactionHistoryUseCase.recurringDisplayName(for: recurringId)
         return Button {
             showRecurringHistory = true
         } label: {
@@ -209,8 +228,8 @@ struct TransactionDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if let recurring {
-                    Text("\(recurring.name) (\(recurring.frequency.label))")
+                if let recurringDisplayName {
+                    Text(recurringDisplayName)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(AppColors.primary)
                 } else {
@@ -226,7 +245,7 @@ struct TransactionDetailView: View {
             .padding(.vertical, 12)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("定期取引: \(recurring?.name ?? "自動生成")")
+        .accessibilityLabel("定期取引: \(recurringDisplayName ?? "自動生成")")
         .accessibilityHint("タップして定期取引の履歴を表示")
     }
 
@@ -402,7 +421,7 @@ struct TransactionDetailView: View {
                 Text("書類管理")
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                Text("\(dataStore.documentCount(for: transaction.id))件")
+                Text("\(transactionHistoryUseCase.documentCount(for: transaction.id))件")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -492,20 +511,8 @@ struct TransactionDetailView: View {
 
     // MARK: - Action Buttons
 
+    @ViewBuilder
     private var actionButtons: some View {
-        Button(role: .destructive) {
-            showDeleteAlert = true
-        } label: {
-            HStack {
-                Image(systemName: "trash")
-                Text("この取引を削除")
-            }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(AppColors.error)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppColors.error.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
+        EmptyView()
     }
 }

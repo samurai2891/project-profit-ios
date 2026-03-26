@@ -37,6 +37,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.code == .yearStateTooOpen })
+        XCTAssertTrue(report.issues.contains { $0.message == "帳票出力は税務締め以降でのみ実行できます" })
     }
 
     func testExportPreflightDetectsPendingCandidate() throws {
@@ -70,12 +71,39 @@ final class FilingPreflightUseCaseTests: XCTestCase {
     }
 
     func testExportPreflightDetectsSuspenseBalance() throws {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 6, day: 1),
             memo: "仮勘定残",
             lines: [
                 (accountId: AccountingConstants.suspenseAccountId, debit: 1200, credit: 0, memo: ""),
                 (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 1200, memo: ""),
+            ]
+        )
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: 2025,
+            context: .export
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .suspenseBalanceRemaining })
+        XCTAssertTrue(report.isBlocking)
+        XCTAssertTrue(report.blockingIssues.contains { $0.code == .suspenseBalanceRemaining })
+    }
+
+    func testExportPreflightUsesCalendarTaxYearEvenWhenFiscalStartMonthChanges() throws {
+        let key = FiscalYearSettings.userDefaultsKey
+        let previousStartMonth = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(4, forKey: key)
+        defer { UserDefaults.standard.set(previousStartMonth, forKey: key) }
+
+        _ = mutations(dataStore).addManualJournalEntry(
+            date: makeDate(year: 2025, month: 3, day: 31),
+            memo: "calendar year suspense",
+            lines: [
+                (accountId: AccountingConstants.suspenseAccountId, debit: 900, credit: 0, memo: ""),
+                (accountId: AccountingConstants.cashAccountId, debit: 0, credit: 900, memo: ""),
             ]
         )
         seedTaxYearProfile(year: 2025, state: .taxClose)
@@ -100,7 +128,7 @@ final class FilingPreflightUseCaseTests: XCTestCase {
     }
 
     func testClosingPreflightDetectsUnbalancedJournal() throws {
-        _ = dataStore.addManualJournalEntry(
+        _ = mutations(dataStore).addManualJournalEntry(
             date: makeDate(year: 2025, month: 6, day: 1),
             memo: "未確定仕訳",
             lines: [
@@ -116,6 +144,56 @@ final class FilingPreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.code == .unbalancedJournal })
+    }
+
+    func testClosingPreflightIncludesTaxPrerequisiteFailures() throws {
+        let profile = TaxYearProfile(
+            businessId: businessId,
+            taxYear: 2025,
+            vatStatus: .taxable,
+            vatMethod: .simplified,
+            simplifiedBusinessCategory: nil,
+            taxPackVersion: "2025-v1"
+        )
+        context.insert(TaxYearProfileEntityMapper.toEntity(profile))
+        try context.save()
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: 2025,
+            context: .closing(targetState: .taxClose)
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .taxPrerequisiteMissing })
+        XCTAssertTrue(report.issues.contains { $0.message == "簡易課税では業種区分の設定が必要です" })
+    }
+
+    func testExportPreflightUsesCanonicalTaxYearStateNotLegacyLockCompat() throws {
+        let targetYear = 2030
+        let legacy = PPAccountingProfile(
+            id: "legacy-preflight-profile",
+            fiscalYear: targetYear,
+            bookkeepingMode: .singleEntry,
+            businessName: "Legacy商店",
+            ownerName: "Legacy Owner",
+            isBlueReturn: false,
+            lockedAt: Date(timeIntervalSince1970: 1_700_000_400)
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let canonicalTaxProfiles = try context.fetch(FetchDescriptor<TaxYearProfileEntity>())
+            .filter { $0.businessId == businessId && $0.taxYear == targetYear }
+        XCTAssertTrue(canonicalTaxProfiles.isEmpty)
+
+        let report = try FilingPreflightUseCase(modelContext: context).preflightReport(
+            businessId: businessId,
+            taxYear: targetYear,
+            context: .export
+        )
+
+        XCTAssertTrue(report.issues.contains { $0.code == .yearStateTooOpen })
+        XCTAssertTrue(report.issues.contains { $0.message == "帳票出力は税務締め以降でのみ実行できます" })
     }
 
     private func seedTaxYearProfile(year: Int, state: YearLockState) {

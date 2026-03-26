@@ -77,6 +77,140 @@ final class CanonicalRepositoriesTests: XCTestCase {
         XCTAssertEqual(versions.map(\.id), [version.id])
     }
 
+    func testEvidenceRepositoryAutoRepairsPartialCorruptionWhenCountsStillMatch() async throws {
+        let repository = SwiftDataEvidenceRepository(modelContext: context)
+        let businessId = UUID()
+        let matchedProjectId = UUID()
+        let matched = EvidenceDocument(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .invoice,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_735_689_600),
+            issueDate: Date(timeIntervalSince1970: 1_735_603_200),
+            originalFilename: "matched.pdf",
+            mimeType: "application/pdf",
+            fileHash: "matched-hash",
+            originalFilePath: "/tmp/matched.pdf",
+            ocrText: "部分破損テスト",
+            extractionVersion: "ocr-v2",
+            searchTokens: ["部分破損"],
+            structuredFields: EvidenceStructuredFields(
+                counterpartyName: "部分破損商店",
+                transactionDate: Date(timeIntervalSince1970: 1_735_603_200),
+                totalAmount: Decimal(string: "2200")!,
+                confidence: 0.91
+            ),
+            linkedProjectIds: [matchedProjectId],
+            complianceStatus: .compliant
+        )
+        let other = EvidenceDocument(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_735_700_000),
+            issueDate: Date(timeIntervalSince1970: 1_735_700_000),
+            originalFilename: "other.pdf",
+            mimeType: "application/pdf",
+            fileHash: "other-hash",
+            originalFilePath: "/tmp/other.pdf",
+            ocrText: "別証憑",
+            extractionVersion: "ocr-v2",
+            searchTokens: ["別証憑"],
+            structuredFields: EvidenceStructuredFields(
+                counterpartyName: "別商店",
+                transactionDate: Date(timeIntervalSince1970: 1_735_700_000),
+                totalAmount: Decimal(string: "3300")!,
+                confidence: 0.89
+            ),
+            linkedProjectIds: [UUID()],
+            complianceStatus: .pendingReview
+        )
+
+        try await repository.save(matched)
+        try await repository.save(other)
+
+        let descriptor = FetchDescriptor<EvidenceSearchIndexEntity>(
+            predicate: #Predicate { $0.evidenceId == matched.id }
+        )
+        guard let corruptedEntry = try context.fetch(descriptor).first else {
+            return XCTFail("Evidence search index entry was not created")
+        }
+        corruptedEntry.projectIdsJSON = "{broken"
+        try context.save()
+
+        let results = try await repository.search(
+            criteria: EvidenceSearchCriteria(
+                businessId: businessId,
+                projectId: matchedProjectId
+            )
+        )
+
+        XCTAssertEqual(results.map(\.id), [matched.id])
+
+        guard let repairedEntry = try context.fetch(descriptor).first else {
+            return XCTFail("Evidence search index entry disappeared after repair")
+        }
+        let repairedProjectIds = try CanonicalJSONCoder.decodeStrict([UUID].self, from: repairedEntry.projectIdsJSON)
+        XCTAssertEqual(Set(repairedProjectIds), Set([matchedProjectId]))
+    }
+
+    func testEvidenceRepositorySearchThrowsRebuildFailureInsteadOfEmptyResults() async throws {
+        let searchIndex = FailingEvidenceSearchIndex()
+        let repository = SwiftDataEvidenceRepository(modelContext: context, searchIndex: searchIndex)
+        let businessId = UUID()
+        let evidence = EvidenceDocument(
+            businessId: businessId,
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .invoice,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_735_689_600),
+            issueDate: Date(timeIntervalSince1970: 1_735_603_200),
+            originalFilename: "failure.pdf",
+            mimeType: "application/pdf",
+            fileHash: "failure-hash",
+            originalFilePath: "/tmp/failure.pdf",
+            ocrText: "再索引失敗",
+            extractionVersion: "ocr-v2",
+            searchTokens: ["再索引失敗"],
+            structuredFields: EvidenceStructuredFields(
+                counterpartyName: "失敗商店",
+                transactionDate: Date(timeIntervalSince1970: 1_735_603_200),
+                totalAmount: Decimal(string: "4400")!,
+                confidence: 0.9
+            ),
+            linkedProjectIds: [UUID()],
+            complianceStatus: .pendingReview
+        )
+
+        try await repository.save(evidence)
+
+        do {
+            _ = try await repository.search(
+                criteria: EvidenceSearchCriteria(
+                    businessId: businessId,
+                    projectId: evidence.linkedProjectIds.first
+                )
+            )
+            XCTFail("Expected repository search to throw rebuild failure")
+        } catch let error as CanonicalRepositoryError {
+            switch error {
+            case .searchIndexRebuildFailed(let indexName, let underlying):
+                XCTAssertEqual(indexName, LocalEvidenceSearchIndex.indexName)
+                XCTAssertEqual(underlying.localizedDescription, StubRebuildFailure().localizedDescription)
+            default:
+                XCTFail("Unexpected canonical repository error: \(error)")
+            }
+        }
+
+        XCTAssertFalse(searchIndex.didSearch)
+        XCTAssertTrue(searchIndex.didAttemptRebuild)
+    }
+
     func testCounterpartyRepositorySearchesNameAndRegistrationNumber() async throws {
         let repository = SwiftDataCounterpartyRepository(modelContext: context)
         let businessId = UUID()
@@ -223,7 +357,23 @@ final class CanonicalRepositoriesTests: XCTestCase {
             confidenceScore: 0.88,
             status: .needsReview,
             source: .ocr,
-            memo: "OCR候補"
+            memo: "OCR候補",
+            legacySnapshot: PostingCandidateLegacySnapshot(
+                type: .expense,
+                categoryId: "cat-tools",
+                recurringId: nil,
+                paymentAccountId: "acct-cash",
+                transferToAccountId: nil,
+                taxDeductibleRate: 100,
+                taxAmount: 500,
+                taxCodeId: TaxCode.standard10.rawValue,
+                taxRate: 10,
+                isTaxIncluded: false,
+                taxCategory: .standardRate,
+                receiptImagePath: nil,
+                lineItems: [ReceiptLineItem(name: "旅費", unitPrice: 5000)],
+                counterpartyName: "OCR商事"
+            )
         )
 
         try await repository.save(candidate)
@@ -232,6 +382,9 @@ final class CanonicalRepositoriesTests: XCTestCase {
         XCTAssertEqual(fetched.count, 1)
         XCTAssertEqual(fetched.first?.proposedLines.first?.amount, Decimal(string: "5000"))
         XCTAssertEqual(fetched.first?.taxAnalysis?.taxAmount, Decimal(string: "500"))
+        XCTAssertEqual(fetched.first?.legacySnapshot?.categoryId, "cat-tools")
+        XCTAssertEqual(fetched.first?.legacySnapshot?.paymentAccountId, "acct-cash")
+        XCTAssertEqual(fetched.first?.legacySnapshot?.lineItems.first?.name, "旅費")
     }
 
     func testCanonicalJournalEntryRepositoryUpdatesLinesAndSkipsInvalidVoucherNumbers() async throws {
@@ -290,5 +443,41 @@ final class CanonicalRepositoriesTests: XCTestCase {
         XCTAssertEqual(fetched?.lines.count, 3)
         XCTAssertEqual(fetched?.lines.map(\.sortOrder), [0, 1, 2])
         XCTAssertEqual(nextVoucher.value, "2025-003-00002")
+    }
+}
+
+@MainActor
+private final class FailingEvidenceSearchIndex: EvidenceSearchIndexing {
+    var didSearch = false
+    var didAttemptRebuild = false
+
+    func search(criteria: EvidenceSearchCriteria) throws -> [UUID] {
+        didSearch = true
+        return []
+    }
+
+    func upsert(_ evidence: EvidenceDocument) throws {}
+
+    func remove(evidenceId: UUID) throws {}
+
+    func rebuild(businessId: UUID?, taxYear: Int?) throws {
+        didAttemptRebuild = true
+        throw StubRebuildFailure()
+    }
+
+    func indexCount(businessId: UUID?, taxYear: Int?) throws -> Int {
+        0
+    }
+
+    func sourceCount(businessId: UUID?, taxYear: Int?) throws -> Int {
+        1
+    }
+
+    func validateIntegrity(businessId: UUID?, taxYear: Int?) throws {}
+}
+
+private struct StubRebuildFailure: LocalizedError {
+    var errorDescription: String? {
+        "stub rebuild failure"
     }
 }

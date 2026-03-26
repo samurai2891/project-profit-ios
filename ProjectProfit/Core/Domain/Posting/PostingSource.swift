@@ -39,6 +39,7 @@ enum CandidateStatus: String, Codable, Sendable, CaseIterable {
 /// 仕訳の種類
 enum CanonicalJournalEntryType: String, Codable, Sendable, CaseIterable {
     case normal              // 通常仕訳
+    case manual              // 手動仕訳
     case opening             // 期首残高
     case closing             // 期末決算
     case depreciation        // 減価償却
@@ -50,6 +51,7 @@ enum CanonicalJournalEntryType: String, Codable, Sendable, CaseIterable {
     var displayName: String {
         switch self {
         case .normal: "通常仕訳"
+        case .manual: "手動仕訳"
         case .opening: "期首残高"
         case .closing: "期末決算"
         case .depreciation: "減価償却"

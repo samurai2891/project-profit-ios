@@ -4,6 +4,7 @@ import Foundation
 
 enum SubLedgerType: String, CaseIterable, Identifiable {
     case cashBook
+    case depositBook
     case accountsReceivableBook
     case accountsPayableBook
     case expenseBook
@@ -13,6 +14,7 @@ enum SubLedgerType: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .cashBook: "現金出納帳"
+        case .depositBook: "預金出納帳"
         case .accountsReceivableBook: "売掛帳"
         case .accountsPayableBook: "買掛帳"
         case .expenseBook: "経費帳"
@@ -22,6 +24,7 @@ enum SubLedgerType: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .cashBook: "現金勘定の増減明細"
+        case .depositBook: "預金勘定の増減明細"
         case .accountsReceivableBook: "売掛金の増減明細"
         case .accountsPayableBook: "買掛金の増減明細"
         case .expenseBook: "費用科目の明細"
@@ -72,6 +75,10 @@ extension DataStore {
         switch type {
         case .cashBook:
             return [AccountingConstants.cashAccountId]
+        case .depositBook:
+            return accounts
+                .filter { $0.isActive && $0.accountType == .asset && $0.code.hasPrefix("102") }
+                .map(\.id)
         case .accountsReceivableBook:
             return [AccountingConstants.accountsReceivableAccountId]
         case .accountsPayableBook:
@@ -105,11 +112,39 @@ extension DataStore {
         guard !targetAccountIds.isEmpty else { return [] }
 
         let accountMap = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        let postedEntryIds = Set(journalEntries.filter(\.isPosted).map(\.id))
-        let entryMap = Dictionary(uniqueKeysWithValues: journalEntries.map { ($0.id, $0) })
+        let requestedFiscalYear: Int?
+        if let startDate {
+            requestedFiscalYear = fiscalYear(for: startDate, startMonth: FiscalYearSettings.startMonth)
+        } else if let endDate {
+            requestedFiscalYear = fiscalYear(for: endDate, startMonth: FiscalYearSettings.startMonth)
+        } else {
+            requestedFiscalYear = nil
+        }
+        let projected = projectedCanonicalJournals(fiscalYear: requestedFiscalYear)
+        let postedEntryIds = Set(projected.entries.filter(\.isPosted).map(\.id))
+        let entryMap = Dictionary(uniqueKeysWithValues: projected.entries.map { ($0.id, $0) })
         let transactionMap = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
-        let linesByEntry = Dictionary(grouping: journalLines) { $0.entryId }
+        let transactionMapByJournalEntryId: [UUID: PPTransaction] = Dictionary(
+            uniqueKeysWithValues: transactions.compactMap { transaction in
+                guard let journalEntryId = transaction.journalEntryId else {
+                    return nil
+                }
+                return (journalEntryId, transaction)
+            }
+        )
+        let linesByEntry = Dictionary(grouping: projected.lines) { $0.entryId }
         let targetAccountIdSet = Set(targetAccountIds)
+        let canonicalCounterpartyByEntryId: [UUID: UUID] = {
+            guard let businessId = businessProfile?.id else { return [:] }
+            return Dictionary(
+                uniqueKeysWithValues: fetchCanonicalJournalEntries(businessId: businessId, taxYear: requestedFiscalYear).compactMap { journal in
+                    guard let counterpartyId = journal.lines.compactMap({ $0.counterpartyId }).first else {
+                        return nil
+                    }
+                    return (journal.id, counterpartyId)
+                }
+            )
+        }()
 
         // Collect enriched line data
         var enrichedLines: [(
@@ -126,7 +161,7 @@ extension DataStore {
             taxCategory: TaxCategory?
         )] = []
 
-        for journalLine in journalLines {
+        for journalLine in projected.lines {
             guard targetAccountIdSet.contains(journalLine.accountId),
                   postedEntryIds.contains(journalLine.entryId),
                   let entry = entryMap[journalLine.entryId] else { continue }
@@ -146,6 +181,11 @@ extension DataStore {
 
             // 元取引から取引先・消費税区分を取得
             let transaction = entry.sourceTransactionId.flatMap { transactionMap[$0] }
+                ?? transactionMapByJournalEntryId[entry.id]
+            let resolvedCounterparty = (transaction?.counterpartyId ?? canonicalCounterpartyByEntryId[entry.id])
+                .flatMap { canonicalCounterparty(id: $0)?.displayName }
+                ?? transaction?.counterparty
+            let resolvedTaxCategory = transaction?.resolvedTaxCategory
 
             enrichedLines.append((
                 lineId: journalLine.id,
@@ -157,8 +197,8 @@ extension DataStore {
                 debit: journalLine.debit,
                 credit: journalLine.credit,
                 counterAccountId: counterAccountId,
-                counterparty: transaction?.counterparty,
-                taxCategory: transaction?.taxCategory
+                counterparty: resolvedCounterparty,
+                taxCategory: resolvedTaxCategory
             ))
         }
 
@@ -189,7 +229,7 @@ extension DataStore {
             switch type {
             case .accountsReceivableBook, .accountsPayableBook:
                 balanceKey = line.counterparty ?? ""
-            case .cashBook, .expenseBook:
+            case .cashBook, .depositBook, .expenseBook:
                 balanceKey = line.accountId
             }
 
@@ -252,9 +292,17 @@ extension DataStore {
     func exportSubLedgerCSV(
         type: SubLedgerType,
         startDate: Date? = nil,
-        endDate: Date? = nil
+        endDate: Date? = nil,
+        accountFilter: String? = nil,
+        counterpartyFilter: String? = nil
     ) -> String {
-        let rows = getSubLedgerEntries(type: type, startDate: startDate, endDate: endDate)
+        let rows = getSubLedgerEntries(
+            type: type,
+            startDate: startDate,
+            endDate: endDate,
+            accountFilter: accountFilter,
+            counterpartyFilter: counterpartyFilter
+        )
         var lines: [String] = [
             "date,accountCode,accountName,memo,counterparty,debit,credit,runningBalance,counterAccountId,taxCategory"
         ]

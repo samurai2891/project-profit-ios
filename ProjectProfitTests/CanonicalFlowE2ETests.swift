@@ -16,6 +16,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
         previousFiscalYearStartMonth = UserDefaults.standard.object(forKey: FiscalYearSettings.userDefaultsKey)
         UserDefaults.standard.set(FiscalYearSettings.defaultStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
         container = try TestModelContainer.create()
+        FeatureFlags.useCanonicalPosting = true
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
         dataStore.loadData()
@@ -28,6 +29,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        FeatureFlags.clearOverrides()
         ReceiptImageStore.setBaseDirectoryOverride(nil)
         if let tempDirectory {
             try? FileManager.default.removeItem(at: tempDirectory)
@@ -79,8 +81,9 @@ final class CanonicalFlowE2ETests: XCTestCase {
         XCTAssertEqual(worksheet.lines.count, 1)
         XCTAssertEqual(worksheet.rawInputTaxTotal, 10_000)
 
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.softClose, for: fiscalYear))
-        XCTAssertTrue(dataStore.transitionFiscalYearState(.taxClose, for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear))
+        XCTAssertNotNil(try ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear))
+        XCTAssertTrue(mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear))
 
         let taxIssues = try TaxYearStateUseCase(modelContext: context).filingPreflightIssues(
             businessId: flow.businessId,
@@ -95,8 +98,8 @@ final class CanonicalFlowE2ETests: XCTestCase {
         )
         XCTAssertFalse(exportPreflight.isBlocking)
 
-        let viewModel = EtaxExportViewModel(dataStore: dataStore)
-        viewModel.fiscalYear = fiscalYear
+        let viewModel = makeEtaxExportViewModel()
+        viewModel.taxYear = fiscalYear
         viewModel.generatePreview()
 
         XCTAssertNotNil(viewModel.exportedForm)
@@ -107,6 +110,41 @@ final class CanonicalFlowE2ETests: XCTestCase {
             return XCTFail("e-Tax CSV export should succeed after preflight passes")
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    private func makeEtaxExportViewModel() -> EtaxExportViewModel {
+        let contextQueryUseCase = EtaxExportContextQueryUseCase(modelContext: context)
+        let formBuildQueryUseCase = EtaxFormBuildQueryUseCase(modelContext: context)
+        return EtaxExportViewModel(
+            modelContext: context,
+            contextProvider: { taxYear in
+                EtaxExportContext(
+                    businessId: self.dataStore.businessProfile?.id,
+                    fallbackTaxYearProfile: self.dataStore.currentTaxYearProfile?.taxYear == taxYear
+                        ? self.dataStore.currentTaxYearProfile
+                        : contextQueryUseCase.context(taxYear: taxYear).fallbackTaxYearProfile
+                )
+            },
+            snapshotProvider: { taxYear in
+                formBuildQueryUseCase.snapshot(taxYear: taxYear)
+            },
+            formBuilder: { filingStyle, snapshot in
+                try FormEngine.build(
+                    filingStyle: filingStyle,
+                    input: FormEngine.BuildInput(snapshot: snapshot)
+                )
+            },
+            exporter: { format, form in
+                try ExportCoordinator.export(
+                    target: .etax,
+                    format: format,
+                    fiscalYear: form.fiscalYear,
+                    modelContext: self.context,
+                    skipPreflightValidation: true,
+                    etaxOptions: .init(form: EtaxExportViewModel.exportableForm(from: form))
+                )
+            }
+        )
     }
 
     func testBackupRestoreRoundTripRestoresSearchableCanonicalArtifacts() async throws {
@@ -178,7 +216,10 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let report = try MigrationReportRunner(modelContext: scenario.context).dryRun()
 
         XCTAssertTrue(report.orphanRecords.isEmpty)
-        XCTAssertTrue(report.warnings.isEmpty)
+        XCTAssertEqual(
+            report.warnings,
+            ["Transaction legacy data remains after canonical migration"]
+        )
         XCTAssertTrue(report.deltas.contains(where: { $0.modelName == "Profile" && $0.executeSupported }))
     }
 
@@ -195,6 +236,7 @@ final class CanonicalFlowE2ETests: XCTestCase {
                 subtotalAmount: amount - (amount / 11),
                 date: "\(fiscalYear)-04-10",
                 storeName: counterpartyName,
+                registrationNumber: nil,
                 estimatedCategory: "tools",
                 itemSummary: "監査証憑"
             ),
@@ -213,11 +255,15 @@ final class CanonicalFlowE2ETests: XCTestCase {
             paymentAccountId: AccountingConstants.cashAccountId,
             transferToAccountId: nil,
             taxDeductibleRate: 100,
-            taxCategory: .standardRate,
-            taxRate: 10,
+            taxCodeId: TaxCode.standard10.rawValue,
             isTaxIncluded: false,
             taxAmount: amount / 11,
-            counterpartyName: counterpartyName
+            registrationNumber: nil,
+            counterpartyId: nil,
+            counterpartyName: counterpartyName,
+            isWithholdingEnabled: false,
+            withholdingTaxCodeId: nil,
+            withholdingTaxAmount: nil
         )
 
         let intakeResult = try await ReceiptEvidenceIntakeUseCase(modelContext: context).intake(request)
@@ -250,12 +296,12 @@ final class CanonicalFlowE2ETests: XCTestCase {
         let useCase = ProfileSettingsUseCase(modelContext: context)
         let state = try await useCase.load(
             defaultTaxYear: fiscalYear,
-            legacyProfile: dataStore.accountingProfile,
             sensitivePayload: dataStore.profileSensitivePayload
         )
         dataStore.loadData()
         return state.taxYearProfile
     }
+
 }
 
 private struct ApprovedReceiptFlow {

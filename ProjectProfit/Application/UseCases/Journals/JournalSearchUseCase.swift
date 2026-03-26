@@ -21,11 +21,66 @@ struct JournalSearchUseCase {
     }
 
     private func autoRepairIfNeeded(criteria: JournalSearchCriteria) throws {
-        let indexCount = try journalIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
-        guard indexCount == 0 else { return }
         let sourceCount = try journalIndex.sourceCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
-        guard sourceCount > 0 else { return }
-        try SearchIndexRebuilder(modelContext: modelContext)
-            .rebuildJournalIndex(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        let indexCount = try journalIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+
+        if sourceCount == 0, indexCount == 0 {
+            return
+        }
+
+        let needsRepair = try indexCount != sourceCount || isIntegrityCorrupted(criteria: criteria)
+        guard needsRepair else { return }
+
+        do {
+            try SearchIndexRebuilder(modelContext: modelContext)
+                .rebuildJournalIndex(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalJournalSearchIndex.indexName,
+                underlying: error
+            )
+        }
+
+        try verifyRebuiltIndex(criteria: criteria)
+    }
+
+    private func isIntegrityCorrupted(criteria: JournalSearchCriteria) throws -> Bool {
+        do {
+            try journalIndex.validateIntegrity(businessId: criteria.businessId, taxYear: criteria.taxYear)
+            return false
+        } catch let error as CanonicalRepositoryError {
+            switch error {
+            case .searchIndexCorrupted:
+                return true
+            default:
+                throw error
+            }
+        } catch {
+            throw error
+        }
+    }
+
+    private func verifyRebuiltIndex(criteria: JournalSearchCriteria) throws {
+        let sourceCount = try journalIndex.sourceCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        let indexCount = try journalIndex.indexCount(businessId: criteria.businessId, taxYear: criteria.taxYear)
+
+        guard sourceCount == indexCount else {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalJournalSearchIndex.indexName,
+                underlying: SearchIndexRepairVerificationError.countMismatch(
+                    indexCount: indexCount,
+                    sourceCount: sourceCount
+                )
+            )
+        }
+
+        do {
+            try journalIndex.validateIntegrity(businessId: criteria.businessId, taxYear: criteria.taxYear)
+        } catch {
+            throw CanonicalRepositoryError.searchIndexRebuildFailed(
+                indexName: LocalJournalSearchIndex.indexName,
+                underlying: error
+            )
+        }
     }
 }

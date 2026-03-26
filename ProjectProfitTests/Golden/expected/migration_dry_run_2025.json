@@ -1,13 +1,13 @@
 {
   "deltas" : [
     {
-      "canonicalCount" : 36,
+      "canonicalCount" : 37,
       "executeSupported" : false,
-      "legacyCount" : 37,
+      "legacyCount" : 38,
       "modelName" : "Account"
     },
     {
-      "canonicalCount" : 55,
+      "canonicalCount" : 28,
       "executeSupported" : false,
       "legacyCount" : 0,
       "modelName" : "AuditEvent"
@@ -49,9 +49,9 @@
       "modelName" : "Inventory"
     },
     {
-      "canonicalCount" : 42,
+      "canonicalCount" : 48,
       "executeSupported" : true,
-      "legacyCount" : 42,
+      "legacyCount" : 0,
       "modelName" : "Journal"
     },
     {
@@ -63,7 +63,7 @@
     {
       "canonicalCount" : 3,
       "executeSupported" : true,
-      "legacyCount" : 1,
+      "legacyCount" : 0,
       "modelName" : "Profile"
     },
     {
@@ -91,10 +91,8 @@
       "modelName" : "UserRule"
     }
   ],
-  "orphanRecords" : [
-
-  ],
+  "orphanRecords" : [],
   "warnings" : [
-
+    "Transaction legacy data remains after canonical migration"
   ]
 }

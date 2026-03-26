@@ -33,9 +33,10 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          simulator_device="$(printf '%s\n' "$output" | awk -F= '/^simulator_device=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          simulator_device="$(awk -F= '/^simulator_device=/{print $2; exit}' <<< "$output")"
+          simulator_id="$(awk -F= '/^simulator_id=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
@@ -49,6 +50,9 @@ jobs:
           if [[ -n "$simulator_device" ]]; then
             echo "simulator_device=$simulator_device" >> "$GITHUB_OUTPUT"
           fi
+          if [[ -n "$simulator_id" ]]; then
+            echo "simulator_id=$simulator_id" >> "$GITHUB_OUTPUT"
+          fi
 
           {
             echo "### simulator-health"
@@ -56,6 +60,9 @@ jobs:
             echo "- reason: $reason"
             if [[ -n "$simulator_device" ]]; then
               echo "- simulator_device: $simulator_device"
+            fi
+            if [[ -n "$simulator_id" ]]; then
+              echo "- simulator_id: $simulator_id"
             fi
             echo ""
             echo '```text'
@@ -95,9 +102,9 @@ jobs:
 
           printf '%s\n' "$output"
 
-          status="$(printf '%s\n' "$output" | awk -F= '/^status=/{print $2; exit}')"
-          reason="$(printf '%s\n' "$output" | awk -F= '/^reason=/{print $2; exit}')"
-          input_dir="$(printf '%s\n' "$output" | awk -F= '/^input_dir=/{print $2; exit}')"
+          status="$(awk -F= '/^status=/{print $2; exit}' <<< "$output")"
+          reason="$(awk -F= '/^reason=/{print $2; exit}' <<< "$output")"
+          input_dir="$(awk -F= '/^input_dir=/{print $2; exit}' <<< "$output")"
 
           if [[ -z "$status" ]]; then
             status="error"
