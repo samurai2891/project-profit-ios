@@ -1172,23 +1172,11 @@ class DataStore {
             return
         }
 
-        var existingKeys = Set(
-            existingRecords.compactMap { record -> String? in
-                guard record.documentType == .receipt,
-                      let transactionId = record.transactionId,
-                      let normalizedFileName = ReceiptImageStore.sanitizedFileName(record.originalFileName)
-                else {
-                    return nil
-                }
-                return "\(transactionId.uuidString)|\(normalizedFileName)"
+        var existingReceiptRecordsByTransactionId = Dictionary(
+            grouping: existingRecords.filter {
+                $0.documentType == .receipt && $0.deletionStatus == .active
             }
-        )
-        var existingReceiptTransactionIds = Set(
-            existingRecords.compactMap { record -> UUID? in
-                guard record.documentType == .receipt else { return nil }
-                return record.transactionId
-            }
-        )
+        ) { $0.transactionId }
 
         var changed = false
         var migratedCount = 0
@@ -1205,8 +1193,7 @@ class DataStore {
                 continue
             }
 
-            let key = "\(transaction.id.uuidString)|\(safeLegacyPath)"
-            if existingKeys.contains(key) || existingReceiptTransactionIds.contains(transaction.id) {
+            if existingReceiptRecordsByTransactionId[transaction.id] != nil {
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 legacyFilesToDelete.append(safeLegacyPath)
@@ -1222,6 +1209,21 @@ class DataStore {
             }
 
             do {
+                let existingRecord = try modelContext.fetch(FetchDescriptor<PPDocumentRecord>()).first(where: {
+                    $0.transactionId == transaction.id &&
+                    $0.documentType == .receipt &&
+                    $0.deletionStatus == .active
+                })
+                if let existingRecord {
+                    existingReceiptRecordsByTransactionId[transaction.id, default: []].append(existingRecord)
+                    transaction.receiptImagePath = nil
+                    transaction.updatedAt = now
+                    legacyFilesToDelete.append(safeLegacyPath)
+                    changed = true
+                    alreadyBackfilledCount += 1
+                    continue
+                }
+
                 let storedFileName = try ReceiptImageStore.saveDocumentData(imageData, originalFileName: safeLegacyPath)
                 let record = PPDocumentRecord(
                     transactionId: transaction.id,
@@ -1237,8 +1239,7 @@ class DataStore {
                     updatedAt: now
                 )
                 modelContext.insert(record)
-                existingKeys.insert(key)
-                existingReceiptTransactionIds.insert(transaction.id)
+                existingReceiptRecordsByTransactionId[transaction.id, default: []].append(record)
                 transaction.receiptImagePath = nil
                 transaction.updatedAt = now
                 newDocumentFiles.append(storedFileName)

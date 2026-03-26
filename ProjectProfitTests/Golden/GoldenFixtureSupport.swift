@@ -43,7 +43,7 @@ struct GoldenFixtureLoader {
         try applyCategories(fixture.categories, to: dataStore, context: context)
         let projectMap = try applyProjects(fixture.projects, to: dataStore)
         try await applyTransactions(fixture.transactions, projectMap: projectMap, to: dataStore)
-        try applyFixtureYearLockState(fixture, to: dataStore, context: context)
+        try applyFixtureYearLockState(fixture, to: context)
         dataStore.loadData()
 
         let businessProfile = try XCTUnwrap(dataStore.businessProfile)
@@ -52,6 +52,7 @@ struct GoldenFixtureLoader {
             taxYear: fixture.businessProfile.fiscalYear
         )
         let taxYearProfile = try XCTUnwrap(taxYearProfileCandidate)
+        XCTAssertEqual(taxYearProfile.yearLockState, .taxClose)
         return GoldenScenario(
             container: container,
             context: context,
@@ -98,31 +99,26 @@ struct GoldenFixtureLoader {
 
     private static func applyFixtureYearLockState(
         _ fixture: GoldenFixture,
-        to dataStore: ProjectProfit.DataStore,
         context: ModelContext
     ) throws {
         let fiscalYear = fixture.businessProfile.fiscalYear
-
-        guard mutations(dataStore).transitionFiscalYearState(.softClose, for: fiscalYear) else {
-            throw fixtureSetupError(
-                "Golden fixture could not transition to soft close: \(dataStore.lastError?.localizedDescription ?? "unknown error")"
-            )
-        }
-
-        _ = try XCTUnwrap(
-            ClosingWorkflowUseCase(modelContext: context).generateClosingEntry(for: fiscalYear),
-            "Golden fixture should generate a closing entry before tax close"
+        let businessProfile = try XCTUnwrap(
+            try SwiftDataBusinessProfileRepository(modelContext: context).findDefault(),
+            "Golden fixture should create a canonical business profile before year lock setup"
         )
-
-        guard mutations(dataStore).transitionFiscalYearState(.taxClose, for: fiscalYear) else {
-            throw fixtureSetupError(
-                "Golden fixture could not transition to tax close: \(dataStore.lastError?.localizedDescription ?? "unknown error")"
-            )
-        }
-    }
-
-    private static func fixtureSetupError(_ description: String) -> NSError {
-        NSError(domain: "GoldenFixtureLoader", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
+        let descriptor = FetchDescriptor<TaxYearProfileEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessProfile.id && $0.taxYear == fiscalYear
+            }
+        )
+        let entity = try XCTUnwrap(
+            try context.fetch(descriptor).first,
+            "Golden fixture should create a tax year profile before year lock setup"
+        )
+        // Golden fixtures replay a known snapshot and intentionally bypass closing preflight.
+        entity.yearLockStateRaw = YearLockState.taxClose.rawValue
+        entity.updatedAt = Date()
+        try context.save()
     }
 
     private static func applyAccounts(
