@@ -19,7 +19,7 @@
 
 ## Repo 管理境界
 
-- repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md`、`Docs/release/quality/latest.md`、`Docs/release/quality/latest-lane.md`、`Docs/release/quality/release-build.md`、`Docs/release/quality/golden-baseline.md`、`Docs/release/quality/canonical-e2e.md`、`Docs/release/quality/migration-rehearsal.md`、`Docs/release/quality/performance-gate.md`、`Docs/release/quality/books.md`、`Docs/release/quality/forms.md` とする。
+- repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md`、`Docs/release/quality/latest.md`、`Docs/release/quality/latest-lane.md`、`Docs/release/quality/release-build.md`、`Docs/release/quality/golden-baseline.md`、`Docs/release/quality/canonical-e2e.md`、`Docs/release/quality/migration-rehearsal.md`、`Docs/release/quality/performance-gate.md`、`Docs/release/quality/books.md`、`Docs/release/quality/forms.md`、`Docs/release/quality/xlsx-verify.md` とする。
 - `Docs/release/quality/latest.md` は REL-P0-12 対象 4 lane の latest fully-green snapshot を保持する curated artifact とする。
 - `Docs/release/quality/latest-lane.md` は最後に実行した単一 lane の証跡とする。
 - `Docs/release/quality/<lane>.md` は lane ごとの最新証跡とする。
@@ -175,12 +175,25 @@
   - `test_summary` が記録されている
   - `summary_path` / `log_path` / `xcresult_path` / `metrics_path` が記録されている
 
+### 9. XLSX Verify
+
+- lane: `xlsx-verify`
+- 証跡:
+  - `Docs/release/quality/xlsx-verify.md`
+- 確認項目:
+  - `status: ok`
+  - `reason` が成功理由で埋まっている
+  - `head_sha` / `run_id` / `run_url` が記録されている
+  - `summary_path` / `log_path` が記録されている
+  - 4 本の verify script が blocking gate として実行されている
+  - `Docs/release/quality/xlsx-verify.md` が current HEAD で `status: error` の場合は release 不可
+
 ## 実行時の固定条件
 
 - `xcodegen-sync` の `status` が `ok` であることを lane 実行の前提にする。
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release/quality'` を設定する。
 - CI では `RELEASE_QUALITY_ARTIFACTS_DIR='$GITHUB_WORKSPACE/artifacts/release-quality/<lane>'` を使い、`/tmp` だけに依存しない。
-- commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 7 本とする。
+- commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 8 本とする。
 - `latest-lane.md` または lane 別 md に placeholder 値が残る場合は release 不可とする。
 - `Docs/release/quality/latest.md` は REL-P0-12 対象 gate の最新 fully-green snapshot として commit 管理する。
 - `Docs/release/quality/latest-lane.md` は最後に実行した lane の証跡として上書きされる。
@@ -207,6 +220,7 @@
   - `performance.migration.seconds=0.386821985244751`
   - `performance.projection.seconds=0.4266420602798462`
   - `performance.search.seconds=0.624290943145752`
+- `xlsx-verify`: current HEAD では `Docs/release/quality/xlsx-verify.md` を参照する
 - current HEAD の release 判定は `go`
 - curated 4 lane が fully-green のため `Docs/release/quality/latest.md` を current HEAD へ更新済み
 

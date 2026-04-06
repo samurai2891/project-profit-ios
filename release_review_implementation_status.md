@@ -1,13 +1,13 @@
 # accounting_app_release_review_10items 現行実装事実監査レポート
 
-調査対象: `/Users/yutaro/Downloads/accounting_app_release_review_10items.md`  
+調査対象: release review 10 項目の current repo 反映状況
 調査対象コード: `/Users/yutaro/project-profit-ios`  
-調査日: 2026-03-26  
+調査日: 2026-04-07
 監査基準:
 - 主基準は `release_review_implementation_status.md` の 10 項目
-- 補助根拠は `Docs/release/checklist.md`、`Docs/release/リリース残課題チェックリスト_2026-03-24.md`、必要時のみ `Docs/specs/SPEC.md`
-- 対象実体は current working tree と current HEAD `1557241966fe597904eb7971252b261a7dab9e04`
-- `Docs/release/quality/latest.md` の `go` 判定対象 HEAD `a2d059d9b9d71ac22148f7b641a83ab03249134d` とは別物として扱う
+- 補助根拠は `Docs/release/checklist.md`、`Docs/release/project-profit-ios_release_tasks_checklist_2026-04-06.md`、必要時のみ `Docs/specs/SPEC.md`
+- 監査対象 HEAD は current main `9c2e80b503215e2804515bcdd7ddf13ee0422bb2`
+- `Docs/release/quality/latest.md` は `a2d059d...` の historical curated snapshot として扱い、current HEAD 判定は lane 個票を正本にする
 
 判定基準:
 - `実装済み` = 指摘された主問題が main path と release 導線で解消され、コードと代表テストで裏付けられる
@@ -17,15 +17,9 @@
 
 ## 監査前提
 
-- working tree には未コミット変更がある
-  - `.github/workflows/etax-ci.yml`
-  - `.github/workflows/release-quality.yml`
-  - `ProjectProfitTests/EtaxXtxExporterTests.swift`
-  - `scripts/etax_resolve_xsd.sh`
-  - `scripts/etax_validate_xsd.sh`
-  - `scripts/run_etax_unit_lane.sh`
-  - `tools/etax/xsd/shotoku/KOA230-010.xsd`
-- 本レポートは上記を含む current working tree をそのまま読んでいる
+- official export matrix の正本は `Docs/specs/SPEC.md`
+- release gate の正本は `Docs/release/checklist.md` と `Release Quality` workflow
+- source-of-truth Excel template は `ProjectProfit/Ledger/Resources/excel_templates/` 配下に repo 同梱されている
 - repo 外の法令適合証明、e-Tax 受理保証、App Store 設定、サーバ設定は調査対象外
 
 ## 結論サマリー
@@ -38,10 +32,10 @@
 | 4 | 消費税の簡易課税・2割特例ロジック | 実装済み | 判定と控除計算は decision object ベースに一本化され、簡易課税のみなし仕入率も `TaxYearPack` 正本へ統一、単体/統合テストで境界が固定された |
 | 5 | 個人事業主向けの年度設定 | 実装済み | filing/e-Tax/preflight に加えて、証憑取込・statement import・Approval Queue・e-Tax 命名も暦年 `taxYear` 基準へ統一された |
 | 6 | 仕様書上の帳簿が release 導線に未掲載 | 実装済み | `BooksWorkspaceView` が canonical 本流の帳簿一覧へ再編され、仕様対象帳簿は release UI から到達できる。legacy ledger は `旧台帳アーカイブ` に限定された |
-| 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と CSV/PDF export が揃った。repo 内では fixture ベースの golden 検証も追加された |
+| 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と `CSV/PDF/XLSX` の official matrix が `SPEC.md`・UI・テストで一致した。repo 内では `xlsx-verify` gate も追加された |
 | 8 | e-Tax UI と年分対応のズレ | 実装済み | `blueCashBasis` と 2025/2026 年分対応に加え、e-Tax 画面へ年分×様式の対応状況一覧と事前理由表示、UI テスト根拠が追加された |
 | 9 | 書類台帳の削除統制が弱い | 実装済み | 保存期間内削除は request 済み状態と理由・承認者入力を必須化し、UI・内部 purge・全削除も quarantine 統制へ統一された |
-| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、CSV/PDF とも `SPEC.md` ベースの列定義・主要計算へ揃った。一方で原本 Excel との機械比較は未実施のため、完了条件の「原本一致」は未充足 |
+| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、`CSV/PDF/XLSX` とも `SPEC.md` ベースの列定義・主要計算へ揃った。一方で parity 検証はまだ workbook 全面比較まで届いておらず、完了条件の「原本一致」は未充足 |
 
 ## 実装チェックリスト
 
@@ -65,7 +59,7 @@
 - `release 導線` = release UI / main workflow から到達できる
 - `export/帳票整合` = 仕様書や帳票要件まで含めて整合している
 - `テスト根拠` = 主要論点を直接支えるテスト根拠がある
-- `残課題あり` = current working tree で未統一・未達・未検証が残る
+- `残課題あり` = current repo state で未統一・未達・未検証が残る
 
 ## 詳細
 
@@ -292,7 +286,7 @@
 - 未確認事項:
   - 項目 6 の release 導線コードと対象テストは更新済みだが、この更新時点では repo 全体フルテスト完走までは再確認していない
 - release 影響:
-  - 仕様対象の帳簿群は release UI の canonical 本流から到達できる状態になり、「仕様書上の帳簿が release 導線に未掲載」という指摘には current working tree 上で対応できている
+  - 仕様対象の帳簿群は release UI の canonical 本流から到達できる状態になり、「仕様書上の帳簿が release 導線に未掲載」という指摘には current repo state で対応できている
 
 ### 7. export 機能が帳簿仕様と未整合
 
@@ -303,14 +297,18 @@
   - [x] format 行列のテストがある
   - [x] 仕様書の全11帳簿に official target がある
   - [x] repo 内正本に基づく fixture / golden 検証がある
+  - [x] official `.xlsx` matrix が `SPEC.md` / UI / テストと一致している
 - できていること:
   - `ExportCoordinator.ExportTarget` に `cashBook`、`bankAccountBook`、`accountsReceivableBook`、`accountsPayableBook`、`expenseBook`、`generalLedger`、`journalBook`、`transportationExpense`、`whiteTaxBookkeeping`、`fixedAssetRegister`、`fixedAssetDepreciation` の 11帳簿 target が追加された
-  - 11帳簿は official target 側で原則 CSV/PDF を持ち、`legacyLedgerBook` は互換 adapter として残されている
+  - 11帳簿は official target 側で `CSV/PDF/XLSX` を持ち、`legacyLedgerBook` は互換 adapter として残されている
   - `SubLedgerView`、`JournalListView`、`LedgerView`、`WhiteTaxBookkeepingView`、`BooksWorkspaceView` の公開導線は official target に接続された
-  - `transportationExpense`、`whiteTaxBookkeeping`、固定資産2帳簿も `ExportCoordinator` 経由で CSV/PDF export できる
+  - `transportationExpense`、`whiteTaxBookkeeping`、固定資産2帳簿も `ExportCoordinator` 経由で `CSV/PDF/XLSX` export できる
   - fixture ベースの ledger export 検証が追加され、11帳簿の CSV ヘッダ・主要本文・PDF テキスト断片を repo 内で比較できる
+  - `testSupportedFormatMatrixMatchesCurrentUIFlow()` と帳簿系 `.xlsx` 成功テストが official matrix を固定している
+  - `.github/workflows/release-quality.yml` に blocking job `xlsx-verify` が追加され、template / generated workbook の verify script 4 本が gate に入った
 - 補足:
-  - 仕様書の「Excel 原本と完全同一フォーマット」は repo 内に原本 Excel が同梱されていないため、current working tree では `Docs/specs/SPEC.md` と bundled template / fixture を正本にした検証へ置き換えている
+  - source-of-truth Excel template は repo 内に同梱済みで、generated workbook の verify も repo 単体で実行できる
+  - ただし parity 検証はまだ sheet/row/width 中心で、書式・page setup などの全面比較は未完了
   - `transactions` と `etax` は 11帳簿の仕様対象外の互換 target として残る
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:6`
@@ -329,9 +327,8 @@
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Golden/GoldenBaselineTests.swift:61`
 - 未確認事項:
   - Xcode 上での full test 完走はこの更新時点では再確認できていない
-  - repo 外の Excel 原本との機械比較は、原本不在のためこの repo 単独では断定できない
 - release 影響:
-  - current working tree では 11帳簿の export 正本が `ExportCoordinator` に統一され、release UI から到達できるため、「帳簿仕様と export 行列が未整合」という主指摘には対応できている
+  - current repo state では 11帳簿の export 正本が `ExportCoordinator` に統一され、official `.xlsx` matrix も `SPEC.md` / UI / テストで一致しているため、「帳簿仕様と export 行列が未整合」という主指摘には対応できている
 
 ### 8. e-Tax UI と年分対応のズレ
 
@@ -367,7 +364,7 @@
 - 未確認事項:
   - Xcode 上での full test 完走はこの更新時点では再確認できていない
 - release 影響:
-  - release UI 上で「どの年分がどの様式に対応しているか」と「一覧外年分を選べない理由」を事前に説明できるため、e-Tax UI と年分対応のズレは current working tree で解消された
+  - release UI 上で「どの年分がどの様式に対応しているか」と「一覧外年分を選べない理由」を事前に説明できるため、e-Tax UI と年分対応のズレは current repo state で解消された
 
 ### 9. 書類台帳の削除統制が弱い
 
@@ -409,21 +406,22 @@
 - 実装チェック:
   - [x] register / depreciation は別 target
   - [x] UI も別画面
-  - [x] register は CSV/PDF export がある
-  - [x] depreciation は CSV/PDF export がある
+  - [x] register は CSV/PDF/XLSX export がある
+  - [x] depreciation は CSV/PDF/XLSX export がある
   - [x] `SPEC.md` ベースの実装列定義へ揃った
   - [x] depreciation export を直接支えるテスト根拠は追加された
-  - [ ] 原本 Excel と直接機械比較した根拠はまだない
+  - [ ] workbook 全体の parity を固定する直接機械比較はまだない
 - できていること:
   - `ExportCoordinator.ExportTarget` で `fixedAssetRegister` と `fixedAssetDepreciation` が分離されている
   - UI も `FixedAssetListView` と `FixedAssetScheduleView` の別画面
-  - `fixedAssetRegister` と `fixedAssetDepreciation` はともに CSV/PDF 対応
+  - `fixedAssetRegister` と `fixedAssetDepreciation` はともに `CSV/PDF/XLSX` 対応
   - 固定資産台帳は metadata 行・13列ヘッダ・必要経費算入額を含めて `SPEC.md` へ揃えた
   - 減価償却明細は 21 列ヘッダと主要計算値を `DepreciationEngine` 正本へ寄せ、PDF も同じ列意味論へ揃えた
+  - fixed asset 系は `.xlsx` verify 対象にも含まれ、repo 同梱 template / generated fixture に対する機械検証を持つ
   - 償却方法ラベルは `PPDepreciationMethod` の全方式を export 上で明示化し、非定率法を黙って `定額法` に丸めない
 - まだ足りていないこと:
-  - 原本 Excel が repo 外のため、固定資産台帳 / 減価償却明細を原本セル単位で比較する検証は未実施
-  - 完了条件が「原本必須」のため、repo 内一致だけでは `実装済み` へ上げない
+  - workbook 全 worksheet、数式、merged cells、number format、主要セル書式、page setup まで比較する parity は未実施
+  - 完了条件が「原本必須」相当の粒度であるため、現状の verify 粒度では `実装済み` へ上げない
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:21`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:147`
@@ -441,30 +439,28 @@
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:339`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Golden/GoldenBaselineTests.swift:61`
 - 未確認事項:
-  - 固定資産帳票を原本 Excel と直接機械比較する検証は repo 外原本なしでは確認できない
+  - fixed asset 帳票を workbook 全面比較する parity 検証はまだ追加されていない
 - release 影響:
-  - release 導線上では固定資産帳票の区分・列・主要計算は `SPEC.md` と整合したが、原本 Excel 一致の最終確認が残る
+  - release 導線上では固定資産帳票の区分・列・主要計算と `.xlsx` export までは `SPEC.md` と整合したが、parity 検証の最終粒度が残る
 
 ## 横断的に残る不足実装
 
-- canonical main path へ移行した一方で、`legacy` `compat` `readOnly` `#if DEBUG` 経路が複数領域で残っている
-- 項目 1 の帳簿 source 差分は解消したが、項目 3・7・10 では依然として source/format 差分が残る
-- 設定名や引数名は fiscal year を使い続けつつ、実処理だけ tax year に寄った箇所がある
-- 一部領域はサービス統合テストで担保されているが、責務境界の単体テストはなお不足する
-- release gate が `go` でも、10 項目の仕様差分・互換経路残存・未検証経路は current working tree 上で残っている
+- current repo state で主指摘の大半は解消済みだが、release evidence の current HEAD 再採取と xlsx parity 粒度の引き上げは残る
+- `latest.md` は historical green snapshot であり、current HEAD 判定は lane 個票を正本として読み分ける必要がある
+- fixed asset を含む workbook parity は release claim に対してまだ限定的で、`P0-05` が主残課題である
 
 ## 今回のテスト確認
 
-- current working tree で帳簿 source 統一の代表確認として以下を再実行した
-  - `ExportCoordinatorTests/testCanonicalOnlyBookExportsExcludeOrphanLegacySupplementals`
-  - `ExportCoordinatorTests/testBookExportsMatchCanonicalReadModelsOnSharedFixture`
-- 上記 2 件は専用 `DerivedData` で green を確認した
-  - xcresult: `/tmp/projectprofit-codex-export-tests/Logs/Test/Test-ProjectProfit-2026.03.25_19-29-45-+0900.xcresult`
-  - xcresult: `/tmp/projectprofit-codex-export-tests/Logs/Test/Test-ProjectProfit-2026.03.25_19-35-02-+0900.xcresult`
-- `AccountingReadQueryUseCaseTests` の代表 2 件は追加再実行を開始したが、このターンでは専用 `DerivedData` 初回ビルドが長く、完走確認までは記録していない
+- current repo state の export / xlsx verify 代表確認として以下を再実行した
+  - `ProjectProfitTests/ExportCoordinatorTests` の official `.xlsx` 成功ケース
+  - `ProjectProfitTests/ExportCoordinatorTests` の legacy format matrix / success cases
+  - `python3 scripts/verify_ledger_xlsx_golden.py`
+  - `python3 scripts/verify_report_xlsx_golden.py`
+  - `python3 scripts/verify_generated_ledger_xlsx_golden.py`
+  - `python3 scripts/verify_generated_report_xlsx_golden.py`
+- 上記は targeted test / script 実行で green を確認した
 
 ## 前回レポートとの差分
 
-- 項目 1 は `実装済み` へ更新した
-- ただし今回の監査では、各項目の未達内容を `できていること / まだ足りていないこと / 根拠コード / 根拠テスト / 未確認事項 / release影響` に分解した
-- また、監査対象 HEAD が `a2d059d9...` ではなく `1557241966...` であること、working tree に未コミット変更があることを明示した
+- export matrix、legacy compat、`xlsx-verify` gate、repo root README 追加後の current repo state に合わせて stale な前提を除去した
+- 引き続き `P0-01` と `P0-05` が release readiness の主残課題である

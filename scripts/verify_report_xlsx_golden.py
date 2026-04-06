@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path("/Users/yutaro/project-profit-ios")
+ROOT = Path(__file__).resolve().parent.parent
 INSPECTOR = ROOT / "scripts" / "inspect_xlsx_layout.py"
 
 EXPECTATIONS = {

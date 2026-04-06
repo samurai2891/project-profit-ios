@@ -71,6 +71,107 @@ jobs:
             exit 1
           fi
 
+  xlsx-verify:
+    name: XLSX Verify
+    runs-on: macos-latest
+    needs: xcodegen-sync
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run xlsx verify gate
+        id: verify
+        shell: bash
+        env:
+          XLSX_VERIFY_ARTIFACT_DIR: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/xlsx-verify
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${XLSX_VERIFY_ARTIFACT_DIR}"
+          mkdir -p "$artifact_dir"
+
+          summary_path="$artifact_dir/summary.md"
+          combined_log="$artifact_dir/xlsx-verify.log"
+
+          scripts=(
+            "verify_ledger_xlsx_golden.py"
+            "verify_report_xlsx_golden.py"
+            "verify_generated_ledger_xlsx_golden.py"
+            "verify_generated_report_xlsx_golden.py"
+          )
+
+          pass_count=0
+          fail_count=0
+
+          : > "$combined_log"
+
+          for script_name in "${scripts[@]}"; do
+            log_path="$artifact_dir/${script_name%.py}.log"
+            echo "==> python3 scripts/$script_name" | tee -a "$combined_log"
+            set +e
+            python3 "scripts/$script_name" > "$log_path" 2>&1
+            exit_code=$?
+            set -e
+
+            cat "$log_path" >> "$combined_log"
+            printf '\n' >> "$combined_log"
+
+            if [[ "$exit_code" -eq 0 ]]; then
+              echo "PASS $script_name" | tee -a "$combined_log"
+              pass_count=$((pass_count + 1))
+            else
+              echo "FAIL $script_name (exit=$exit_code)" | tee -a "$combined_log"
+              fail_count=$((fail_count + 1))
+            fi
+            printf '\n' >> "$combined_log"
+          done
+
+          status="ok"
+          reason="all xlsx verify scripts passed"
+          if [[ "$fail_count" -ne 0 ]]; then
+            status="error"
+            reason="${fail_count} xlsx verify scripts failed"
+          fi
+
+          {
+            echo "## xlsx-verify"
+            echo "- status: $status"
+            echo "- reason: $reason"
+            echo "- scripts_passed: $pass_count"
+            echo "- scripts_failed: $fail_count"
+            echo "- log_path: artifacts/release-quality/xlsx-verify/xlsx-verify.log"
+            echo "- verify_ledger_xlsx_golden: artifacts/release-quality/xlsx-verify/verify_ledger_xlsx_golden.log"
+            echo "- verify_report_xlsx_golden: artifacts/release-quality/xlsx-verify/verify_report_xlsx_golden.log"
+            echo "- verify_generated_ledger_xlsx_golden: artifacts/release-quality/xlsx-verify/verify_generated_ledger_xlsx_golden.log"
+            echo "- verify_generated_report_xlsx_golden: artifacts/release-quality/xlsx-verify/verify_generated_report_xlsx_golden.log"
+          } > "$summary_path"
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "log_path=$combined_log" >> "$GITHUB_OUTPUT"
+
+          if [[ "$status" != "ok" ]]; then
+            exit 1
+          fi
+
+      - name: Append verify summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "${{ steps.verify.outputs.summary_path }}" ]]; then
+            cat "${{ steps.verify.outputs.summary_path }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload xlsx verify artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlsx-verify-artifacts
+          path: ${{ env.RELEASE_QUALITY_ARTIFACT_ROOT }}/xlsx-verify
+          if-no-files-found: warn
+
   simulator-health:
     name: Simulator Health
     runs-on: macos-latest

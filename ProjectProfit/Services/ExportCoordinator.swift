@@ -191,6 +191,12 @@ enum ExportCoordinator {
         let includeInvoice: Bool
     }
 
+    static func supportedFormats(
+        for legacyLedgerOptions: LegacyLedgerExportOptions
+    ) -> Set<ExportFormat> {
+        LegacyLedgerExportAdapter.supportedFormats(for: legacyLedgerOptions.ledgerType)
+    }
+
     struct TransactionExportOptions {
         let transactions: [PPTransaction]
     }
@@ -437,14 +443,13 @@ enum ExportCoordinator {
             case .cashBook, .cashBookInvoice,
                  .bankAccountBook, .bankAccountBookInvoice,
                  .accountsReceivable, .accountsPayable,
+                 .expenseBook, .expenseBookInvoice,
                  .generalLedger, .generalLedgerInvoice,
-                 .journal:
-                return [.csv, .pdf, .xlsx]
-            case .expenseBook, .expenseBookInvoice,
+                 .journal,
+                 .fixedAssetDepreciation, .fixedAssetRegister,
+                 .transportationExpense,
                  .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-                return [.csv, .pdf]
-            case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
-                return [.pdf]
+                return [.csv, .pdf, .xlsx]
             }
         }
 
@@ -526,8 +531,23 @@ enum ExportCoordinator {
                     includeInvoice: options.includeInvoice
                 )
 
-            case .fixedAssetDepreciation, .fixedAssetRegister, .transportationExpense:
-                throw ExportError.unsupportedFormat(.legacyLedgerBook, .csv)
+            case .transportationExpense:
+                return service.exportTransportationExpense(
+                    metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: options.metadataJSON),
+                    entries: store.transportationExpenseEntries(for: options.bookId)
+                )
+
+            case .fixedAssetDepreciation:
+                return service.exportFixedAssetDepreciation(
+                    metadata: LedgerBridge.decodeFixedAssetDepreciationMetadata(from: options.metadataJSON),
+                    entries: store.fixedAssetDepreciationEntries(for: options.bookId)
+                )
+
+            case .fixedAssetRegister:
+                return service.exportFixedAssetRegister(
+                    metadata: LedgerBridge.decodeFixedAssetRegisterMetadata(from: options.metadataJSON),
+                    entries: store.fixedAssetRegisterEntries(for: options.bookId)
+                )
             }
         }
 
@@ -658,11 +678,41 @@ enum ExportCoordinator {
             case .journal:
                 service.exportJournal(entries: store.journalEntries(for: options.bookId), to: path)
 
-            case .expenseBook, .expenseBookInvoice,
-                 .fixedAssetDepreciation, .fixedAssetRegister,
-                 .transportationExpense,
-                 .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
-                throw ExportError.unsupportedFormat(.legacyLedgerBook, .xlsx)
+            case .expenseBook, .expenseBookInvoice:
+                service.exportExpenseBook(
+                    metadata: LedgerBridge.decodeExpenseBookMetadata(from: options.metadataJSON),
+                    entries: store.expenseBookEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice,
+                    to: path
+                )
+
+            case .transportationExpense:
+                service.exportTransportationExpense(
+                    metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: options.metadataJSON),
+                    entries: store.transportationExpenseEntries(for: options.bookId),
+                    to: path
+                )
+
+            case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+                service.exportWhiteTaxBookkeeping(
+                    metadata: LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: options.metadataJSON),
+                    entries: store.whiteTaxBookkeepingEntries(for: options.bookId),
+                    includeInvoice: options.includeInvoice,
+                    to: path
+                )
+
+            case .fixedAssetDepreciation:
+                service.exportFixedAssetDepreciation(
+                    entries: store.fixedAssetDepreciationEntries(for: options.bookId),
+                    to: path
+                )
+
+            case .fixedAssetRegister:
+                service.exportFixedAssetRegister(
+                    metadata: LedgerBridge.decodeFixedAssetRegisterMetadata(from: options.metadataJSON),
+                    entries: store.fixedAssetRegisterEntries(for: options.bookId),
+                    to: path
+                )
             }
         }
     }

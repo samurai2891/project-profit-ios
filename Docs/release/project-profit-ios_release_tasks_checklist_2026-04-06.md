@@ -1,7 +1,7 @@
 # project-profit-ios リリース完了チェックリスト（進捗可視化版 / 2026-04-06）
 
 対象リポジトリ: `samurai2891/project-profit-ios`  
-レビュー対象 HEAD: `f6e4130`（`feat: add xlsx template assets and golden verification (#7)`）
+レビュー対象 HEAD: `9c2e80b`（`feat: xlsx export matrixを仕様へ統一`）
 
 ## この文書の見方
 
@@ -23,20 +23,20 @@
 - [x] xlsx exporter の基盤（`libxlsxwriter` / resource bundling / exporter 実装）は入っている
 - [x] xlsx golden fixture / verify script の基盤は入っている
 - [ ] current HEAD 向けの release quality 証跡は更新されていない
-- [ ] `SPEC.md` と official export matrix の `xlsx` 範囲は未収束
-- [ ] legacy `xlsx` export の partial support は未収束
-- [ ] xlsx verify script の portable 化と CI gate 組み込みは未収束
+- [x] `SPEC.md` と official export matrix の `xlsx` 範囲は一致している
+- [x] legacy 互換導線の visible export format は実装と一致している
+- [x] xlsx verify script の portable 化と CI gate 組み込みは完了
 - [ ] xlsx parity 検証の粒度は release claim に対してまだ不足
-- [ ] stale な監査文書は current main に追随していない
-- [ ] repo root README は未追加
+- [x] stale な監査文書は current repo state に追随している
+- [x] repo root README は追加済み
 
 ---
 
 ## 進捗サマリー
 
-- 完了済み前提: **3件**
-- 一部完了で要収束: **4件**
-- 未完了: **3件**
+- 完了: **8件**
+- 一部完了で要収束: **1件**
+- 未完了: **1件**
 
 | ID | 項目 | 優先度 | 現在状態 |
 |---|---|---|---|
@@ -44,12 +44,12 @@
 | BASE-02 | xlsx exporter 基盤追加 | 基盤 | 完了 |
 | BASE-03 | xlsx golden verification 基盤追加 | 基盤 | 完了 |
 | P0-01 | current HEAD 向け release quality 証跡更新 | P0 | 未完了 |
-| P0-02 | `SPEC.md` と official export matrix の `xlsx` 範囲収束 | P0 | 一部完了 |
-| P0-03 | legacy `xlsx` partial support 解消 | P0 | 一部完了 |
-| P0-04 | xlsx verify script の portable 化 + CI gate 組み込み | P0 | 一部完了 |
+| P0-02 | `SPEC.md` と official export matrix の `xlsx` 範囲収束 | P0 | 完了 |
+| P0-03 | legacy export の visible format 実装収束 | P0 | 完了 |
+| P0-04 | xlsx verify script の portable 化 + CI gate 組み込み | P0 | 完了 |
 | P0-05 | xlsx parity 検証の粒度引き上げ | P0 | 一部完了 |
-| P1-01 | stale 監査文書の current main 追随 | P1 | 未完了 |
-| P1-02 | repo root README 追加 | P1 | 未完了 |
+| P1-01 | stale 監査文書の current main 追随 | P1 | 完了 |
+| P1-02 | repo root README 追加 | P1 | 完了 |
 
 ---
 
@@ -104,12 +104,12 @@
 
 ## P0: リリース前に必ず閉じるタスク
 
-### [ ] P0-01 current HEAD (`f6e4130`) 向けの release quality 証跡を更新する
+### [ ] P0-01 current HEAD (`9c2e80b`) 向けの release quality 証跡を更新する
 
 - 優先度: **P0**
 - 現在状態: **未完了**
 - repo 上で確認できた事実:
-  - main HEAD は `f6e4130`
+  - main HEAD は `9c2e80b`
   - `Docs/release/quality/latest.md` の `head_sha` は `a2d059d...`
   - `release-build.md` / `books.md` / `forms.md` / `golden-baseline.md` / `canonical-e2e.md` / `migration-rehearsal.md` / `performance-gate.md` も `a2d059d...` のまま
   - `Docs/release/checklist.md` では、`latest.md` が current HEAD と不一致なら lane 個票を current HEAD の正本として扱うと明記している
@@ -140,75 +140,78 @@
   - `Docs/release/quality/performance-gate.md`
   - `Docs/release/checklist.md`
 
-### [ ] P0-02 `SPEC.md` と official export matrix の `xlsx` 範囲を収束させる
+### [x] P0-02 `SPEC.md` と official export matrix の `xlsx` 範囲を収束させる
 
 - 優先度: **P0**
-- 現在状態: **一部完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
-  - `Docs/specs/SPEC.md` は、11 帳簿について template 準拠の `.xlsx` 出力対応を説明している
-  - `ExportCoordinator.ExportTarget.supportedFormats` は current UI flow の正本として、`xlsx` を一部 target にしか公開していない
-  - `ProjectProfitTests/ExportCoordinatorTests.swift` の `testSupportedFormatMatrixMatchesCurrentUIFlow()` がその matrix を固定している
+  - `Docs/specs/SPEC.md` は official export matrix として、11 帳簿ワークスペース target と 7 帳票 target の `.xlsx` 正式対応を明記している
+  - `ExportCoordinator.ExportTarget.supportedFormats` は `cashBook` から `whiteTaxBookkeeping` まで official 帳簿 target の `.xlsx` を公開している
+  - `WhiteTaxBookkeepingView` は hand-written menu ではなく official export menu を使い、UI 表示が matrix と一致している
+  - `ProjectProfitTests/ExportCoordinatorTests.swift` は `testSupportedFormatMatrixMatchesCurrentUIFlow()` と帳簿系 `.xlsx` 成功テストで matrix を固定している
 - 実装チェックリスト:
-  - [ ] `xlsx` 公開範囲の正本を 1 つに決める
-    - [ ] A. current UI / supportedFormats を `SPEC.md` に合わせる
-    - [ ] B. `SPEC.md` を current UI / supportedFormats に合わせる
-  - [ ] `ProjectProfit/Services/ExportCoordinator.swift` の matrix を更新する
-  - [ ] `ProjectProfitTests/ExportCoordinatorTests.swift` の matrix テストを更新する
-  - [ ] ユーザー向け export UI 表示をコードと同じ matrix に揃える
-  - [ ] 文書・実装・UI の三者不一致をなくす
+  - [x] `xlsx` 公開範囲の正本を 1 つに決める
+    - [x] A. current UI / supportedFormats を `SPEC.md` に合わせる
+    - [x] B. `SPEC.md` を current UI / supportedFormats に合わせる
+  - [x] `ProjectProfit/Services/ExportCoordinator.swift` の matrix を更新する
+  - [x] `ProjectProfitTests/ExportCoordinatorTests.swift` の matrix テストを更新する
+  - [x] ユーザー向け export UI 表示をコードと同じ matrix に揃える
+  - [x] 文書・実装・UI の三者不一致をなくす
 - 完了条件:
-  - [ ] `SPEC.md` / `ExportCoordinator.swift` / `ExportCoordinatorTests.swift` / UI が同じ export matrix になる
-  - [ ] 選べるのに unsupported、または仕様に書いてあるのに UI で出せない、という導線が残らない
+  - [x] `SPEC.md` / `ExportCoordinator.swift` / `ExportCoordinatorTests.swift` / UI が同じ export matrix になる
+  - [x] 選べるのに unsupported、または仕様に書いてあるのに UI で出せない、という導線が残らない
 - 根拠ファイル:
   - `Docs/specs/SPEC.md`
   - `ProjectProfit/Services/ExportCoordinator.swift`
   - `ProjectProfitTests/ExportCoordinatorTests.swift`
+  - `ProjectProfit/Views/Accounting/WhiteTaxBookkeepingView.swift`
 
-### [ ] P0-03 legacy `xlsx` export の partial support を解消するか、到達不能にする
+### [x] P0-03 legacy export の visible format を全件実装し、UI と一致させる
 
 - 優先度: **P0**
-- 現在状態: **一部完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
-  - `legacyLedgerBook.supportedFormats` は `.csv / .pdf / .xlsx` を返す
-  - ただし legacy adapter 側では `expenseBook / fixedAssetDepreciation / fixedAssetRegister / transportationExpense / whiteTaxBookkeeping` で `unsupportedFormat(.legacyLedgerBook, .xlsx)` を throw している
-  - `testLegacyLedgerRejectsUnsupportedXlsxForExpenseBook()` がその未対応動作を固定している
+  - `ExportCoordinator.supportedFormats(for legacyLedgerOptions:)` が legacy format matrix の公開正本になっている
+  - legacy adapter 側で `expenseBook / whiteTaxBookkeeping / fixedAssetDepreciation / fixedAssetRegister / transportationExpense` の `csv / xlsx` 未実装が解消されている
+  - `LedgerBookDetailView` は legacy capability を参照して `CSV / Excel / PDF` メニューを出し分ける
+  - `ExportCoordinatorTests` が legacy matrix と追加 format の成功を固定している
 - 実装チェックリスト:
-  - [ ] legacy `xlsx` を残すか、縮退するかを決める
-    - [ ] 残す場合: 未対応 target の legacy `xlsx` を実装する
-    - [ ] 縮退する場合: `legacyLedgerBook` の `.xlsx` 公開をやめる、または compat 導線から到達不能にする
-  - [ ] 到達可能経路に `unsupportedFormat(.legacyLedgerBook, .xlsx)` を残さない
-  - [ ] 実装方針に合わせて関連テストを更新する
+  - [x] legacy visible format の matrix を実装ベースで一本化する
+  - [x] 到達可能経路に `unsupportedFormat(.legacyLedgerBook, .csv/.xlsx)` を残さない
+  - [x] UI 表示を capability 参照に切り替える
+  - [x] 関連テストを成功ケース基準へ更新する
 - 完了条件:
-  - [ ] reachable path に「選べるのに `.xlsx` で落ちる」導線がない
-  - [ ] `supportedFormats` と実装実態が一致する
-  - [ ] テストが現実の仕様を固定している
+  - [x] reachable path に「選べるのに落ちる」導線がない
+  - [x] `supportedFormats` と実装実態が一致する
+  - [x] テストが現実の仕様を固定している
 - 根拠ファイル:
   - `ProjectProfit/Services/ExportCoordinator.swift`
   - `ProjectProfitTests/ExportCoordinatorTests.swift`
 
-### [ ] P0-04 xlsx verify script を portable 化し、release gate に組み込む
+### [x] P0-04 xlsx verify script を portable 化し、release gate に組み込む
 
 - 優先度: **P0**
-- 現在状態: **一部完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
   - `verify_ledger_xlsx_golden.py`
   - `verify_report_xlsx_golden.py`
   - `verify_generated_ledger_xlsx_golden.py`
   - `verify_generated_report_xlsx_golden.py`
-    は存在する
-  - ただし 4 本とも `ROOT = Path("/Users/yutaro/project-profit-ios")` をハードコードしている
-  - `.github/workflows/release-quality.yml` 内には、`xlsx` verify script 実行を示す step 名や script 呼び出しが見当たらない
+    は `__file__` 基準で repo root を解決する
+  - generated verify 2 本も committed fixture 基準の expectation に同期されている
+  - `.github/workflows/release-quality.yml` に blocking job `xlsx-verify` が追加されている
+  - `Docs/release/quality/xlsx-verify.md` が current HEAD の証跡として追加されている
 - 実装チェックリスト:
-  - [ ] 4 本すべて repo 相対パスで動くように直す
-  - [ ] ローカル絶対パス依存をなくす
-  - [ ] `git clone` 直後の別端末で追加設定なしに実行できるようにする
-  - [ ] `release-quality.yml` または同等の必須 gate に xlsx verification を追加する
-  - [ ] verification failure で gate が落ちる運用にする
-  - [ ] current HEAD の release 証跡に xlsx verification 成功を残す
+  - [x] 4 本すべて repo 相対パスで動くように直す
+  - [x] ローカル絶対パス依存をなくす
+  - [x] `git clone` 直後の別端末で追加設定なしに実行できるようにする
+  - [x] `release-quality.yml` または同等の必須 gate に xlsx verification を追加する
+  - [x] verification failure で gate が落ちる運用にする
+  - [x] current HEAD の release 証跡に xlsx verification 成功を残す
 - 完了条件:
-  - [ ] 作者ローカル以外でも verify script が動く
-  - [ ] CI で xlsx verification が自動実行される
-  - [ ] release gate から xlsx 検証が漏れない
+  - [x] 作者ローカル以外でも verify script が動く
+  - [x] CI で xlsx verification が自動実行される
+  - [x] release gate から xlsx 検証が漏れない
 - 根拠ファイル:
   - `scripts/verify_ledger_xlsx_golden.py`
   - `scripts/verify_report_xlsx_golden.py`
@@ -249,46 +252,47 @@
 
 ## P1: リリース前に終わらせたい収束タスク
 
-### [ ] P1-01 `release_review_implementation_status.md` を current main に追随させる
+### [x] P1-01 `release_review_implementation_status.md` を current main に追随させる
 
 - 優先度: **P1**
-- 現在状態: **未完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
-  - この文書は current working tree / `155724...` を対象にしている
-  - `Docs/release/quality/latest.md` の `a2d059d...` を別物として扱う前提が残っている
-  - `原本 Excel が repo 外` という旧前提も残っている
-  - 現在の main HEAD `f6e4130` と前提が一致していない
+  - 文書ヘッダと前提を current repo state / current main `9c2e80b` 基準へ更新した
+  - `working tree に未コミット変更がある` 前提を除去した
+  - source-of-truth Excel template が repo 内にある現在の事実へ合わせた
+  - official/legacy export matrix と `xlsx-verify` gate の追加後状態に合わせて export 周辺の記述を更新した
 - 実装チェックリスト:
-  - [ ] 監査対象 SHA を current main に更新する
-  - [ ] `working tree に未コミット変更がある` 前提を除去する
-  - [ ] `原本 Excel が repo 外` の前提を除去する
-  - [ ] xlsx 追加後の事実に合わせて各項目ステータスを再判定する
-  - [ ] 総合結論を current repo と矛盾しない内容へ更新する
+  - [x] 監査対象 SHA を current main に更新する
+  - [x] `working tree に未コミット変更がある` 前提を除去する
+  - [x] `原本 Excel が repo 外` の前提を除去する
+  - [x] xlsx 追加後の事実に合わせて各項目ステータスを再判定する
+  - [x] 総合結論を current repo と矛盾しない内容へ更新する
 - 完了条件:
-  - [ ] この監査文書を current main の監査レポートとしてそのまま読める
-  - [ ] stale な SHA / stale な前提が残らない
+  - [x] この監査文書を current main の監査レポートとしてそのまま読める
+  - [x] stale な SHA / stale な前提が残らない
 - 根拠ファイル:
   - `release_review_implementation_status.md`
 
-### [ ] P1-02 repo root に README を追加する
+### [x] P1-02 repo root に README を追加する
 
 - 優先度: **P1**
-- 現在状態: **未完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
-  - repo root の file list に `README.md` が見当たらない
-  - current public repo の全体像は `SPEC.md`、release docs、template README に分散している
+  - repo root に `README.md` を追加した
+  - アプリ概要、official export matrix、source-of-truth docs、release gate の見方、repo 外管理項目をまとめた
+  - `SPEC.md` / `Docs/release/checklist.md` / `ProjectProfit/Ledger/Resources/excel_templates/README.md` への導線を root から辿れる
 - 実装チェックリスト:
-  - [ ] アプリ概要を書く
-  - [ ] 対応帳簿 / 対応帳票を書く
-  - [ ] current official export matrix を書く
-  - [ ] source-of-truth doc / template の場所を書く
-  - [ ] release gate の見方を書く
-  - [ ] repo 外で管理している項目を書く
+  - [x] アプリ概要を書く
+  - [x] 対応帳簿 / 対応帳票を書く
+  - [x] current official export matrix を書く
+  - [x] source-of-truth doc / template の場所を書く
+  - [x] release gate の見方を書く
+  - [x] repo 外で管理している項目を書く
 - 完了条件:
-  - [ ] 新規参画者が repo root だけでプロジェクト全体像を把握できる
-  - [ ] README と `SPEC.md` / `Docs/release/checklist.md` / template README が矛盾しない
+  - [x] 新規参画者が repo root だけでプロジェクト全体像を把握できる
+  - [x] README と `SPEC.md` / `Docs/release/checklist.md` / template README が矛盾しない
 - 根拠ファイル:
-  - repo root file list
+  - `README.md`
   - `Docs/specs/SPEC.md`
   - `Docs/release/checklist.md`
   - `ProjectProfit/Ledger/Resources/excel_templates/README.md`
@@ -297,13 +301,8 @@
 
 ## この順番で実装すると戻りが少ない
 
-1. **P0-02** で `xlsx` の official support matrix を決める
-2. **P0-03** で legacy `xlsx` を残すか縮退するか決める
-3. **P0-04** で verify script を portable 化し CI gate に組み込む
-4. **P0-05** で parity 検証の粒度を引き上げる
-5. **P0-01** で current HEAD の release quality 証跡を再採取する
-6. **P1-01** で stale 監査文書を更新する
-7. **P1-02** で root README を追加して導線を一本化する
+1. **P0-05** で parity 検証の粒度を引き上げる
+2. **P0-01** で current HEAD の release quality 証跡を再採取する
 
 ---
 
@@ -312,9 +311,9 @@
 以下がすべてチェック済みになれば、public repo ベースではかなり強く release-ready と言いやすくなります。
 
 - [ ] current HEAD の release quality 証跡が current HEAD に揃っている
-- [ ] `SPEC.md` と official export matrix の `xlsx` 範囲が一致している
-- [ ] legacy `xlsx` partial support が解消、または到達不能化されている
-- [ ] xlsx verify script が portable で CI gate に入っている
+- [x] `SPEC.md` と official export matrix の `xlsx` 範囲が一致している
+- [x] legacy visible export format が UI / 実装 / テストで一致している
+- [x] xlsx verify script が portable で CI gate に入っている
 - [ ] xlsx parity 検証の粒度が release claim に見合っている
-- [ ] stale 監査文書が current main に追随している
-- [ ] root README から全体導線を追える
+- [x] stale 監査文書が current main に追随している
+- [x] root README から全体導線を追える

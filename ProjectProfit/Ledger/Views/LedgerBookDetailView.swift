@@ -46,6 +46,14 @@ struct LedgerBookDetailView: View {
         )
     }
 
+    private var availableExportFormats: [ExportCoordinator.ExportFormat] {
+        guard !rawEntries.isEmpty, let legacyLedgerOptions else {
+            return []
+        }
+        let supportedFormats = ExportCoordinator.supportedFormats(for: legacyLedgerOptions)
+        return [.csv, .xlsx, .pdf].filter { supportedFormats.contains($0) }
+    }
+
     var body: some View {
         Group {
             if rawEntries.isEmpty {
@@ -60,13 +68,15 @@ struct LedgerBookDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
                     Menu {
-                        if !rawEntries.isEmpty {
-                            Button("CSV出力") { exportCSV() }
-                            Button("Excel出力") { exportExcel() }
-                            Button("PDF出力") { exportPDF() }
+                        if !availableExportFormats.isEmpty {
+                            ForEach(availableExportFormats, id: \.self) { format in
+                                Button(exportLabel(for: format)) {
+                                    export(format)
+                                }
+                            }
                         }
                         if !ledgerStore.isReadOnly {
-                            if !rawEntries.isEmpty {
+                            if !availableExportFormats.isEmpty {
                                 Divider()
                             }
                             Button("CSVインポート") { showCSVImport = true }
@@ -359,6 +369,32 @@ struct LedgerBookDetailView: View {
             return LedgerBridge.decodeGeneralLedgerMetadata(from: metadataJSON).carryForward
         default:
             return nil
+        }
+    }
+
+    private func exportLabel(for format: ExportCoordinator.ExportFormat) -> String {
+        switch format {
+        case .csv:
+            return "CSV出力"
+        case .xlsx:
+            return "Excel出力"
+        case .pdf:
+            return "PDF出力"
+        case .xtx:
+            return "XTX出力"
+        }
+    }
+
+    private func export(_ format: ExportCoordinator.ExportFormat) {
+        switch format {
+        case .csv:
+            exportCSV()
+        case .xlsx:
+            exportExcel()
+        case .pdf:
+            exportPDF()
+        case .xtx:
+            break
         }
     }
 

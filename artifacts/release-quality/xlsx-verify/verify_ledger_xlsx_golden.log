@@ -1,0 +1,16 @@
+PASS cash_book
+PASS cash_book_invoice
+PASS bank_account_book
+PASS bank_account_book_invoice
+PASS accounts_receivable_book
+PASS accounts_payable_book
+PASS expense_book
+PASS expense_book_invoice
+PASS general_ledger
+PASS general_ledger_invoice
+PASS journal
+PASS white_tax_bookkeeping
+PASS white_tax_bookkeeping_invoice
+PASS transportation_expense
+PASS fixed_asset_register
+PASS fixed_asset_depreciation

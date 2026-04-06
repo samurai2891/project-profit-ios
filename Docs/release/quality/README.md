@@ -24,7 +24,7 @@ release lane を再実行してください。
 
 ## Repo 管理境界
 
-- repo 管理対象の最小セットは `latest.md`、`latest-lane.md`、`release-build.md`、`golden-baseline.md`、`canonical-e2e.md`、`migration-rehearsal.md`、`performance-gate.md`、`books.md`、`forms.md` です。
+- repo 管理対象の最小セットは `latest.md`、`latest-lane.md`、`release-build.md`、`golden-baseline.md`、`canonical-e2e.md`、`migration-rehearsal.md`、`performance-gate.md`、`books.md`、`forms.md`、`xlsx-verify.md` です。
 - `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md` も release 補助ファイルとして repo 管理します。
 - `support URL` は repo 内で実値を持たない外部設定であり、このディレクトリの artifact には含めません。
 
@@ -60,12 +60,13 @@ scripts/run_release_quality_lane.sh
   `scripts/run_release_quality_lane.sh` が最後に出力した単一 lane の証跡。
 - `<lane>.md`
   レーン名ごとの最新証跡（例: `golden-baseline.md`）。`latest-lane.md` と同じ固定フォーマット。
+  `xlsx-verify.md` は simulator 非依存の xlsx verification gate の個票です。
 
 ## 更新ルール
 
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release/quality'` を必須とします。
 - 単発 lane 実行で commit する最小 artifact は `latest-lane.md` と対応する `<lane>.md` です。
-- release 判定用として repo で維持する最小 artifact セットは `latest.md`、`latest-lane.md`、lane 別 7 本です（`release-build` を含む）。
+- release 判定用として repo で維持する最小 artifact セットは `latest.md`、`latest-lane.md`、lane 別 8 本です（`release-build` と `xlsx-verify` を含む）。
 - `latest.md` は fully-green 4 lane の curated snapshot なので、単発 lane 実行では更新しません。
 - current HEAD の判定時に `latest.md` の `head_sha` が current HEAD と不一致なら、lane 別 md を current HEAD の正本として扱います。
 - `latest-lane.md` または `<lane>.md` に placeholder 値が残る状態は release 判定不可です。
@@ -92,3 +93,5 @@ scripts/run_release_quality_lane.sh
 
 `*_path` は、リポジトリ配下のパスであればリポジトリ相対で記録されます。
 リポジトリ外のパスは絶対パスで記録されます。
+
+`xlsx-verify` lane は simulator/xcresult/metrics を持たないため、`summary_path` と `log_path` だけを記録します。
