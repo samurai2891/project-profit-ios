@@ -34,7 +34,7 @@ struct InventoryInputView: View {
                 .padding(.vertical, 12)
             }
         }
-        .navigationTitle("棚卸入力")
+        .navigationTitle("棚卸台帳")
         .onAppear {
             if viewModel == nil {
                 let workflowUseCase = InventoryWorkflowUseCase(

@@ -29,18 +29,11 @@ struct ExportMenuButton: View {
 
     var body: some View {
         Menu {
-            if supportedFormats.contains(.csv) {
+            ForEach(Array(supportedFormats).sorted(by: formatSortOrder), id: \.self) { format in
                 Button {
-                    shareCSV()
+                    exportAndShare(format: format)
                 } label: {
-                    Label("CSVで共有", systemImage: "tablecells")
-                }
-            }
-            if supportedFormats.contains(.pdf) {
-                Button {
-                    sharePDF()
-                } label: {
-                    Label("PDFで共有", systemImage: "doc.richtext")
+                    Label("\(format.label)で共有", systemImage: iconName(for: format))
                 }
             }
         } label: {
@@ -67,16 +60,38 @@ struct ExportMenuButton: View {
         }
     }
 
-    private func shareCSV() {
-        exportAndShare(format: .csv)
-    }
-
-    private func sharePDF() {
-        exportAndShare(format: .pdf)
-    }
-
     private var supportedFormats: Set<ExportCoordinator.ExportFormat> {
         target.supportedFormats
+    }
+
+    private func formatSortOrder(_ lhs: ExportCoordinator.ExportFormat, _ rhs: ExportCoordinator.ExportFormat) -> Bool {
+        sortPriority(lhs) < sortPriority(rhs)
+    }
+
+    private func sortPriority(_ format: ExportCoordinator.ExportFormat) -> Int {
+        switch format {
+        case .csv:
+            return 0
+        case .pdf:
+            return 1
+        case .xlsx:
+            return 2
+        case .xtx:
+            return 3
+        }
+    }
+
+    private func iconName(for format: ExportCoordinator.ExportFormat) -> String {
+        switch format {
+        case .csv:
+            return "tablecells"
+        case .pdf:
+            return "doc.richtext"
+        case .xlsx:
+            return "tablecells.badge.ellipsis"
+        case .xtx:
+            return "doc.badge.gearshape"
+        }
     }
 
     private func exportAndShare(format: ExportCoordinator.ExportFormat) {

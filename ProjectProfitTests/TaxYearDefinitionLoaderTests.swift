@@ -197,6 +197,169 @@ final class TaxYearDefinitionLoaderTests: XCTestCase {
         XCTAssertEqual(row2026?.whiteReturnSupported, true)
     }
 
+    // MARK: - Excel Template Preparation
+
+    func testLedgerTemplateAssetLocator_findsBSPLSampleTemplate() {
+        let url = LedgerTemplateAssetLocator.url(for: .bsPlAnalysisSample, bundle: .main)
+
+        XCTAssertNotNil(url, "BS/PL analysis template should be locatable for staged implementation work")
+        XCTAssertEqual(url?.lastPathComponent, LedgerTemplateAsset.bsPlAnalysisSample.fileName)
+    }
+
+    func testLedgerTemplateAssetLocator_findsBalanceSheetTemplate() {
+        let url = LedgerTemplateAssetLocator.url(for: .balanceSheet, bundle: .main)
+
+        XCTAssertNotNil(url, "Balance sheet template should be locatable as a standalone workbook")
+        XCTAssertEqual(url?.lastPathComponent, LedgerTemplateAsset.balanceSheet.fileName)
+    }
+
+    func testLedgerTemplateAssetLocator_findsProfitLossTemplate() {
+        let url = LedgerTemplateAssetLocator.url(for: .profitLoss, bundle: .main)
+
+        XCTAssertNotNil(url, "Profit and loss template should be locatable as a standalone workbook")
+        XCTAssertEqual(url?.lastPathComponent, LedgerTemplateAsset.profitLoss.fileName)
+    }
+
+    func testLedgerTemplateAssetLocator_findsConsolidatedSpreadsheetSample() {
+        let url = LedgerTemplateAssetLocator.url(for: .consolidatedSpreadsheetSample, bundle: .main)
+
+        XCTAssertNotNil(url, "Consolidated spreadsheet template should be locatable for staged implementation work")
+        XCTAssertEqual(url?.lastPathComponent, LedgerTemplateAsset.consolidatedSpreadsheetSample.fileName)
+    }
+
+    func testLedgerTemplateAssetLocator_findsTrialBalanceTemplate() {
+        let url = LedgerTemplateAssetLocator.url(for: .trialBalance, bundle: .main)
+
+        XCTAssertNotNil(url, "Trial balance template should be locatable as a standalone workbook")
+        XCTAssertEqual(url?.lastPathComponent, LedgerTemplateAsset.trialBalance.fileName)
+    }
+
+    func testLedgerWorkbookTemplateDescriptor_mapsLedgersToStandaloneTemplateAssets() {
+        let expectedAssets: [(LedgerType, LedgerTemplateAsset)] = [
+            (.cashBook, .cashBook),
+            (.cashBookInvoice, .cashBookInvoice),
+            (.bankAccountBook, .bankAccountBook),
+            (.bankAccountBookInvoice, .bankAccountBookInvoice),
+            (.expenseBook, .expenseBook),
+            (.expenseBookInvoice, .expenseBookInvoice),
+            (.whiteTaxBookkeeping, .whiteTaxBookkeeping),
+            (.whiteTaxBookkeepingInvoice, .whiteTaxBookkeepingInvoice),
+            (.accountsReceivable, .accountsReceivable),
+            (.accountsPayable, .accountsPayable),
+            (.generalLedger, .generalLedger),
+            (.generalLedgerInvoice, .generalLedgerInvoice),
+            (.journal, .journal),
+            (.fixedAssetRegister, .fixedAssetRegister),
+            (.fixedAssetDepreciation, .fixedAssetDepreciation),
+            (.transportationExpense, .transportationExpense)
+        ]
+
+        for (ledgerType, expectedAsset) in expectedAssets {
+            let descriptor = LedgerExcelExportService.templateDescriptor(for: ledgerType)
+
+            XCTAssertNotNil(descriptor, "\(ledgerType.rawValue) should resolve to a workbook template descriptor")
+            XCTAssertEqual(descriptor?.asset, expectedAsset)
+            XCTAssertFalse(descriptor?.formSheetName.isEmpty ?? true)
+            XCTAssertFalse(descriptor?.worksheetName.isEmpty ?? true)
+        }
+    }
+
+    func testLedgerWorkbookTemplateDescriptor_mapsTransportationTemplateSheet() {
+        let descriptor = LedgerExcelExportService.templateDescriptor(for: .transportationExpense)
+
+        XCTAssertEqual(descriptor?.asset, .transportationExpense)
+        XCTAssertEqual(descriptor?.formSheetName, "L16_Travel_Form")
+        XCTAssertEqual(descriptor?.worksheetName, "交通費精算書")
+    }
+
+    func testLedgerWorkbookTemplateDescriptor_carriesLayoutMetadataForExcelEnabledLedgers() {
+        let excelEnabledLedgers: [LedgerType] = [
+            .cashBook, .cashBookInvoice,
+            .bankAccountBook, .bankAccountBookInvoice,
+            .expenseBook, .expenseBookInvoice,
+            .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice,
+            .accountsReceivable, .accountsPayable,
+            .generalLedger, .generalLedgerInvoice,
+            .journal,
+            .transportationExpense,
+            .fixedAssetRegister,
+            .fixedAssetDepreciation
+        ]
+
+        for ledgerType in excelEnabledLedgers {
+            let descriptor = LedgerExcelExportService.templateDescriptor(for: ledgerType)
+
+            XCTAssertNotNil(descriptor)
+            XCTAssertFalse(descriptor?.columnHeaders.isEmpty ?? true, "\(ledgerType.rawValue) should define headers")
+            XCTAssertEqual(descriptor?.columnHeaders.count, descriptor?.columnWidths.count)
+            XCTAssertEqual(descriptor?.titleEndColumn, (descriptor?.columnHeaders.count ?? 1) - 1)
+            XCTAssertFalse(descriptor?.auxiliarySheets.isEmpty ?? true)
+            XCTAssertGreaterThan(descriptor?.dataStartRow ?? 0, descriptor?.headerRows.upperBound ?? 0)
+        }
+    }
+
+    func testReportWorkbookTemplateDescriptor_carriesLayoutMetadataForReportExports() {
+        let targets: [ReportWorkbookTemplateID] = [
+            .profitLoss,
+            .balanceSheet,
+            .trialBalance,
+            .journal,
+            .ledger,
+            .fixedAssets
+        ]
+
+        for target in targets {
+            let descriptor = LedgerExcelExportService.reportTemplateDescriptor(for: target)
+
+            XCTAssertNotNil(descriptor)
+            XCTAssertFalse(descriptor?.columnHeaders.isEmpty ?? true, "\(target.rawValue) should define headers")
+            XCTAssertEqual(descriptor?.columnHeaders.count, descriptor?.columnWidths.count)
+            XCTAssertEqual(descriptor?.titleEndColumn, (descriptor?.columnHeaders.count ?? 1) - 1)
+            XCTAssertFalse(descriptor?.auxiliarySheets.isEmpty ?? true)
+            XCTAssertGreaterThan(descriptor?.dataStartRow ?? 0, descriptor?.headerRows.upperBound ?? 0)
+        }
+    }
+
+    func testReportWorkbookTemplateDescriptor_matchesSingleYearBSPLTemplates() throws {
+        let profitLoss = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .profitLoss))
+        XCTAssertEqual(profitLoss.workbookTitle, "損益計算書")
+        XCTAssertEqual(profitLoss.subtitle, "※ 単年度出力用。収入と費用を分けて表示。")
+        XCTAssertEqual(profitLoss.columnHeaders, ["科目", "収入", "費用"])
+        XCTAssertEqual(profitLoss.columnWidths, [34, 16, 16])
+        XCTAssertEqual(profitLoss.headerRows, 3...3)
+        XCTAssertEqual(profitLoss.dataStartRow, 4)
+
+        let balanceSheet = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .balanceSheet))
+        XCTAssertEqual(balanceSheet.workbookTitle, "貸借対照表")
+        XCTAssertEqual(balanceSheet.subtitle, "※ 単年度出力用。資産の部と負債・純資産の部を左右に分けて表示。")
+        XCTAssertEqual(balanceSheet.columnHeaders, ["資産の部", "金額", "", "負債・純資産の部", "金額"])
+        XCTAssertEqual(balanceSheet.columnWidths, [28, 16, 4, 28, 16])
+        XCTAssertEqual(balanceSheet.headerRows, 3...3)
+        XCTAssertEqual(balanceSheet.dataStartRow, 4)
+    }
+
+    func testReportWorkbookTemplateDescriptor_mapsLedgerBackedReportTemplates() throws {
+        let journal = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .journal))
+        XCTAssertEqual(journal.asset, .journal)
+        XCTAssertEqual(journal.headerRows, 8...8)
+        XCTAssertEqual(journal.columnHeaders, ["月", "日", "借方科目", "借方金額", "貸方科目", "貸方金額", "摘要"])
+
+        let ledger = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .ledger))
+        XCTAssertEqual(ledger.asset, .generalLedger)
+        XCTAssertEqual(ledger.headerRows, 9...9)
+        XCTAssertEqual(ledger.columnHeaders, ["月", "日", "相手科目", "摘要", "借方", "貸方", "差引残高"])
+
+        let fixedAssets = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .fixedAssets))
+        XCTAssertEqual(fixedAssets.asset, .fixedAssetDepreciation)
+        XCTAssertEqual(fixedAssets.headerRows, 8...8)
+        XCTAssertEqual(fixedAssets.columnHeaders.count, 21)
+
+        let trialBalance = try XCTUnwrap(LedgerExcelExportService.reportTemplateDescriptor(for: .trialBalance))
+        XCTAssertEqual(trialBalance.asset, .trialBalance)
+        XCTAssertEqual(trialBalance.headerRows, 8...8)
+        XCTAssertEqual(trialBalance.dataStartRow, 9)
+    }
+
     // MARK: - TaxYearPack Bridge
 
     func testTaxYearPackProvider_availableYearsIncludes2026() async {

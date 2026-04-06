@@ -74,6 +74,11 @@ final class ExportCoordinatorTests: XCTestCase {
         )
         XCTAssertTrue(etaxFileName.hasPrefix("etax_2025_"))
         XCTAssertTrue(etaxFileName.hasSuffix(".xtx"))
+
+        let xlsxFileName = ExportCoordinator.makeFileName(
+            target: .trialBalance, fiscalYear: 2026, format: .xlsx
+        )
+        XCTAssertEqual(xlsxFileName, "trial_balance_2026_\(expectedDate).xlsx")
     }
 
     func testExportTargetLabels() {
@@ -112,9 +117,9 @@ final class ExportCoordinatorTests: XCTestCase {
     }
 
     func testSupportedFormatMatrixMatchesCurrentUIFlow() {
-        XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.cashBook.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.bankAccountBook.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.accountsReceivableBook.supportedFormats, [.csv, .pdf])
@@ -124,10 +129,10 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.journalBook.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.transportationExpense.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetDepreciation.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.withholdingStatement.supportedFormats, [.csv, .pdf])
         XCTAssertEqual(ExportCoordinator.ExportTarget.transactions.supportedFormats, [.csv])
         XCTAssertEqual(ExportCoordinator.ExportTarget.subLedger.supportedFormats, [.csv, .pdf])
@@ -757,6 +762,23 @@ final class ExportCoordinatorTests: XCTestCase {
         }
     }
 
+    func testMaterializeReportXLSXGoldenFixtures() throws {
+        let outputDirectory = try makeReportGoldenOutputDirectory()
+
+        try materializeReportFixture(target: .profitLoss, fiscalYear: 2025, outputDirectory: outputDirectory)
+        try materializeReportFixture(target: .balanceSheet, fiscalYear: 2025, outputDirectory: outputDirectory)
+        try materializeReportFixture(target: .trialBalance, fiscalYear: 2025, outputDirectory: outputDirectory)
+        try materializeReportFixture(target: .journal, fiscalYear: 2025, outputDirectory: outputDirectory)
+        try materializeReportFixture(
+            target: .ledger,
+            fiscalYear: 2025,
+            outputDirectory: outputDirectory,
+            ledgerOptions: .init(accountId: "acct-cash", accountName: "現金", accountCode: "101")
+        )
+        try materializeReportFixture(target: .fixedAssetRegister, fiscalYear: 2025, outputDirectory: outputDirectory)
+        try materializeReportFixture(target: .fixedAssetDepreciation, fiscalYear: 2025, outputDirectory: outputDirectory)
+    }
+
     private func seedTaxYearProfile(year: Int, state: YearLockState) {
         let profile = TaxYearProfile(
             businessId: businessId,
@@ -772,6 +794,39 @@ final class ExportCoordinatorTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    private func makeReportGoldenOutputDirectory() throws -> URL {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directory = root.appendingPathComponent(".golden-generated-xlsx", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func materializeReportFixture(
+        target: ExportCoordinator.ExportTarget,
+        fiscalYear: Int,
+        outputDirectory: URL,
+        ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
+    ) throws {
+        seedTaxYearProfile(year: fiscalYear, state: .taxClose)
+        let url = try ExportCoordinator.export(
+            target: target,
+            format: .xlsx,
+            fiscalYear: fiscalYear,
+            modelContext: context,
+            skipPreflightValidation: true,
+            ledgerOptions: ledgerOptions
+        )
+        let destination = outputDirectory.appendingPathComponent("\(target.filePrefix).xlsx")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.copyItem(at: url, to: destination)
+        let data = try Data(contentsOf: destination)
+        XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B], "xlsx should be a ZIP archive")
     }
 
     @discardableResult

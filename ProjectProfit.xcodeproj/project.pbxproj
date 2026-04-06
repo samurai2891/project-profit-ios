@@ -50,7 +50,9 @@
 		16BF79F54F5887BE4AB05159 /* journal_book_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = 9F5979703F93B5969ECFE597 /* journal_book_2025.json */; };
 		16F3EC7043FFF8EA2A120A9D /* ClassificationDictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = FF9988639C5530093B18A96C /* ClassificationDictionary.json */; };
 		176885F5C57800B1A3B765D3 /* ClassificationLearningServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F1FF5929497BB0814139068 /* ClassificationLearningServiceTests.swift */; };
+		17AF3E220ECB8B7E9257A447 /* project-profit-ios_transportation_expense_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 1ECB928B8FC2DC60BEA7AF5B /* project-profit-ios_transportation_expense_template.xlsx */; };
 		181014E7B6F229A16BC8A9C8 /* AccountFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE2B1A205EA580496A795F2B /* AccountFormView.swift */; };
+		1938731941E82D964E423182 /* project-profit-ios_general_ledger_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 9C8E2CCA12000C994844F8C9 /* project-profit-ios_general_ledger_template.xlsx */; };
 		1940969AB02D9B8359C0BCAD /* libxlsxwriter in Frameworks */ = {isa = PBXBuildFile; productRef = 024EA59D4B1C1EC6CA42A688 /* libxlsxwriter */; };
 		194154500AAF66022A1915C3 /* SwiftDataReportingRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B884146771C216A904BD690A /* SwiftDataReportingRepository.swift */; };
 		19BBEAF0E1D7F92BD9BFCCC4 /* LegacyProfileMigrationRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3B3B3E885981EE43E14CBB /* LegacyProfileMigrationRunnerTests.swift */; };
@@ -73,6 +75,7 @@
 		20D70E4108CF27C3CE363F91 /* DataStoreCRUDTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20ACAF3A2BDB69B0CE28F02 /* DataStoreCRUDTests.swift */; };
 		21CF4FBDF6BC440F1EABD622 /* EvidenceVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FFBDB7D47C4805A4D818C37 /* EvidenceVersion.swift */; };
 		21E86247177D06DE28E9D671 /* ApprovalQueueRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F3DEEA792E0249B60842DAF /* ApprovalQueueRepository.swift */; };
+		228BBDA294B466D3EB33BA7F /* project-profit-ios_fixed_asset_depreciation_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 6052BDFA52347D0C54445D76 /* project-profit-ios_fixed_asset_depreciation_template.xlsx */; };
 		2314713B2E92D1E91606AE24 /* RestoreService+Upserts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB9FBB52791C374382B070C /* RestoreService+Upserts.swift */; };
 		236564C60964B30ACA722BC6 /* PDFExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04493FAF2AE1E915BA477853 /* PDFExportService.swift */; };
 		247923DC1AAB8C44380C99C5 /* StatementPrefillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFB99814938BDAD99B5F657 /* StatementPrefillTests.swift */; };
@@ -88,6 +91,7 @@
 		28893F181908EB5EB782118A /* TransactionHistoryUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73E1EBBC0B07E7B917AA16E /* TransactionHistoryUseCaseTests.swift */; };
 		28D80B632A44AFDBF359BDF4 /* ReleasePerformanceGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CF0179C4A86EF441A10265 /* ReleasePerformanceGateTests.swift */; };
 		2910729067E7F3407730CAE8 /* JournalValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D5B2F6990993B64C0491769 /* JournalValidationTests.swift */; };
+		2A1A2D1F887B2CF762B08BA4 /* project-profit-ios_bs_pl_analysis_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 9B0BBC2EA3C1359086D25942 /* project-profit-ios_bs_pl_analysis_template.xlsx */; };
 		2A76DEF38BE11261C477B5FD /* TaxCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991A25948184E7E221485FD2 /* TaxCode.swift */; };
 		2B23E2AFF393B5191532AF07 /* SwiftDataStatementRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FD449573D7BDB065302EB17 /* SwiftDataStatementRepository.swift */; };
 		2B259B9648AE76FD3ADAC41D /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC59103F6625E2725107249 /* ProjectDetailView.swift */; };
@@ -141,6 +145,7 @@
 		3EE80E59835F9B47FF008C79 /* SwiftDataProjectRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A0817C3057DBB3DA7CCE70 /* SwiftDataProjectRepository.swift */; };
 		3EF0D82E7177F7B7A3DD4A61 /* DistributionTemplateManagementQueryUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3782446BC2321E94E2C1DCD1 /* DistributionTemplateManagementQueryUseCaseTests.swift */; };
 		3F2EAB62E52857E75154C3DA /* fixed_asset_register.csv in Resources */ = {isa = PBXBuildFile; fileRef = 05A92763D4502323DF4CEC5D /* fixed_asset_register.csv */; };
+		3F722E98290A521F7584F845 /* project-profit-ios_journal_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = ECF57D9C9E29E7D087A2A6DB /* project-profit-ios_journal_template.xlsx */; };
 		3F7DA71D94FDEB02CC669598 /* ClassificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD703240DA9BB70B04A8364 /* ClassificationViewModel.swift */; };
 		3F81648CE6B6C8EEB38F5061 /* TaxYear2025.json in Resources */ = {isa = PBXBuildFile; fileRef = AC7B430A76A9001283F6D7BE /* TaxYear2025.json */; };
 		3FB9B76FCDA7E47480540469 /* AccountingIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799EA76468714F564BC67778 /* AccountingIntegrationTests.swift */; };
@@ -149,6 +154,7 @@
 		41A0C8898D16300B05888BBB /* FormEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0C478003BB9DF0E27D0DD2 /* FormEngineTests.swift */; };
 		41B243D00FCF98D386EDD8B3 /* DocumentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60485FF6DEF3544E72691BE /* DocumentRepository.swift */; };
 		41B5AEF94EAF00EB409161D6 /* TransactionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D05B7E92B75996C158B82C2 /* TransactionLogTests.swift */; };
+		433492ED87D679F20BABAAB9 /* project-profit-ios_bank_account_book_invoice_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = D0BFC5E7C12A2656A8CA6261 /* project-profit-ios_bank_account_book_invoice_template.xlsx */; };
 		434265052FB2BACC7558BCD4 /* GoldenFixtureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FB4274B8EC9956B5D3958CF /* GoldenFixtureSupport.swift */; };
 		44684725103A90C60336DDD9 /* ExpenseBookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B70266FEB7B15B5882BF532A /* ExpenseBookTests.swift */; };
 		44BC5A72C8A790701EB2C850 /* TaxStatusMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67FAD8E40E4082D02AB4865A /* TaxStatusMachine.swift */; };
@@ -188,6 +194,7 @@
 		53FA302956BD263966CE6873 /* FiscalYearDataStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967AACD0E99E858FF6BAF046 /* FiscalYearDataStoreTests.swift */; };
 		54EAE04B67330E01BCA3032C /* TaxYearStateUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFACD44FE2A5A00E32DE1F5 /* TaxYearStateUseCaseTests.swift */; };
 		5587567D731B881DDA4792D2 /* ProjectDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5580B9971CC999A5B7A1396B /* ProjectDetailViewModel.swift */; };
+		56190D1026DA1813F3D894E8 /* project-profit-ios_templates_consolidated_spreadsheet.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = FED62811F0AE646762320B60 /* project-profit-ios_templates_consolidated_spreadsheet.xlsx */; };
 		5621E85E1019FBF33EBAD9EC /* CanonicalTransactionDisplayItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E8624A2C7B9B70CFF09A5B /* CanonicalTransactionDisplayItem.swift */; };
 		57360C00716A0E9F65B796CF /* InventoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F74BEACCF4A16FD3FC8CD08 /* InventoryViewModel.swift */; };
 		579A4302EE9FD8058161FB9C /* ExportCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DDD653B6397E262BF7724D /* ExportCoordinatorTests.swift */; };
@@ -200,6 +207,7 @@
 		59CE7CDEABACE276C498B5B6 /* InventoryWorkflowUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A68F2C45E634E4D0E6A494 /* InventoryWorkflowUseCase.swift */; };
 		5AC5054322DA67C9B4B446D1 /* ReceiptScannerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A2B2D3D8EC7CFF1C077573 /* ReceiptScannerService.swift */; };
 		5ADB1D385D5E80BA581FE5F8 /* EtaxExportViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B1B20774E1459D2E2A9387 /* EtaxExportViewModelTests.swift */; };
+		5ADD002CF09AC065C437A827 /* project-profit-ios_profit_loss_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = CC4D965F578602E017C482CB /* project-profit-ios_profit_loss_template.xlsx */; };
 		5B1D744286736A44CD4F348B /* RecurringFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A95C3D59FD40A677B5178C /* RecurringFormView.swift */; };
 		5C58928AE26521AA5D90E64D /* trial_balance_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = 8DE30C78524443912A37764A /* trial_balance_2025.json */; };
 		5C7B68270AC7F3D21D5E119E /* CategoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A551798CD7C2831608B0924 /* CategoryListView.swift */; };
@@ -251,6 +259,7 @@
 		6F6FC4351375668C83CB9D9C /* RegexReceiptParserLineItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F20D3968976665CD0C5B94 /* RegexReceiptParserLineItemTests.swift */; };
 		6FB1494D018E20903B5500DC /* ShushiNaiyakushoBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0769B7DE6FC53BB20D7CA4FE /* ShushiNaiyakushoBuilderTests.swift */; };
 		703A8A873D26F3D4A05A157B /* SearchIndexNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325001AE3A310774943C88CA /* SearchIndexNormalizer.swift */; };
+		70909CF0C19B505025BC0137 /* project-profit-ios_expense_book_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 6E8B0C0C56DDCF9F3E8C8FFD /* project-profit-ios_expense_book_template.xlsx */; };
 		710B2ADF774FC69227A2DCE1 /* EvidenceLineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331A8992E5FA513DB4294F62 /* EvidenceLineItem.swift */; };
 		715C76DA8E9645EB17B94EE3 /* ConsumptionTaxReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 445C0F8197A2DC11AB21B377 /* ConsumptionTaxReportService.swift */; };
 		722EABBD2C414B8BE300071D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FD1C84FE098A8618BABEA70 /* SettingsView.swift */; };
@@ -263,6 +272,7 @@
 		74C99EA1C92D9E8A2B6E751D /* FiscalYearUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B4EC968815AE6D58800484 /* FiscalYearUtilities.swift */; };
 		74FCA6FE123B0AAF8289A0E6 /* StatementImportUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25052EB581C4A0FD8B7BE67 /* StatementImportUseCase.swift */; };
 		767F84FF1C14522B9875C6D8 /* SwiftDataTaxYearProfileRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D6A9EA5B79C858FD2EA3D9 /* SwiftDataTaxYearProfileRepository.swift */; };
+		76DC0F6B8FBFA2C0127985EC /* project-profit-ios_bank_account_book_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 7269825E3E7CD9BF07EDD24B /* project-profit-ios_bank_account_book_template.xlsx */; };
 		76F8464149611CAFF0DA3CCF /* ShareSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A0B4608E57A82DD07293A9 /* ShareSheetView.swift */; };
 		7749C3DD6D14C282592B3315 /* WithholdingTaxCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49F48835E910015878F8B4FA /* WithholdingTaxCode.swift */; };
 		77BEC49DFEA946A1D5AA5313 /* CurrencyText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1C14778366293F8680F00 /* CurrencyText.swift */; };
@@ -271,6 +281,7 @@
 		78A242ABB1E30EF85820B85D /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5B687F55BE7167FE6A6C0C /* ReceiptScannerView.swift */; };
 		7920C7F507F5437779BB9840 /* EtaxExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BD6BCFF65CF564F7B34EBF /* EtaxExportView.swift */; };
 		7928E3314AA1E481FF209308 /* LineItemsEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65CACC3B06EAC1F6470A1CD0 /* LineItemsEditView.swift */; };
+		7A4590437A2976C9E49A2912 /* project-profit-ios_expense_book_invoice_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 3A493D0CD52BC29B617DC827 /* project-profit-ios_expense_book_invoice_template.xlsx */; };
 		7A483D9D780F743EABB9CDA1 /* FixedAssetListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF535C7D5846F8B4FF2DBCA /* FixedAssetListView.swift */; };
 		7B98A5E993E0F126868489FE /* LedgerExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C96E0D3083D7DEBC3501CA0E /* LedgerExportService.swift */; };
 		7C2DDB9E0E7776F72926264A /* ReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D17B9A5B0C5D7BBA98F8895 /* ReportView.swift */; };
@@ -293,12 +304,14 @@
 		81D684B52D3ADE073B79DADC /* LedgerBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475F63C211C182832BA9A8E4 /* LedgerBridge.swift */; };
 		82619E6D23BBDAFBBF8D6738 /* CSVImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC61666BD9E5E35131B6A77 /* CSVImportService.swift */; };
 		826304BF5CCC7F0E00C94C16 /* TaxLineDefinitions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1EDD4C7FDEAE71730E3E17 /* TaxLineDefinitions.swift */; };
+		83E04700D22EBC13424E3E32 /* project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = D7BB3CAE5BABBA8711675DD4 /* project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx */; };
 		83E22608E9857E90F695071F /* CanonicalCSVImportIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC7D2CE357AA2BB99E77763 /* CanonicalCSVImportIntegrationTests.swift */; };
 		844B199BAF871A056265894E /* LegacyAccountCanonicalMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5DE320C718E880EA2659CDD /* LegacyAccountCanonicalMapper.swift */; };
 		8474293679CF3D6378432F87 /* ReceiptReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C23EF9E9AE689ED1638AE67 /* ReceiptReviewView.swift */; };
 		84E0B9E2A91C10E02713BA9B /* EvidenceSourceType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EEEA96AEB1B1EB449111302 /* EvidenceSourceType.swift */; };
 		84FEF4ECA71AFA417A439C73 /* RecurringRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B40DA1029948DB3B5614F74 /* RecurringRepository.swift */; };
 		86BF5905C6D4CA88D9ADA1CC /* TransactionHistoryRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7710C91414D760FE3A25FF /* TransactionHistoryRepository.swift */; };
+		870FC0F00054B06F7D32928B /* project-profit-ios_fixed_asset_register_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 8D114704A43AEBB30C0C4DAE /* project-profit-ios_fixed_asset_register_template.xlsx */; };
 		87ABA3C1D3ED9600D85038B3 /* CanonicalPostingSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422AA85733757BFB5DB1E5F0 /* CanonicalPostingSupportTests.swift */; };
 		87DEC34F3581C2CEF58AE217 /* CounterpartyRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1F165D36FF323CAAAA98CA3 /* CounterpartyRepository.swift */; };
 		88462BE92D29684B75B2D4F0 /* LedgerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BCE949E82A5C728126DA116 /* LedgerModels.swift */; };
@@ -325,6 +338,7 @@
 		929AA389D09BB99AC70984C4 /* ManualJournalFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA1D0763CA8B60E2F9A314F /* ManualJournalFormView.swift */; };
 		95267AE635883155EE55C8F1 /* PPInventoryRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD243CA8A1EAC52C78410E8C /* PPInventoryRecordTests.swift */; };
 		953866B57FA463B8A57E319C /* FilingPreflightUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0196BD9BEB119EDF94F5E9C0 /* FilingPreflightUseCase.swift */; };
+		9549A98D9CCA6B65710A8B30 /* project-profit-ios_white_tax_bookkeeping_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 1B7CFDD737574B03D999B025 /* project-profit-ios_white_tax_bookkeeping_template.xlsx */; };
 		958F914CF5C1857A1725463F /* LedgerCSVImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A13DD825D6394247A8D9D9 /* LedgerCSVImportView.swift */; };
 		95C78B5AAB1D1B146DA330AB /* SettingsMaintenanceWorkflowUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AAAD7E7F9304E5A97064524 /* SettingsMaintenanceWorkflowUseCase.swift */; };
 		95D023089650DFD705A29896 /* ClosingWorkflowUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0887647C9682406175E896 /* ClosingWorkflowUseCase.swift */; };
@@ -333,6 +347,7 @@
 		9763C8E1A01D7A4E0ED8ABEF /* VatStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79FA269C64CA85DE67EEFD3 /* VatStatus.swift */; };
 		980ECB0F017EB09F5486A294 /* SettingsOverviewUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F26EFB85383D48CF45632A /* SettingsOverviewUseCase.swift */; };
 		9853A42B1886D2F806728FBA /* LegacyProfileMigrationRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD44E80A975D1B223D93DC4 /* LegacyProfileMigrationRunner.swift */; };
+		98AE9AB8E4D57C367D2CA911 /* project-profit-ios_balance_sheet_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 050B8EB33EEAAD5A0AADBCD9 /* project-profit-ios_balance_sheet_template.xlsx */; };
 		98DCF6847E5D99C8C23B4C71 /* SwiftDataChartOfAccountsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91A82F1251CCCEC97124EDDA /* SwiftDataChartOfAccountsRepository.swift */; };
 		99E80D9468AE89A2CAEE6B1F /* CSVExportServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65D02F71AFBF05A6FC6747D /* CSVExportServiceTests.swift */; };
 		9A8E241A275149284C5BEA43 /* UtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1EFA9D67C87D6E761C316B /* UtilitiesTests.swift */; };
@@ -382,6 +397,7 @@
 		ACE07A4DC9F69190768D3595 /* AccountingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1B6616EFC0F3ADE814BA23 /* AccountingPerformanceTests.swift */; };
 		AD0BACD41DCC23DB6000D92C /* JournalLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 410537893E4B8BF79A49FB9D /* JournalLine.swift */; };
 		AE176AEF18562606801FC6BA /* Utilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D457467467CE1C760BA893F7 /* Utilities.swift */; };
+		AE6902CF10C63DC5D5C66477 /* project-profit-ios_cash_book_invoice_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 90B6857A8744C809B30C112C /* project-profit-ios_cash_book_invoice_template.xlsx */; };
 		AE81A4F4269C52F263B589ED /* EvidenceInboxRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39414C687AEB098A4C26B8C4 /* EvidenceInboxRepository.swift */; };
 		AEB873696B9C771F293FFA69 /* BackupRestoreServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D9BE92C85304143EB1297AC /* BackupRestoreServiceTests.swift */; };
 		AF81A27AC659B89B013EB08E /* CategoryManageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42039D8715E69297CAB8D284 /* CategoryManageView.swift */; };
@@ -389,6 +405,7 @@
 		B03E20A54B2857646CD33E57 /* FixedAssetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4A883A43EE4AEAF39CD780 /* FixedAssetDetailView.swift */; };
 		B09929B86B3F8EBB96E2E5A1 /* AuditEventEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8517D178387CD16EC6431777 /* AuditEventEntity.swift */; };
 		B18B964C900BF8EC167A6B85 /* PPAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270FDA4E263E19B6DDE753DB /* PPAccount.swift */; };
+		B1D967A3443ECFA98BD7AAD4 /* project-profit-ios_accounts_receivable_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 2BB3B97503BF2C616314200D /* project-profit-ios_accounts_receivable_template.xlsx */; };
 		B2712D882A3EE9D933C528E6 /* PostingIntakeUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E0797A93AA7D88D036FFF7 /* PostingIntakeUseCase.swift */; };
 		B2F617996B337040968B9809 /* StatementImportEntityMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CACFEF63B24EDEDB3B4129D /* StatementImportEntityMapper.swift */; };
 		B3A231837C5F56DDE9968A4F /* LedgerExcelExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BF276A90B6422028F0E16 /* LedgerExcelExportService.swift */; };
@@ -451,12 +468,14 @@
 		CB3F78F7886FF164F382D874 /* AuditEventEntityMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB249D7386ECBD01D9D1CA3 /* AuditEventEntityMapper.swift */; };
 		CBB24538A01248F81A8FD2FB /* EtaxFieldPopulatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7BDC7F4EE35DED4B240401C /* EtaxFieldPopulatorTests.swift */; };
 		CC9A924617E21A756DF55AFE /* ClassificationEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 046CF8407E0186AEDFDDDE3E /* ClassificationEngineTests.swift */; };
+		CCF25EC2D00EC482FB6EDBD5 /* project-profit-ios_trial_balance_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = FCF0A3F7CF5F4E703CDD42F5 /* project-profit-ios_trial_balance_template.xlsx */; };
 		CD1FFD47110FB6829C9642A9 /* DistributionTemplateRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF3E446DA0352B63189945A /* DistributionTemplateRepository.swift */; };
 		CD5BE5227AA5A789CCD3A4AC /* LedgerAccountPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C86A59BFF22118B9324459 /* LedgerAccountPicker.swift */; };
 		CD6ADB4A89A8B9A65B313BEB /* StatementLineEntityMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EA0B4A441E8247E75B5341 /* StatementLineEntityMapper.swift */; };
 		CD6E001D97B6CC35105E284E /* AccountingReportViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B02D4F68639CF6A69C01E6F /* AccountingReportViewModel.swift */; };
 		CE3691D8B5A4F61C83BFBC22 /* ReportViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD5A05D726608E686172E9AF /* ReportViewModel.swift */; };
 		CE599106503E91C5A360DBD2 /* ProRataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36B3E39C115B30D51EE941D /* ProRataTests.swift */; };
+		CF926FCD72004F4AB621655F /* project-profit-ios_general_ledger_invoice_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 4AA90C80A4239ED55A5F8445 /* project-profit-ios_general_ledger_invoice_template.xlsx */; };
 		CFBA105E25165341DF96E1FE /* JournalBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8169372D980AB607AEE414D /* JournalBrowserView.swift */; };
 		CFCC9695AB98E91D29C3C4E1 /* PostingIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD673677F158A34CCA444159 /* PostingIntakeStore.swift */; };
 		D04C1868FB7D833014ECC376 /* SettingsOverviewRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 229A2859D5CDD82A0F1ACFDE /* SettingsOverviewRepository.swift */; };
@@ -484,6 +503,7 @@
 		DDD86B9FC1F4486857104128 /* ReceiptReviewViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2FD657BF16BCCACC57A0DA /* ReceiptReviewViewTests.swift */; };
 		DDE23E5A9622432B2A0CB9A4 /* migration_dry_run_2025.json in Resources */ = {isa = PBXBuildFile; fileRef = F9AC82D9565CA69CA0D881DC /* migration_dry_run_2025.json */; };
 		DDF76F684A4E68EB55B90EAC /* WithholdingTaxCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302DCE380D2D84D304547552 /* WithholdingTaxCalculatorTests.swift */; };
+		DE073227B6012F95D1A86D6E /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 190443103A2DF2F999A38C3B /* README.md */; };
 		DE9501E0145F7814E4A6739B /* AccountingConstantsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D94596F280C6EADB2814B7 /* AccountingConstantsTests.swift */; };
 		DED98584F0C68B280645172B /* LedgerBookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB58C3F751C7D6AA5579A1E7 /* LedgerBookDetailView.swift */; };
 		DF05113B093C80B1DEFE3989 /* TransactionDocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0984FEFC7B2326667C64BE24 /* TransactionDocumentsView.swift */; };
@@ -517,6 +537,7 @@
 		E8F476AF018158C6F0386B75 /* FilingDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9336D7C991C99770091EAD /* FilingDashboardView.swift */; };
 		E93C8CBF074012BDC3500DF8 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB74A0CA5C604E4D9817FA /* ProjectsViewModel.swift */; };
 		E9CCD3B0B1D73AEAF167A232 /* StatementMatchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6530DDC158C2E4D62949D4DD /* StatementMatchServiceTests.swift */; };
+		E9F57581B5B22B703CAB6B8E /* project-profit-ios_cash_book_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 997C81DF4E3A970B9B5201C0 /* project-profit-ios_cash_book_template.xlsx */; };
 		EAB2F61D37CC7EFCF91F4814 /* ProfileSettingsUseCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E8A837773657A410C0EFFA /* ProfileSettingsUseCase.swift */; };
 		EAB5D2DE082D84E2B09A0DCF /* SettingsOverviewUseCaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AC66DF0D880273474F47F5C /* SettingsOverviewUseCaseTests.swift */; };
 		EABA4BCBD9D977430ADBEDF5 /* DepreciationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D37AF373B8CDC9702649D6D /* DepreciationEngine.swift */; };
@@ -555,6 +576,7 @@
 		FAC2090D7709EFCB66FD678D /* ApprovalRequestRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419160FDEB4C9780FF0FC648 /* ApprovalRequestRepository.swift */; };
 		FB1F3C83774855DF02EEC28E /* BlueDeductionLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721F493C138B449AC4108D0D /* BlueDeductionLevel.swift */; };
 		FB63D37ABEDDC20AE431671E /* PPUserRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8400BE18B0A7F6C8C057A63F /* PPUserRule.swift */; };
+		FBB497C31E55ADAC875CEA45 /* project-profit-ios_accounts_payable_template.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = C4E9E4299EBE7C78B68104E3 /* project-profit-ios_accounts_payable_template.xlsx */; };
 		FBED8245431078562EF82E74 /* WorkflowPersistenceSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 376A61D1DC648A9C5C6244DA /* WorkflowPersistenceSupport.swift */; };
 		FC4EE14412F418899492E115 /* AllocationCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 923A3CF8346431F5DEECF6E9 /* AllocationCalculator.swift */; };
 		FC510C2377B9CF857CD6246D /* AccountingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49F981391FCA44E6C8AB6D5 /* AccountingEngine.swift */; };
@@ -620,6 +642,7 @@
 		04A2B2D3D8EC7CFF1C077573 /* ReceiptScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerService.swift; sourceTree = "<group>"; };
 		04B1BBC3CC594252AB5A8A96 /* CategoryAccountMappingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryAccountMappingView.swift; sourceTree = "<group>"; };
 		04C5C186CFCCCF52A4B61265 /* CategoryWorkflowUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryWorkflowUseCaseTests.swift; sourceTree = "<group>"; };
+		050B8EB33EEAAD5A0AADBCD9 /* project-profit-ios_balance_sheet_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_balance_sheet_template.xlsx"; sourceTree = "<group>"; };
 		0588256EAEF923B2A75B7D52 /* ReceiptAmountExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptAmountExtractionTests.swift; sourceTree = "<group>"; };
 		05A92763D4502323DF4CEC5D /* fixed_asset_register.csv */ = {isa = PBXFileReference; path = fixed_asset_register.csv; sourceTree = "<group>"; };
 		05D6A9EA5B79C858FD2EA3D9 /* SwiftDataTaxYearProfileRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataTaxYearProfileRepository.swift; sourceTree = "<group>"; };
@@ -670,11 +693,13 @@
 		1860C1BAAFC71395509B58ED /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		187F8F0C0E7DEA209FD5C2A3 /* PPDocumentRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPDocumentRecord.swift; sourceTree = "<group>"; };
 		18D7515E8A3ED362EA3FCC38 /* SwiftDataInventoryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataInventoryRepository.swift; sourceTree = "<group>"; };
+		190443103A2DF2F999A38C3B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		196DFD2BB2BE7776A3E49639 /* DataStoreInventoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreInventoryTests.swift; sourceTree = "<group>"; };
 		1A2E8E7D334EDFB4F51C0F4A /* PostingCandidate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostingCandidate.swift; sourceTree = "<group>"; };
 		1A2EAD1C6FA81BE41A371B45 /* WhiteTaxBookkeepingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteTaxBookkeepingView.swift; sourceTree = "<group>"; };
 		1A9936DE516EA56088A0AD54 /* DistributionRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionRule.swift; sourceTree = "<group>"; };
 		1AA86EC3CB2939D7D94FF68A /* JournalSearchUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JournalSearchUseCase.swift; sourceTree = "<group>"; };
+		1B7CFDD737574B03D999B025 /* project-profit-ios_white_tax_bookkeeping_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_white_tax_bookkeeping_template.xlsx"; sourceTree = "<group>"; };
 		1BE7D3ABDC1580465E3BEA02 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1C15D91695F50B499ED8D24E /* ElectronicBookLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectronicBookLevel.swift; sourceTree = "<group>"; };
 		1C1CBF65BFF697B47858DD67 /* TaxYearProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearProfileTests.swift; sourceTree = "<group>"; };
@@ -683,6 +708,7 @@
 		1C2FE0FAC0634C1293DFE1C6 /* TaxYearStateUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearStateUseCase.swift; sourceTree = "<group>"; };
 		1DBE28A8E366AFBD9BB51120 /* AnnualBlueReturnScenarioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnualBlueReturnScenarioTests.swift; sourceTree = "<group>"; };
 		1DDF4CB699CEA36FA49D2E42 /* EvidenceRecordEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceRecordEntity.swift; sourceTree = "<group>"; };
+		1ECB928B8FC2DC60BEA7AF5B /* project-profit-ios_transportation_expense_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_transportation_expense_template.xlsx"; sourceTree = "<group>"; };
 		1F1FF5929497BB0814139068 /* ClassificationLearningServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassificationLearningServiceTests.swift; sourceTree = "<group>"; };
 		1FBA0B4A9DD1F045C1F950F7 /* InventoryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryRepository.swift; sourceTree = "<group>"; };
 		1FFBDB7D47C4805A4D818C37 /* EvidenceVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceVersion.swift; sourceTree = "<group>"; };
@@ -706,6 +732,7 @@
 		2B90CAF206FD0EF1801E6886 /* InventoryServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryServiceTests.swift; sourceTree = "<group>"; };
 		2B9336D7C991C99770091EAD /* FilingDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilingDashboardView.swift; sourceTree = "<group>"; };
 		2B9533EBD75C0132D1F9B6FB /* RecurringProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringProcessingTests.swift; sourceTree = "<group>"; };
+		2BB3B97503BF2C616314200D /* project-profit-ios_accounts_receivable_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_accounts_receivable_template.xlsx"; sourceTree = "<group>"; };
 		2BE295C9DB8D76C5FF54A126 /* PDFPageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageRenderer.swift; sourceTree = "<group>"; };
 		2C603F0B02EB3AD228CCCF64 /* RestoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreService.swift; sourceTree = "<group>"; };
 		2C69083DAE267F687126BEA9 /* VatMethod.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VatMethod.swift; sourceTree = "<group>"; };
@@ -755,6 +782,7 @@
 		3A15C3E7821AC7E8CF0D2E75 /* BusinessProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessProfileTests.swift; sourceTree = "<group>"; };
 		3A25EF5532B65A20C87A03C6 /* EvidenceSearchCriteria.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceSearchCriteria.swift; sourceTree = "<group>"; };
 		3A3B3B3E885981EE43E14CBB /* LegacyProfileMigrationRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyProfileMigrationRunnerTests.swift; sourceTree = "<group>"; };
+		3A493D0CD52BC29B617DC827 /* project-profit-ios_expense_book_invoice_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_expense_book_invoice_template.xlsx"; sourceTree = "<group>"; };
 		3A551798CD7C2831608B0924 /* CategoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryListView.swift; sourceTree = "<group>"; };
 		3AF3CAAB66E153A662407986 /* InputTaxDeductionCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputTaxDeductionCalculator.swift; sourceTree = "<group>"; };
 		3BFADBBA848DB74766BF8989 /* ConsumptionTaxWorksheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumptionTaxWorksheet.swift; sourceTree = "<group>"; };
@@ -801,6 +829,7 @@
 		49F48835E910015878F8B4FA /* WithholdingTaxCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WithholdingTaxCode.swift; sourceTree = "<group>"; };
 		49FA84F15B9358F74ADDABE0 /* WithholdingStatementViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WithholdingStatementViewModel.swift; sourceTree = "<group>"; };
 		4A5AA45A1A7220535D341440 /* ConsumptionTaxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumptionTaxModels.swift; sourceTree = "<group>"; };
+		4AA90C80A4239ED55A5F8445 /* project-profit-ios_general_ledger_invoice_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_general_ledger_invoice_template.xlsx"; sourceTree = "<group>"; };
 		4AB9FBB52791C374382B070C /* RestoreService+Upserts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RestoreService+Upserts.swift"; sourceTree = "<group>"; };
 		4AC414BCC630E4787A11FD9D /* RecurringPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringPreviewTests.swift; sourceTree = "<group>"; };
 		4AE6ADC8BBF51A08F3C7CFC8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -857,6 +886,7 @@
 		5FD1C84FE098A8618BABEA70 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5FD449573D7BDB065302EB17 /* SwiftDataStatementRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataStatementRepository.swift; sourceTree = "<group>"; };
 		6039836376019A1A997E0266 /* ShareAttachmentImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareAttachmentImporter.swift; sourceTree = "<group>"; };
+		6052BDFA52347D0C54445D76 /* project-profit-ios_fixed_asset_depreciation_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_fixed_asset_depreciation_template.xlsx"; sourceTree = "<group>"; };
 		607E858D17A56BEFB386943C /* PostingSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostingSource.swift; sourceTree = "<group>"; };
 		60A0817C3057DBB3DA7CCE70 /* SwiftDataProjectRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataProjectRepository.swift; sourceTree = "<group>"; };
 		60C66E42EE01DE97CBE9E264 /* CanonicalTransactionDisplayBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTransactionDisplayBuilder.swift; sourceTree = "<group>"; };
@@ -898,11 +928,13 @@
 		6DB05900BC8E0AE04CAE0AB4 /* EtaxFieldPopulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtaxFieldPopulator.swift; sourceTree = "<group>"; };
 		6E2E98BABCEA45291F191A1D /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		6E493F6AD36FAE3C10489E82 /* AppBootstrapWorkflowUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBootstrapWorkflowUseCase.swift; sourceTree = "<group>"; };
+		6E8B0C0C56DDCF9F3E8C8FFD /* project-profit-ios_expense_book_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_expense_book_template.xlsx"; sourceTree = "<group>"; };
 		6F1EE749033BC542E74BF32E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6F5E3870BF386DD573E9F8B5 /* WithholdingPostingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WithholdingPostingSupport.swift; sourceTree = "<group>"; };
 		6F9A15808C098E786B0B27BA /* PPAccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccountTests.swift; sourceTree = "<group>"; };
 		701DEF434171E127A0DFCB3D /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		721F493C138B449AC4108D0D /* BlueDeductionLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlueDeductionLevel.swift; sourceTree = "<group>"; };
+		7269825E3E7CD9BF07EDD24B /* project-profit-ios_bank_account_book_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_bank_account_book_template.xlsx"; sourceTree = "<group>"; };
 		72A674EA2710945D371C68EB /* expense_book.csv */ = {isa = PBXFileReference; path = expense_book.csv; sourceTree = "<group>"; };
 		72ED7F6F094669A070CAAFEA /* SwiftDataCounterpartyRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataCounterpartyRepository.swift; sourceTree = "<group>"; };
 		73242F510F38D20CC94EDB39 /* GenreTag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreTag.swift; sourceTree = "<group>"; };
@@ -972,6 +1004,7 @@
 		8BF64E9053C80BEE30A0DD06 /* WorkflowNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowNavigationTests.swift; sourceTree = "<group>"; };
 		8CD4372BC49C1F5F09857693 /* APBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APBookTests.swift; sourceTree = "<group>"; };
 		8CE7B88658AE4237E00AAFE3 /* SwiftDataApprovalQueueRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataApprovalQueueRepository.swift; sourceTree = "<group>"; };
+		8D114704A43AEBB30C0C4DAE /* project-profit-ios_fixed_asset_register_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_fixed_asset_register_template.xlsx"; sourceTree = "<group>"; };
 		8DE30C78524443912A37764A /* trial_balance_2025.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = trial_balance_2025.json; sourceTree = "<group>"; };
 		8E0435D25BD95ED3A76C5ABC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		8EA1D0763CA8B60E2F9A314F /* ManualJournalFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualJournalFormView.swift; sourceTree = "<group>"; };
@@ -981,6 +1014,7 @@
 		8F2DCA61E3D82E037F1A8A07 /* CanonicalAccountType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalAccountType.swift; sourceTree = "<group>"; };
 		8FB4274B8EC9956B5D3958CF /* GoldenFixtureSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoldenFixtureSupport.swift; sourceTree = "<group>"; };
 		901A73604882FCF0821E54CE /* PostingCandidateEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostingCandidateEntity.swift; sourceTree = "<group>"; };
+		90B6857A8744C809B30C112C /* project-profit-ios_cash_book_invoice_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_cash_book_invoice_template.xlsx"; sourceTree = "<group>"; };
 		90C8356CE6F1313EF8C1B687 /* white_tax_bookkeeping.csv */ = {isa = PBXFileReference; path = white_tax_bookkeeping.csv; sourceTree = "<group>"; };
 		910CE66643E69FC643E784A7 /* RecurringWorkflowUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringWorkflowUseCaseTests.swift; sourceTree = "<group>"; };
 		91A82F1251CCCEC97124EDDA /* SwiftDataChartOfAccountsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataChartOfAccountsRepository.swift; sourceTree = "<group>"; };
@@ -1005,12 +1039,15 @@
 		98FA3127B4B30EDEAE075140 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		991A25948184E7E221485FD2 /* TaxCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxCode.swift; sourceTree = "<group>"; };
 		9950B16B0D60B7032750C595 /* InventoryWorkflowUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryWorkflowUseCaseTests.swift; sourceTree = "<group>"; };
+		997C81DF4E3A970B9B5201C0 /* project-profit-ios_cash_book_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_cash_book_template.xlsx"; sourceTree = "<group>"; };
 		99D93476C816AD4A50C53C0D /* ProjectQueryUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectQueryUseCaseTests.swift; sourceTree = "<group>"; };
 		9A031028085511950C5BED20 /* TaxYear2026.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = TaxYear2026.json; sourceTree = "<group>"; };
 		9A0752727CBAF5846ECC0AAD /* general_ledger.csv */ = {isa = PBXFileReference; path = general_ledger.csv; sourceTree = "<group>"; };
 		9A45134F791DC37758709247 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		9A548AA406509DE46128C554 /* ReportingQueryUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportingQueryUseCase.swift; sourceTree = "<group>"; };
+		9B0BBC2EA3C1359086D25942 /* project-profit-ios_bs_pl_analysis_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_bs_pl_analysis_template.xlsx"; sourceTree = "<group>"; };
 		9BF6EC77336C24CB1D402ADB /* AccountingBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountingBootstrapTests.swift; sourceTree = "<group>"; };
+		9C8E2CCA12000C994844F8C9 /* project-profit-ios_general_ledger_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_general_ledger_template.xlsx"; sourceTree = "<group>"; };
 		9CC7D2CE357AA2BB99E77763 /* CanonicalCSVImportIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalCSVImportIntegrationTests.swift; sourceTree = "<group>"; };
 		9D693A659EC3DDD5489B5F21 /* DistributionBasis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionBasis.swift; sourceTree = "<group>"; };
 		9DA7C80B23BC7D19CC1E1D2C /* CanonicalJSONCoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalJSONCoder.swift; sourceTree = "<group>"; };
@@ -1101,6 +1138,7 @@
 		C385BF9C33115A84F860A971 /* EvidenceSearchIndexEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceSearchIndexEntity.swift; sourceTree = "<group>"; };
 		C3CA5E68C859EB119A4C0195 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		C3EA55E3B125C3F998F6C5E9 /* ClassificationReviewQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassificationReviewQueryTests.swift; sourceTree = "<group>"; };
+		C4E9E4299EBE7C78B68104E3 /* project-profit-ios_accounts_payable_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_accounts_payable_template.xlsx"; sourceTree = "<group>"; };
 		C55E7EE122B1C21C79A38E45 /* LedgerImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerImportCoordinator.swift; sourceTree = "<group>"; };
 		C5CA94BD4054F932FE168BA1 /* TaxYearPack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearPack.swift; sourceTree = "<group>"; };
 		C5D94596F280C6EADB2814B7 /* AccountingConstantsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountingConstantsTests.swift; sourceTree = "<group>"; };
@@ -1115,6 +1153,7 @@
 		CB31860C9EF7D5B7018A3CA9 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		CBD99BA5BD156A24FBFB28A3 /* InventoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryService.swift; sourceTree = "<group>"; };
 		CBE9275A16C42C4F88E0D6CD /* SwiftDataPostingCandidateRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataPostingCandidateRepository.swift; sourceTree = "<group>"; };
+		CC4D965F578602E017C482CB /* project-profit-ios_profit_loss_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_profit_loss_template.xlsx"; sourceTree = "<group>"; };
 		CC7A8E8381695463330AABFB /* ProjectProfitShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProjectProfitShareExtension.entitlements; sourceTree = "<group>"; };
 		CCF6D0CA1A95D658C68FCF1E /* StatementPDFParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatementPDFParserTests.swift; sourceTree = "<group>"; };
 		CD1BF8742BBD1210B5E4604D /* white_tax_bookkeeping_invoice.csv */ = {isa = PBXFileReference; path = white_tax_bookkeeping_invoice.csv; sourceTree = "<group>"; };
@@ -1124,6 +1163,7 @@
 		CF0A86F0677FFFDD0CAE723A /* ProRataDataStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProRataDataStoreTests.swift; sourceTree = "<group>"; };
 		CF591150BC73397C5D68DEBA /* SwiftDataCategoryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataCategoryRepository.swift; sourceTree = "<group>"; };
 		CF7FA0C9D6A9F7E86DBD6DEE /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		D0BFC5E7C12A2656A8CA6261 /* project-profit-ios_bank_account_book_invoice_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_bank_account_book_invoice_template.xlsx"; sourceTree = "<group>"; };
 		D184AD0D6B42E9393B29E04D /* ChartOfAccountsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartOfAccountsRepository.swift; sourceTree = "<group>"; };
 		D19566F3481844AB59CF331F /* AppSnapshotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSnapshotModels.swift; sourceTree = "<group>"; };
 		D19E84202FA08C60D5B11B20 /* LegacyProjectedJournalAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyProjectedJournalAssembler.swift; sourceTree = "<group>"; };
@@ -1145,6 +1185,7 @@
 		D5FBBED0AE5A894547FCCC23 /* RecurringPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringPreviewView.swift; sourceTree = "<group>"; };
 		D60485FF6DEF3544E72691BE /* DocumentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentRepository.swift; sourceTree = "<group>"; };
 		D770A29541F8646727983433 /* RecurringWorkflowStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringWorkflowStore.swift; sourceTree = "<group>"; };
+		D7BB3CAE5BABBA8711675DD4 /* project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx"; sourceTree = "<group>"; };
 		D85A7C833F25E01DEEF74A6A /* AccountingReportServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountingReportServiceTests.swift; sourceTree = "<group>"; };
 		D9B7BE504B1C430A5EBE808A /* MonthlySummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthlySummaryTests.swift; sourceTree = "<group>"; };
 		DA65327A2A00C9554C28F929 /* FormDraftEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormDraftEntityMapper.swift; sourceTree = "<group>"; };
@@ -1178,6 +1219,7 @@
 		EA823A3DCFB86DC1FC326BDC /* CounterpartyMatchingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CounterpartyMatchingTests.swift; sourceTree = "<group>"; };
 		EAF3E446DA0352B63189945A /* DistributionTemplateRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionTemplateRepository.swift; sourceTree = "<group>"; };
 		ECE01E1209D210C8EF7E00EA /* JournalLineEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JournalLineEntity.swift; sourceTree = "<group>"; };
+		ECF57D9C9E29E7D087A2A6DB /* project-profit-ios_journal_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_journal_template.xlsx"; sourceTree = "<group>"; };
 		EDD703240DA9BB70B04A8364 /* ClassificationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassificationViewModel.swift; sourceTree = "<group>"; };
 		EE0125B7F4B94B9E51F0D822 /* ReceiptEvidenceIntakeUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptEvidenceIntakeUseCaseTests.swift; sourceTree = "<group>"; };
 		EF08874636AC1F860CC8E586 /* EtaxCharacterValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtaxCharacterValidator.swift; sourceTree = "<group>"; };
@@ -1216,11 +1258,13 @@
 		FB58C3F751C7D6AA5579A1E7 /* LedgerBookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LedgerBookDetailView.swift; sourceTree = "<group>"; };
 		FC0887647C9682406175E896 /* ClosingWorkflowUseCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosingWorkflowUseCase.swift; sourceTree = "<group>"; };
 		FCC59103F6625E2725107249 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		FCF0A3F7CF5F4E703CDD42F5 /* project-profit-ios_trial_balance_template.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_trial_balance_template.xlsx"; sourceTree = "<group>"; };
 		FD2D1D426CA8858420B8C923 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		FD4C6DE8659C0B2A88BB5D4F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		FDFACD44FE2A5A00E32DE1F5 /* TaxYearStateUseCaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaxYearStateUseCaseTests.swift; sourceTree = "<group>"; };
 		FDFB99814938BDAD99B5F657 /* StatementPrefillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatementPrefillTests.swift; sourceTree = "<group>"; };
 		FEB249D7386ECBD01D9D1CA3 /* AuditEventEntityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditEventEntityMapper.swift; sourceTree = "<group>"; };
+		FED62811F0AE646762320B60 /* project-profit-ios_templates_consolidated_spreadsheet.xlsx */ = {isa = PBXFileReference; path = "project-profit-ios_templates_consolidated_spreadsheet.xlsx"; sourceTree = "<group>"; };
 		FF9988639C5530093B18A96C /* ClassificationDictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ClassificationDictionary.json; sourceTree = "<group>"; };
 		FFC31874A7BB42A137D5FD24 /* master_schema.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = master_schema.json; sourceTree = "<group>"; };
 		FFCB8FC1C6ACB85985794E9A /* DataStore+FixedAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+FixedAsset.swift"; sourceTree = "<group>"; };
@@ -2210,6 +2254,15 @@
 			path = OnDeviceExtraction;
 			sourceTree = "<group>";
 		};
+		7382C93204C8BC0C21E64117 /* reports */ = {
+			isa = PBXGroup;
+			children = (
+				050B8EB33EEAAD5A0AADBCD9 /* project-profit-ios_balance_sheet_template.xlsx */,
+				CC4D965F578602E017C482CB /* project-profit-ios_profit_loss_template.xlsx */,
+			);
+			path = reports;
+			sourceTree = "<group>";
+		};
 		7656D47C85DC55F64C051006 /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
@@ -2288,6 +2341,7 @@
 			children = (
 				FFC31874A7BB42A137D5FD24 /* master_schema.json */,
 				C7909BF2454B65AE4E85E9B3 /* csv_templates */,
+				8BB513DACE34D0621C1BF1AF /* excel_templates */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -2377,6 +2431,18 @@
 				4909A6633AA4A771172439B0 /* FixedAssetWorkflowUseCase.swift */,
 			);
 			path = FixedAssets;
+			sourceTree = "<group>";
+		};
+		8BB513DACE34D0621C1BF1AF /* excel_templates */ = {
+			isa = PBXGroup;
+			children = (
+				9B0BBC2EA3C1359086D25942 /* project-profit-ios_bs_pl_analysis_template.xlsx */,
+				FED62811F0AE646762320B60 /* project-profit-ios_templates_consolidated_spreadsheet.xlsx */,
+				190443103A2DF2F999A38C3B /* README.md */,
+				F1DEAD1BF5AC217420728252 /* ledgers */,
+				7382C93204C8BC0C21E64117 /* reports */,
+			);
+			path = excel_templates;
 			sourceTree = "<group>";
 		};
 		8D0890F6F600C32E10D968EE /* CSV */ = {
@@ -3203,6 +3269,30 @@
 			path = Presentation;
 			sourceTree = "<group>";
 		};
+		F1DEAD1BF5AC217420728252 /* ledgers */ = {
+			isa = PBXGroup;
+			children = (
+				C4E9E4299EBE7C78B68104E3 /* project-profit-ios_accounts_payable_template.xlsx */,
+				2BB3B97503BF2C616314200D /* project-profit-ios_accounts_receivable_template.xlsx */,
+				D0BFC5E7C12A2656A8CA6261 /* project-profit-ios_bank_account_book_invoice_template.xlsx */,
+				7269825E3E7CD9BF07EDD24B /* project-profit-ios_bank_account_book_template.xlsx */,
+				90B6857A8744C809B30C112C /* project-profit-ios_cash_book_invoice_template.xlsx */,
+				997C81DF4E3A970B9B5201C0 /* project-profit-ios_cash_book_template.xlsx */,
+				3A493D0CD52BC29B617DC827 /* project-profit-ios_expense_book_invoice_template.xlsx */,
+				6E8B0C0C56DDCF9F3E8C8FFD /* project-profit-ios_expense_book_template.xlsx */,
+				6052BDFA52347D0C54445D76 /* project-profit-ios_fixed_asset_depreciation_template.xlsx */,
+				8D114704A43AEBB30C0C4DAE /* project-profit-ios_fixed_asset_register_template.xlsx */,
+				4AA90C80A4239ED55A5F8445 /* project-profit-ios_general_ledger_invoice_template.xlsx */,
+				9C8E2CCA12000C994844F8C9 /* project-profit-ios_general_ledger_template.xlsx */,
+				ECF57D9C9E29E7D087A2A6DB /* project-profit-ios_journal_template.xlsx */,
+				1ECB928B8FC2DC60BEA7AF5B /* project-profit-ios_transportation_expense_template.xlsx */,
+				FCF0A3F7CF5F4E703CDD42F5 /* project-profit-ios_trial_balance_template.xlsx */,
+				D7BB3CAE5BABBA8711675DD4 /* project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx */,
+				1B7CFDD737574B03D999B025 /* project-profit-ios_white_tax_bookkeeping_template.xlsx */,
+			);
+			path = ledgers;
+			sourceTree = "<group>";
+		};
 		F1FD348A285F83DFF26BDD11 /* SwiftData */ = {
 			isa = PBXGroup;
 			children = (
@@ -3478,6 +3568,7 @@
 				16F3EC7043FFF8EA2A120A9D /* ClassificationDictionary.json in Resources */,
 				25111A7F5C96D87106EB4F03 /* Preview Assets.xcassets in Resources */,
 				349D1EB6C16F60F571F7F83F /* PrivacyInfo.xcprivacy in Resources */,
+				DE073227B6012F95D1A86D6E /* README.md in Resources */,
 				3F81648CE6B6C8EEB38F5061 /* TaxYear2025.json in Resources */,
 				A8FA8DB90870CCED43385D01 /* TaxYear2026.json in Resources */,
 				7C474E8844847A4D840D601F /* account_categories.csv in Resources */,
@@ -3495,6 +3586,27 @@
 				681143317715093E3BA8B685 /* general_ledger_invoice.csv in Resources */,
 				8DDBAA576DC3BB103EC1C0AE /* journal.csv in Resources */,
 				E090FAD95934216642990249 /* master_schema.json in Resources */,
+				FBB497C31E55ADAC875CEA45 /* project-profit-ios_accounts_payable_template.xlsx in Resources */,
+				B1D967A3443ECFA98BD7AAD4 /* project-profit-ios_accounts_receivable_template.xlsx in Resources */,
+				98AE9AB8E4D57C367D2CA911 /* project-profit-ios_balance_sheet_template.xlsx in Resources */,
+				433492ED87D679F20BABAAB9 /* project-profit-ios_bank_account_book_invoice_template.xlsx in Resources */,
+				76DC0F6B8FBFA2C0127985EC /* project-profit-ios_bank_account_book_template.xlsx in Resources */,
+				2A1A2D1F887B2CF762B08BA4 /* project-profit-ios_bs_pl_analysis_template.xlsx in Resources */,
+				AE6902CF10C63DC5D5C66477 /* project-profit-ios_cash_book_invoice_template.xlsx in Resources */,
+				E9F57581B5B22B703CAB6B8E /* project-profit-ios_cash_book_template.xlsx in Resources */,
+				7A4590437A2976C9E49A2912 /* project-profit-ios_expense_book_invoice_template.xlsx in Resources */,
+				70909CF0C19B505025BC0137 /* project-profit-ios_expense_book_template.xlsx in Resources */,
+				228BBDA294B466D3EB33BA7F /* project-profit-ios_fixed_asset_depreciation_template.xlsx in Resources */,
+				870FC0F00054B06F7D32928B /* project-profit-ios_fixed_asset_register_template.xlsx in Resources */,
+				CF926FCD72004F4AB621655F /* project-profit-ios_general_ledger_invoice_template.xlsx in Resources */,
+				1938731941E82D964E423182 /* project-profit-ios_general_ledger_template.xlsx in Resources */,
+				3F722E98290A521F7584F845 /* project-profit-ios_journal_template.xlsx in Resources */,
+				5ADD002CF09AC065C437A827 /* project-profit-ios_profit_loss_template.xlsx in Resources */,
+				56190D1026DA1813F3D894E8 /* project-profit-ios_templates_consolidated_spreadsheet.xlsx in Resources */,
+				17AF3E220ECB8B7E9257A447 /* project-profit-ios_transportation_expense_template.xlsx in Resources */,
+				CCF25EC2D00EC482FB6EDBD5 /* project-profit-ios_trial_balance_template.xlsx in Resources */,
+				83E04700D22EBC13424E3E32 /* project-profit-ios_white_tax_bookkeeping_invoice_template.xlsx in Resources */,
+				9549A98D9CCA6B65710A8B30 /* project-profit-ios_white_tax_bookkeeping_template.xlsx in Resources */,
 				AB275C2359BF0AF8E274D962 /* transportation_expense.csv in Resources */,
 				3E1470DEF61805161F825B9E /* white_tax_bookkeeping.csv in Resources */,
 				01FB305AE63B4403932C1913 /* white_tax_bookkeeping_invoice.csv in Resources */,
