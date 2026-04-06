@@ -38,6 +38,7 @@
 
 - `Docs/release/統合_修正タスク一覧_P0_P1_必要書類作成まで.md`
 - `Docs/release/リリース残課題チェックリスト_2026-03-24.md`
+- `Docs/release/project-profit-ios_release_tasks_checklist_2026-04-06.md`
 - `Docs/release/Codex_バッチ実行プロンプト集_必要書類作成まで.md`
 - `Docs/release/codex_batch_state.md`
 - `Docs/vendor_package/README_最初に読む.md`

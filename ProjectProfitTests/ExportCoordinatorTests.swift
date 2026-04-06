@@ -120,15 +120,15 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertEqual(ExportCoordinator.ExportTarget.profitLoss.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.balanceSheet.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.trialBalance.supportedFormats, [.csv, .pdf, .xlsx])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.cashBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.bankAccountBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsReceivableBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsPayableBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.expenseBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.generalLedger.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.journalBook.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.transportationExpense.supportedFormats, [.csv, .pdf])
-        XCTAssertEqual(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.supportedFormats, [.csv, .pdf])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.cashBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.bankAccountBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsReceivableBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.accountsPayableBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.expenseBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.generalLedger.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.journalBook.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.transportationExpense.supportedFormats, [.csv, .pdf, .xlsx])
+        XCTAssertEqual(ExportCoordinator.ExportTarget.whiteTaxBookkeeping.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.journal.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.ledger.supportedFormats, [.csv, .pdf, .xlsx])
         XCTAssertEqual(ExportCoordinator.ExportTarget.fixedAssetRegister.supportedFormats, [.csv, .pdf, .xlsx])
@@ -273,7 +273,7 @@ final class ExportCoordinatorTests: XCTestCase {
     }
 
     func testOfficialCashBookExportUsesLedgerFormat() throws {
-        seedTaxYearProfile(year: 2025, state: .taxClose)
+        seedTaxYearProfile(year: 2025, state: .softClose)
 
         _ = mutations(dataStore).addTransaction(
             type: .expense,
@@ -289,6 +289,7 @@ final class ExportCoordinatorTests: XCTestCase {
             format: .csv,
             fiscalYear: 2025,
             modelContext: context,
+            skipPreflightValidation: true,
             subLedgerOptions: .init(
                 type: .cashBook,
                 startDate: nil,
@@ -303,8 +304,207 @@ final class ExportCoordinatorTests: XCTestCase {
         XCTAssertTrue(text.contains("cash book export"))
     }
 
-    func testWhiteTaxBookkeepingOfficialExportProvidesCsv() throws {
+    func testOfficialCashBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .expense,
+            amount: 5_000,
+            date: makeDate(year: 2025, month: 2, day: 4),
+            categoryId: "cat-tools",
+            memo: "cash book xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .cashBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true,
+            subLedgerOptions: .init(
+                type: .cashBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialBankAccountBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .income,
+            amount: 12_000,
+            date: makeDate(year: 2025, month: 2, day: 8),
+            categoryId: "cat-sales",
+            memo: "bank account xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .bankAccountBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true,
+            subLedgerOptions: .init(
+                type: .depositBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialAccountsReceivableBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .income,
+            amount: 18_000,
+            date: makeDate(year: 2025, month: 3, day: 3),
+            categoryId: "cat-sales",
+            memo: "accounts receivable xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .accountsReceivableBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true,
+            subLedgerOptions: .init(
+                type: .accountsReceivableBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialAccountsPayableBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .expense,
+            amount: 7_500,
+            date: makeDate(year: 2025, month: 3, day: 7),
+            categoryId: "cat-tools",
+            memo: "accounts payable xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .accountsPayableBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true,
+            subLedgerOptions: .init(
+                type: .accountsPayableBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: nil,
+                counterpartyFilter: nil
+            )
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialExpenseBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .expense,
+            amount: 4_200,
+            date: makeDate(year: 2025, month: 4, day: 2),
+            categoryId: "cat-tools",
+            memo: "expense book xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .expenseBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true,
+            subLedgerOptions: .init(
+                type: .expenseBook,
+                startDate: nil,
+                endDate: nil,
+                accountFilter: "acct-tools",
+                counterpartyFilter: nil
+            )
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialGeneralLedgerExportProvidesXlsx() throws {
         seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 12_000,
+            year: 2025,
+            month: 2,
+            description: "general ledger xlsx export",
+            entryType: .normal,
+            sourceCandidateId: UUID()
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .generalLedger,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            ledgerOptions: .init(accountId: "acct-rent", accountName: "地代家賃", accountCode: "622")
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testOfficialJournalBookExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+
+        _ = createApprovedCanonicalJournal(
+            debitLegacyAccountId: "acct-rent",
+            creditLegacyAccountId: AccountingConstants.cashAccountId,
+            amount: 8_000,
+            year: 2025,
+            month: 2,
+            description: "journal book xlsx export",
+            entryType: .normal,
+            sourceCandidateId: UUID()
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .journalBook,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context
+        )
+
+        assertXlsxArchive(at: url)
+    }
+
+    func testWhiteTaxBookkeepingOfficialExportProvidesCsv() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
 
         _ = mutations(dataStore).addTransaction(
             type: .income,
@@ -319,12 +519,36 @@ final class ExportCoordinatorTests: XCTestCase {
             target: .whiteTaxBookkeeping,
             format: .csv,
             fiscalYear: 2025,
-            modelContext: context
+            modelContext: context,
+            skipPreflightValidation: true
         )
 
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(text.contains("売上金額"))
         XCTAssertTrue(text.contains("2025年分"))
+    }
+
+    func testWhiteTaxBookkeepingOfficialExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .softClose)
+
+        _ = mutations(dataStore).addTransaction(
+            type: .income,
+            amount: 50_000,
+            date: makeDate(year: 2025, month: 3, day: 10),
+            categoryId: "cat-sales",
+            memo: "white tax xlsx export",
+            allocations: []
+        )
+
+        let url = try ExportCoordinator.export(
+            target: .whiteTaxBookkeeping,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            skipPreflightValidation: true
+        )
+
+        assertXlsxArchive(at: url)
     }
 
     func testTransportationExpenseOfficialExportUsesSelectedLegacyBook() throws {
@@ -341,6 +565,21 @@ final class ExportCoordinatorTests: XCTestCase {
 
         let text = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(text.contains("日付,行先,目的（用件）"))
+    }
+
+    func testTransportationExpenseOfficialExportProvidesXlsx() throws {
+        seedTaxYearProfile(year: 2025, state: .taxClose)
+        let book = seedLegacyTransportationExpenseBook()
+
+        let url = try ExportCoordinator.export(
+            target: .transportationExpense,
+            format: .xlsx,
+            fiscalYear: 2025,
+            modelContext: context,
+            ledgerBookSelectionOptions: .init(bookId: book.id, ledgerType: .transportationExpense)
+        )
+
+        assertXlsxArchive(at: url)
     }
 
     func testFixedAssetDepreciationOfficialExportMatchesSpecColumnsAndValues() throws {
@@ -955,6 +1194,12 @@ final class ExportCoordinatorTests: XCTestCase {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return max(lines.count - 1, 0)
+    }
+
+    private func assertXlsxArchive(at url: URL) {
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let data = try! Data(contentsOf: url)
+        XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B], "xlsx should be a ZIP archive")
     }
 
     private func canonicalAccountId(_ legacyAccountId: String) -> UUID {

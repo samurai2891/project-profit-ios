@@ -105,11 +105,12 @@ enum ExportCoordinator {
         var supportedFormats: Set<ExportFormat> {
             switch self {
             case .profitLoss, .balanceSheet, .trialBalance,
+                 .cashBook, .bankAccountBook, .accountsReceivableBook, .accountsPayableBook,
+                 .expenseBook, .generalLedger, .journalBook, .transportationExpense,
+                 .whiteTaxBookkeeping,
                  .fixedAssetRegister, .fixedAssetDepreciation:
                 return [.csv, .pdf, .xlsx]
-            case .cashBook, .bankAccountBook, .accountsReceivableBook, .accountsPayableBook,
-                 .expenseBook, .generalLedger, .journalBook, .transportationExpense,
-                 .whiteTaxBookkeeping, .withholdingStatement:
+            case .withholdingStatement:
                 return [.csv, .pdf]
             case .transactions:
                 return [.csv]
@@ -1290,6 +1291,18 @@ enum ExportCoordinator {
                 includeInvoice: payload.includeInvoice
             ))
 
+        case (.cashBook, .xlsx):
+            let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .cashBook)
+            let payload = cashBookContent(entries: entries)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportCashBook(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    includeInvoice: payload.includeInvoice,
+                    to: path
+                )
+            })
+
         case (.bankAccountBook, .csv):
             let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .depositBook)
             let payload = bankAccountBookContent(entries: entries)
@@ -1308,6 +1321,18 @@ enum ExportCoordinator {
                 includeInvoice: payload.includeInvoice
             ))
 
+        case (.bankAccountBook, .xlsx):
+            let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .depositBook)
+            let payload = bankAccountBookContent(entries: entries)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportBankAccountBook(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    includeInvoice: payload.includeInvoice,
+                    to: path
+                )
+            })
+
         case (.accountsReceivableBook, .csv):
             let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .accountsReceivableBook)
             let payload = accountsReceivableContent(entries: entries)
@@ -1324,6 +1349,17 @@ enum ExportCoordinator {
                 entries: payload.entries
             ))
 
+        case (.accountsReceivableBook, .xlsx):
+            let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .accountsReceivableBook)
+            let payload = accountsReceivableContent(entries: entries)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportAccountsReceivable(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    to: path
+                )
+            })
+
         case (.accountsPayableBook, .csv):
             let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .accountsPayableBook)
             let payload = accountsPayableContent(entries: entries)
@@ -1339,6 +1375,17 @@ enum ExportCoordinator {
                 metadata: payload.metadata,
                 entries: payload.entries
             ))
+
+        case (.accountsPayableBook, .xlsx):
+            let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .accountsPayableBook)
+            let payload = accountsPayableContent(entries: entries)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportAccountsPayable(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    to: path
+                )
+            })
 
         case (.expenseBook, .csv):
             let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .expenseBook)
@@ -1358,6 +1405,18 @@ enum ExportCoordinator {
                 includeInvoice: payload.includeInvoice
             ))
 
+        case (.expenseBook, .xlsx):
+            let entries = try subLedgerEntries(source: bookExportSource, options: subLedgerOptions, fallbackType: .expenseBook)
+            let payload = expenseBookContent(entries: entries, source: bookExportSource, accountId: subLedgerOptions?.accountFilter)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportExpenseBook(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    includeInvoice: payload.includeInvoice,
+                    to: path
+                )
+            })
+
         case (.generalLedger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
             let payload = generalLedgerContent(source: bookExportSource, options: opts)
@@ -1376,11 +1435,31 @@ enum ExportCoordinator {
                 includeInvoice: payload.includeInvoice
             ))
 
+        case (.generalLedger, .xlsx):
+            guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
+            let payload = generalLedgerContent(source: bookExportSource, options: opts)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportGeneralLedger(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    includeInvoice: payload.includeInvoice,
+                    to: path
+                )
+            })
+
         case (.journalBook, .csv):
             return .text(CSVExportService.shared.exportJournal(entries: journalEntriesContent(source: bookExportSource)))
 
         case (.journalBook, .pdf):
             return .data(LedgerPDFExportService.shared.exportJournal(entries: journalEntriesContent(source: bookExportSource)))
+
+        case (.journalBook, .xlsx):
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportJournal(
+                    entries: journalEntriesContent(source: bookExportSource),
+                    to: path
+                )
+            })
 
         case (.whiteTaxBookkeeping, .csv):
             let snapshot = WhiteTaxBookkeepingQueryUseCase(modelContext: modelContext).snapshot(taxYear: fiscalYear)
@@ -1399,6 +1478,18 @@ enum ExportCoordinator {
                 entries: payload.entries,
                 includeInvoice: payload.includeInvoice
             ))
+
+        case (.whiteTaxBookkeeping, .xlsx):
+            let snapshot = WhiteTaxBookkeepingQueryUseCase(modelContext: modelContext).snapshot(taxYear: fiscalYear)
+            let payload = whiteTaxBookkeepingContent(snapshot: snapshot)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportWhiteTaxBookkeeping(
+                    metadata: payload.metadata,
+                    entries: payload.entries,
+                    includeInvoice: payload.includeInvoice,
+                    to: path
+                )
+            })
 
         case (.transportationExpense, .csv):
             guard let legacyOptions = resolveLegacyLedgerOptions(
@@ -1425,6 +1516,22 @@ enum ExportCoordinator {
                 metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: legacyOptions.metadataJSON),
                 entries: store.transportationExpenseEntries(for: legacyOptions.bookId)
             ))
+
+        case (.transportationExpense, .xlsx):
+            guard let legacyOptions = resolveLegacyLedgerOptions(
+                selection: ledgerBookSelectionOptions ?? .init(ledgerType: .transportationExpense),
+                source: bookExportSource
+            ) else {
+                throw ExportError.dataUnavailable
+            }
+            let store = LedgerDataStore(modelContext: modelContext)
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportTransportationExpense(
+                    metadata: LedgerBridge.decodeTransportationExpenseMetadata(from: legacyOptions.metadataJSON),
+                    entries: store.transportationExpenseEntries(for: legacyOptions.bookId),
+                    to: path
+                )
+            })
 
         case (.journal, .csv):
             let projected = bookExportSource.journalPayload()

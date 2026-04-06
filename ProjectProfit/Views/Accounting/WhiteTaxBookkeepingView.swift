@@ -8,9 +8,6 @@ struct WhiteTaxBookkeepingView: View {
 
     @State private var selectedYear: Int
     @State private var snapshot: WhiteTaxBookkeepingSnapshot
-    @State private var showShareSheet = false
-    @State private var shareURL: URL?
-    @State private var exportErrorMessage: String?
 
     init() {
         let initialYear = currentTaxYear() - 1
@@ -49,36 +46,15 @@ struct WhiteTaxBookkeepingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("CSVで共有") {
-                        export(format: .csv)
-                    }
-                    Button("PDFで共有") {
-                        export(format: .pdf)
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
+                ExportMenuButton(
+                    target: .whiteTaxBookkeeping,
+                    fiscalYear: selectedYear
+                )
                 .disabled(snapshot.isEmpty)
             }
         }
         .task(id: selectedYear) {
             refreshSnapshot()
-        }
-        .sheet(isPresented: $showShareSheet) {
-            if let shareURL {
-                ShareSheetView(activityItems: [shareURL])
-            }
-        }
-        .alert("出力エラー", isPresented: Binding(
-            get: { exportErrorMessage != nil },
-            set: { if !$0 { exportErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {
-                exportErrorMessage = nil
-            }
-        } message: {
-            Text(exportErrorMessage ?? "")
         }
     }
 
@@ -214,21 +190,5 @@ struct WhiteTaxBookkeepingView: View {
 
     private func refreshSnapshot() {
         snapshot = WhiteTaxBookkeepingQueryUseCase(modelContext: modelContext).snapshot(taxYear: selectedYear)
-    }
-
-    private func export(format: ExportCoordinator.ExportFormat) {
-        do {
-            shareURL = try ExportCoordinator.export(
-                target: .whiteTaxBookkeeping,
-                format: format,
-                fiscalYear: selectedYear,
-                modelContext: modelContext
-            )
-            showShareSheet = true
-        } catch {
-            shareURL = nil
-            showShareSheet = false
-            exportErrorMessage = error.localizedDescription
-        }
     }
 }

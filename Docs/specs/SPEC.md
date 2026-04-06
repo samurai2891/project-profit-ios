@@ -26,9 +26,11 @@ Excelテンプレート16ファイルから抽出した、個人事業主向け�
 注記:
 - 現行 release surface では、帳簿カタログへの導線は `帳簿ワークスペース` に集約される。
 - `棚卸台帳` は帳簿種別ではなく、会計導線上の独立入力画面として扱う。
-- Excel テンプレート準拠の `.xlsx` 出力は、現時点では `現金出納帳 / 預金出納帳 / 売掛帳 / 買掛帳 / 経費帳 / 総勘定元帳 / 仕訳帳 / 白色申告用 簡易帳簿 / 交通費精算書 / 固定資産台帳 / 固定資産台帳 兼 減価償却計算表` に対応する。
-- `ExportCoordinator` 配下の帳票 (`損益計算書 / 貸借対照表 / 残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳`) も `.xlsx` を正式サポートし、`libxlsxwriter` で template descriptor 準拠の workbook を生成する。
-  `残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳` は standalone template asset を正本として report export に接続する。
+- official export matrix 上の `.xlsx` 出力は、帳簿ワークスペース target と帳票 target の両方で公開する。
+- 帳簿ワークスペース側の `.xlsx` 正式対応は `現金出納帳 / 預金出納帳 / 売掛帳 / 買掛帳 / 経費帳 / 総勘定元帳 / 仕訳帳 / 白色申告用 簡易帳簿 / 交通費精算書 / 固定資産台帳 / 固定資産台帳 兼 減価償却計算表` とする。
+- `ExportCoordinator` 配下の帳票 target (`損益計算書 / 貸借対照表 / 残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳 / 減価償却明細表`) も `.xlsx` を正式サポートし、`libxlsxwriter` で template descriptor 準拠の workbook を生成する。
+- `残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳 / 減価償却明細表` は standalone template asset を正本として report export に接続する。
+- `legacyLedgerBook` は互換導線であり、この official export matrix の正本には含めない。
 
 ---
 
