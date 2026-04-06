@@ -3,7 +3,7 @@
 ## 概要
 
 Excelテンプレート16ファイルから抽出した、個人事業主向け会計アプリの台帳データモデル定義。
-CSVおよびPDFで**Excel原本と完全同一フォーマット**で出力可能。
+現行実装では、Excel 対応済み帳簿について `libxlsxwriter` で workbook を生成しつつ、帳簿別テンプレートの見た目に寄せて出力する。
 
 ---
 
@@ -22,6 +22,13 @@ CSVおよびPDFで**Excel原本と完全同一フォーマット**で出力可�
 | 9 | 固定資産台帳 | `fixed_asset_register` | ❌ | koteishisandaicho.xlsx |
 | 10 | 交通費精算書 | `transportation_expense` | ❌ | koutsuhiseisansyo.xlsx |
 | 11 | 白色申告用 簡易帳簿 | `white_tax_bookkeeping` | ✅ | white-tax-return-bookkeeping.xlsx |
+
+注記:
+- 現行 release surface では、帳簿カタログへの導線は `帳簿ワークスペース` に集約される。
+- `棚卸台帳` は帳簿種別ではなく、会計導線上の独立入力画面として扱う。
+- Excel テンプレート準拠の `.xlsx` 出力は、現時点では `現金出納帳 / 預金出納帳 / 売掛帳 / 買掛帳 / 経費帳 / 総勘定元帳 / 仕訳帳 / 白色申告用 簡易帳簿 / 交通費精算書 / 固定資産台帳 / 固定資産台帳 兼 減価償却計算表` に対応する。
+- `ExportCoordinator` 配下の帳票 (`損益計算書 / 貸借対照表 / 残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳`) も `.xlsx` を正式サポートし、`libxlsxwriter` で template descriptor 準拠の workbook を生成する。
+  `残高試算表 / 仕訳帳 / 総勘定元帳 / 固定資産台帳` は standalone template asset を正本として report export に接続する。
 
 ---
 
@@ -189,6 +196,8 @@ CSVおよびPDFで**Excel原本と完全同一フォーマット**で出力可�
 | remarks | 備考 | string | | |
 
 ### 10. 交通費精算書（`transportation_expense`）
+
+現行 release surface では帳簿カタログから作成・閲覧でき、CSV / Excel / PDF のエクスポートに対応する。
 
 **メタデータ:** 年, 月度, 所属, 氏名, 申請日, 精算日
 

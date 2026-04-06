@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path("/Users/yutaro/project-profit-ios")
+INSPECTOR = ROOT / "scripts" / "inspect_xlsx_layout.py"
+
+EXPECTATIONS = {
+    "profit_loss": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "reports" / "project-profit-ios_profit_loss_template.xlsx",
+        "sheet_name": "PL_Form",
+        "rows": {
+            1: ["損益計算書", None, None],
+            2: ["※ 単年度出力用。収入と費用を分けて表示。", None, None],
+            4: ["科目", "収入", "費用"],
+        },
+        "widths": {"A": 34.0, "B": 16.0, "C": 16.0},
+    },
+    "balance_sheet": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "reports" / "project-profit-ios_balance_sheet_template.xlsx",
+        "sheet_name": "BS_Form",
+        "rows": {
+            1: ["貸借対照表", None, None, None, None],
+            2: ["※ 単年度出力用。資産の部と負債・純資産の部を左右に分けて表示。", None, None, None, None],
+            4: ["資産の部", "金額", None, "負債・純資産の部", "金額"],
+        },
+        "widths": {"A": 28.0, "B": 16.0, "C": 4.0, "D": 28.0, "E": 16.0},
+    },
+    "trial_balance": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "ledgers" / "project-profit-ios_trial_balance_template.xlsx",
+        "sheet_name": "L17_TB_Form",
+        "rows": {
+            1: ["残高試算表", None, None, None, None, None],
+            4: ["帳簿名", "残高試算表", None, "※ 青背景=入力、灰背景=計算、黄色背景=注意。Sample は見本入力です。", None, None],
+            9: ["コード", "勘定科目", "区分", "借方", "貸方", "残高"],
+        },
+        "widths": {"A": 10.0, "B": 20.0, "C": 10.0, "D": 12.0, "E": 12.0, "F": 12.0},
+    },
+    "journal": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "ledgers" / "project-profit-ios_journal_template.xlsx",
+        "sheet_name": "L13_Journal_Form",
+        "rows": {
+            1: ["仕訳帳", None, None, None, None, None, None],
+            4: ["帳簿名", "仕訳帳", None, "※ 青背景=入力、灰背景=計算、黄色背景=注意。Sample は見本入力です。", None, None, None],
+            9: ["月", "日", "借方科目", "借方金額", "貸方科目", "貸方金額", "摘要"],
+        },
+        "widths": {"A": 7.0, "B": 7.0, "C": 18.0, "D": 14.0, "E": 18.0, "F": 14.0, "G": 28.0},
+    },
+    "general_ledger": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "ledgers" / "project-profit-ios_general_ledger_template.xlsx",
+        "sheet_name": "L07_GLedStd_Form",
+        "rows": {
+            1: ["総勘定元帳（通常版）", None, None, None, None, None, None],
+            4: ["帳簿名", "総勘定元帳", None, "※ 青背景=入力、灰背景=計算、黄色背景=注意。Sample は見本入力です。", None, None, None],
+            10: ["月", "日", "相手科目", "摘要", "借方", "貸方", "差引残高"],
+        },
+        "widths": {"A": 8.0, "B": 8.0, "C": 18.0, "D": 26.0, "E": 14.0, "F": 14.0, "G": 16.0},
+    },
+    "fixed_assets": {
+        "path": ROOT / "ProjectProfit" / "Ledger" / "Resources" / "excel_templates" / "ledgers" / "project-profit-ios_fixed_asset_depreciation_template.xlsx",
+        "sheet_name": "L15_FixDep_Form",
+        "rows": {
+            1: ["固定資産台帳 兼 減価償却計算表", None, None, None, None, None, None, None, None, None],
+            4: ["帳簿名", "固定資産台帳 兼 減価償却計算表", None, "※ 青背景=入力、灰背景=計算、黄色背景=注意。Sample は見本入力です。", None, None, None, None, None, None],
+            9: ["勘定科目", "資産コード", "資産名", "資産の種類", "状態", "数量", "取得日", "取得価額", "償却方法", "耐用年数"],
+        },
+        "widths": {"A": 14.0, "B": 12.0, "C": 18.0, "D": 14.0, "E": 10.0, "F": 8.0, "G": 12.0, "H": 14.0, "I": 12.0, "J": 10.0},
+    },
+}
+
+
+def inspect(path: Path) -> dict:
+    result = subprocess.run(
+        [sys.executable, str(INSPECTOR), str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"inspect failed: {path}")
+    return json.loads(result.stdout)
+
+
+def compare_cells(actual_row: list, expected_row: list, row_number: int, key: str) -> list[str]:
+    errors: list[str] = []
+    for index, expected in enumerate(expected_row):
+        actual = actual_row[index] if index < len(actual_row) else None
+        if actual != expected:
+            errors.append(
+                f"{key}: row {row_number} col {index + 1} expected {expected!r} but got {actual!r}"
+            )
+    return errors
+
+
+def verify(key: str) -> list[str]:
+    spec = EXPECTATIONS[key]
+    snapshot = inspect(spec["path"])
+    errors: list[str] = []
+
+    if snapshot["sheet_name"] != spec["sheet_name"]:
+        errors.append(
+            f"{key}: expected sheet {spec['sheet_name']!r} but got {snapshot['sheet_name']!r}"
+        )
+
+    rows = snapshot["rows"]
+    for row_number, expected_row in spec["rows"].items():
+        actual_row = rows.get(str(row_number), [])
+        errors.extend(compare_cells(actual_row, expected_row, row_number, key))
+
+    widths = snapshot["widths"]
+    for column, expected_width in spec["widths"].items():
+        actual_width = widths.get(column)
+        if actual_width is None:
+            errors.append(f"{key}: missing width for column {column}")
+            continue
+        if abs(actual_width - expected_width) > 0.01:
+            errors.append(
+                f"{key}: column {column} expected width {expected_width} but got {actual_width}"
+            )
+
+    return errors
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Verify report xlsx templates against golden layout expectations."
+    )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        help="Subset of report templates to verify. Defaults to all.",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    targets = args.targets or list(EXPECTATIONS.keys())
+    unknown = [target for target in targets if target not in EXPECTATIONS]
+    if unknown:
+        valid = ", ".join(sorted(EXPECTATIONS.keys()))
+        for target in unknown:
+            print(f"unknown target: {target} (valid: {valid})", file=sys.stderr)
+        return 2
+    all_errors: list[str] = []
+
+    for key in targets:
+        errors = verify(key)
+        if errors:
+            all_errors.extend(errors)
+        else:
+            print(f"PASS {key}")
+
+    if all_errors:
+        for error in all_errors:
+            print(f"FAIL {error}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
