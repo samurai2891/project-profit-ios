@@ -9,11 +9,13 @@ enum ExportCoordinator {
     enum ExportFormat: String, CaseIterable, Sendable {
         case csv
         case pdf
+        case xlsx
 
         var label: String {
             switch self {
             case .csv: "CSV"
             case .pdf: "PDF"
+            case .xlsx: "Excel"
             }
         }
 
@@ -136,6 +138,17 @@ enum ExportCoordinator {
             )
             return .data(pdf)
 
+        case (.journal, .xlsx):
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportJournalReport(
+                    entries: projected.entries,
+                    lines: projected.lines,
+                    accounts: accounts,
+                    fiscalYear: fiscalYear,
+                    to: path
+                )
+            })
+
         // MARK: Profit & Loss
         case (.profitLoss, .csv):
             let report = AccountingReportService.generateProfitLoss(
@@ -156,6 +169,18 @@ enum ExportCoordinator {
                 startMonth: startMonth
             )
             return .data(PDFExportService.exportProfitLossPDF(report: report))
+
+        case (.profitLoss, .xlsx):
+            let report = AccountingReportService.generateProfitLoss(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportProfitLossReport(report: report, to: path)
+            })
 
         // MARK: Balance Sheet
         case (.balanceSheet, .csv):
@@ -178,6 +203,18 @@ enum ExportCoordinator {
             )
             return .data(PDFExportService.exportBalanceSheetPDF(report: report))
 
+        case (.balanceSheet, .xlsx):
+            let report = AccountingReportService.generateBalanceSheet(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportBalanceSheetReport(report: report, to: path)
+            })
+
         // MARK: Trial Balance
         case (.trialBalance, .csv):
             let report = AccountingReportService.generateTrialBalance(
@@ -199,6 +236,18 @@ enum ExportCoordinator {
             )
             return .data(PDFExportService.exportTrialBalancePDF(report: report))
 
+        case (.trialBalance, .xlsx):
+            let report = AccountingReportService.generateTrialBalance(
+                fiscalYear: fiscalYear,
+                accounts: accounts,
+                journalEntries: projected.entries,
+                journalLines: projected.lines,
+                startMonth: startMonth
+            )
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportTrialBalanceReport(report: report, to: path)
+            })
+
         // MARK: Ledger
         case (.ledger, .csv):
             guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
@@ -218,6 +267,48 @@ enum ExportCoordinator {
                 entries: entries,
                 fiscalYear: fiscalYear
             ))
+
+        case (.ledger, .xlsx):
+            guard let opts = ledgerOptions else { throw ExportError.ledgerAccountRequired }
+            let entries = dataStore.getLedgerEntries(accountId: opts.accountId)
+            let account = dataStore.accounts.first { $0.id == opts.accountId }
+            let isDebitNormal = account?.normalBalance == .debit
+            let openingBalance: Int
+            if let first = entries.first {
+                if isDebitNormal {
+                    openingBalance = first.runningBalance - first.debit + first.credit
+                } else {
+                    openingBalance = first.runningBalance - first.credit + first.debit
+                }
+            } else {
+                openingBalance = 0
+            }
+
+            let accountNames = Dictionary(uniqueKeysWithValues: dataStore.accounts.map { ($0.id, $0.name) })
+            let entryIdsByLine = Dictionary(uniqueKeysWithValues: dataStore.journalLines.map { ($0.id, $0.entryId) })
+            let linesByEntry = Dictionary(grouping: dataStore.journalLines, by: \.entryId)
+            let counterpartyNames = Dictionary(uniqueKeysWithValues: entries.map { entry in
+                let counterpartNames = entryIdsByLine[entry.id]
+                    .flatMap { linesByEntry[$0] }?
+                    .filter { $0.id != entry.id }
+                    .compactMap { accountNames[$0.accountId] } ?? []
+                var seen = Set<String>()
+                let counterpart = counterpartNames.filter { seen.insert($0).inserted }.joined(separator: " / ")
+                return (entry.id, counterpart.isEmpty ? (entry.counterparty ?? "") : counterpart)
+            })
+
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportLedgerReport(
+                    accountName: opts.accountName,
+                    accountCode: opts.accountCode,
+                    accountTypeLabel: account?.accountType.label ?? "",
+                    openingBalance: openingBalance,
+                    entries: entries,
+                    counterpartyNames: counterpartyNames,
+                    fiscalYear: fiscalYear,
+                    to: path
+                )
+            })
 
         // MARK: Fixed Assets
         case (.fixedAssets, .csv):
@@ -250,6 +341,25 @@ enum ExportCoordinator {
                     return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
                 }
             ))
+
+        case (.fixedAssets, .xlsx):
+            let assets = dataStore.fixedAssets
+            return .data(try generateSpreadsheetData(fileExtension: "xlsx") { path in
+                LedgerExcelExportService.shared.exportFixedAssetsReport(
+                    assets: assets,
+                    fiscalYear: fiscalYear,
+                    calculateAccumulated: { asset in
+                        let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                        guard let calc = DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior) else { return prior }
+                        return calc.accumulatedDepreciation
+                    },
+                    calculateCurrentYear: { asset in
+                        let prior = dataStore.calculatePriorAccumulatedDepreciation(asset: asset, beforeYear: fiscalYear)
+                        return DepreciationEngine.calculate(asset: asset, fiscalYear: fiscalYear, priorAccumulatedDepreciation: prior)?.annualAmount ?? 0
+                    },
+                    to: path
+                )
+            })
         }
     }
 
@@ -285,5 +395,22 @@ enum ExportCoordinator {
         }
 
         return fileURL
+    }
+
+    private static func generateSpreadsheetData(
+        fileExtension: String,
+        builder: (String) -> Void
+    ) throws -> Data {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        builder(tempURL.path)
+
+        guard FileManager.default.fileExists(atPath: tempURL.path) else {
+            throw ExportError.fileWriteFailed
+        }
+        return try Data(contentsOf: tempURL)
     }
 }

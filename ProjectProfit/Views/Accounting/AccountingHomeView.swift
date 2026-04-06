@@ -1,8 +1,16 @@
 import SwiftData
 import SwiftUI
 
+enum AccountingReleaseCatalog {
+    static let ledgerWorkspaceTitle = "帳簿ワークスペース"
+    static let inventoryLedgerTitle = "棚卸台帳"
+    static let legacyLedgerTitle = "台帳管理"
+    static let relevantTitles = [ledgerWorkspaceTitle, inventoryLedgerTitle]
+}
+
 struct AccountingHomeView: View {
     @Environment(DataStore.self) private var dataStore
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: AccountingHomeViewModel?
 
     var body: some View {
@@ -156,20 +164,16 @@ struct AccountingHomeView: View {
                 subtitle: "全固定資産の減価償却スケジュール",
                 destination: FixedAssetScheduleView()
             )
-            #if DEBUG
-            if FeatureFlags.useLegacyLedger {
-                navigationRow(
-                    icon: "books.vertical",
-                    title: "台帳管理",
-                    subtitle: "各種台帳の作成・管理・エクスポート",
-                    destination: LegacyLedgerHomeContainerView()
-                )
-            }
-            #endif
+            navigationRow(
+                icon: "books.vertical",
+                title: AccountingReleaseCatalog.ledgerWorkspaceTitle,
+                subtitle: "各種帳簿の作成・管理・エクスポート",
+                destination: LedgerWorkspaceContainerView(modelContext: modelContext)
+            )
             navigationRow(
                 icon: "cart",
-                title: "棚卸入力",
-                subtitle: "在庫・仕入高・売上原価の管理",
+                title: AccountingReleaseCatalog.inventoryLedgerTitle,
+                subtitle: "在庫・仕入高・売上原価の確認と更新",
                 destination: InventoryInputView()
             )
             navigationRow(
@@ -229,8 +233,8 @@ struct AccountingHomeView: View {
     }
 }
 
-private struct LegacyLedgerHomeContainerView: View {
-    @Environment(\.modelContext) private var modelContext
+private struct LedgerWorkspaceContainerView: View {
+    let modelContext: ModelContext
     @State private var ledgerStore: LedgerDataStore?
 
     var body: some View {
@@ -246,7 +250,7 @@ private struct LegacyLedgerHomeContainerView: View {
             if ledgerStore == nil {
                 ledgerStore = LedgerDataStore(
                     modelContext: modelContext,
-                    accessMode: .readOnly
+                    accessMode: .readWrite
                 )
             }
         }

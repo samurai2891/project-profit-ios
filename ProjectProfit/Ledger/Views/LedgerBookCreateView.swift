@@ -28,7 +28,7 @@ struct LedgerBookCreateView: View {
     }
 
     // 台帳種類のグループ定義
-    private static let baseTypes: [LedgerType] = [
+    static let catalogTypes: [LedgerType] = [
         .cashBook, .bankAccountBook, .accountsReceivable, .accountsPayable,
         .expenseBook, .generalLedger, .journal,
         .fixedAssetDepreciation, .fixedAssetRegister,
@@ -46,7 +46,7 @@ struct LedgerBookCreateView: View {
 
             Section("台帳の種類") {
                 Picker("種類", selection: $selectedType) {
-                    ForEach(Self.baseTypes, id: \.self) { type in
+                    ForEach(Self.catalogTypes, id: \.self) { type in
                         Text(type.displayName).tag(type)
                     }
                 }

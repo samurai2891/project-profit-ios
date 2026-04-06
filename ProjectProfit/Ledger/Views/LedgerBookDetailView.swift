@@ -31,6 +31,11 @@ struct LedgerBookDetailView: View {
         Dictionary(uniqueKeysWithValues: balanceRows.map { ($0.id, $0.balance) })
     }
 
+    private var supportedExportFormats: Set<LedgerDataStore.ExportFormatCapability> {
+        guard let ledgerType = book?.ledgerType else { return [] }
+        return LedgerDataStore.supportedExportFormats(for: ledgerType)
+    }
+
     var body: some View {
         Group {
             if rawEntries.isEmpty {
@@ -46,9 +51,15 @@ struct LedgerBookDetailView: View {
                 HStack(spacing: 12) {
                     Menu {
                         if !rawEntries.isEmpty {
-                            Button("CSV出力") { exportCSV() }
-                            Button("Excel出力") { exportExcel() }
-                            Button("PDF出力") { exportPDF() }
+                            if supportedExportFormats.contains(.csv) {
+                                Button("CSV出力") { exportCSV() }
+                            }
+                            if supportedExportFormats.contains(.excel) {
+                                Button("Excel出力") { exportExcel() }
+                            }
+                            if supportedExportFormats.contains(.pdf) {
+                                Button("PDF出力") { exportPDF() }
+                            }
                         }
                         if !ledgerStore.isReadOnly {
                             if !rawEntries.isEmpty {

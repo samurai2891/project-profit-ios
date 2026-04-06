@@ -370,6 +370,57 @@ final class LedgerDataStoreTests: XCTestCase {
         XCTAssertTrue(csv!.contains("〇"))
     }
 
+    // MARK: - Phase 1 Catalog Alignment
+
+    func testCatalogTypesIncludeTransportationExpense() {
+        XCTAssertTrue(LedgerBookCreateView.catalogTypes.contains(.transportationExpense))
+    }
+
+    func testLedgerTypesDoNotExposeInventoryLedger() {
+        XCTAssertFalse(LedgerType.allCases.contains { $0.rawValue == "inventory" })
+    }
+
+    func testSupportedExportFormatsForTransportationIncludeExcel() {
+        let formats = LedgerDataStore.supportedExportFormats(for: .transportationExpense)
+
+        XCTAssertEqual(formats, [.csv, .excel, .pdf])
+    }
+
+    func testSupportedExportFormatsForCashBookRemainAllFormats() {
+        let formats = LedgerDataStore.supportedExportFormats(for: .cashBook)
+
+        XCTAssertEqual(formats, [.csv, .excel, .pdf])
+    }
+
+    func testSupportedExportFormatsForExcelEnabledLedgersMatchImplementation() {
+        let excelEnabledLedgers: [LedgerType] = [
+            .cashBook, .cashBookInvoice,
+            .bankAccountBook, .bankAccountBookInvoice,
+            .expenseBook, .expenseBookInvoice,
+            .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice,
+            .accountsReceivable, .accountsPayable,
+            .generalLedger, .generalLedgerInvoice,
+            .journal,
+            .transportationExpense,
+            .fixedAssetRegister,
+            .fixedAssetDepreciation
+        ]
+
+        for ledgerType in excelEnabledLedgers {
+            XCTAssertTrue(
+                LedgerDataStore.supportedExportFormats(for: ledgerType).contains(.excel),
+                "\(ledgerType.rawValue) should expose Excel export"
+            )
+        }
+    }
+
+    func testAccountingReleaseCatalogUsesWorkspaceAndInventoryTitles() {
+        XCTAssertTrue(AccountingReleaseCatalog.relevantTitles.contains(AccountingReleaseCatalog.ledgerWorkspaceTitle))
+        XCTAssertTrue(AccountingReleaseCatalog.relevantTitles.contains(AccountingReleaseCatalog.inventoryLedgerTitle))
+        XCTAssertFalse(AccountingReleaseCatalog.relevantTitles.contains(AccountingReleaseCatalog.legacyLedgerTitle))
+        XCTAssertEqual(AccountingReleaseCatalog.inventoryLedgerTitle, "棚卸台帳")
+    }
+
     // MARK: - Final Balance
 
     func testFinalBalance() {
@@ -427,5 +478,529 @@ final class LedgerDataStoreTests: XCTestCase {
         XCTAssertNotNil(readOnlyStore.book(for: book.id))
         XCTAssertEqual(readOnlyStore.fetchRawEntries(for: book.id).count, 0)
         XCTAssertEqual(readOnlyStore.lastError?.errorDescription, "旧台帳は読み取り専用です")
+    }
+
+    // MARK: - Excel Export Smoke Tests
+
+    func testExportExcelCreatesXLSXForCashBook() throws {
+        let metadataJSON = LedgerBridge.encodeCashBookMetadata(CashBookMetadata(carryForward: 100000))
+        let book = store.createBook(ledgerType: .cashBook, title: "現金出納帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: CashBookEntry(month: 1, day: 5, description: "売上", account: "売上高", income: 50000))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "現金出納帳")
+    }
+
+    func testExportExcelCreatesXLSXForAccountsReceivable() throws {
+        let metadataJSON = LedgerBridge.encodeAccountsReceivableMetadata(
+            AccountsReceivableMetadata(clientName: "得意先A", carryForward: 10000)
+        )
+        let book = store.createBook(ledgerType: .accountsReceivable, title: "売掛帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: AccountsReceivableEntry(month: 2, day: 10, counterAccount: "売上高", description: "請求", salesAmount: 80000))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "売掛帳")
+    }
+
+    func testExportExcelCreatesXLSXForExpenseBook() throws {
+        let metadataJSON = LedgerBridge.encodeExpenseBookMetadata(
+            ExpenseBookMetadata(accountName: "消耗品費")
+        )
+        let book = store.createBook(ledgerType: .expenseBook, title: "経費帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: ExpenseBookEntry(
+            month: 2,
+            day: 8,
+            counterAccount: "現金",
+            description: "文具",
+            amount: 2400
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "経費帳")
+    }
+
+    func testExportExcelCreatesXLSXForGeneralLedger() throws {
+        let metadataJSON = LedgerBridge.encodeGeneralLedgerMetadata(
+            GeneralLedgerMetadata(accountName: "現金", accountAttribute: .asset, carryForward: 20000)
+        )
+        let book = store.createBook(ledgerType: .generalLedger, title: "総勘定元帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: GeneralLedgerEntry(
+            month: 3,
+            day: 1,
+            counterAccount: "売上高",
+            description: "売上",
+            debit: 30000
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "総勘定元帳")
+    }
+
+    func testExportExcelCreatesXLSXForJournal() throws {
+        let book = store.createBook(ledgerType: .journal, title: "仕訳帳")!
+        store.addEntry(to: book.id, entry: JournalEntry(
+            month: 4,
+            day: 1,
+            description: "売上計上",
+            debitAccount: "現金",
+            debitAmount: 10000,
+            creditAccount: "売上高",
+            creditAmount: 10000
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "仕訳帳")
+    }
+
+    func testExportExcelCreatesXLSXForWhiteTaxBookkeeping() throws {
+        let metadataJSON = LedgerBridge.encodeWhiteTaxBookkeepingMetadata(
+            WhiteTaxBookkeepingMetadata(fiscalYear: 2025)
+        )
+        let book = store.createBook(ledgerType: .whiteTaxBookkeeping, title: "白色申告用 簡易帳簿", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: WhiteTaxBookkeepingEntry(
+            id: UUID(),
+            month: 3,
+            day: 12,
+            description: "売上と仕入",
+            salesAmount: 50000,
+            miscIncome: nil,
+            purchases: 12000,
+            salaries: nil,
+            outsourcing: nil,
+            depreciation: nil,
+            badDebts: nil,
+            rent: nil,
+            interestDiscount: nil,
+            taxesDuties: nil,
+            packingShipping: nil,
+            utilities: nil,
+            travelTransport: nil,
+            communication: nil,
+            advertising: nil,
+            entertainment: nil,
+            insurance: nil,
+            repairs: nil,
+            supplies: 800,
+            welfare: nil,
+            miscellaneous: nil,
+            reducedTax: nil,
+            invoiceType: nil
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "白色申告用 簡易帳簿")
+    }
+
+    func testExportExcelCreatesXLSXForTransportationExpense() throws {
+        let metadataJSON = LedgerBridge.encodeTransportationExpenseMetadata(
+            TransportationExpenseMetadata(
+                year: 2025,
+                monthPeriod: 4,
+                department: "営業部",
+                employeeName: "田中",
+                requestDate: "2025-04-30",
+                settlementDate: "2025-05-10"
+            )
+        )
+        let book = store.createBook(ledgerType: .transportationExpense, title: "交通費精算書", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: TransportationExpenseEntry(
+            id: UUID(),
+            date: "2025-04-10",
+            destination: "新宿",
+            purpose: "商談",
+            transportMethod: "電車",
+            routeFrom: "渋谷",
+            routeTo: "新宿",
+            tripType: .roundTrip,
+            amount: 420
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "交通費精算書")
+    }
+
+    func testExportExcelCreatesXLSXForFixedAssetRegister() throws {
+        let metadataJSON = LedgerBridge.encodeFixedAssetRegisterMetadata(
+            FixedAssetRegisterMetadata(
+                assetName: "ノートPC",
+                assetNumber: "FA-001",
+                assetType: "工具器具備品",
+                acquisitionDate: "2024-01-01",
+                location: "東京",
+                usefulLife: 4,
+                depreciationMethod: "定額法",
+                depreciationRate: 0.25
+            )
+        )
+        let book = store.createBook(ledgerType: .fixedAssetRegister, title: "固定資産台帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: FixedAssetRegisterEntry(
+            id: UUID(),
+            date: "2024-01-01",
+            description: "取得",
+            acquiredQuantity: 1,
+            acquiredUnitPrice: 120000,
+            acquiredAmount: 120000,
+            depreciationAmount: 30000,
+            disposalQuantity: nil,
+            disposalAmount: nil,
+            businessUseRatio: 1.0,
+            remarks: "事業用"
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "固定資産台帳")
+    }
+
+    func testExportExcelCreatesXLSXForFixedAssetDepreciation() throws {
+        let book = store.createBook(ledgerType: .fixedAssetDepreciation, title: "固定資産台帳 兼 減価償却計算表")!
+        store.addEntry(to: book.id, entry: FixedAssetDepreciationEntry(
+            account: "工具器具備品",
+            assetCode: "FA-002",
+            assetName: "デスクトップPC",
+            assetType: "工具器具備品",
+            status: "使用中",
+            acquisitionDate: "2024-01-01",
+            acquisitionCost: 200000,
+            depreciationMethod: .straightLine,
+            usefulLife: 4,
+            depreciationRate: 0.25,
+            depreciationMonths: 12,
+            openingBookValue: 200000,
+            businessUseRatio: 1.0,
+            remarks: "年度償却"
+        ))
+
+        try assertExcelArchiveExport(bookId: book.id, expectedSheetName: "固定資産台帳 兼 減価償却計算表")
+    }
+
+    func testMaterializeLedgerXLSXGoldenFixtures() throws {
+        let outputDirectory = try makeLedgerGoldenOutputDirectory()
+
+        try materializeLedgerFixture(
+            book: createCashBookFixture(ledgerType: .cashBook),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createCashBookFixture(ledgerType: .cashBookInvoice),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createBankBookFixture(ledgerType: .bankAccountBook),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createBankBookFixture(ledgerType: .bankAccountBookInvoice),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createAccountsReceivableFixture(),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createAccountsPayableFixture(),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createExpenseBookFixture(ledgerType: .expenseBook),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createExpenseBookFixture(ledgerType: .expenseBookInvoice),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createGeneralLedgerFixture(ledgerType: .generalLedger),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createGeneralLedgerFixture(ledgerType: .generalLedgerInvoice),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createJournalFixture(),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createWhiteTaxFixture(ledgerType: .whiteTaxBookkeeping),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createWhiteTaxFixture(ledgerType: .whiteTaxBookkeepingInvoice),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createTransportationFixture(),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createFixedAssetRegisterFixture(),
+            outputDirectory: outputDirectory
+        )
+        try materializeLedgerFixture(
+            book: createFixedAssetDepreciationFixture(),
+            outputDirectory: outputDirectory
+        )
+    }
+
+    private func assertExcelArchiveExport(bookId: UUID, expectedSheetName: String) throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("xlsx")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let success = store.exportExcel(for: bookId, to: url.path)
+
+        XCTAssertTrue(success)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        let data = try Data(contentsOf: url)
+        XCTAssertGreaterThan(data.count, 1000)
+        XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B], "xlsx should be a ZIP archive")
+
+        let book = store.book(for: bookId)
+        let descriptor = LedgerExcelExportService.templateDescriptor(for: book!.ledgerType!)
+        XCTAssertEqual(descriptor?.worksheetName, expectedSheetName)
+    }
+
+    private func makeLedgerGoldenOutputDirectory() throws -> URL {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directory = root.appendingPathComponent(".golden-generated-ledger-xlsx", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func materializeLedgerFixture(book: SDLedgerBook, outputDirectory: URL) throws {
+        let ledgerType = try XCTUnwrap(book.ledgerType)
+        let destination = outputDirectory.appendingPathComponent("\(ledgerType.rawValue).xlsx")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        XCTAssertTrue(store.exportExcel(for: book.id, to: destination.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    private func createCashBookFixture(ledgerType: LedgerType) -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeCashBookMetadata(CashBookMetadata(carryForward: 100000))
+        let book = store.createBook(ledgerType: ledgerType, title: ledgerType.displayName, metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: CashBookEntry(
+            month: 1,
+            day: 5,
+            description: "売上",
+            account: "売上高",
+            income: 50000,
+            reducedTax: ledgerType == .cashBookInvoice ? true : nil,
+            invoiceType: ledgerType == .cashBookInvoice ? .applicable : nil
+        ))
+        return book
+    }
+
+    private func createBankBookFixture(ledgerType: LedgerType) -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeBankAccountBookMetadata(
+            BankAccountBookMetadata(
+                bankName: "テスト銀行",
+                branchName: "本店",
+                accountType: "普通",
+                carryForward: 500000
+            )
+        )
+        let book = store.createBook(ledgerType: ledgerType, title: ledgerType.displayName, metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: BankAccountBookEntry(
+            month: 2,
+            day: 1,
+            description: "振込入金",
+            account: "売掛金",
+            deposit: 200000,
+            reducedTax: ledgerType == .bankAccountBookInvoice ? true : nil,
+            invoiceType: ledgerType == .bankAccountBookInvoice ? .applicable : nil
+        ))
+        return book
+    }
+
+    private func createAccountsReceivableFixture() -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeAccountsReceivableMetadata(
+            AccountsReceivableMetadata(clientName: "得意先A", carryForward: 10000)
+        )
+        let book = store.createBook(ledgerType: .accountsReceivable, title: "売掛帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: AccountsReceivableEntry(
+            month: 2,
+            day: 10,
+            counterAccount: "売上高",
+            description: "請求",
+            quantity: 2,
+            unitPrice: 40000,
+            salesAmount: 80000
+        ))
+        return book
+    }
+
+    private func createAccountsPayableFixture() -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeAccountsPayableMetadata(
+            AccountsPayableMetadata(supplierName: "仕入先A", carryForward: 20000)
+        )
+        let book = store.createBook(ledgerType: .accountsPayable, title: "買掛帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: AccountsPayableEntry(
+            month: 2,
+            day: 18,
+            counterAccount: "仕入高",
+            description: "部材仕入",
+            quantity: 4,
+            unitPrice: 5000,
+            purchaseAmount: 20000
+        ))
+        return book
+    }
+
+    private func createExpenseBookFixture(ledgerType: LedgerType) -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeExpenseBookMetadata(
+            ExpenseBookMetadata(accountName: "消耗品費")
+        )
+        let book = store.createBook(ledgerType: ledgerType, title: ledgerType.displayName, metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: ExpenseBookEntry(
+            month: 2,
+            day: 8,
+            counterAccount: "現金",
+            description: "文具",
+            amount: 2400,
+            reducedTax: ledgerType == .expenseBookInvoice ? true : nil,
+            invoiceType: ledgerType == .expenseBookInvoice ? .applicable : nil
+        ))
+        return book
+    }
+
+    private func createGeneralLedgerFixture(ledgerType: LedgerType) -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeGeneralLedgerMetadata(
+            GeneralLedgerMetadata(accountName: "現金", accountAttribute: .asset, carryForward: 20000)
+        )
+        let book = store.createBook(ledgerType: ledgerType, title: ledgerType.displayName, metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: GeneralLedgerEntry(
+            month: 3,
+            day: 1,
+            counterAccount: "売上高",
+            description: "売上",
+            debit: 30000,
+            reducedTax: ledgerType == .generalLedgerInvoice ? true : nil,
+            invoiceType: ledgerType == .generalLedgerInvoice ? .applicable : nil
+        ))
+        return book
+    }
+
+    private func createJournalFixture() -> SDLedgerBook {
+        let book = store.createBook(ledgerType: .journal, title: "仕訳帳")!
+        store.addEntry(to: book.id, entry: JournalEntry(
+            month: 4,
+            day: 1,
+            description: "売上計上",
+            debitAccount: "現金",
+            debitAmount: 10000,
+            creditAccount: "売上高",
+            creditAmount: 10000
+        ))
+        return book
+    }
+
+    private func createWhiteTaxFixture(ledgerType: LedgerType) -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeWhiteTaxBookkeepingMetadata(
+            WhiteTaxBookkeepingMetadata(fiscalYear: 2025)
+        )
+        let book = store.createBook(ledgerType: ledgerType, title: ledgerType.displayName, metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: WhiteTaxBookkeepingEntry(
+            id: UUID(),
+            month: 3,
+            day: 12,
+            description: "売上と仕入",
+            salesAmount: 50000,
+            miscIncome: 3000,
+            purchases: 12000,
+            salaries: nil,
+            outsourcing: nil,
+            depreciation: nil,
+            badDebts: nil,
+            rent: nil,
+            interestDiscount: nil,
+            taxesDuties: nil,
+            packingShipping: nil,
+            utilities: nil,
+            travelTransport: 1500,
+            communication: nil,
+            advertising: nil,
+            entertainment: nil,
+            insurance: nil,
+            repairs: nil,
+            supplies: 800,
+            welfare: nil,
+            miscellaneous: nil,
+            reducedTax: ledgerType == .whiteTaxBookkeepingInvoice ? true : nil,
+            invoiceType: ledgerType == .whiteTaxBookkeepingInvoice ? .applicable : nil
+        ))
+        return book
+    }
+
+    private func createTransportationFixture() -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeTransportationExpenseMetadata(
+            TransportationExpenseMetadata(
+                year: 2025,
+                monthPeriod: 4,
+                department: "営業部",
+                employeeName: "田中",
+                requestDate: "2025-04-30",
+                settlementDate: "2025-05-10"
+            )
+        )
+        let book = store.createBook(ledgerType: .transportationExpense, title: "交通費精算書", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: TransportationExpenseEntry(
+            id: UUID(),
+            date: "2025-04-10",
+            destination: "新宿",
+            purpose: "商談",
+            transportMethod: "電車",
+            routeFrom: "渋谷",
+            routeTo: "新宿",
+            tripType: .roundTrip,
+            amount: 420
+        ))
+        return book
+    }
+
+    private func createFixedAssetRegisterFixture() -> SDLedgerBook {
+        let metadataJSON = LedgerBridge.encodeFixedAssetRegisterMetadata(
+            FixedAssetRegisterMetadata(
+                assetName: "ノートPC",
+                assetNumber: "FA-001",
+                assetType: "工具器具備品",
+                acquisitionDate: "2024-01-01",
+                location: "東京",
+                usefulLife: 4,
+                depreciationMethod: "定額法",
+                depreciationRate: 0.25
+            )
+        )
+        let book = store.createBook(ledgerType: .fixedAssetRegister, title: "固定資産台帳", metadataJSON: metadataJSON)!
+        store.addEntry(to: book.id, entry: FixedAssetRegisterEntry(
+            id: UUID(),
+            date: "2024-01-01",
+            description: "取得",
+            acquiredQuantity: 1,
+            acquiredUnitPrice: 120000,
+            acquiredAmount: 120000,
+            depreciationAmount: 30000,
+            disposalQuantity: nil,
+            disposalAmount: nil,
+            businessUseRatio: 1.0,
+            remarks: "事業用"
+        ))
+        return book
+    }
+
+    private func createFixedAssetDepreciationFixture() -> SDLedgerBook {
+        let book = store.createBook(ledgerType: .fixedAssetDepreciation, title: "固定資産台帳 兼 減価償却計算表")!
+        store.addEntry(to: book.id, entry: FixedAssetDepreciationEntry(
+            account: "工具器具備品",
+            assetCode: "FA-002",
+            assetName: "デスクトップPC",
+            assetType: "工具器具備品",
+            status: "使用中",
+            acquisitionDate: "2024-01-01",
+            acquisitionCost: 200000,
+            depreciationMethod: .straightLine,
+            usefulLife: 4,
+            depreciationRate: 0.25,
+            depreciationMonths: 12,
+            openingBookValue: 200000,
+            businessUseRatio: 1.0,
+            remarks: "年度償却"
+        ))
+        return book
     }
 }

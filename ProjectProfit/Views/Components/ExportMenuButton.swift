@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct ExportMenuButton: View {
-    let csvGenerator: () -> String
-    let pdfGenerator: () -> Data
-    let fileNamePrefix: String
+    let target: ExportCoordinator.ExportTarget
+    let fiscalYear: Int
+    let dataStore: DataStore
+    let ledgerOptions: ExportCoordinator.LedgerExportOptions?
 
     @State private var showShareSheet = false
     @State private var shareURL: URL?
 
-    /// ExportCoordinator 経由でエクスポートするコンビニエンスイニシャライザ
     @MainActor
     init(
         target: ExportCoordinator.ExportTarget,
@@ -16,45 +16,20 @@ struct ExportMenuButton: View {
         dataStore: DataStore,
         ledgerOptions: ExportCoordinator.LedgerExportOptions? = nil
     ) {
-        self.fileNamePrefix = target.label
-        self.csvGenerator = {
-            guard let url = try? ExportCoordinator.export(
-                target: target,
-                format: .csv,
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                ledgerOptions: ledgerOptions
-            ),
-            let data = try? Data(contentsOf: url),
-            let text = String(data: data, encoding: .utf8)
-            else { return "" }
-            return text
-        }
-        self.pdfGenerator = {
-            guard let url = try? ExportCoordinator.export(
-                target: target,
-                format: .pdf,
-                fiscalYear: fiscalYear,
-                dataStore: dataStore,
-                ledgerOptions: ledgerOptions
-            ),
-            let data = try? Data(contentsOf: url)
-            else { return Data() }
-            return data
-        }
+        self.target = target
+        self.fiscalYear = fiscalYear
+        self.dataStore = dataStore
+        self.ledgerOptions = ledgerOptions
     }
 
     var body: some View {
         Menu {
-            Button {
-                shareCSV()
-            } label: {
-                Label("CSVで共有", systemImage: "tablecells")
-            }
-            Button {
-                sharePDF()
-            } label: {
-                Label("PDFで共有", systemImage: "doc.richtext")
+            ForEach(ExportCoordinator.ExportFormat.allCases, id: \.self) { format in
+                Button {
+                    share(format: format)
+                } label: {
+                    Label("\(format.label)で共有", systemImage: iconName(for: format))
+                }
             }
         } label: {
             Image(systemName: "square.and.arrow.up")
@@ -66,37 +41,26 @@ struct ExportMenuButton: View {
         }
     }
 
-    private func shareCSV() {
-        let csv = csvGenerator()
-        let fileName = "\(fileNamePrefix)_\(formattedDate()).csv"
-        guard let data = csv.data(using: .utf8) else { return }
-        guard let url = writeTempFile(content: data, fileName: fileName) else { return }
+    private func share(format: ExportCoordinator.ExportFormat) {
+        guard let url = try? ExportCoordinator.export(
+            target: target,
+            format: format,
+            fiscalYear: fiscalYear,
+            dataStore: dataStore,
+            ledgerOptions: ledgerOptions
+        ) else { return }
         shareURL = url
         showShareSheet = true
     }
 
-    private func sharePDF() {
-        let data = pdfGenerator()
-        let fileName = "\(fileNamePrefix)_\(formattedDate()).pdf"
-        guard let url = writeTempFile(content: data, fileName: fileName) else { return }
-        shareURL = url
-        showShareSheet = true
-    }
-
-    private func writeTempFile(content: Data, fileName: String) -> URL? {
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
-        do {
-            try content.write(to: fileURL)
-            return fileURL
-        } catch {
-            return nil
+    private func iconName(for format: ExportCoordinator.ExportFormat) -> String {
+        switch format {
+        case .csv:
+            return "tablecells"
+        case .pdf:
+            return "doc.richtext"
+        case .xlsx:
+            return "tablecells.badge.ellipsis"
         }
-    }
-
-    private func formattedDate() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        return formatter.string(from: Date())
     }
 }

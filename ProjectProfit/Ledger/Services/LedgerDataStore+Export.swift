@@ -6,6 +6,27 @@
 import Foundation
 
 extension LedgerDataStore {
+    enum ExportFormatCapability: String, CaseIterable, Sendable {
+        case csv
+        case excel
+        case pdf
+    }
+
+    static func supportedExportFormats(for ledgerType: LedgerType) -> Set<ExportFormatCapability> {
+        switch ledgerType {
+        case .cashBook, .cashBookInvoice,
+             .bankAccountBook, .bankAccountBookInvoice,
+             .accountsReceivable, .accountsPayable,
+             .expenseBook, .expenseBookInvoice,
+             .generalLedger, .generalLedgerInvoice,
+             .journal,
+             .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice,
+             .transportationExpense,
+             .fixedAssetDepreciation,
+             .fixedAssetRegister:
+            return [.csv, .excel, .pdf]
+        }
+    }
 
     /// 台帳のCSV出力文字列を生成する
     func exportCSV(for bookId: UUID) -> String? {
@@ -120,6 +141,14 @@ extension LedgerDataStore {
                 metadata: metadata, entries: entries, to: path
             )
 
+        case .expenseBook, .expenseBookInvoice:
+            let metadata = LedgerBridge.decodeExpenseBookMetadata(from: book.metadataJSON)
+            let entries = expenseBookEntries(for: bookId)
+            service.exportExpenseBook(
+                metadata: metadata, entries: entries,
+                includeInvoice: includeInvoice, to: path
+            )
+
         case .generalLedger, .generalLedgerInvoice:
             let metadata = LedgerBridge.decodeGeneralLedgerMetadata(from: book.metadataJSON)
             let entries = generalLedgerEntries(for: bookId)
@@ -132,8 +161,31 @@ extension LedgerDataStore {
             let entries = journalEntries(for: bookId)
             service.exportJournal(entries: entries, to: path)
 
-        default:
-            return false
+        case .transportationExpense:
+            let metadata = LedgerBridge.decodeTransportationExpenseMetadata(from: book.metadataJSON)
+            let entries = transportationExpenseEntries(for: bookId)
+            service.exportTransportationExpense(
+                metadata: metadata, entries: entries, to: path
+            )
+
+        case .whiteTaxBookkeeping, .whiteTaxBookkeepingInvoice:
+            let metadata = LedgerBridge.decodeWhiteTaxBookkeepingMetadata(from: book.metadataJSON)
+            let entries = whiteTaxBookkeepingEntries(for: bookId)
+            service.exportWhiteTaxBookkeeping(
+                metadata: metadata, entries: entries,
+                includeInvoice: includeInvoice, to: path
+            )
+
+        case .fixedAssetDepreciation:
+            let entries = fixedAssetDepreciationEntries(for: bookId)
+            service.exportFixedAssetDepreciation(entries: entries, to: path)
+
+        case .fixedAssetRegister:
+            let metadata = LedgerBridge.decodeFixedAssetRegisterMetadata(from: book.metadataJSON)
+            let entries = fixedAssetRegisterEntries(for: bookId)
+            service.exportFixedAssetRegister(
+                metadata: metadata, entries: entries, to: path
+            )
         }
 
         return true
