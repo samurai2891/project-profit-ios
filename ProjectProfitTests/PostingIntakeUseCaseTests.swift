@@ -8,10 +8,12 @@ final class PostingIntakeUseCaseTests: XCTestCase {
     private var context: ModelContext!
     private var dataStore: ProjectProfit.DataStore!
     private var useCase: PostingIntakeUseCase!
+    private var previousFiscalYearStartMonth: Any?
 
     override func setUp() {
         super.setUp()
         FeatureFlags.clearOverrides()
+        previousFiscalYearStartMonth = UserDefaults.standard.object(forKey: FiscalYearSettings.userDefaultsKey)
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -21,6 +23,12 @@ final class PostingIntakeUseCaseTests: XCTestCase {
 
     override func tearDown() {
         FeatureFlags.clearOverrides()
+        if let previousFiscalYearStartMonth {
+            UserDefaults.standard.set(previousFiscalYearStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: FiscalYearSettings.userDefaultsKey)
+        }
+        previousFiscalYearStartMonth = nil
         useCase = nil
         dataStore = nil
         context = nil
@@ -62,8 +70,8 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         let project = mutations(dataStore).addProject(name: "P1", description: "")
         let beforeTransactions = dataStore.transactions.count
         let workflow = PostingWorkflowUseCase(modelContext: context)
-        let fiscalYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
-        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let taxYear = taxYear(for: Date())
+        let beforeJournals = try await workflow.journals(businessId: businessId, taxYear: taxYear)
 
         let candidate = try await useCase.saveManualCandidate(
             input: ManualPostingCandidateInput(
@@ -89,7 +97,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         )
 
         let pendingCandidates = try await workflow.pendingCandidates(businessId: businessId)
-        let journals = try await workflow.journals(businessId: businessId, taxYear: fiscalYear)
+        let journals = try await workflow.journals(businessId: businessId, taxYear: taxYear)
 
         XCTAssertEqual(candidate.status, .draft)
         XCTAssertEqual(candidate.source, .manual)
@@ -305,7 +313,7 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
         let workflow = PostingWorkflowUseCase(modelContext: context)
         let evidenceRepository = SwiftDataEvidenceRepository(modelContext: context)
-        let taxYear = fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth)
+        let taxYear = taxYear(for: Date())
         let beforePending = try await workflow.pendingCandidates(businessId: businessId)
         let beforeEvidence = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: taxYear)
         let csv = """
@@ -327,6 +335,22 @@ final class PostingIntakeUseCaseTests: XCTestCase {
         XCTAssertEqual(pending.count, beforePending.count + 1)
         XCTAssertEqual(evidence.count, beforeEvidence.count + 1)
         XCTAssertTrue(pending.contains { $0.memo == "売上入金" && $0.status == .needsReview && $0.source == .importFile })
+    }
+
+    func testImportTransactionsUsesCalendarTaxYearEvenWhenFiscalStartMonthIsNotJanuary() async throws {
+        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
+        let csv = """
+        日付,種類,金額,カテゴリ,プロジェクト,メモ
+        2026-01-10,経費,5500,ツール,ImportProject(100%),CSV取り込み
+        """
+
+        let result = await useCase.importTransactions(request: makeCSVRequest(csv, fileName: "calendar-tax-year.csv"))
+        XCTAssertEqual(result.errorCount, 0)
+
+        let evidenceRepository = SwiftDataEvidenceRepository(modelContext: context)
+        let businessId = try XCTUnwrap(dataStore.businessProfile?.id)
+        let evidences = try await evidenceRepository.findByBusinessAndYear(businessId: businessId, taxYear: 2026)
+        XCTAssertEqual(evidences.last?.taxYear, 2026)
     }
 
     func testProjectYAMLDoesNotReferenceLegacyTransactionCompatibilityUseCase() throws {

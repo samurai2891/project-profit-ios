@@ -6,13 +6,13 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-rent",
           "credit" : 0,
           "debit" : 55000,
           "displayOrder" : 0
         },
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-rent",
           "credit" : 0,
           "debit" : 55000,
           "displayOrder" : 1
@@ -58,7 +58,7 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-utilities",
           "credit" : 0,
           "debit" : 8640,
           "displayOrder" : 0
@@ -98,7 +98,7 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-travel",
           "credit" : 0,
           "debit" : 1296,
           "displayOrder" : 0
@@ -138,7 +138,7 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-outsourcing",
           "credit" : 0,
           "debit" : 220000,
           "displayOrder" : 0
@@ -178,7 +178,7 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-communication",
           "credit" : 0,
           "debit" : 5500,
           "displayOrder" : 0
@@ -198,7 +198,7 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-supplies",
           "credit" : 0,
           "debit" : 12960,
           "displayOrder" : 0
@@ -218,19 +218,19 @@
       "isPosted" : true,
       "lines" : [
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-rent",
           "credit" : 0,
           "debit" : 37400,
           "displayOrder" : 0
         },
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-rent",
           "credit" : 0,
           "debit" : 36300,
           "displayOrder" : 1
         },
         {
-          "accountId" : "acct-misc",
+          "accountId" : "acct-rent",
           "credit" : 0,
           "debit" : 36300,
           "displayOrder" : 2

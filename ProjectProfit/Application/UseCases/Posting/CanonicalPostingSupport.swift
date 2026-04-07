@@ -224,7 +224,7 @@ struct CanonicalPostingSupport {
         seed: CanonicalPostingSeed,
         snapshot: TransactionFormSnapshot
     ) throws -> CanonicalTransactionPostingBridge.Posting {
-        let taxYear = fiscalYear(for: seed.date, startMonth: FiscalYearSettings.startMonth)
+        let taxYear = taxYear(for: seed.date)
         guard WorkflowPersistenceSupport.canPostNormalEntry(modelContext: modelContext, year: taxYear) else {
             throw AppError.yearLocked(year: taxYear)
         }

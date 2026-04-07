@@ -17,6 +17,8 @@ enum PostingWorkflowUseCaseError: LocalizedError {
     case journalNotApproved(UUID)
     case sourceCandidateNotFound(UUID)
     case candidateRollbackFailed(candidateId: UUID, persistError: Error, rollbackError: Error)
+    case searchIndexRebuildFailed(journalId: UUID, underlying: Error)
+    case auditTrailPersistenceFailed(journalId: UUID, underlying: Error)
 
     var errorDescription: String? {
         switch self {
@@ -48,6 +50,10 @@ enum PostingWorkflowUseCaseError: LocalizedError {
             return "再レビュー元の仕訳候補が見つかりません"
         case .candidateRollbackFailed:
             return "仕訳保存後の候補ロールバックに失敗しました"
+        case .searchIndexRebuildFailed:
+            return "仕訳検索インデックスの再構築に失敗しました"
+        case .auditTrailPersistenceFailed:
+            return "監査イベントの保存に失敗しました"
         }
     }
 }

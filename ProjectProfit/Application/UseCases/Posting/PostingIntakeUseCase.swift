@@ -124,10 +124,7 @@ struct PostingIntakeUseCase {
             return CSVImportResult(errors: ["事業者プロフィールが未設定のため CSV を取り込めません"])
         }
 
-        let suggestedTaxYear = fiscalYear(
-            for: parsedEntries.first?.date ?? Date(),
-            startMonth: FiscalYearSettings.startMonth
-        )
+        let suggestedTaxYear = taxYear(for: parsedEntries.first?.date ?? Date())
 
         let evidence: EvidenceDocument
         do {
@@ -297,7 +294,7 @@ struct PostingIntakeUseCase {
             let candidate = PostingCandidate(
                 evidenceId: evidence.id,
                 businessId: businessId,
-                taxYear: fiscalYear(for: draft.date, startMonth: FiscalYearSettings.startMonth),
+                taxYear: taxYear(for: draft.date),
                 candidateDate: draft.date,
                 counterpartyId: draft.counterpartyId,
                 proposedLines: draft.proposedLines,
@@ -377,7 +374,7 @@ struct PostingIntakeUseCase {
         )
         let evidence = EvidenceDocument(
             businessId: businessId,
-            taxYear: suggestedTaxYear ?? fiscalYear(for: Date(), startMonth: FiscalYearSettings.startMonth),
+            taxYear: suggestedTaxYear ?? currentTaxYear(),
             sourceType: .importedCSV,
             legalDocumentType: .other,
             storageCategory: .electronicTransaction,

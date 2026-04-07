@@ -48,7 +48,7 @@ final class ShareImportInboxServiceTests: XCTestCase {
         XCTAssertTrue(state.items.isEmpty)
         XCTAssertEqual(state.diagnostic?.code, .queueDecodeFailed)
         XCTAssertEqual(ShareImportInboxService.latestDiagnostic()?.code, .queueDecodeFailed)
-        XCTAssertNil(defaults.data(forKey: queueDefaultsKey))
+        XCTAssertNotNil(defaults.data(forKey: queueDefaultsKey))
     }
 
     func testPendingStatePrunesOrphanedEntriesAndPersistsCompactedQueue() throws {
@@ -90,6 +90,21 @@ final class ShareImportInboxServiceTests: XCTestCase {
         XCTAssertEqual(ShareImportInboxService.latestDiagnostic()?.code, .sharedDefaultsUnavailable)
         XCTAssertEqual(ShareImportInboxService.pendingCount(), 0)
         XCTAssertNil(ShareImportInboxService.oldestItem())
+    }
+
+    func testPendingStateSharedContainerUnavailableKeepsQueue() throws {
+        let item = makeItem(filename: "existing.pdf", createdAt: Date())
+        defaults.set(try JSONEncoder().encode([item]), forKey: queueDefaultsKey)
+
+        ShareImportInboxService.configureForTesting(
+            defaultsProvider: { [weak self] in self?.defaults },
+            sharedContainerURLProvider: { nil }
+        )
+
+        let state = ShareImportInboxService.pendingState()
+
+        XCTAssertEqual(state.items, [item])
+        XCTAssertEqual(state.diagnostic?.code, .sharedContainerUnavailable)
     }
 
     private func makeItem(filename: String, createdAt: Date) -> SharedImportInboxItem {

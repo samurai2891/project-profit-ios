@@ -111,8 +111,12 @@ struct CanonicalPostingEngine {
         try await postingCandidateRepository.save(approvedCandidate)
         do {
             try await journalEntryRepository.save(entry)
-            try? rebuildJournalSearchIndex(businessId: entry.businessId, taxYear: entry.taxYear)
-            await saveApprovalAuditEvents(
+            try rebuildJournalSearchIndex(
+                businessId: entry.businessId,
+                taxYear: entry.taxYear,
+                journalId: entry.id
+            )
+            try await saveApprovalAuditEvents(
                 originalCandidate: candidate,
                 approvedCandidate: approvedCandidate,
                 journal: entry,
@@ -204,11 +208,21 @@ struct CanonicalPostingEngine {
             actor: actor,
             modelContext: modelContext
         )
-
-        if saveChanges {
-            try modelContext.save()
+        do {
+            try rebuildJournalSearchIndex(
+                businessId: entry.businessId,
+                taxYear: entry.taxYear,
+                journalId: entry.id
+            )
+            if saveChanges {
+                try modelContext.save()
+            }
+        } catch {
+            if !saveChanges {
+                modelContext.rollback()
+            }
+            throw error
         }
-        try? rebuildJournalSearchIndex(businessId: entry.businessId, taxYear: entry.taxYear)
         return entry
     }
 
@@ -479,8 +493,8 @@ struct CanonicalPostingEngine {
         journal: CanonicalJournalEntry,
         reason: String?,
         actor: String
-    ) async {
-        await saveAuditEvent(
+    ) async throws {
+        try await saveAuditEvent(
             AuditEvent(
                 businessId: approvedCandidate.businessId,
                 eventType: .candidateApproved,
@@ -494,7 +508,7 @@ struct CanonicalPostingEngine {
                 relatedJournalId: journal.id
             )
         )
-        await saveAuditEvent(
+        try await saveAuditEvent(
             AuditEvent(
                 businessId: journal.businessId,
                 eventType: .journalApproved,
@@ -510,19 +524,29 @@ struct CanonicalPostingEngine {
         )
     }
 
-    private func saveAuditEvent(_ event: AuditEvent) async {
+    private func saveAuditEvent(_ event: AuditEvent) async throws {
         guard let auditRepository else {
             return
         }
         do {
             try await auditRepository.save(event)
         } catch {
-            assertionFailure("Audit save failed: \(error.localizedDescription)")
+            throw PostingWorkflowUseCaseError.auditTrailPersistenceFailed(
+                journalId: event.relatedJournalId ?? event.aggregateId,
+                underlying: error
+            )
         }
     }
 
-    private func rebuildJournalSearchIndex(businessId: UUID, taxYear: Int) throws {
-        try journalSearchIndex?.rebuild(businessId: businessId, taxYear: taxYear)
+    private func rebuildJournalSearchIndex(businessId: UUID, taxYear: Int, journalId: UUID) throws {
+        do {
+            try journalSearchIndex?.rebuild(businessId: businessId, taxYear: taxYear)
+        } catch {
+            throw PostingWorkflowUseCaseError.searchIndexRebuildFailed(
+                journalId: journalId,
+                underlying: error
+            )
+        }
     }
 
     private func nextVoucherNumber(

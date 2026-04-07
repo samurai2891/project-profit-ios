@@ -1193,12 +1193,17 @@ class DataStore {
                 continue
             }
 
-            if existingReceiptRecordsByTransactionId[transaction.id]?.isEmpty == false {
-                transaction.receiptImagePath = nil
-                transaction.updatedAt = now
-                legacyFilesToDelete.append(safeLegacyPath)
-                changed = true
-                alreadyBackfilledCount += 1
+            let existingActiveRecords = existingReceiptRecordsByTransactionId[transaction.id] ?? []
+            if !existingActiveRecords.isEmpty {
+                if existingActiveRecords.contains(where: { ReceiptImageStore.documentFileExists(fileName: $0.storedFileName) }) {
+                    transaction.receiptImagePath = nil
+                    transaction.updatedAt = now
+                    legacyFilesToDelete.append(safeLegacyPath)
+                    changed = true
+                    alreadyBackfilledCount += 1
+                } else {
+                    AppLogger.dataStore.warning("Legacy receipt migration skipped cleanup: active document record exists but file is missing for transaction=\(transaction.id.uuidString)")
+                }
                 continue
             }
 
@@ -1216,11 +1221,15 @@ class DataStore {
                 })
                 if let existingRecord {
                     existingReceiptRecordsByTransactionId[transaction.id, default: []] = [existingRecord]
-                    transaction.receiptImagePath = nil
-                    transaction.updatedAt = now
-                    legacyFilesToDelete.append(safeLegacyPath)
-                    changed = true
-                    alreadyBackfilledCount += 1
+                    if ReceiptImageStore.documentFileExists(fileName: existingRecord.storedFileName) {
+                        transaction.receiptImagePath = nil
+                        transaction.updatedAt = now
+                        legacyFilesToDelete.append(safeLegacyPath)
+                        changed = true
+                        alreadyBackfilledCount += 1
+                    } else {
+                        AppLogger.dataStore.warning("Legacy receipt migration skipped cleanup after refetch: active document record exists but file is missing for transaction=\(transaction.id.uuidString)")
+                    }
                     continue
                 }
 

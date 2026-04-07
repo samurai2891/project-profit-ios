@@ -149,7 +149,7 @@ enum ClassificationEngineCompatibilityAdapter {
         ClassificationEngine.classify(
             candidate: PostingCandidate(
                 businessId: UUID(),
-                taxYear: fiscalYear(for: transaction.date, startMonth: FiscalYearSettings.startMonth),
+                taxYear: taxYear(for: transaction.date),
                 candidateDate: transaction.date,
                 status: .needsReview,
                 source: .manual,

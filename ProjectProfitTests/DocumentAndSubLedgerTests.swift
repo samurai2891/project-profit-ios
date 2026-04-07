@@ -137,15 +137,11 @@ final class DocumentAndSubLedgerTests: XCTestCase {
     func testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists() throws {
         let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
         let project = mutations(dataStore).addProject(name: "移行重複テスト", description: "legacy")
-        let tx = mutations(dataStore).addTransaction(
-            type: .expense,
+        let tx = makeLegacyReceiptTransaction(
+            projectId: project.id,
             amount: 1200,
-            date: Date(),
-            categoryId: "cat-other-expense",
             memo: "既存書類あり",
-            allocations: [(projectId: project.id, ratio: 100)],
-            receiptImagePath: legacyImageFile,
-            reloadStoreAfterMutation: false
+            legacyImageFile: legacyImageFile
         )
 
         let existingDocumentResult = dataStore.addDocumentRecord(
@@ -179,6 +175,45 @@ final class DocumentAndSubLedgerTests: XCTestCase {
         ReceiptImageStore.deleteDocumentFile(fileName: existingRecord.storedFileName)
     }
 
+    func testLegacyReceiptImageBackfill_keepsLegacyImageWhenExistingDocumentFileIsMissing() throws {
+        let legacyImageFile = try ReceiptImageStore.saveImage(createTestImage())
+        let project = mutations(dataStore).addProject(name: "移行欠損テスト", description: "legacy")
+        let tx = makeLegacyReceiptTransaction(
+            projectId: project.id,
+            amount: 1500,
+            memo: "既存書類ファイル欠損",
+            legacyImageFile: legacyImageFile
+        )
+
+        let existingDocumentResult = dataStore.addDocumentRecord(
+            transactionId: tx.id,
+            documentType: .receipt,
+            originalFileName: legacyImageFile,
+            fileData: Data("already-backed-up".utf8),
+            mimeType: "image/jpeg",
+            issueDate: tx.date
+        )
+
+        guard case .success(let existingRecord) = existingDocumentResult else {
+            XCTFail("Existing document should be inserted")
+            return
+        }
+        ReceiptImageStore.deleteDocumentFile(fileName: existingRecord.storedFileName)
+
+        let reloadedStore = ProjectProfit.DataStore(modelContext: context)
+        reloadedStore.loadData()
+
+        guard let migratedTx = reloadedStore.getTransaction(id: tx.id) else {
+            XCTFail("Transaction should exist")
+            return
+        }
+        XCTAssertEqual(migratedTx.receiptImagePath, legacyImageFile)
+
+        let records = reloadedStore.listDocumentRecords(transactionId: tx.id)
+        XCTAssertEqual(records.count, 1)
+        XCTAssertTrue(ReceiptImageStore.imageExists(fileName: legacyImageFile))
+    }
+
     private func createTestImage() -> UIImage {
         let size = CGSize(width: 32, height: 32)
         let renderer = UIGraphicsImageRenderer(size: size)
@@ -186,5 +221,27 @@ final class DocumentAndSubLedgerTests: XCTestCase {
             UIColor.white.setFill()
             context.fill(CGRect(origin: .zero, size: size))
         }
+    }
+
+    @discardableResult
+    private func makeLegacyReceiptTransaction(
+        projectId: UUID,
+        amount: Int,
+        memo: String,
+        legacyImageFile: String,
+        date: Date = Date()
+    ) -> PPTransaction {
+        let transaction = PPTransaction(
+            type: .expense,
+            amount: amount,
+            date: date,
+            categoryId: "cat-other-expense",
+            memo: memo,
+            allocations: [Allocation(projectId: projectId, ratio: 100, amount: amount)],
+            receiptImagePath: legacyImageFile
+        )
+        context.insert(transaction)
+        try? context.save()
+        return transaction
     }
 }

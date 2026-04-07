@@ -11,9 +11,11 @@ struct SharedImportInboxItem: Identifiable, Codable, Equatable, Sendable {
 
 enum ShareImportQueueDiagnosticCode: String, Codable, Equatable, Sendable {
     case sharedDefaultsUnavailable
+    case sharedContainerUnavailable
     case queueDecodeFailed
     case orphanedEntriesPruned
     case queuePersistenceFailed
+    case fileRemovalFailed
 }
 
 struct ShareImportQueueDiagnostic: Codable, Equatable, Sendable {
@@ -80,12 +82,20 @@ enum ShareImportInboxService {
     }
 
     static func markConsumed(_ item: SharedImportInboxItem) {
-        removeFromQueue(item)
         guard let fileURL = fileURL(for: item) else { return }
         do {
             try FileManager.default.removeItem(at: fileURL)
+            removeFromQueue(item)
         } catch {
             logger.warning("Failed to remove consumed shared file: \(error.localizedDescription)")
+            updateDiagnostic(
+                ShareImportQueueDiagnostic(
+                    code: .fileRemovalFailed,
+                    message: "共有ファイルの削除に失敗したため、受信キューを保持しました。",
+                    removedCount: nil,
+                    timestamp: Date()
+                )
+            )
         }
     }
 
@@ -94,6 +104,18 @@ enum ShareImportInboxService {
         let queue = queueResult.items
         guard !queue.isEmpty else {
             return ([], queueResult.diagnostic)
+        }
+
+        guard sharedInboxDirectoryURL(createIfNeeded: false) != nil else {
+            return (
+                queue.sorted { $0.createdAt < $1.createdAt },
+                ShareImportQueueDiagnostic(
+                    code: .sharedContainerUnavailable,
+                    message: "共有保存領域にアクセスできないため、受信キューの整合確認を保留しました。",
+                    removedCount: nil,
+                    timestamp: Date()
+                )
+            )
         }
 
         var filtered: [SharedImportInboxItem] = []
@@ -139,10 +161,9 @@ enum ShareImportInboxService {
             return (try JSONDecoder().decode([SharedImportInboxItem].self, from: data), nil)
         } catch {
             logger.warning("Failed to decode shared import queue: \(error.localizedDescription)")
-            defaults.removeObject(forKey: queueDefaultsKey)
             return ([], ShareImportQueueDiagnostic(
                 code: .queueDecodeFailed,
-                message: "Shared import queue payload is corrupted and was cleared.",
+                message: "共有取り込みキューの読込に失敗しました。既存キューは保持したままです。",
                 removedCount: nil,
                 timestamp: Date()
             ))

@@ -137,6 +137,34 @@ final class InventoryWorkflowUseCaseTests: XCTestCase {
         }
     }
 
+    func testCreateInventoryRecordRejectsDuplicateFiscalYear() {
+        _ = useCase.createInventoryRecord(
+            input: makeInput(
+                fiscalYear: 2025,
+                openingInventory: 100_000,
+                purchases: 500_000,
+                closingInventory: 80_000
+            )
+        )
+
+        let duplicate = useCase.createInventoryRecord(
+            input: makeInput(
+                fiscalYear: 2025,
+                openingInventory: 1,
+                purchases: 2,
+                closingInventory: 3
+            )
+        )
+
+        XCTAssertNil(duplicate)
+        XCTAssertEqual(dataStore.inventoryRecords.filter { $0.fiscalYear == 2025 }.count, 1)
+        if case .invalidInput(let message) = dataStore.lastError {
+            XCTAssertTrue(message.contains("2025年"))
+        } else {
+            XCTFail("duplicate fiscal year error expected")
+        }
+    }
+
     private func makeInput(
         fiscalYear: Int,
         openingInventory: Int = 0,

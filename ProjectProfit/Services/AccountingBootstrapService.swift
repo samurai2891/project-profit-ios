@@ -565,7 +565,7 @@ struct CanonicalTransactionPostingBridge {
             legacyLines: legacyLines,
             canonicalAccountsByLegacyId: canonicalAccountsByLegacyId
         )
-        let taxYear = fiscalYear(for: snapshot.date, startMonth: FiscalYearSettings.startMonth)
+        let taxYear = taxYear(for: snapshot.date)
         let taxYearProfile = resolvedTaxYearProfile(
             businessId: businessId,
             taxYear: taxYear

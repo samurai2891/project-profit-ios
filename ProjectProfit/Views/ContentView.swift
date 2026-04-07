@@ -159,6 +159,15 @@ struct MainTabView: View {
             }
 
             NavigationStack {
+                ProjectsView()
+                    .accessibilityIdentifier("screen.projects")
+            }
+            .tabItem {
+                Label("案件", systemImage: "folder.fill")
+                    .accessibilityIdentifier("tab.projects")
+            }
+
+            NavigationStack {
                 TransactionsView()
                     .accessibilityIdentifier("screen.transactions")
             }

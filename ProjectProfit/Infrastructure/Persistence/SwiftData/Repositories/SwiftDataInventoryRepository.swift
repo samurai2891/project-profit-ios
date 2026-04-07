@@ -16,9 +16,19 @@ final class SwiftDataInventoryRepository: InventoryRepository {
     }
 
     func inventoryRecord(fiscalYear: Int) throws -> PPInventoryRecord? {
+        try inventoryRecords(fiscalYear: fiscalYear).first
+    }
+
+    func inventoryRecords(fiscalYear: Int) throws -> [PPInventoryRecord] {
         let predicate = #Predicate<PPInventoryRecord> { $0.fiscalYear == fiscalYear }
-        let descriptor = FetchDescriptor<PPInventoryRecord>(predicate: predicate)
-        return try modelContext.fetch(descriptor).first
+        let descriptor = FetchDescriptor<PPInventoryRecord>(
+            predicate: predicate,
+            sortBy: [
+                SortDescriptor(\.updatedAt, order: .reverse),
+                SortDescriptor(\.createdAt, order: .reverse),
+            ]
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     func insert(_ record: PPInventoryRecord) {

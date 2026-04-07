@@ -3,7 +3,7 @@
   "fiscalYear" : 2025,
   "lines" : [
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-rent",
       "counterpartyName" : "不動産管理株式会社",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -17,7 +17,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-rent",
       "counterpartyName" : "不動産管理株式会社",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -44,7 +44,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-utilities",
       "counterpartyName" : "東京電力",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -71,7 +71,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-travel",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
       "journalDate" : "2025-03-05",
@@ -98,7 +98,7 @@
       "totalRate" : "0.08"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-outsourcing",
       "counterpartyName" : "フリーランスデザイナー山田",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -125,7 +125,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-communication",
       "counterpartyName" : "NTTドコモ",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -139,7 +139,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-supplies",
       "counterpartyName" : "Adobe Inc.",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -153,7 +153,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-rent",
       "counterpartyName" : "不動産管理株式会社",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -167,7 +167,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-rent",
       "counterpartyName" : "不動産管理株式会社",
       "deductibleTaxAmount" : 0,
       "direction" : "input",
@@ -181,7 +181,7 @@
       "totalRate" : "0.1"
     },
     {
-      "accountId" : "acct-misc",
+      "accountId" : "acct-rent",
       "counterpartyName" : "不動産管理株式会社",
       "deductibleTaxAmount" : 0,
       "direction" : "input",

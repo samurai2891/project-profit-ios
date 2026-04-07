@@ -99,7 +99,7 @@ struct ApprovalQueueView: View {
                     ContentUnavailableView(
                         "承認待ち候補はありません",
                         systemImage: "checkmark.seal",
-                        description: Text("Evidence から作成された候補がここに表示されます")
+                        description: Text("証憑から作成された候補がここに表示されます")
                     )
                 } else {
                     ForEach(filteredItems, id: \.id) { item in
@@ -113,7 +113,7 @@ struct ApprovalQueueView: View {
                 }
             }
         }
-        .navigationTitle("Approval Queue")
+        .navigationTitle("承認キュー")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: reloadKey) {
             await loadQueueItems()

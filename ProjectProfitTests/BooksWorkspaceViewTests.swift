@@ -41,13 +41,14 @@ final class BooksWorkspaceViewTests: XCTestCase {
                 .accountsPayableBook,
                 .expenseBook,
                 .fixedAssetLedger,
+                .transportationExpense,
                 .inventoryLedger,
                 .whiteTaxBookkeeping,
             ]
         )
         XCTAssertEqual(
             BooksWorkspaceView.releaseBookItems.map(\.title),
-            ["仕訳帳", "総勘定元帳", "現金出納帳", "預金出納帳", "売掛帳", "買掛帳", "経費帳", "固定資産台帳", "棚卸台帳", "白色簡易帳簿"]
+            ["仕訳帳", "総勘定元帳", "現金出納帳", "預金出納帳", "売掛帳", "買掛帳", "経費帳", "固定資産台帳", "交通費精算書", "棚卸台帳", "白色簡易帳簿"]
         )
     }
 

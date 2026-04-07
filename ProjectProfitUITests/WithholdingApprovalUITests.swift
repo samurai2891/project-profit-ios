@@ -42,6 +42,24 @@ final class WithholdingApprovalUITests: XCTestCase {
         XCTAssertTrue(screen.waitForExistence(timeout: 10))
     }
 
+    func testProjectsTabShowsProjectsScreen() {
+        let projectsTab = app.tabBars.buttons["案件"].firstMatch
+        XCTAssertTrue(projectsTab.waitForExistence(timeout: 10))
+        projectsTab.tap()
+
+        XCTAssertTrue(app.navigationBars["案件一覧"].firstMatch.waitForExistence(timeout: 10))
+    }
+
+    func testFilingBooksWorkflowShowsTransportationExpenseRoute() {
+        openFilingDashboard()
+
+        let booksRoute = app.descendants(matching: .any).matching(identifier: "filing.workflow.booksWorkspace").firstMatch
+        XCTAssertTrue(booksRoute.waitForExistence(timeout: 10))
+        booksRoute.tap()
+
+        XCTAssertTrue(app.staticTexts["交通費精算書"].firstMatch.waitForExistence(timeout: 10))
+    }
+
     func testApprovalTabShowsStableScreenIdentifier() {
         app.tabBars.buttons["承認"].tap()
 

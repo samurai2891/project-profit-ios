@@ -663,7 +663,7 @@ struct RecurringFormView: View {
             HStack {
                 Spacer()
 
-                NavigationLink("Approval Queue を開く") {
+                NavigationLink("承認キューを開く") {
                     ApprovalQueueView()
                 }
                 .buttonStyle(.borderedProminent)

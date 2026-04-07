@@ -258,6 +258,76 @@ final class CanonicalUseCasesTests: XCTestCase {
         }
     }
 
+    func testPostingWorkflowUseCaseThrowsWhenAuditPersistenceFails() async throws {
+        let businessId = UUID()
+        let debitAccountId = UUID()
+        let creditAccountId = UUID()
+        let candidate = PostingCandidate(
+            businessId: businessId,
+            taxYear: 2025,
+            candidateDate: Date(timeIntervalSince1970: 1_741_478_400),
+            proposedLines: [
+                PostingCandidateLine(
+                    debitAccountId: debitAccountId,
+                    creditAccountId: creditAccountId,
+                    amount: Decimal(string: "1200")!,
+                    memo: "audit failure"
+                )
+            ],
+            status: .needsReview,
+            source: .manual,
+            memo: "監査保存失敗"
+        )
+        let candidateRepository = InMemoryPostingCandidateRepository(initialCandidates: [candidate])
+        let journalRepository = DeletableCanonicalJournalEntryRepository()
+        let chartRepository = InMemoryChartOfAccountsRepository(
+            initialAccounts: [
+                seededAccount(
+                    id: debitAccountId,
+                    businessId: businessId,
+                    code: "505",
+                    name: "広告宣伝費",
+                    accountType: .expense,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.advertising.rawValue
+                ),
+                seededAccount(
+                    id: creditAccountId,
+                    businessId: businessId,
+                    code: "101",
+                    name: "現金",
+                    accountType: .asset,
+                    normalBalance: .debit,
+                    defaultLegalReportLineId: LegalReportLine.cash.rawValue
+                ),
+            ]
+        )
+        let useCase = PostingWorkflowUseCase(
+            postingCandidateRepository: candidateRepository,
+            journalEntryRepository: journalRepository,
+            chartOfAccountsRepository: chartRepository,
+            auditRepository: FailingAuditRepository()
+        )
+
+        do {
+            _ = try await useCase.approveCandidate(candidateId: candidate.id)
+            XCTFail("Expected auditTrailPersistenceFailed error")
+        } catch let error as PostingWorkflowUseCaseError {
+            guard case let .auditTrailPersistenceFailed(journalId, underlying) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertFalse(journalId.uuidString.isEmpty)
+            XCTAssertTrue(underlying is FailingAuditRepository.Failure)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        let persistedCandidate = try await candidateRepository.findById(candidate.id)
+        XCTAssertEqual(persistedCandidate?.status, .needsReview)
+        let savedEntryCount = await journalRepository.savedEntryCount()
+        XCTAssertEqual(savedEntryCount, 1)
+    }
+
     func testPostingWorkflowUseCaseSaveCandidateBlockedWhenYearLocked() async throws {
         let useCase = PostingWorkflowUseCase(modelContext: context)
         let businessId = UUID()
@@ -1046,6 +1116,65 @@ private actor FailingCanonicalJournalEntryRepository: CanonicalJournalEntryRepos
 
     func nextVoucherNumber(businessId: UUID, taxYear: Int, month: Int) async throws -> VoucherNumber {
         VoucherNumber(taxYear: taxYear, month: month, sequence: 1)
+    }
+}
+
+private actor DeletableCanonicalJournalEntryRepository: CanonicalJournalEntryRepository {
+    private var savedEntries: [CanonicalJournalEntry] = []
+
+    func savedEntryCount() -> Int {
+        savedEntries.count
+    }
+
+    func findById(_ id: UUID) async throws -> CanonicalJournalEntry? {
+        savedEntries.first { $0.id == id }
+    }
+
+    func findAllByBusiness(businessId: UUID) async throws -> [CanonicalJournalEntry] {
+        savedEntries.filter { $0.businessId == businessId }
+    }
+
+    func findByBusinessAndYear(businessId: UUID, taxYear: Int) async throws -> [CanonicalJournalEntry] {
+        savedEntries.filter { $0.businessId == businessId && $0.taxYear == taxYear }
+    }
+
+    func findByDateRange(businessId: UUID, from: Date, to: Date) async throws -> [CanonicalJournalEntry] {
+        savedEntries.filter { $0.businessId == businessId && from ... to ~= $0.journalDate }
+    }
+
+    func findByEvidence(evidenceId: UUID) async throws -> [CanonicalJournalEntry] {
+        savedEntries.filter { $0.sourceEvidenceId == evidenceId }
+    }
+
+    func save(_ entry: CanonicalJournalEntry) async throws {
+        savedEntries.removeAll { $0.id == entry.id }
+        savedEntries.append(entry)
+    }
+
+    func delete(_ id: UUID) async throws {
+        savedEntries.removeAll { $0.id == id }
+    }
+
+    func nextVoucherNumber(businessId: UUID, taxYear: Int, month: Int) async throws -> VoucherNumber {
+        VoucherNumber(taxYear: taxYear, month: month, sequence: savedEntries.count + 1)
+    }
+}
+
+private actor FailingAuditRepository: AuditRepository {
+    enum Failure: Error {
+        case saveFailed
+    }
+
+    func findById(_ id: UUID) async throws -> AuditEvent? { nil }
+
+    func findByAggregate(aggregateType: String, aggregateId: UUID) async throws -> [AuditEvent] { [] }
+
+    func findByBusiness(businessId: UUID, limit: Int) async throws -> [AuditEvent] { [] }
+
+    func findByDateRange(businessId: UUID, from: Date, to: Date) async throws -> [AuditEvent] { [] }
+
+    func save(_ event: AuditEvent) async throws {
+        throw Failure.saveFailed
     }
 }
 

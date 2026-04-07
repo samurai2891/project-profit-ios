@@ -41,6 +41,15 @@ struct InventoryWorkflowUseCase {
         guard !isYearLocked(input.fiscalYear) else {
             return nil
         }
+        do {
+            if try inventoryRepository.inventoryRecord(fiscalYear: input.fiscalYear) != nil {
+                setError(.invalidInput(message: "\(input.fiscalYear)年の棚卸データは既に登録されています"))
+                return nil
+            }
+        } catch {
+            setError(.saveFailed(underlying: error))
+            return nil
+        }
 
         let record = PPInventoryRecord(
             fiscalYear: input.fiscalYear,
@@ -76,7 +85,23 @@ struct InventoryWorkflowUseCase {
         guard !isYearLocked(record.fiscalYear) else {
             return false
         }
+        if input.fiscalYear != record.fiscalYear {
+            guard !isYearLocked(input.fiscalYear) else {
+                return false
+            }
+            do {
+                if let duplicate = try inventoryRepository.inventoryRecord(fiscalYear: input.fiscalYear),
+                   duplicate.id != record.id {
+                    setError(.invalidInput(message: "\(input.fiscalYear)年の棚卸データは既に登録されています"))
+                    return false
+                }
+            } catch {
+                setError(.saveFailed(underlying: error))
+                return false
+            }
+        }
 
+        record.fiscalYear = input.fiscalYear
         record.openingInventory = max(0, input.openingInventory)
         record.purchases = max(0, input.purchases)
         record.closingInventory = max(0, input.closingInventory)

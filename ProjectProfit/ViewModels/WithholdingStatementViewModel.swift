@@ -21,7 +21,7 @@ final class WithholdingStatementViewModel {
     private let queryUseCase: WithholdingStatementQueryUseCase
     private let exporter: @MainActor (ExportCoordinator.ExportFormat, ExportCoordinator.WithholdingStatementExportOptions) throws -> URL
 
-    var fiscalYear: Int
+    var taxYear: Int
     var annualSummary: WithholdingStatementAnnualSummary?
     var isLoading = false
     var errorMessage: String?
@@ -33,7 +33,7 @@ final class WithholdingStatementViewModel {
     ) {
         self.queryUseCase = WithholdingStatementQueryUseCase(modelContext: modelContext)
         self.exporter = exporter
-        self.fiscalYear = currentFiscalYear(startMonth: FiscalYearSettings.startMonth) - 1
+        self.taxYear = currentTaxYear() - 1
     }
 
     func generatePreview() {
@@ -41,7 +41,7 @@ final class WithholdingStatementViewModel {
         defer { isLoading = false }
 
         do {
-            annualSummary = try queryUseCase.summary(fiscalYear: fiscalYear)
+            annualSummary = try queryUseCase.summary(fiscalYear: taxYear)
             errorMessage = nil
         } catch {
             annualSummary = nil

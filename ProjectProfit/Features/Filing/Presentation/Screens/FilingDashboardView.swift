@@ -200,7 +200,7 @@ struct FilingDashboardView: View {
         case .booksWorkspace:
             BooksWorkspaceView()
         case .withholding:
-            WithholdingStatementView(initialFiscalYear: selectedFiscalYear)
+            WithholdingStatementView(initialTaxYear: selectedFiscalYear)
         case .closingEntry:
             ClosingEntryView()
         case .etaxExport:

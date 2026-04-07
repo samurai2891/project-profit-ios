@@ -38,18 +38,50 @@
     },
     {
       "accountType" : "expense",
-      "balance" : 468396,
-      "code" : "512",
+      "balance" : 5500,
+      "code" : "504",
       "credit" : 0,
-      "debit" : 468396,
-      "name" : "雑費"
+      "debit" : 5500,
+      "name" : "通信費"
     },
     {
       "accountType" : "expense",
-      "balance" : 6480,
+      "balance" : 220000,
+      "code" : "511",
+      "credit" : 0,
+      "debit" : 220000,
+      "name" : "外注工賃"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 220000,
+      "code" : "520",
+      "credit" : 0,
+      "debit" : 220000,
+      "name" : "地代家賃"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 8640,
+      "code" : "521",
+      "credit" : 0,
+      "debit" : 8640,
+      "name" : "水道光熱費"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 1296,
+      "code" : "522",
+      "credit" : 0,
+      "debit" : 1296,
+      "name" : "旅費交通費"
+    },
+    {
+      "accountType" : "expense",
+      "balance" : 19440,
       "code" : "523",
       "credit" : 0,
-      "debit" : 6480,
+      "debit" : 19440,
       "name" : "消耗品費"
     }
   ]

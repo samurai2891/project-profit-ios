@@ -106,7 +106,7 @@ struct SettingsMainView: View {
         } message: {
             if let result = importResult {
                 if result.errorCount == 0 {
-                    Text("evidence \(result.evidenceCount)件 / candidate \(result.candidateCount)件 / asset \(result.assetCount)件を取り込みました。")
+                    Text("証憑 \(result.evidenceCount)件 / 候補 \(result.candidateCount)件 / 固定資産 \(result.assetCount)件を取り込みました。")
                 } else {
                     Text("成功: \(result.successCount)件\nエラー: \(result.errorCount)件\n\(result.errors.prefix(3).joined(separator: "\n"))")
                 }

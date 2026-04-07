@@ -40,6 +40,7 @@ final class WorkflowNavigationTests: XCTestCase {
                 .accountsPayableBook,
                 .expenseBook,
                 .fixedAssetLedger,
+                .transportationExpense,
                 .inventoryLedger,
                 .whiteTaxBookkeeping,
             ]

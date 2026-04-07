@@ -8,10 +8,12 @@ final class WithholdingStatementQueryUseCaseTests: XCTestCase {
     private var context: ModelContext!
     private var dataStore: ProjectProfit.DataStore!
     private var businessId: UUID!
+    private var previousFiscalYearStartMonth: Any?
 
     override func setUp() {
         super.setUp()
         FeatureFlags.clearOverrides()
+        previousFiscalYearStartMonth = UserDefaults.standard.object(forKey: FiscalYearSettings.userDefaultsKey)
         container = try! TestModelContainer.create()
         context = ModelContext(container)
         dataStore = ProjectProfit.DataStore(modelContext: context)
@@ -22,6 +24,12 @@ final class WithholdingStatementQueryUseCaseTests: XCTestCase {
 
     override func tearDown() {
         FeatureFlags.clearOverrides()
+        if let previousFiscalYearStartMonth {
+            UserDefaults.standard.set(previousFiscalYearStartMonth, forKey: FiscalYearSettings.userDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: FiscalYearSettings.userDefaultsKey)
+        }
+        previousFiscalYearStartMonth = nil
         businessId = nil
         dataStore = nil
         context = nil
@@ -175,7 +183,7 @@ final class WithholdingStatementQueryUseCaseTests: XCTestCase {
     }
 
     func testSummaryIncludesApprovedRecurringAndImportedWithholdingJournals() async throws {
-        let fiscalYear = fiscalYear(for: todayDate(), startMonth: FiscalYearSettings.startMonth)
+        let fiscalYear = taxYear(for: todayDate())
         let counterparty = Counterparty(
             businessId: businessId,
             displayName: "源泉対象統合先",
@@ -230,6 +238,30 @@ final class WithholdingStatementQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(summary.documentCount, 1)
         XCTAssertEqual(document.paymentCount, 2)
         XCTAssertEqual(Set(document.rows.map(\.description)), Set(["[定期] 定期顧問料 - Recurring顧問料", "Import顧問料"]))
+    }
+
+    func testSummaryUsesCalendarYearWhenFiscalStartMonthIsApril() async throws {
+        UserDefaults.standard.set(4, forKey: FiscalYearSettings.userDefaultsKey)
+        let counterparty = Counterparty(
+            businessId: businessId,
+            displayName: "暦年テスト先",
+            payeeInfo: PayeeInfo(isWithholdingSubject: true, withholdingCategory: .professionalFee)
+        )
+        try await CounterpartyMasterUseCase(modelContext: context).save(counterparty)
+
+        _ = try await makeApprovedWithholdingJournal(
+            counterparty: counterparty,
+            code: .professionalFee,
+            amount: 100_000,
+            date: makeDate(year: 2026, month: 1, day: 10),
+            memo: "暦年判定"
+        )
+
+        let summary2026 = try WithholdingStatementQueryUseCase(modelContext: context).summary(fiscalYear: 2026)
+        let summary2025 = try WithholdingStatementQueryUseCase(modelContext: context).summary(fiscalYear: 2025)
+
+        XCTAssertEqual(summary2026.paymentCount, 1)
+        XCTAssertEqual(summary2025.paymentCount, 0)
     }
 
     private func makeApprovedWithholdingJournal(

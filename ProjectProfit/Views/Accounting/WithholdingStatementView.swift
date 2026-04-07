@@ -11,13 +11,13 @@ struct WithholdingStatementView: View {
     }()
 
     @Environment(\.modelContext) private var modelContext
-    private let initialFiscalYear: Int?
+    private let initialTaxYear: Int?
     @State private var viewModel: WithholdingStatementViewModel?
     @State private var shareURL: URL?
     @State private var showShareSheet = false
 
-    init(initialFiscalYear: Int? = nil) {
-        self.initialFiscalYear = initialFiscalYear
+    init(initialTaxYear: Int? = nil) {
+        self.initialTaxYear = initialTaxYear
     }
 
     var body: some View {
@@ -45,8 +45,8 @@ struct WithholdingStatementView: View {
                         )
                     }
                 )
-                if let initialFiscalYear {
-                    createdViewModel.fiscalYear = initialFiscalYear
+                if let initialTaxYear {
+                    createdViewModel.taxYear = initialTaxYear
                 }
                 createdViewModel.generatePreview()
                 viewModel = createdViewModel
@@ -112,13 +112,13 @@ struct WithholdingStatementView: View {
                 .font(.headline)
 
             HStack {
-                Text("年度")
+                Text("年分")
                 Spacer()
-                Picker("年度", selection: Binding(
-                    get: { viewModel.fiscalYear },
-                    set: { viewModel.fiscalYear = $0 }
+                Picker("年分", selection: Binding(
+                    get: { viewModel.taxYear },
+                    set: { viewModel.taxYear = $0 }
                 )) {
-                    ForEach((2020...currentFiscalYear(startMonth: FiscalYearSettings.startMonth)).reversed(), id: \.self) { year in
+                    ForEach((2020...currentTaxYear()).reversed(), id: \.self) { year in
                         Text("\(year)年").tag(year)
                     }
                 }

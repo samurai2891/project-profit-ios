@@ -73,7 +73,7 @@ struct TransactionsView: View {
                 } label: {
                     Image(systemName: "tray.full")
                 }
-                .accessibilityLabel("証憑Inbox")
+                .accessibilityLabel("証憑受信箱")
                 .accessibilityHint("登録済みの証憑を確認します")
             }
 
@@ -83,7 +83,7 @@ struct TransactionsView: View {
                 } label: {
                     Image(systemName: "checklist")
                 }
-                .accessibilityLabel("Approval Queue")
+                .accessibilityLabel("承認キュー")
                 .accessibilityHint("承認待ちの仕訳候補を確認します")
             }
 

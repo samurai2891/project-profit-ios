@@ -12,6 +12,7 @@ struct EvidenceInboxView: View {
     @State private var showSearchFilters = false
     @State private var pendingSharedImportCount = 0
     @State private var scannerSharedImportItem: SharedImportInboxItem?
+    @State private var sharedImportDiagnostic: ShareImportQueueDiagnostic?
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var isReindexing = false
@@ -29,6 +30,14 @@ struct EvidenceInboxView: View {
             if isCurrentYearLocked {
                 Section {
                     Label("現在の年度はロック中のため、新規証憑の取込はできません", systemImage: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.warning)
+                }
+            }
+
+            if let sharedImportDiagnostic {
+                Section {
+                    Label(sharedImportDiagnostic.message, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(AppColors.warning)
                 }
@@ -71,7 +80,7 @@ struct EvidenceInboxView: View {
                 }
             }
         }
-        .navigationTitle("証憑Inbox")
+        .navigationTitle("証憑受信箱")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -227,7 +236,9 @@ struct EvidenceInboxView: View {
     }
 
     private func refreshSharedImportBadge() {
-        pendingSharedImportCount = ShareImportInboxService.pendingCount()
+        let state = ShareImportInboxService.pendingState()
+        pendingSharedImportCount = state.items.count
+        sharedImportDiagnostic = state.diagnostic
     }
 
     private func openSharedImportScanner() {

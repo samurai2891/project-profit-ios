@@ -14,6 +14,7 @@ enum ShareImportError: LocalizedError {
     case unsupportedType
     case appGroupUnavailable
     case invalidSharedDefaults
+    case corruptedSharedQueue
     case noInputItem
     case loadFailed(String)
 
@@ -25,6 +26,8 @@ enum ShareImportError: LocalizedError {
             return "共有保存先の初期化に失敗しました。"
         case .invalidSharedDefaults:
             return "共有キューの保存に失敗しました。"
+        case .corruptedSharedQueue:
+            return "共有キューが破損しているため、追加を中止しました。"
         case .noInputItem:
             return "共有データを取得できませんでした。"
         case .loadFailed(let message):
@@ -202,7 +205,11 @@ final class ShareViewController: UIViewController {
 
         let existing: [SharedImportQueueRecord]
         if let data = defaults.data(forKey: Self.queueDefaultsKey) {
-            existing = (try? JSONDecoder().decode([SharedImportQueueRecord].self, from: data)) ?? []
+            do {
+                existing = try JSONDecoder().decode([SharedImportQueueRecord].self, from: data)
+            } catch {
+                throw ShareImportError.corruptedSharedQueue
+            }
         } else {
             existing = []
         }

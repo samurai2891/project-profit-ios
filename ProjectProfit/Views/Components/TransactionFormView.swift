@@ -304,7 +304,7 @@ struct TransactionFormView: View {
                     .font(.subheadline.weight(.semibold))
                 Text(
                     isCanonicalDraftMode
-                        ? "この画面からの新規手入力は Approval Queue の下書き候補として保存されます。既存取引の編集・削除は停止したままです。"
+                        ? "この画面からの新規手入力は承認キューの下書き候補として保存されます。既存取引の編集・削除は停止したままです。"
                         : formSnapshot.legacyTransactionMutationDisabledMessage
                 )
                     .font(.caption)
@@ -835,7 +835,7 @@ struct TransactionFormView: View {
             HStack {
                 Spacer()
 
-                NavigationLink("Approval Queue を開く") {
+                NavigationLink("承認キューを開く") {
                     ApprovalQueueView()
                 }
                 .buttonStyle(.borderedProminent)

@@ -71,11 +71,27 @@
       "valueType" : "text"
     },
     {
-      "fieldLabel" : "雑費",
-      "id" : "expense_misc",
+      "fieldLabel" : "通信費",
+      "id" : "expense_communication",
       "section" : "必要経費",
-      "taxLine" : "misc",
-      "value" : "468396",
+      "taxLine" : "communication",
+      "value" : "5500",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "外注工賃",
+      "id" : "expense_outsourcing",
+      "section" : "必要経費",
+      "taxLine" : "outsourcing",
+      "value" : "220000",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "地代家賃",
+      "id" : "expense_rent",
+      "section" : "必要経費",
+      "taxLine" : "rent",
+      "value" : "220000",
       "valueType" : "number"
     },
     {
@@ -83,7 +99,23 @@
       "id" : "expense_supplies",
       "section" : "必要経費",
       "taxLine" : "supplies",
-      "value" : "6480",
+      "value" : "19440",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "旅費交通費",
+      "id" : "expense_travel",
+      "section" : "必要経費",
+      "taxLine" : "travel",
+      "value" : "1296",
+      "valueType" : "number"
+    },
+    {
+      "fieldLabel" : "水道光熱費",
+      "id" : "expense_utilities",
+      "section" : "必要経費",
+      "taxLine" : "utilities",
+      "value" : "8640",
       "valueType" : "number"
     },
     {
