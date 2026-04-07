@@ -3,9 +3,9 @@
 `scripts/run_release_quality_lane.sh` は `RELEASE_QUALITY_EVIDENCE_DIR` が設定された場合のみ、
 リポジトリで追跡しやすい Markdown の lane 実行証跡を出力します。
 
-`latest.md` は script の出力先ではなく、release 判定用に commit される
-最新 fully-green `Release Quality` run の curated snapshot です。
-current HEAD が fully-green でない場合でも、最後の green snapshot を保持したままにします。
+`latest.md` は script の直接出力先ではなく、release 判定用に commit される
+current HEAD 向け curated snapshot です。
+green でない場合も current HEAD の実測をそのまま保持します。
 
 ## XcodeGen 同期ガード
 
@@ -55,7 +55,7 @@ scripts/run_release_quality_lane.sh
 ## 出力ファイル
 
 - `latest.md`
-  最新 fully-green `Release Quality` run の curated snapshot。4 lane が揃ったときだけ更新します（`release-build` は `release-build.md` で追跡）。
+  current HEAD の curated snapshot。4 lane を同一 refresh で採取した結果を保持します（`release-build` は `release-build.md` で追跡）。
 - `latest-lane.md`
   `scripts/run_release_quality_lane.sh` が最後に出力した単一 lane の証跡。
 - `<lane>.md`
@@ -67,7 +67,7 @@ scripts/run_release_quality_lane.sh
 - lane 実行時は `RELEASE_QUALITY_EVIDENCE_DIR='Docs/release/quality'` を必須とします。
 - 単発 lane 実行で commit する最小 artifact は `latest-lane.md` と対応する `<lane>.md` です。
 - release 判定用として repo で維持する最小 artifact セットは `latest.md`、`latest-lane.md`、lane 別 8 本です（`release-build` と `xlsx-verify` を含む）。
-- `latest.md` は fully-green 4 lane の curated snapshot なので、単発 lane 実行では更新しません。
+- `latest.md` は current HEAD の curated snapshot なので、単発 lane 実行だけでは更新しません。
 - current HEAD の判定時に `latest.md` の `head_sha` が current HEAD と不一致なら、lane 別 md を current HEAD の正本として扱います。
 - `latest-lane.md` または `<lane>.md` に placeholder 値が残る状態は release 判定不可です。
 

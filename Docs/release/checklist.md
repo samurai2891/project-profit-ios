@@ -203,29 +203,31 @@
 
 ## 2026-04-07 Current State
 
-- current HEAD: `c6a354027311474e0673806a62d44dcda9ebd55c`
+- current HEAD: `a1f122b8b3e828231b38f9d7ec8cc467fed89be5`
 - `Docs/release/quality/latest.md` は current HEAD の curated snapshot に更新済み
 - `xcodegen-sync`: `status=ok`, `reason=ProjectProfit.xcodeproj is in sync with project.yml`
-- `simulator-health`: `status=ok`, `simulator_device=iPhone 17 Pro`, `simulator_id=75FD4EB2-79BE-4F1F-9225-99D392A087FC`
+- `simulator-health`: `status=ok`, `simulator_device=iPhone 17`, `simulator_id=F14C12AF-7F90-4311-BECD-E70E3031CE9B`
 - current HEAD の lane 個票実測:
   - `release-build`: `status: ok`
-  - `golden-baseline`: `status: error`
+  - `golden-baseline`: `status: ok`
   - `canonical-e2e`: `status: ok`
   - `migration-rehearsal`: `status: ok`
-  - `performance-gate`: `status: error`
-  - `books`: `status: error`
+  - `performance-gate`: `status: ok`
+  - `books`: `status: ok`
   - `forms`: `status: ok`
   - `xlsx-verify`: `status: ok`
 - `performance-gate` 実測:
-  - `performance.export.seconds=1.1767020225524902`
-  - `performance.migration.seconds=0.40709102153778076`
-  - `performance.projection.seconds=0.7712500095367432`
-  - `performance.search.seconds=0.704943060874939`
-- current HEAD の release 判定は `no-go`
-- current HEAD の failure 根拠:
-  - `golden-baseline`: `GoldenBaselineTests` 4 failures
-  - `performance-gate`: `ReleasePerformanceGateTests.testProjectionGenerationStaysUnderGate` が threshold `0.75s` を超過
-  - `books`: `DocumentAndSubLedgerTests.testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists` で 2 assertions failure
+  - `performance.export.seconds=1.3789360523223877`
+  - `performance.migration.seconds=0.4448509216308594`
+  - `performance.projection.seconds=0.8415590524673462`
+  - `performance.search.seconds=0.7561639547348022`
+- targeted regression:
+  - `LegacyDataMigrationExecutorTests`, `CanonicalRepositoriesTests`, `DocumentWorkflowUseCaseTests`: `Executed 25 tests, with 0 failures`
+- current HEAD の release 判定は `go`
+- 判定根拠:
+  - `xcodegen-sync` が green
+  - release gate 全 lane の current HEAD 個票が green
+  - Wave 1 修正の targeted regression が current HEAD で green
 
 ## 2026-03-14 Current State (Historical Snapshot)
 

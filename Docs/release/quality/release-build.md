@@ -1,12 +1,12 @@
 # Release Quality Evidence
 
-- generated_at: 2026-04-07 12:13:15 +0900
+- generated_at: 2026-04-07 15:15:25 +0900
 - lane: release-build
 - status: ok
 - reason: xcodebuild build succeeded
 - mode: build
 - configuration: Release
-- head_sha: c6a354027311474e0673806a62d44dcda9ebd55c
+- head_sha: a1f122b8b3e828231b38f9d7ec8cc467fed89be5
 - run_id: local
 - run_url: local
 - test_summary: n/a
