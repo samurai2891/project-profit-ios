@@ -1,6 +1,6 @@
 # Release Checklist
 
-最終更新日: 2026年3月24日
+最終更新日: 2026年4月7日
 
 このファイルは、ProjectProfit の release 判定を行うための repo 管理チェックリストです。
 手順の説明ではなく、何を確認し、どの証跡を見れば release 可否を判定できるかの正本として扱います。
@@ -11,7 +11,7 @@
 - `xcodegen-sync` job で `project.yml` と `ProjectProfit.xcodeproj` の同期を先に検証する。
 - `release-build` を含む全 lane は `RELEASE_QUALITY_EVIDENCE_DIR` を設定して実行し、Markdown 証跡を残す。
 - lane の判定は `status`、`reason`、`mode`、`configuration`、`head_sha`、`run_id`、`run_url`、`simulator_device`、`test_summary`、artifact path で行う。
-- `Docs/release/quality/latest.md` は latest fully-green curated snapshot として保持し、current HEAD 判定のたびに必ずしも更新しない。
+- `Docs/release/quality/latest.md` は current HEAD の curated snapshot として保持し、green でない場合も実測をそのまま残す。
 - current HEAD の release 可否は、まず `Docs/release/quality/latest.md` の `head_sha` が current HEAD と一致するかで判定経路を分ける。
 - `latest.md` の `head_sha` が current HEAD と不一致の場合は、`Docs/release/quality/<lane>.md` を current HEAD の正本として扱い、lane 個票の `ok/error` 実測で release 可否を判定する。
 - `latest.md` と lane 個票が矛盾する場合は、current HEAD に対応する lane 個票を優先する。
@@ -20,7 +20,7 @@
 ## Repo 管理境界
 
 - repo 管理対象の最小セットは `ProjectProfit/PrivacyInfo.xcprivacy`、`Docs/legal/privacy_policy.md`、`Docs/release/checklist.md`、`Docs/release/quality/latest.md`、`Docs/release/quality/latest-lane.md`、`Docs/release/quality/release-build.md`、`Docs/release/quality/golden-baseline.md`、`Docs/release/quality/canonical-e2e.md`、`Docs/release/quality/migration-rehearsal.md`、`Docs/release/quality/performance-gate.md`、`Docs/release/quality/books.md`、`Docs/release/quality/forms.md`、`Docs/release/quality/xlsx-verify.md` とする。
-- `Docs/release/quality/latest.md` は REL-P0-12 対象 4 lane の latest fully-green snapshot を保持する curated artifact とする。
+- `Docs/release/quality/latest.md` は REL-P0-12 対象 4 lane の current curated snapshot を保持する curated artifact とする。
 - `Docs/release/quality/latest-lane.md` は最後に実行した単一 lane の証跡とする。
 - `Docs/release/quality/<lane>.md` は lane ごとの最新証跡とする。
 - `support URL` は release 判定用の repo artifact ではなく、repo 外設定として管理する。
@@ -195,34 +195,37 @@
 - CI では `RELEASE_QUALITY_ARTIFACTS_DIR='$GITHUB_WORKSPACE/artifacts/release-quality/<lane>'` を使い、`/tmp` だけに依存しない。
 - commit 管理する最小 artifact は `latest.md`、`latest-lane.md`、lane 別 8 本とする。
 - `latest-lane.md` または lane 別 md に placeholder 値が残る場合は release 不可とする。
-- `Docs/release/quality/latest.md` は REL-P0-12 対象 gate の最新 fully-green snapshot として commit 管理する。
+- `Docs/release/quality/latest.md` は REL-P0-12 対象 gate の current curated snapshot として commit 管理する。
 - `Docs/release/quality/latest-lane.md` は最後に実行した lane の証跡として上書きされる。
 - lane ごとの判定は `Docs/release/quality/<lane>.md` を優先し、単一 lane の直近実行確認には `Docs/release/quality/latest-lane.md` を使う。
-- release gate 全体の最新 green 確認には `Docs/release/quality/latest.md` を使う。
+- release gate 全体の current curated snapshot 確認には `Docs/release/quality/latest.md` を使う。
 - ただし current HEAD 判定では、`latest.md` の `head_sha` が current HEAD と不一致なら lane 個票を優先する。
 
-## 2026-03-24 Current State
+## 2026-04-07 Current State
 
-- current HEAD: `a2d059d9b9d71ac22148f7b641a83ab03249134d`
-- `Docs/release/quality/latest.md` は current HEAD の curated fully-green snapshot に更新済み
-- `xcodegen-sync`: `status=ok`
-- `simulator-health`: `status=ok`, `simulator_device=iPhone 17 Pro`
+- current HEAD: `c6a354027311474e0673806a62d44dcda9ebd55c`
+- `Docs/release/quality/latest.md` は current HEAD の curated snapshot に更新済み
+- `xcodegen-sync`: `status=ok`, `reason=ProjectProfit.xcodeproj is in sync with project.yml`
+- `simulator-health`: `status=ok`, `simulator_device=iPhone 17 Pro`, `simulator_id=75FD4EB2-79BE-4F1F-9225-99D392A087FC`
 - current HEAD の lane 個票実測:
   - `release-build`: `status: ok`
-  - `golden-baseline`: `status: ok`
+  - `golden-baseline`: `status: error`
   - `canonical-e2e`: `status: ok`
   - `migration-rehearsal`: `status: ok`
-  - `performance-gate`: `status: ok`
-  - `books`: `status: ok`
+  - `performance-gate`: `status: error`
+  - `books`: `status: error`
   - `forms`: `status: ok`
+  - `xlsx-verify`: `status: ok`
 - `performance-gate` 実測:
-  - `performance.export.seconds=0.6760909557342529`
-  - `performance.migration.seconds=0.386821985244751`
-  - `performance.projection.seconds=0.4266420602798462`
-  - `performance.search.seconds=0.624290943145752`
-- `xlsx-verify`: current HEAD では `Docs/release/quality/xlsx-verify.md` を参照する
-- current HEAD の release 判定は `go`
-- curated 4 lane が fully-green のため `Docs/release/quality/latest.md` を current HEAD へ更新済み
+  - `performance.export.seconds=1.1767020225524902`
+  - `performance.migration.seconds=0.40709102153778076`
+  - `performance.projection.seconds=0.7712500095367432`
+  - `performance.search.seconds=0.704943060874939`
+- current HEAD の release 判定は `no-go`
+- current HEAD の failure 根拠:
+  - `golden-baseline`: `GoldenBaselineTests` 4 failures
+  - `performance-gate`: `ReleasePerformanceGateTests.testProjectionGenerationStaysUnderGate` が threshold `0.75s` を超過
+  - `books`: `DocumentAndSubLedgerTests.testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists` で 2 assertions failure
 
 ## 2026-03-14 Current State (Historical Snapshot)
 

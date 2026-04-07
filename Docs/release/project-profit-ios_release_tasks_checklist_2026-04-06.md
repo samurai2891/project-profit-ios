@@ -1,7 +1,7 @@
 # project-profit-ios リリース完了チェックリスト（進捗可視化版 / 2026-04-06）
 
 対象リポジトリ: `samurai2891/project-profit-ios`  
-レビュー対象 HEAD: `cad9516`（`feat: release export matrixとxlsx verifyを整備`）
+レビュー対象 HEAD: `c6a3540`（`chore: refresh xlsx tooling and release evidence workflow prep`）
 
 ## この文書の見方
 
@@ -22,7 +22,7 @@
 - [x] xlsx の source-of-truth template 群は repo に入っている
 - [x] xlsx exporter の基盤（`libxlsxwriter` / resource bundling / exporter 実装）は入っている
 - [x] xlsx golden fixture / verify script の基盤は入っている
-- [ ] current HEAD 向けの release quality 証跡は更新されていない
+- [x] current HEAD 向けの release quality 証跡は更新済み
 - [x] `SPEC.md` と official export matrix の `xlsx` 範囲は一致している
 - [x] legacy 互換導線の visible export format は実装と一致している
 - [x] xlsx verify script の portable 化と CI gate 組み込みは完了
@@ -35,15 +35,15 @@
 ## 進捗サマリー
 
 - 完了: **9件**
-- 一部完了で要収束: **0件**
-- 未完了: **1件**
+- 一部完了で要収束: **1件**
+- 未完了: **0件**
 
 | ID | 項目 | 優先度 | 現在状態 |
 |---|---|---|---|
 | BASE-01 | source-of-truth Excel template 同梱 | 基盤 | 完了 |
 | BASE-02 | xlsx exporter 基盤追加 | 基盤 | 完了 |
 | BASE-03 | xlsx golden verification 基盤追加 | 基盤 | 完了 |
-| P0-01 | current HEAD 向け release quality 証跡更新 | P0 | 未完了 |
+| P0-01 | current HEAD 向け release quality 証跡更新 | P0 | 一部完了 |
 | P0-02 | `SPEC.md` と official export matrix の `xlsx` 範囲収束 | P0 | 完了 |
 | P0-03 | legacy export の visible format 実装収束 | P0 | 完了 |
 | P0-04 | xlsx verify script の portable 化 + CI gate 組み込み | P0 | 完了 |
@@ -104,32 +104,38 @@
 
 ## P0: リリース前に必ず閉じるタスク
 
-### [ ] P0-01 current HEAD (`cad9516`) 向けの release quality 証跡を更新する
+### [x] P0-01 current HEAD (`c6a3540`) 向けの release quality 証跡を更新する
 
 - 優先度: **P0**
-- 現在状態: **未完了**
+- 現在状態: **一部完了**
 - repo 上で確認できた事実:
-  - main HEAD は `cad9516`
-  - `Docs/release/quality/latest.md` の `head_sha` は `a2d059d...`
-  - `release-build.md` と `xlsx-verify.md` は current repo state の `cad9516...` へ更新済み
-  - `books.md` / `forms.md` / `golden-baseline.md` / `canonical-e2e.md` / `migration-rehearsal.md` / `performance-gate.md` は `a2d059d...` のまま
-  - `Docs/release/checklist.md` では、`latest.md` が current HEAD と不一致なら lane 個票を current HEAD の正本として扱うと明記している
+  - main HEAD は `c6a3540`
+  - `Docs/release/quality/latest.md` / `latest-lane.md` / lane 個票 / `xlsx-verify.md` の `head_sha` は current repo state の `c6a3540...` に更新済み
+  - `release-build` / `canonical-e2e` / `migration-rehearsal` / `forms` / `xlsx-verify` は current HEAD で `status: ok`
+  - `golden-baseline` / `performance-gate` / `books` は current HEAD で `status: error`
+  - `Docs/release/checklist.md` は current HEAD の curated snapshot と lane 個票実測へ更新済み
 - 実装チェックリスト:
-  - [ ] `xcodegen-sync` を current HEAD で再実行して green を残す
-  - [ ] `simulator-health` を current HEAD で再実行して結果を残す
-  - [ ] `release-build` を current HEAD で再採取する
-  - [ ] `golden-baseline` を current HEAD で再採取する
-  - [ ] `canonical-e2e` を current HEAD で再採取する
-  - [ ] `migration-rehearsal` を current HEAD で再採取する
-  - [ ] `performance-gate` を current HEAD で再採取する
-  - [ ] `books` を current HEAD で再採取する
-  - [ ] `forms` を current HEAD で再採取する
-  - [ ] `Docs/release/quality/*.md` の `head_sha` を current HEAD に揃える
-  - [ ] `artifacts/release-quality/**` を current HEAD 証跡へ揃える
+  - [x] `xcodegen-sync` を current HEAD で再実行して green を残す
+  - [x] `simulator-health` を current HEAD で再実行して結果を残す
+  - [x] `release-build` を current HEAD で再採取する
+  - [x] `golden-baseline` を current HEAD で再採取する
+  - [x] `canonical-e2e` を current HEAD で再採取する
+  - [x] `migration-rehearsal` を current HEAD で再採取する
+  - [x] `performance-gate` を current HEAD で再採取する
+  - [x] `books` を current HEAD で再採取する
+  - [x] `forms` を current HEAD で再採取する
+  - [x] `Docs/release/quality/*.md` の `head_sha` を current HEAD に揃える
+  - [x] `artifacts/release-quality/**` を current HEAD 証跡へ揃える
 - 完了条件:
-  - [ ] public repo だけで current HEAD の release 可否を判定できる
+  - [x] public repo だけで current HEAD の release 可否を判定できる
   - [ ] 必要 lane の `status` が current HEAD に対して `ok`
-  - [ ] `summary_path / log_path / xcresult_path / metrics_path` が current HEAD 証跡を指している
+  - [x] `summary_path / log_path / xcresult_path / metrics_path` が current HEAD 証跡を指している
+- current HEAD の未解消 failure:
+  - `golden-baseline`: `GoldenBaselineTests` 4 failures
+  - `performance-gate`: `performance.projection.seconds=0.7712500095367432` で gate 超過
+  - `books`: `DocumentAndSubLedgerTests.testLegacyReceiptImageBackfill_isIdempotentWhenDocumentAlreadyExists` で 2 assertions failure
+- historical note:
+  - 旧対象 SHA `cad9516` は current HEAD refresh 前の履歴として扱い、release 判定の正本は `c6a3540` に更新した
 - 根拠ファイル:
   - `Docs/release/quality/latest.md`
   - `Docs/release/quality/release-build.md`

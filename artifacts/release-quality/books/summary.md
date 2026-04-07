@@ -1,12 +1,13 @@
 ## books
-- status: ok
-- reason: xcodebuild test succeeded
+- status: error
+- reason: xcodebuild test failed
 - mode: test
 - configuration: Debug
-- head_sha: a2d059d9b9d71ac22148f7b641a83ab03249134d
+- head_sha: c6a354027311474e0673806a62d44dcda9ebd55c
 - run_id: local
 - run_url: local
-- test_summary: Executed 55 tests, with 0 failures
+- test_summary: Executed 55 tests, with 2 failures
 - simulator_device: iPhone 17 Pro
-- xcresult: /Users/yutaro/project-profit-ios/artifacts/release-quality/books/books.xcresult
-- log: /Users/yutaro/project-profit-ios/artifacts/release-quality/books/xcodebuild.log
+- simulator_id: 75FD4EB2-79BE-4F1F-9225-99D392A087FC
+- xcresult: artifacts/release-quality/books/books.xcresult
+- log: artifacts/release-quality/books/xcodebuild.log
