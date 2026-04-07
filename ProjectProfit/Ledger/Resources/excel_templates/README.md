@@ -38,11 +38,46 @@ Host-side golden verification for report templates is available via:
 - `scripts/verify_generated_ledger_xlsx_golden.py`
 - `scripts/verify_generated_ledger_xlsx_golden.sh`
 
-This compares the standalone BS/PL / trial balance / journal / general ledger / fixed assets templates
-against expected sheet names, key header rows, and column widths using `openpyxl`.
+This compares workbook-level parity snapshots generated with `openpyxl`.
+The current verification contract checks:
+
+- workbook sheet order
+- workbook defined names
+- worksheet used range (`max_row`, `max_column`)
+- full worksheet row payloads across the used range
+- column widths
+- merged cells
+- freeze panes
+- page setup / page margins / print area / print titles
+- row breaks / column breaks
+- non-empty cell snapshots:
+  - value
+  - formula
+  - number format
+  - font
+  - fill
+  - alignment
+  - border
+
+The current verification contract does not compare:
+
+- row heights
+- comments
+- images / drawings / charts
+- VBA / macros
+- external links
 
 `verify_generated_report_xlsx_golden.sh` first materializes fresh `.xlsx` output from `ExportCoordinator`
-and then checks the generated workbooks against the same layout contract.
+and then checks the generated workbooks against the same workbook-level contract.
 
 `verify_generated_ledger_xlsx_golden.sh` does the same for ledger exports under `LedgerDataStore.exportExcel(...)`,
 including invoice variants.
+
+Committed expected snapshots live under:
+
+- `scripts/golden_xlsx/templates/`
+- `scripts/golden_xlsx/generated/`
+
+They can be regenerated from the committed workbook fixtures with:
+
+- `python3 scripts/generate_xlsx_golden_snapshots.py`

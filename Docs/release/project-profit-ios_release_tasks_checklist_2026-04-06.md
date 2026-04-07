@@ -1,7 +1,7 @@
 # project-profit-ios リリース完了チェックリスト（進捗可視化版 / 2026-04-06）
 
 対象リポジトリ: `samurai2891/project-profit-ios`  
-レビュー対象 HEAD: `9c2e80b`（`feat: xlsx export matrixを仕様へ統一`）
+レビュー対象 HEAD: `cad9516`（`feat: release export matrixとxlsx verifyを整備`）
 
 ## この文書の見方
 
@@ -26,7 +26,7 @@
 - [x] `SPEC.md` と official export matrix の `xlsx` 範囲は一致している
 - [x] legacy 互換導線の visible export format は実装と一致している
 - [x] xlsx verify script の portable 化と CI gate 組み込みは完了
-- [ ] xlsx parity 検証の粒度は release claim に対してまだ不足
+- [x] xlsx parity 検証の粒度は release claim に見合う水準まで引き上げた
 - [x] stale な監査文書は current repo state に追随している
 - [x] repo root README は追加済み
 
@@ -34,8 +34,8 @@
 
 ## 進捗サマリー
 
-- 完了: **8件**
-- 一部完了で要収束: **1件**
+- 完了: **9件**
+- 一部完了で要収束: **0件**
 - 未完了: **1件**
 
 | ID | 項目 | 優先度 | 現在状態 |
@@ -47,7 +47,7 @@
 | P0-02 | `SPEC.md` と official export matrix の `xlsx` 範囲収束 | P0 | 完了 |
 | P0-03 | legacy export の visible format 実装収束 | P0 | 完了 |
 | P0-04 | xlsx verify script の portable 化 + CI gate 組み込み | P0 | 完了 |
-| P0-05 | xlsx parity 検証の粒度引き上げ | P0 | 一部完了 |
+| P0-05 | xlsx parity 検証の粒度引き上げ | P0 | 完了 |
 | P1-01 | stale 監査文書の current main 追随 | P1 | 完了 |
 | P1-02 | repo root README 追加 | P1 | 完了 |
 
@@ -104,14 +104,15 @@
 
 ## P0: リリース前に必ず閉じるタスク
 
-### [ ] P0-01 current HEAD (`9c2e80b`) 向けの release quality 証跡を更新する
+### [ ] P0-01 current HEAD (`cad9516`) 向けの release quality 証跡を更新する
 
 - 優先度: **P0**
 - 現在状態: **未完了**
 - repo 上で確認できた事実:
-  - main HEAD は `9c2e80b`
+  - main HEAD は `cad9516`
   - `Docs/release/quality/latest.md` の `head_sha` は `a2d059d...`
-  - `release-build.md` / `books.md` / `forms.md` / `golden-baseline.md` / `canonical-e2e.md` / `migration-rehearsal.md` / `performance-gate.md` も `a2d059d...` のまま
+  - `release-build.md` と `xlsx-verify.md` は current repo state の `cad9516...` へ更新済み
+  - `books.md` / `forms.md` / `golden-baseline.md` / `canonical-e2e.md` / `migration-rehearsal.md` / `performance-gate.md` は `a2d059d...` のまま
   - `Docs/release/checklist.md` では、`latest.md` が current HEAD と不一致なら lane 個票を current HEAD の正本として扱うと明記している
 - 実装チェックリスト:
   - [ ] `xcodegen-sync` を current HEAD で再実行して green を残す
@@ -219,30 +220,34 @@
   - `scripts/verify_generated_report_xlsx_golden.py`
   - `.github/workflows/release-quality.yml`
 
-### [ ] P0-05 xlsx parity 検証を release claim に耐える粒度へ引き上げる
+### [x] P0-05 xlsx parity 検証を release claim に耐える粒度へ引き上げる
 
 - 優先度: **P0**
-- 現在状態: **一部完了**
+- 現在状態: **完了**
 - repo 上で確認できた事実:
-  - `excel_templates/README.md` では、現在の golden verification を `sheet names / key header rows / column widths` 比較と説明している
-  - `inspect_xlsx_layout.py` は `先頭 worksheet / 最大 20 行 / A〜Z 列幅 / print_area` を JSON 化している
+  - `excel_templates/README.md` では、workbook parity で比較する項目と比較しない項目を明記している
+  - `inspect_xlsx_layout.py` は workbook 全体の snapshot を JSON 化する
+  - `scripts/golden_xlsx/templates/*.json` と `scripts/golden_xlsx/generated/*.json` に committed expected snapshot が追加されている
+  - 4 本の verify script は workbook snapshot 同士を比較する
 - 実装チェックリスト:
-  - [ ] 全 worksheet を比較対象に広げる
-  - [ ] `20 行まで` の制限をやめる、または帳票ごとに必要な全使用範囲へ広げる
-  - [ ] merged cells を比較する
-  - [ ] 数式を比較する
-  - [ ] number format を比較する
-  - [ ] 主要セル書式（font / border / fill / alignment の必要範囲）を比較する
-  - [ ] page setup / print titles / print area / 改ページを比較する
-  - [ ] freeze panes / named ranges（使っている場合）を比較する
-  - [ ] 「何を比較していて、何を比較していないか」を README に明記する
+  - [x] 全 worksheet を比較対象に広げる
+  - [x] `20 行まで` の制限をやめ、各 worksheet の全使用範囲を snapshot 化する
+  - [x] merged cells を比較する
+  - [x] 数式を比較する
+  - [x] number format を比較する
+  - [x] 主要セル書式（font / border / fill / alignment の必要範囲）を比較する
+  - [x] page setup / print titles / print area / 改ページを比較する
+  - [x] freeze panes / named ranges（使っている場合）を比較する
+  - [x] 「何を比較していて、何を比較していないか」を README に明記する
 - 完了条件:
-  - [ ] `Excel原本と同一書式` という release claim に見合う検証粒度になる
-  - [ ] 比較範囲が README / script から明確に追える
-  - [ ] fixed asset 系を含む対象 workbook で current HEAD の parity green を残せる
+  - [x] `Excel原本と同一書式` という release claim に見合う検証粒度になる
+  - [x] 比較範囲が README / script から明確に追える
+  - [x] fixed asset 系を含む対象 workbook で current HEAD の parity green を残せる
 - 根拠ファイル:
   - `ProjectProfit/Ledger/Resources/excel_templates/README.md`
   - `scripts/inspect_xlsx_layout.py`
+  - `scripts/golden_xlsx/templates/`
+  - `scripts/golden_xlsx/generated/`
   - `scripts/verify_ledger_xlsx_golden.py`
   - `scripts/verify_report_xlsx_golden.py`
   - `scripts/verify_generated_ledger_xlsx_golden.py`
@@ -257,7 +262,7 @@
 - 優先度: **P1**
 - 現在状態: **完了**
 - repo 上で確認できた事実:
-  - 文書ヘッダと前提を current repo state / current main `9c2e80b` 基準へ更新した
+  - 文書ヘッダと前提を current repo state / current main `cad9516` 基準へ更新した
   - `working tree に未コミット変更がある` 前提を除去した
   - source-of-truth Excel template が repo 内にある現在の事実へ合わせた
   - official/legacy export matrix と `xlsx-verify` gate の追加後状態に合わせて export 周辺の記述を更新した
@@ -314,6 +319,6 @@
 - [x] `SPEC.md` と official export matrix の `xlsx` 範囲が一致している
 - [x] legacy visible export format が UI / 実装 / テストで一致している
 - [x] xlsx verify script が portable で CI gate に入っている
-- [ ] xlsx parity 検証の粒度が release claim に見合っている
+- [x] xlsx parity 検証の粒度が release claim に見合っている
 - [x] stale 監査文書が current main に追随している
 - [x] root README から全体導線を追える

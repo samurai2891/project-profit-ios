@@ -1,35 +1,30 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
-from openpyxl import load_workbook
+from xlsx_parity import inspect_workbook
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Render a workbook-level xlsx parity snapshot as JSON."
+    )
+    parser.add_argument("xlsx_path", help="Workbook path to inspect.")
+    parser.add_argument(
+        "--width-padding",
+        type=float,
+        default=0.0,
+        help="Subtract this value from column widths before serializing.",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: inspect_xlsx_layout.py <xlsx-path>", file=sys.stderr)
-        return 1
-
-    path = Path(sys.argv[1])
-    wb = load_workbook(path, data_only=False)
-    ws = wb[wb.sheetnames[0]]
-
-    letters = [chr(ord("A") + i) for i in range(min(ws.max_column, 26))]
-    payload = {
-        "sheet_name": ws.title,
-        "rows": {
-            str(r): [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
-            for r in range(1, min(ws.max_row, 20) + 1)
-        },
-        "widths": {
-            letter: ws.column_dimensions[letter].width
-            for letter in letters
-        },
-        "print_area": list(ws.print_area) if ws.print_area else [],
-    }
-    print(json.dumps(payload, ensure_ascii=False))
+    args = parse_args()
+    payload = inspect_workbook(Path(args.xlsx_path), width_padding=args.width_padding)
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0
 
 

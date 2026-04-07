@@ -3,9 +3,8 @@
 - reason: xcodebuild build succeeded
 - mode: build
 - configuration: Release
-- head_sha: a2d059d9b9d71ac22148f7b641a83ab03249134d
+- head_sha: cad95167864c21d768d3e2359068405be7dd7a44
 - run_id: local
 - run_url: local
 - test_summary: n/a
-- simulator_device: iPhone 17 Pro
-- log: /Users/yutaro/project-profit-ios/artifacts/release-quality/release-build/xcodebuild.log
+- log: artifacts/release-quality/release-build/xcodebuild.log

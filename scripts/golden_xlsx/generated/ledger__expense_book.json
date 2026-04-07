@@ -1,0 +1,3165 @@
+{
+  "defined_names": {},
+  "sheet_names": [
+    "経費帳",
+    "勘定科目",
+    "入力ガイド"
+  ],
+  "workbook_name": "expense_book.xlsx",
+  "worksheets": {
+    "入力ガイド": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "入力ガイド"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "帳票名: 経費帳"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "この workbook はテンプレート準拠の見た目でアプリから再生成されています。"
+        },
+        "A5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。"
+        },
+        "A6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。"
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 6,
+      "max_row": 6,
+      "merged_cells": [
+        "A1:F1"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": null,
+        "paper_size": null,
+        "scale": null
+      },
+      "print_area": [],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "入力ガイド",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "2": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "3": [
+          "帳票名: 経費帳",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "4": [
+          "この workbook はテンプレート準拠の見た目でアプリから再生成されています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "5": [
+          "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "6": [
+          "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "title": "入力ガイド",
+      "widths": {
+        "A": 56.0,
+        "B": 12.2890625,
+        "C": 12.2890625,
+        "D": 12.2890625,
+        "E": 12.2890625,
+        "F": 12.2890625
+      }
+    },
+    "勘定科目": {
+      "cells": {
+        "B1": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "現金出納帳/預金出納帳"
+        },
+        "B24": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "負債"
+        },
+        "B3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "区分"
+        },
+        "B30": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "資本"
+        },
+        "B31": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "売上"
+        },
+        "B33": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "売上原価"
+        },
+        "B36": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "経費"
+        },
+        "B4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "資産"
+        },
+        "C10": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "貯蔵品"
+        },
+        "C11": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "仮払金"
+        },
+        "C12": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "建物"
+        },
+        "C13": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "建物附属設備"
+        },
+        "C14": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "機械装置"
+        },
+        "C15": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "車両運搬具"
+        },
+        "C16": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "工具器具備品"
+        },
+        "C17": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "土地"
+        },
+        "C18": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "電話加入権"
+        },
+        "C19": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "敷金"
+        },
+        "C20": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "差入保証金"
+        },
+        "C21": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "預託金"
+        },
+        "C22": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "開業費"
+        },
+        "C23": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "事業主貸"
+        },
+        "C24": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "支払手形"
+        },
+        "C25": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "買掛金"
+        },
+        "C26": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "未払金"
+        },
+        "C27": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "前受金"
+        },
+        "C28": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "預り金"
+        },
+        "C29": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "事業主借"
+        },
+        "C3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "勘定科目"
+        },
+        "C30": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "元入金"
+        },
+        "C31": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "売上高"
+        },
+        "C32": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "雑収入"
+        },
+        "C33": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "期首商品棚卸高"
+        },
+        "C34": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "仕入高"
+        },
+        "C35": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "期末商品棚卸高"
+        },
+        "C36": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "租税公課"
+        },
+        "C37": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "荷造運賃"
+        },
+        "C38": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "水道光熱費"
+        },
+        "C39": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "旅費交通費"
+        },
+        "C4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "現金"
+        },
+        "C40": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "通信費"
+        },
+        "C41": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "広告宣伝費"
+        },
+        "C42": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "接待交際費"
+        },
+        "C43": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "損害保険料"
+        },
+        "C44": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "修繕費"
+        },
+        "C45": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "消耗品費"
+        },
+        "C46": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "外注工賃"
+        },
+        "C47": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "地代家賃"
+        },
+        "C48": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "減価償却費"
+        },
+        "C49": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "福利厚生費"
+        },
+        "C5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "普通預金"
+        },
+        "C50": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "手形売却損"
+        },
+        "C51": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "支払手数料"
+        },
+        "C52": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "車両費"
+        },
+        "C53": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "雑費"
+        },
+        "C54": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "専従者給与"
+        },
+        "C6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "定期預金"
+        },
+        "C7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "受取手形"
+        },
+        "C8": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "売掛金"
+        },
+        "C9": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "商品"
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 3,
+      "max_row": 54,
+      "merged_cells": [],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": null,
+        "paper_size": null,
+        "scale": null
+      },
+      "print_area": [],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          null,
+          "現金出納帳/預金出納帳",
+          null
+        ],
+        "10": [
+          null,
+          null,
+          "貯蔵品"
+        ],
+        "11": [
+          null,
+          null,
+          "仮払金"
+        ],
+        "12": [
+          null,
+          null,
+          "建物"
+        ],
+        "13": [
+          null,
+          null,
+          "建物附属設備"
+        ],
+        "14": [
+          null,
+          null,
+          "機械装置"
+        ],
+        "15": [
+          null,
+          null,
+          "車両運搬具"
+        ],
+        "16": [
+          null,
+          null,
+          "工具器具備品"
+        ],
+        "17": [
+          null,
+          null,
+          "土地"
+        ],
+        "18": [
+          null,
+          null,
+          "電話加入権"
+        ],
+        "19": [
+          null,
+          null,
+          "敷金"
+        ],
+        "2": [
+          null,
+          null,
+          null
+        ],
+        "20": [
+          null,
+          null,
+          "差入保証金"
+        ],
+        "21": [
+          null,
+          null,
+          "預託金"
+        ],
+        "22": [
+          null,
+          null,
+          "開業費"
+        ],
+        "23": [
+          null,
+          null,
+          "事業主貸"
+        ],
+        "24": [
+          null,
+          "負債",
+          "支払手形"
+        ],
+        "25": [
+          null,
+          null,
+          "買掛金"
+        ],
+        "26": [
+          null,
+          null,
+          "未払金"
+        ],
+        "27": [
+          null,
+          null,
+          "前受金"
+        ],
+        "28": [
+          null,
+          null,
+          "預り金"
+        ],
+        "29": [
+          null,
+          null,
+          "事業主借"
+        ],
+        "3": [
+          null,
+          "区分",
+          "勘定科目"
+        ],
+        "30": [
+          null,
+          "資本",
+          "元入金"
+        ],
+        "31": [
+          null,
+          "売上",
+          "売上高"
+        ],
+        "32": [
+          null,
+          null,
+          "雑収入"
+        ],
+        "33": [
+          null,
+          "売上原価",
+          "期首商品棚卸高"
+        ],
+        "34": [
+          null,
+          null,
+          "仕入高"
+        ],
+        "35": [
+          null,
+          null,
+          "期末商品棚卸高"
+        ],
+        "36": [
+          null,
+          "経費",
+          "租税公課"
+        ],
+        "37": [
+          null,
+          null,
+          "荷造運賃"
+        ],
+        "38": [
+          null,
+          null,
+          "水道光熱費"
+        ],
+        "39": [
+          null,
+          null,
+          "旅費交通費"
+        ],
+        "4": [
+          null,
+          "資産",
+          "現金"
+        ],
+        "40": [
+          null,
+          null,
+          "通信費"
+        ],
+        "41": [
+          null,
+          null,
+          "広告宣伝費"
+        ],
+        "42": [
+          null,
+          null,
+          "接待交際費"
+        ],
+        "43": [
+          null,
+          null,
+          "損害保険料"
+        ],
+        "44": [
+          null,
+          null,
+          "修繕費"
+        ],
+        "45": [
+          null,
+          null,
+          "消耗品費"
+        ],
+        "46": [
+          null,
+          null,
+          "外注工賃"
+        ],
+        "47": [
+          null,
+          null,
+          "地代家賃"
+        ],
+        "48": [
+          null,
+          null,
+          "減価償却費"
+        ],
+        "49": [
+          null,
+          null,
+          "福利厚生費"
+        ],
+        "5": [
+          null,
+          null,
+          "普通預金"
+        ],
+        "50": [
+          null,
+          null,
+          "手形売却損"
+        ],
+        "51": [
+          null,
+          null,
+          "支払手数料"
+        ],
+        "52": [
+          null,
+          null,
+          "車両費"
+        ],
+        "53": [
+          null,
+          null,
+          "雑費"
+        ],
+        "54": [
+          null,
+          null,
+          "専従者給与"
+        ],
+        "6": [
+          null,
+          null,
+          "定期預金"
+        ],
+        "7": [
+          null,
+          null,
+          "受取手形"
+        ],
+        "8": [
+          null,
+          null,
+          "売掛金"
+        ],
+        "9": [
+          null,
+          null,
+          "商品"
+        ]
+      },
+      "title": "勘定科目",
+      "widths": {
+        "A": 12.2890625,
+        "B": 10.0,
+        "C": 16.0
+      }
+    },
+    "経費帳": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "経　費　帳"
+        },
+        "A2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "勘定科目名"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "日付"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 9.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "月"
+        },
+        "A5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": 2
+        },
+        "B4": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 9.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "日"
+        },
+        "B5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": 8
+        },
+        "C2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "消耗品費"
+        },
+        "C3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "相手科目"
+        },
+        "C5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "現金"
+        },
+        "D3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "摘　　　　要"
+        },
+        "D5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "文具"
+        },
+        "E3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "金額"
+        },
+        "E5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 2400
+        },
+        "F3": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "累計"
+        },
+        "F5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 2400
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 6,
+      "max_row": 5,
+      "merged_cells": [
+        "A1:F1"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": "landscape",
+        "paper_size": 9,
+        "scale": null
+      },
+      "print_area": [
+        "'経費帳'!$A$1:$F$5"
+      ],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "経　費　帳",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "2": [
+          "勘定科目名",
+          null,
+          "消耗品費",
+          null,
+          null,
+          null
+        ],
+        "3": [
+          "日付",
+          null,
+          "相手科目",
+          "摘　　　　要",
+          "金額",
+          "累計"
+        ],
+        "4": [
+          "月",
+          "日",
+          null,
+          null,
+          null,
+          null
+        ],
+        "5": [
+          2,
+          8,
+          "現金",
+          "文具",
+          2400,
+          2400
+        ]
+      },
+      "title": "経費帳",
+      "widths": {
+        "A": 4.0,
+        "B": 4.0,
+        "C": 14.0,
+        "D": 28.0,
+        "E": 12.0,
+        "F": 12.0
+      }
+    }
+  }
+}

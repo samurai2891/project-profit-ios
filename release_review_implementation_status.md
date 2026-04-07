@@ -6,7 +6,7 @@
 監査基準:
 - 主基準は `release_review_implementation_status.md` の 10 項目
 - 補助根拠は `Docs/release/checklist.md`、`Docs/release/project-profit-ios_release_tasks_checklist_2026-04-06.md`、必要時のみ `Docs/specs/SPEC.md`
-- 監査対象 HEAD は current main `9c2e80b503215e2804515bcdd7ddf13ee0422bb2`
+- 監査対象 HEAD は current main `cad95167864c21d768d3e2359068405be7dd7a44`
 - `Docs/release/quality/latest.md` は `a2d059d...` の historical curated snapshot として扱い、current HEAD 判定は lane 個票を正本にする
 
 判定基準:
@@ -35,7 +35,7 @@
 | 7 | export 機能が帳簿仕様と未整合 | 実装済み | `ExportCoordinator` が 11帳簿の official target を持ち、release 導線と `CSV/PDF/XLSX` の official matrix が `SPEC.md`・UI・テストで一致した。repo 内では `xlsx-verify` gate も追加された |
 | 8 | e-Tax UI と年分対応のズレ | 実装済み | `blueCashBasis` と 2025/2026 年分対応に加え、e-Tax 画面へ年分×様式の対応状況一覧と事前理由表示、UI テスト根拠が追加された |
 | 9 | 書類台帳の削除統制が弱い | 実装済み | 保存期間内削除は request 済み状態と理由・承認者入力を必須化し、UI・内部 purge・全削除も quarantine 統制へ統一された |
-| 10 | 固定資産帳票区分と export の粗さ | 部分実装 | register と depreciation は別 target/別画面に分離され、`CSV/PDF/XLSX` とも `SPEC.md` ベースの列定義・主要計算へ揃った。一方で parity 検証はまだ workbook 全面比較まで届いておらず、完了条件の「原本一致」は未充足 |
+| 10 | 固定資産帳票区分と export の粗さ | 実装済み | register と depreciation は別 target/別画面に分離され、`CSV/PDF/XLSX` とも `SPEC.md` ベースの列定義・主要計算へ揃った。fixed asset 系を含む workbook parity snapshot 検証も repo 内で実行できる |
 
 ## 実装チェックリスト
 
@@ -52,7 +52,7 @@
 | 7 | export 機能が帳簿仕様と未整合 | [x] | [x] | [x] | [x] | [ ] |
 | 8 | e-Tax UI と年分対応のズレ | [x] | [x] | [x] | [x] | [ ] |
 | 9 | 書類台帳の削除統制が弱い | [x] | [x] | [x] | [x] | [ ] |
-| 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [ ] | [x] | [x] |
+| 10 | 固定資産帳票区分と export の粗さ | [x] | [x] | [x] | [x] | [ ] |
 
 凡例:
 - `main path 実装` = 主機能の中心経路は実装済み
@@ -308,7 +308,7 @@
   - `.github/workflows/release-quality.yml` に blocking job `xlsx-verify` が追加され、template / generated workbook の verify script 4 本が gate に入った
 - 補足:
   - source-of-truth Excel template は repo 内に同梱済みで、generated workbook の verify も repo 単体で実行できる
-  - ただし parity 検証はまだ sheet/row/width 中心で、書式・page setup などの全面比較は未完了
+  - workbook parity は sheet order、defined names、used range、merged cells、formula、number format、主要セル書式、print settings、page breaks まで比較する
   - `transactions` と `etax` は 11帳簿の仕様対象外の互換 target として残る
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:6`
@@ -402,7 +402,7 @@
 
 ### 10. 固定資産帳票区分と export の粗さ
 
-- 判定: `部分実装`
+- 判定: `実装済み`
 - 実装チェック:
   - [x] register / depreciation は別 target
   - [x] UI も別画面
@@ -410,18 +410,15 @@
   - [x] depreciation は CSV/PDF/XLSX export がある
   - [x] `SPEC.md` ベースの実装列定義へ揃った
   - [x] depreciation export を直接支えるテスト根拠は追加された
-  - [ ] workbook 全体の parity を固定する直接機械比較はまだない
+  - [x] workbook 全体の parity を固定する snapshot 比較がある
 - できていること:
   - `ExportCoordinator.ExportTarget` で `fixedAssetRegister` と `fixedAssetDepreciation` が分離されている
   - UI も `FixedAssetListView` と `FixedAssetScheduleView` の別画面
   - `fixedAssetRegister` と `fixedAssetDepreciation` はともに `CSV/PDF/XLSX` 対応
   - 固定資産台帳は metadata 行・13列ヘッダ・必要経費算入額を含めて `SPEC.md` へ揃えた
   - 減価償却明細は 21 列ヘッダと主要計算値を `DepreciationEngine` 正本へ寄せ、PDF も同じ列意味論へ揃えた
-  - fixed asset 系は `.xlsx` verify 対象にも含まれ、repo 同梱 template / generated fixture に対する機械検証を持つ
+  - fixed asset 系は `.xlsx` verify 対象にも含まれ、repo 同梱 template / generated fixture に対する workbook-level parity 検証を持つ
   - 償却方法ラベルは `PPDepreciationMethod` の全方式を export 上で明示化し、非定率法を黙って `定額法` に丸めない
-- まだ足りていないこと:
-  - workbook 全 worksheet、数式、merged cells、number format、主要セル書式、page setup まで比較する parity は未実施
-  - 完了条件が「原本必須」相当の粒度であるため、現状の verify 粒度では `実装済み` へ上げない
 - 根拠コード:
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:21`
   - `/Users/yutaro/project-profit-ios/Docs/specs/SPEC.md:147`
@@ -434,20 +431,21 @@
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerPDFExportService.swift:332`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerExportService.swift:394`
   - `/Users/yutaro/project-profit-ios/ProjectProfit/Ledger/Services/LedgerExportService.swift:460`
+  - `/Users/yutaro/project-profit-ios/scripts/inspect_xlsx_layout.py`
+  - `/Users/yutaro/project-profit-ios/scripts/verify_ledger_xlsx_golden.py`
+  - `/Users/yutaro/project-profit-ios/scripts/verify_generated_ledger_xlsx_golden.py`
 - 根拠テスト:
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:129`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/ExportCoordinatorTests.swift:339`
   - `/Users/yutaro/project-profit-ios/ProjectProfitTests/Golden/GoldenBaselineTests.swift:61`
-- 未確認事項:
-  - fixed asset 帳票を workbook 全面比較する parity 検証はまだ追加されていない
 - release 影響:
-  - release 導線上では固定資産帳票の区分・列・主要計算と `.xlsx` export までは `SPEC.md` と整合したが、parity 検証の最終粒度が残る
+  - release 導線上では固定資産帳票の区分・列・主要計算と `.xlsx` export に加え、repo 内 parity 検証も fixed asset 系まで追える
 
 ## 横断的に残る不足実装
 
-- current repo state で主指摘の大半は解消済みだが、release evidence の current HEAD 再採取と xlsx parity 粒度の引き上げは残る
+- current repo state で主指摘の大半は解消済みで、主残課題は release evidence の current HEAD 再採取になった
 - `latest.md` は historical green snapshot であり、current HEAD 判定は lane 個票を正本として読み分ける必要がある
-- fixed asset を含む workbook parity は release claim に対してまだ限定的で、`P0-05` が主残課題である
+- parity 検証の比較対象外項目は README へ明記されており、release claim の解釈境界も repo 内で追える
 
 ## 今回のテスト確認
 
@@ -462,5 +460,5 @@
 
 ## 前回レポートとの差分
 
-- export matrix、legacy compat、`xlsx-verify` gate、repo root README 追加後の current repo state に合わせて stale な前提を除去した
-- 引き続き `P0-01` と `P0-05` が release readiness の主残課題である
+- export matrix、legacy compat、`xlsx-verify` gate、workbook parity snapshot、repo root README 追加後の current repo state に合わせて stale な前提を除去した
+- 引き続き release readiness の主残課題は `P0-01` である

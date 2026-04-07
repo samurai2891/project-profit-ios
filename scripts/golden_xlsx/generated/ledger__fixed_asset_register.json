@@ -1,0 +1,1774 @@
+{
+  "defined_names": {},
+  "sheet_names": [
+    "固定資産台帳",
+    "入力ガイド"
+  ],
+  "workbook_name": "fixed_asset_register.xlsx",
+  "worksheets": {
+    "入力ガイド": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "入力ガイド"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "帳票名: 固定資産台帳"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "この workbook はテンプレート準拠の見た目でアプリから再生成されています。"
+        },
+        "A5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。"
+        },
+        "A6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。"
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 6,
+      "max_row": 6,
+      "merged_cells": [
+        "A1:F1"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": null,
+        "paper_size": null,
+        "scale": null
+      },
+      "print_area": [],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "入力ガイド",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "2": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "3": [
+          "帳票名: 固定資産台帳",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "4": [
+          "この workbook はテンプレート準拠の見た目でアプリから再生成されています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "5": [
+          "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "6": [
+          "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "title": "入力ガイド",
+      "widths": {
+        "A": 56.0,
+        "B": 12.2890625,
+        "C": 12.2890625,
+        "D": 12.2890625,
+        "E": 12.2890625,
+        "F": 12.2890625
+      }
+    },
+    "固定資産台帳": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "固定資産台帳"
+        },
+        "A2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "名称"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "取得年月日"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "償却方法"
+        },
+        "A6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "日付"
+        },
+        "A7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "2024-01-01"
+        },
+        "B2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "ノートPC"
+        },
+        "B3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "2024-01-01"
+        },
+        "B4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "定額法"
+        },
+        "B6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "摘要"
+        },
+        "B7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "取得"
+        },
+        "C6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "取得数量"
+        },
+        "C7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 1
+        },
+        "D2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "番号"
+        },
+        "D3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "所在"
+        },
+        "D4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "償却率"
+        },
+        "D6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "取得単価"
+        },
+        "D7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 120000
+        },
+        "E2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "FA-001"
+        },
+        "E3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "東京"
+        },
+        "E4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 0.25
+        },
+        "E6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "取得金額"
+        },
+        "E7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 120000
+        },
+        "F6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "償却額"
+        },
+        "F7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 30000
+        },
+        "G2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "種類"
+        },
+        "G3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "耐用年数"
+        },
+        "G6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "異動数量"
+        },
+        "H2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "工具器具備品"
+        },
+        "H3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 4
+        },
+        "H6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "異動金額"
+        },
+        "I6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "現在数量"
+        },
+        "I7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 1
+        },
+        "J6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "現在金額"
+        },
+        "J7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 90000
+        },
+        "K6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "事業専用割合"
+        },
+        "K7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "100%"
+        },
+        "L6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "必要経費算入額"
+        },
+        "L7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 90000
+        },
+        "M6": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "備考"
+        },
+        "M7": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "事業用"
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 13,
+      "max_row": 7,
+      "merged_cells": [
+        "A1:M1"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": "landscape",
+        "paper_size": 9,
+        "scale": null
+      },
+      "print_area": [
+        "'固定資産台帳'!$A$1:$M$7"
+      ],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "固定資産台帳",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "2": [
+          "名称",
+          "ノートPC",
+          null,
+          "番号",
+          "FA-001",
+          null,
+          "種類",
+          "工具器具備品",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "3": [
+          "取得年月日",
+          "2024-01-01",
+          null,
+          "所在",
+          "東京",
+          null,
+          "耐用年数",
+          4,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "4": [
+          "償却方法",
+          "定額法",
+          null,
+          "償却率",
+          0.25,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "5": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "6": [
+          "日付",
+          "摘要",
+          "取得数量",
+          "取得単価",
+          "取得金額",
+          "償却額",
+          "異動数量",
+          "異動金額",
+          "現在数量",
+          "現在金額",
+          "事業専用割合",
+          "必要経費算入額",
+          "備考"
+        ],
+        "7": [
+          "2024-01-01",
+          "取得",
+          1,
+          120000,
+          120000,
+          30000,
+          null,
+          null,
+          1,
+          90000,
+          "100%",
+          90000,
+          "事業用"
+        ]
+      },
+      "title": "固定資産台帳",
+      "widths": {
+        "A": 12.0,
+        "B": 22.0,
+        "C": 10.0,
+        "D": 12.0,
+        "E": 12.0,
+        "F": 12.0,
+        "G": 10.0,
+        "H": 12.0,
+        "I": 10.0,
+        "J": 12.0,
+        "K": 12.0,
+        "L": 12.0,
+        "M": 16.0
+      }
+    }
+  }
+}

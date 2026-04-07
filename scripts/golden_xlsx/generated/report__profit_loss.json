@@ -1,0 +1,857 @@
+{
+  "defined_names": {},
+  "sheet_names": [
+    "損益計算書",
+    "入力ガイド"
+  ],
+  "workbook_name": "profit_loss.xlsx",
+  "worksheets": {
+    "入力ガイド": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "入力ガイド"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "帳票名: 損益計算書"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "この workbook はテンプレート準拠の見た目でアプリから再生成されています。"
+        },
+        "A5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。"
+        },
+        "A6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。"
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 6,
+      "max_row": 6,
+      "merged_cells": [
+        "A1:F1"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": null,
+        "paper_size": null,
+        "scale": null
+      },
+      "print_area": [],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "入力ガイド",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "2": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "3": [
+          "帳票名: 損益計算書",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "4": [
+          "この workbook はテンプレート準拠の見た目でアプリから再生成されています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "5": [
+          "明細列の意味はアプリ内の CSV / PDF 出力仕様と一致します。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "6": [
+          "必要に応じてアプリ側のメタデータ項目を先頭シート上部に追記しています。",
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "title": "入力ガイド",
+      "widths": {
+        "A": 56.0,
+        "B": 12.2890625,
+        "C": 12.2890625,
+        "D": 12.2890625,
+        "E": 12.2890625,
+        "F": 12.2890625
+      }
+    },
+    "損益計算書": {
+      "cells": {
+        "A1": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 14.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "損益計算書"
+        },
+        "A11": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFE2F0D9",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "当期純利益"
+        },
+        "A2": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "※ 単年度出力用。収入と費用を分けて表示。"
+        },
+        "A3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "年度"
+        },
+        "A4": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "科目"
+        },
+        "A5": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFE2F0D9",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "【収益の部】"
+        },
+        "A6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFE2F0D9",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "収益合計"
+        },
+        "A8": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFE2F0D9",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "【費用の部】"
+        },
+        "A9": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFE2F0D9",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "費用合計"
+        },
+        "B11": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFFCE4D6",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 0
+        },
+        "B3": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": null,
+            "left": null,
+            "right": null,
+            "top": null
+          },
+          "fill": {
+            "fgColor": "00000000",
+            "fill_type": null
+          },
+          "font": {
+            "bold": false,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": "single"
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "2025年度"
+        },
+        "B4": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "収入"
+        },
+        "B6": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFFCE4D6",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 0
+        },
+        "C4": {
+          "alignment": {
+            "horizontal": "center",
+            "text_rotation": 0,
+            "vertical": "center",
+            "wrap_text": true
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFD9E1F2",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "General",
+          "value": "費用"
+        },
+        "C9": {
+          "alignment": {
+            "horizontal": null,
+            "text_rotation": 0,
+            "vertical": null,
+            "wrap_text": null
+          },
+          "border": {
+            "bottom": "thin",
+            "left": "thin",
+            "right": "thin",
+            "top": "thin"
+          },
+          "fill": {
+            "fgColor": "FFFCE4D6",
+            "fill_type": "solid"
+          },
+          "font": {
+            "bold": true,
+            "color": {
+              "tint": 0.0,
+              "type": "theme",
+              "value": 1
+            },
+            "italic": false,
+            "name": "MS PGothic",
+            "size": 10.0,
+            "underline": null
+          },
+          "formula": null,
+          "number_format": "#,##0",
+          "value": 0
+        }
+      },
+      "col_breaks": [],
+      "freeze_panes": null,
+      "max_column": 3,
+      "max_row": 11,
+      "merged_cells": [
+        "A1:C1",
+        "A2:C2"
+      ],
+      "page_margins": {
+        "bottom": 0.75,
+        "footer": 0.3,
+        "header": 0.3,
+        "left": 0.7,
+        "right": 0.7,
+        "top": 0.75
+      },
+      "page_setup": {
+        "first_page_number": null,
+        "fit_to_height": null,
+        "fit_to_width": null,
+        "orientation": "portrait",
+        "paper_size": 9,
+        "scale": null
+      },
+      "print_area": [
+        "'損益計算書'!$A$1:$C$11"
+      ],
+      "print_title_cols": null,
+      "print_title_rows": null,
+      "row_breaks": [],
+      "rows": {
+        "1": [
+          "損益計算書",
+          null,
+          null
+        ],
+        "10": [
+          null,
+          null,
+          null
+        ],
+        "11": [
+          "当期純利益",
+          0,
+          null
+        ],
+        "2": [
+          "※ 単年度出力用。収入と費用を分けて表示。",
+          null,
+          null
+        ],
+        "3": [
+          "年度",
+          "2025年度",
+          null
+        ],
+        "4": [
+          "科目",
+          "収入",
+          "費用"
+        ],
+        "5": [
+          "【収益の部】",
+          null,
+          null
+        ],
+        "6": [
+          "収益合計",
+          0,
+          null
+        ],
+        "7": [
+          null,
+          null,
+          null
+        ],
+        "8": [
+          "【費用の部】",
+          null,
+          null
+        ],
+        "9": [
+          "費用合計",
+          null,
+          0
+        ]
+      },
+      "title": "損益計算書",
+      "widths": {
+        "A": 34.0,
+        "B": 16.0,
+        "C": 16.0
+      }
+    }
+  }
+}

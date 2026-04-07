@@ -1,4 +1,5 @@
 ==> python3 scripts/verify_ledger_xlsx_golden.py
+PASS verify_ledger_xlsx_golden.py
 PASS cash_book
 PASS cash_book_invoice
 PASS bank_account_book
@@ -16,9 +17,8 @@ PASS transportation_expense
 PASS fixed_asset_register
 PASS fixed_asset_depreciation
 
-PASS verify_ledger_xlsx_golden.py
-
 ==> python3 scripts/verify_report_xlsx_golden.py
+PASS verify_report_xlsx_golden.py
 PASS profit_loss
 PASS balance_sheet
 PASS trial_balance
@@ -26,9 +26,8 @@ PASS journal
 PASS general_ledger
 PASS fixed_assets
 
-PASS verify_report_xlsx_golden.py
-
 ==> python3 scripts/verify_generated_ledger_xlsx_golden.py
+PASS verify_generated_ledger_xlsx_golden.py
 PASS cash_book
 PASS cash_book_invoice
 PASS bank_account_book
@@ -46,15 +45,12 @@ PASS transportation_expense
 PASS fixed_asset_register
 PASS fixed_asset_depreciation
 
-PASS verify_generated_ledger_xlsx_golden.py
-
 ==> python3 scripts/verify_generated_report_xlsx_golden.py
+PASS verify_generated_report_xlsx_golden.py
 PASS profit_loss
 PASS balance_sheet
 PASS trial_balance
 PASS journal
 PASS ledger
 PASS fixed_assets
-
-PASS verify_generated_report_xlsx_golden.py
 
