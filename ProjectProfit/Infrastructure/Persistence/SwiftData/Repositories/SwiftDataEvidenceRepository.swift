@@ -156,6 +156,8 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 predicate: #Predicate { $0.evidenceId == evidence.id }
             )
             let existing = try modelContext.fetch(descriptor)
+            let previousSnapshot = existing.first.map(EvidenceRecordEntityMapper.toDomain)
+            let insertedNewRecord = existing.isEmpty
 
             if let entity = existing.first {
                 EvidenceRecordEntityMapper.update(entity, from: evidence)
@@ -163,7 +165,16 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 modelContext.insert(EvidenceRecordEntityMapper.toEntity(evidence))
             }
             try modelContext.save()
-            try searchIndex.upsert(evidence)
+            do {
+                try searchIndex.upsert(evidence)
+            } catch {
+                try rollbackSavedEvidence(
+                    evidenceId: evidence.id,
+                    previousSnapshot: previousSnapshot,
+                    insertedNewRecord: insertedNewRecord
+                )
+                throw error
+            }
         }
     }
 
@@ -173,9 +184,15 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 predicate: #Predicate { $0.evidenceId == id }
             )
             let results = try modelContext.fetch(descriptor)
+            let deletedSnapshots = results.map(EvidenceRecordEntityMapper.toDomain)
             results.forEach(modelContext.delete)
             try modelContext.save()
-            try searchIndex.remove(evidenceId: id)
+            do {
+                try searchIndex.remove(evidenceId: id)
+            } catch {
+                try restoreDeletedEvidence(deletedSnapshots)
+                throw error
+            }
         }
     }
 
@@ -275,5 +292,31 @@ final class SwiftDataEvidenceRepository: EvidenceRepository {
                 underlying: error
             )
         }
+    }
+
+    private func rollbackSavedEvidence(
+        evidenceId: UUID,
+        previousSnapshot: EvidenceDocument?,
+        insertedNewRecord: Bool
+    ) throws {
+        let descriptor = FetchDescriptor<EvidenceRecordEntity>(
+            predicate: #Predicate { $0.evidenceId == evidenceId }
+        )
+        let persisted = try modelContext.fetch(descriptor)
+
+        if insertedNewRecord {
+            persisted.forEach(modelContext.delete)
+        } else if let previousSnapshot, let entity = persisted.first {
+            EvidenceRecordEntityMapper.update(entity, from: previousSnapshot)
+        }
+
+        try modelContext.save()
+    }
+
+    private func restoreDeletedEvidence(_ snapshots: [EvidenceDocument]) throws {
+        for snapshot in snapshots {
+            modelContext.insert(EvidenceRecordEntityMapper.toEntity(snapshot))
+        }
+        try modelContext.save()
     }
 }

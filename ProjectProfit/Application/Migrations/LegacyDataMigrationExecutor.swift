@@ -125,6 +125,7 @@ struct LegacyDataMigrationExecutor {
         }
 
         let existingLegacyIds = fetchExistingLegacyJournalIds()
+        let canonicalAccountIdsByLegacyId = fetchCanonicalAccountIdsByLegacyId(businessId: businessId)
         let linesByEntry = Dictionary(grouping: legacyLines) { $0.entryId }
 
         var migrated = 0
@@ -139,7 +140,11 @@ struct LegacyDataMigrationExecutor {
             let lineEntities = lines.enumerated().map { index, line in
                 JournalLineEntity(
                     lineId: UUID(),
-                    accountId: UUID(uuidString: line.accountId) ?? UUID(),
+                    accountId: resolveCanonicalAccountId(
+                        businessId: businessId,
+                        legacyAccountId: line.accountId,
+                        canonicalAccountIdsByLegacyId: canonicalAccountIdsByLegacyId
+                    ),
                     debitAmount: Decimal(line.debit),
                     creditAmount: Decimal(line.credit),
                     sortOrder: index
@@ -262,6 +267,38 @@ struct LegacyDataMigrationExecutor {
         guard let value, value.hasPrefix(Self.legacyMemoPrefix) else { return nil }
         let uuidPart = String(value.dropFirst(Self.legacyMemoPrefix.count).prefix(36))
         return UUID(uuidString: uuidPart)
+    }
+
+    private func fetchCanonicalAccountIdsByLegacyId(businessId: UUID) -> [String: UUID] {
+        do {
+            let descriptor = FetchDescriptor<CanonicalAccountEntity>(
+                predicate: #Predicate { $0.businessId == businessId }
+            )
+            return Dictionary(
+                uniqueKeysWithValues: try modelContext.fetch(descriptor).compactMap { entity in
+                    guard let legacyAccountId = entity.legacyAccountId else {
+                        return nil
+                    }
+                    return (legacyAccountId, entity.accountId)
+                }
+            )
+        } catch {
+            return [:]
+        }
+    }
+
+    private func resolveCanonicalAccountId(
+        businessId: UUID,
+        legacyAccountId: String,
+        canonicalAccountIdsByLegacyId: [String: UUID]
+    ) -> UUID {
+        if let mappedId = canonicalAccountIdsByLegacyId[legacyAccountId] {
+            return mappedId
+        }
+        return LegacyAccountCanonicalMapper.canonicalAccountId(
+            businessId: businessId,
+            legacyAccountId: legacyAccountId
+        )
     }
 
     // MARK: - Type Mapping

@@ -226,6 +226,9 @@ struct DocumentWorkflowUseCase {
             )
             return .restored
         } catch {
+            if ReceiptImageStore.documentFileExists(fileName: record.storedFileName) {
+                _ = try? ReceiptImageStore.quarantineDocumentFile(fileName: record.storedFileName)
+            }
             return .failed(message: "書類の復元に失敗しました")
         }
     }
@@ -253,6 +256,13 @@ struct DocumentWorkflowUseCase {
             record.updatedAt = Date()
             try documentRepository.saveChanges()
         } catch {
+            if let quarantineFileName = record.quarantineFileName {
+                try? ReceiptImageStore.restoreQuarantinedDocumentFile(
+                    quarantineFileName: quarantineFileName,
+                    targetFileName: record.storedFileName
+                )
+                record.quarantineFileName = nil
+            }
             return .failed(
                 message: ((error as? AppError) ?? .invalidInput(message: "書類削除に失敗しました")).localizedDescription
             )
@@ -350,6 +360,13 @@ struct DocumentWorkflowUseCase {
             record.updatedAt = Date()
             try documentRepository.saveChanges()
         } catch {
+            if let quarantineFileName = record.quarantineFileName {
+                try? ReceiptImageStore.restoreQuarantinedDocumentFile(
+                    quarantineFileName: quarantineFileName,
+                    targetFileName: record.storedFileName
+                )
+                record.quarantineFileName = nil
+            }
             return .failed(message: "書類の隔離保管に失敗しました")
         }
 

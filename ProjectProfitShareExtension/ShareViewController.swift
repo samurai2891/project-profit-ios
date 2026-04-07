@@ -97,15 +97,20 @@ final class ShareViewController: UIViewController {
     }
 
     private func importAttachment() async {
+        var importedRecord: SharedImportQueueRecord?
         do {
             guard let provider = firstSupportedProvider() else {
                 throw ShareImportError.noInputItem
             }
             let imported = try await importRecord(from: provider)
+            importedRecord = imported
             try appendToQueue(imported)
             showResultMessage("取り込みキューに追加しました。アプリを開いて確認してください。")
             completeRequest()
         } catch {
+            if let importedRecord {
+                cleanupImportedFile(for: importedRecord)
+            }
             showResultMessage(error.localizedDescription)
             completeRequest(after: 1.0)
         }
@@ -217,6 +222,17 @@ final class ShareViewController: UIViewController {
         let updated = existing + [record]
         let encoded = try JSONEncoder().encode(updated)
         defaults.set(encoded, forKey: Self.queueDefaultsKey)
+    }
+
+    private func cleanupImportedFile(for record: SharedImportQueueRecord) {
+        guard let inboxDirectory = sharedInboxDirectoryURL() else {
+            return
+        }
+        let fileURL = inboxDirectory.appendingPathComponent(record.storedFilename)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return
+        }
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     private func sharedInboxDirectoryURL() -> URL? {

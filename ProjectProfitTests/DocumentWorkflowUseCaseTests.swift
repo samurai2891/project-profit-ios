@@ -216,6 +216,58 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
         }
     }
 
+    func testConfirmDeletionRestoresFileWhenRepositorySaveFails() throws {
+        let record = try XCTUnwrap(makeDocumentRecord())
+        _ = useCase.requestDeletion(id: record.id)
+
+        let failingRepository = MockDocumentRepository(
+            records: [record],
+            complianceLogs: [],
+            shouldFailSave: true
+        )
+        let failingUseCase = DocumentWorkflowUseCase(
+            modelContext: context,
+            documentRepository: failingRepository
+        )
+
+        let attempt = failingUseCase.confirmDeletion(
+            id: record.id,
+            reason: "workflow-test",
+            approvedBy: "監査担当"
+        )
+
+        if case .failed = attempt {
+            XCTAssertTrue(ReceiptImageStore.documentFileExists(fileName: record.storedFileName))
+        } else {
+            XCTFail("Expected failed")
+        }
+    }
+
+    func testRestoreDeletedDocumentReQuarantinesFileWhenRepositorySaveFails() throws {
+        let record = try XCTUnwrap(makeDocumentRecord())
+        _ = useCase.requestDeletion(id: record.id)
+        _ = useCase.confirmDeletion(id: record.id, reason: "restore-test", approvedBy: "監査担当")
+
+        let quarantinedRecord = try XCTUnwrap(useCase.document(id: record.id))
+        let failingRepository = MockDocumentRepository(
+            records: [quarantinedRecord],
+            complianceLogs: [],
+            shouldFailSave: true
+        )
+        let failingUseCase = DocumentWorkflowUseCase(
+            modelContext: context,
+            documentRepository: failingRepository
+        )
+
+        let attempt = failingUseCase.restoreDeletedDocument(id: record.id)
+
+        if case .failed = attempt {
+            XCTAssertFalse(ReceiptImageStore.documentFileExists(fileName: record.storedFileName))
+        } else {
+            XCTFail("Expected failed")
+        }
+    }
+
     func testAvailableProjectsReturnsProjectsForFilterSheet() {
         let first = mutations(dataStore).addProject(name: "First", description: "one")
         let second = mutations(dataStore).addProject(name: "Second", description: "two")
@@ -341,5 +393,38 @@ final class DocumentWorkflowUseCaseTests: XCTestCase {
             linkedProjectIds: [projectId],
             complianceStatus: .pendingReview
         )
+    }
+}
+
+@MainActor
+private final class MockDocumentRepository: DocumentRepository {
+    private(set) var records: [PPDocumentRecord]
+    private(set) var complianceLogs: [PPComplianceLog]
+    private let shouldFailSave: Bool
+
+    init(records: [PPDocumentRecord], complianceLogs: [PPComplianceLog], shouldFailSave: Bool) {
+        self.records = records
+        self.complianceLogs = complianceLogs
+        self.shouldFailSave = shouldFailSave
+    }
+
+    func allDocuments() throws -> [PPDocumentRecord] { records }
+    func listDocuments(transactionId: UUID?) throws -> [PPDocumentRecord] {
+        records.filter { record in
+            record.deletionStatus == .active && (transactionId == nil || record.transactionId == transactionId)
+        }
+    }
+    func document(id: UUID) throws -> PPDocumentRecord? { records.first { $0.id == id } }
+    func listComplianceLogs(limit: Int) throws -> [PPComplianceLog] { Array(complianceLogs.prefix(limit)) }
+    func transactionExists(id: UUID) throws -> Bool { true }
+    func listProjects() throws -> [PPProject] { [] }
+    func currentBusinessId() throws -> UUID? { nil }
+    func insertDocument(_ record: PPDocumentRecord) { records.append(record) }
+    func deleteDocument(_ record: PPDocumentRecord) { records.removeAll { $0.id == record.id } }
+    func insertComplianceLog(_ log: PPComplianceLog) { complianceLogs.insert(log, at: 0) }
+    func saveChanges() throws {
+        if shouldFailSave {
+            throw AppError.saveFailed(underlying: NSError(domain: "MockDocumentRepository", code: 1))
+        }
     }
 }

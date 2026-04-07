@@ -592,12 +592,12 @@ private extension SettingsMainView {
     @ViewBuilder
     func restoreReportCard(report: RestoreDryRunReport) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("復元 dry-run")
+            sectionHeader("復元事前確認")
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(report.manifest.scope.label)
                     .font(.headline)
-                Text("issue: \(report.issues.count) / warning: \(report.warnings.count)")
+                Text("問題: \(report.issues.count) / 注意: \(report.warnings.count)")
                     .font(.caption)
                     .foregroundStyle(report.canApply ? AppColors.success : AppColors.error)
                 if !report.issues.isEmpty {
@@ -608,7 +608,7 @@ private extension SettingsMainView {
                 if !report.conflicts.isEmpty {
                     Text(
                         report.conflicts.prefix(3)
-                            .map { "\($0.modelName): existing \($0.existingCount) / incoming \($0.incomingCount)" }
+                            .map { "\($0.modelName): 既存 \($0.existingCount) / 取込予定 \($0.incomingCount)" }
                             .joined(separator: "\n")
                     )
                     .font(.caption)
@@ -624,15 +624,15 @@ private extension SettingsMainView {
     @ViewBuilder
     func migrationReportCard(report: MigrationDryRunReport) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("移行 dry-run")
+            sectionHeader("移行事前確認")
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("delta: \(report.deltas.count) / orphan: \(report.orphanRecords.count) / warning: \(report.warnings.count)")
+                Text("差分: \(report.deltas.count) / 孤立: \(report.orphanRecords.count) / 注意: \(report.warnings.count)")
                     .font(.caption)
                     .foregroundStyle(report.hasIssues ? AppColors.warning : AppColors.success)
                 Text(
                     report.deltas.prefix(4)
-                        .map { "\($0.modelName): legacy \($0.legacyCount) / canonical \($0.canonicalCount)" }
+                        .map { "\($0.modelName): 旧データ \($0.legacyCount) / 正本 \($0.canonicalCount)" }
                         .joined(separator: "\n")
                 )
                 .font(.caption)
@@ -706,12 +706,12 @@ private extension SettingsMainView {
             backupShareURL = result.archiveURL
             showBackupShareSheet = true
             let warningText = result.manifest.warnings.isEmpty
-                ? "warning なし"
-                : "warning \(result.manifest.warnings.count)件"
-            operationMessage = "backup を作成しました: \(result.archiveURL.lastPathComponent)\n\(warningText)"
+                ? "注意事項なし"
+                : "注意事項 \(result.manifest.warnings.count)件"
+            operationMessage = "バックアップを作成しました: \(result.archiveURL.lastPathComponent)\n\(warningText)"
             showOperationAlert = true
         } catch {
-            operationMessage = "backup 作成に失敗しました: \(error.localizedDescription)"
+            operationMessage = "バックアップ作成に失敗しました: \(error.localizedDescription)"
             showOperationAlert = true
         }
     }
@@ -732,11 +732,11 @@ private extension SettingsMainView {
                 restoreDryRunReport = try settingsMaintenanceWorkflowUseCase
                     .dryRunRestore(snapshotURL: cachedURL)
                 operationMessage = restoreDryRunReport?.canApply == true
-                    ? "復元 dry-run が完了しました。"
-                    : "復元 dry-run に issue があります。"
+                    ? "復元事前確認が完了しました。"
+                    : "復元事前確認で問題が見つかりました。"
                 showOperationAlert = true
             } catch {
-                operationMessage = "復元 dry-run に失敗しました: \(error.localizedDescription)"
+                operationMessage = "復元事前確認に失敗しました: \(error.localizedDescription)"
                 showOperationAlert = true
             }
         case .failure(let error):

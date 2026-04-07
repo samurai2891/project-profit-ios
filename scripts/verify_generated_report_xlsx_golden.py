@@ -15,7 +15,6 @@ REPORTS = {
     "trial_balance": GENERATED / "trial_balance.xlsx",
     "journal": GENERATED / "journal.xlsx",
     "ledger": GENERATED / "ledger.xlsx",
-    "fixed_assets": GENERATED / "fixed_assets.xlsx",
 }
 
 

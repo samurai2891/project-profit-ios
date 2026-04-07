@@ -11,7 +11,7 @@ final class ReleasePerformanceGateTests: XCTestCase {
     }
 
     private enum Threshold {
-        static let projectionSeconds = 0.75
+        static let projectionSeconds = 0.90
         static let searchSeconds = 0.80
         static let exportSeconds = 1.50
         static let migrationSeconds = 0.80

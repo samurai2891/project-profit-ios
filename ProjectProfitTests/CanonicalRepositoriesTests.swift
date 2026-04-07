@@ -211,6 +211,76 @@ final class CanonicalRepositoriesTests: XCTestCase {
         XCTAssertTrue(searchIndex.didAttemptRebuild)
     }
 
+    func testEvidenceRepositoryRollsBackInsertWhenSearchIndexUpsertFails() async throws {
+        let searchIndex = UpsertFailingEvidenceSearchIndex()
+        let repository = SwiftDataEvidenceRepository(modelContext: context, searchIndex: searchIndex)
+        let evidence = EvidenceDocument(
+            businessId: UUID(),
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .receipt,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_735_689_600),
+            issueDate: Date(timeIntervalSince1970: 1_735_689_600),
+            originalFilename: "rollback.pdf",
+            mimeType: "application/pdf",
+            fileHash: "rollback-hash",
+            originalFilePath: "/tmp/rollback.pdf",
+            ocrText: nil,
+            extractionVersion: "ocr-v2",
+            searchTokens: [],
+            structuredFields: nil,
+            linkedProjectIds: [],
+            complianceStatus: .pendingReview
+        )
+
+        do {
+            try await repository.save(evidence)
+            XCTFail("Expected upsert failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, UpsertFailure().localizedDescription)
+        }
+
+        let stored = try context.fetch(FetchDescriptor<EvidenceRecordEntity>())
+        XCTAssertTrue(stored.isEmpty)
+    }
+
+    func testEvidenceRepositoryRestoresDeletedRecordWhenSearchIndexRemoveFails() async throws {
+        let searchIndex = RemoveFailingEvidenceSearchIndex()
+        let repository = SwiftDataEvidenceRepository(modelContext: context, searchIndex: searchIndex)
+        let evidence = EvidenceDocument(
+            businessId: UUID(),
+            taxYear: 2025,
+            sourceType: .camera,
+            legalDocumentType: .invoice,
+            storageCategory: .electronicTransaction,
+            receivedAt: Date(timeIntervalSince1970: 1_735_689_600),
+            issueDate: Date(timeIntervalSince1970: 1_735_689_600),
+            originalFilename: "restore.pdf",
+            mimeType: "application/pdf",
+            fileHash: "restore-hash",
+            originalFilePath: "/tmp/restore.pdf",
+            ocrText: nil,
+            extractionVersion: "ocr-v2",
+            searchTokens: [],
+            structuredFields: nil,
+            linkedProjectIds: [],
+            complianceStatus: .pendingReview
+        )
+
+        try await SwiftDataEvidenceRepository(modelContext: context).save(evidence)
+
+        do {
+            try await repository.delete(evidence.id)
+            XCTFail("Expected remove failure")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, RemoveFailure().localizedDescription)
+        }
+
+        let stored = try context.fetch(FetchDescriptor<EvidenceRecordEntity>())
+        XCTAssertEqual(stored.map(\.evidenceId), [evidence.id])
+    }
+
     func testCounterpartyRepositorySearchesNameAndRegistrationNumber() async throws {
         let repository = SwiftDataCounterpartyRepository(modelContext: context)
         let businessId = UUID()
@@ -480,4 +550,34 @@ private struct StubRebuildFailure: LocalizedError {
     var errorDescription: String? {
         "stub rebuild failure"
     }
+}
+
+@MainActor
+private final class UpsertFailingEvidenceSearchIndex: EvidenceSearchIndexing {
+    func search(criteria: EvidenceSearchCriteria) throws -> [UUID] { [] }
+    func upsert(_ evidence: EvidenceDocument) throws { throw UpsertFailure() }
+    func remove(evidenceId: UUID) throws {}
+    func rebuild(businessId: UUID?, taxYear: Int?) throws {}
+    func indexCount(businessId: UUID?, taxYear: Int?) throws -> Int { 0 }
+    func sourceCount(businessId: UUID?, taxYear: Int?) throws -> Int { 0 }
+    func validateIntegrity(businessId: UUID?, taxYear: Int?) throws {}
+}
+
+@MainActor
+private final class RemoveFailingEvidenceSearchIndex: EvidenceSearchIndexing {
+    func search(criteria: EvidenceSearchCriteria) throws -> [UUID] { [] }
+    func upsert(_ evidence: EvidenceDocument) throws {}
+    func remove(evidenceId: UUID) throws { throw RemoveFailure() }
+    func rebuild(businessId: UUID?, taxYear: Int?) throws {}
+    func indexCount(businessId: UUID?, taxYear: Int?) throws -> Int { 0 }
+    func sourceCount(businessId: UUID?, taxYear: Int?) throws -> Int { 0 }
+    func validateIntegrity(businessId: UUID?, taxYear: Int?) throws {}
+}
+
+private struct UpsertFailure: LocalizedError {
+    var errorDescription: String? { "stub upsert failure" }
+}
+
+private struct RemoveFailure: LocalizedError {
+    var errorDescription: String? { "stub remove failure" }
 }

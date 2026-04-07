@@ -96,7 +96,7 @@ struct CanonicalTransactionReadOnlyDetailView: View {
             Image(systemName: "checklist.checked")
                 .foregroundStyle(AppColors.primary)
             VStack(alignment: .leading, spacing: 4) {
-                Text("canonical 正本データ")
+                Text("正本データ")
                     .font(.subheadline.weight(.semibold))
                 Text("この取引は読み取り専用です。編集・削除はできません。")
                     .font(.caption)

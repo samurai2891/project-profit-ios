@@ -160,7 +160,7 @@ struct JournalListView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("手動仕訳の追加は停止中です", systemImage: "arrow.trianglehead.branch")
                 .font(.subheadline.weight(.semibold))
-            Text("canonical 正本へ切り替え済みのため、仕訳は証憑タブと承認タブから作成してください。決算整理は決算仕訳画面から管理します。")
+            Text("正本データへ切り替え済みのため、仕訳は証憑タブと承認タブから作成してください。決算整理は決算仕訳画面から管理します。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
