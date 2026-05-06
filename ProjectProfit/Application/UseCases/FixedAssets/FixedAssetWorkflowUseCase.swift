@@ -157,7 +157,9 @@ struct FixedAssetWorkflowUseCase {
             accounts: accounts()
         )
 
-        if entry != nil {
+        if let entry {
+            try DepreciationCanonicalJournalWriter(modelContext: modelContext)
+                .sync(entry: entry, fiscalYear: fiscalYear)
             try saveChanges()
         }
 
@@ -178,7 +180,9 @@ struct FixedAssetWorkflowUseCase {
                 priorAccumulated: priorAccumulated,
                 accounts: accounts()
             )
-            if entry != nil {
+            if let entry {
+                try DepreciationCanonicalJournalWriter(modelContext: modelContext)
+                    .sync(entry: entry, fiscalYear: fiscalYear)
                 count += 1
             }
         }
@@ -282,5 +286,94 @@ struct FixedAssetWorkflowUseCase {
         }
 
         return accumulated
+    }
+}
+
+@MainActor
+struct DepreciationCanonicalJournalWriter {
+    private let modelContext: ModelContext
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+
+    func sync(entry: PPJournalEntry, fiscalYear: Int) throws {
+        let entryId = entry.id
+        let existingDescriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate { $0.journalId == entryId }
+        )
+        if try modelContext.fetch(existingDescriptor).first != nil {
+            return
+        }
+
+        let support = AccountingReadSupport(modelContext: modelContext)
+        guard let businessId = support.fetchBusinessProfile()?.id else {
+            return
+        }
+
+        let canonicalAccounts = support.fetchCanonicalAccounts(businessId: businessId)
+        let canonicalAccountsByLegacyId = Dictionary(
+            uniqueKeysWithValues: canonicalAccounts.compactMap { account -> (String, CanonicalAccount)? in
+                guard let legacyAccountId = account.legacyAccountId else { return nil }
+                return (legacyAccountId, account)
+            }
+        )
+
+        let sourceLines = try depreciationLines(entryId: entry.id)
+        let lines = sourceLines.enumerated().compactMap { index, line -> JournalLine? in
+            guard let account = canonicalAccountsByLegacyId[line.accountId] else {
+                return nil
+            }
+            return JournalLine(
+                id: line.id,
+                journalId: entry.id,
+                accountId: account.id,
+                debitAmount: Decimal(line.debit),
+                creditAmount: Decimal(line.credit),
+                legalReportLineId: account.defaultLegalReportLineId,
+                sortOrder: index
+            )
+        }
+        guard lines.count == sourceLines.count, !lines.isEmpty else {
+            return
+        }
+
+        let journal = CanonicalJournalEntry(
+            id: entry.id,
+            businessId: businessId,
+            taxYear: fiscalYear,
+            journalDate: entry.date,
+            voucherNo: try nextVoucherNumber(businessId: businessId, taxYear: fiscalYear, month: 12).value,
+            entryType: .depreciation,
+            description: entry.memo,
+            lines: lines,
+            approvedAt: entry.isPosted ? entry.updatedAt : nil,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt
+        )
+        modelContext.insert(CanonicalJournalEntryEntityMapper.toEntity(journal))
+    }
+
+    private func depreciationLines(entryId: UUID) throws -> [PPJournalLine] {
+        let descriptor = FetchDescriptor<PPJournalLine>(
+            predicate: #Predicate { $0.entryId == entryId },
+            sortBy: [SortDescriptor(\.displayOrder)]
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
+    private func nextVoucherNumber(businessId: UUID, taxYear: Int, month: Int) throws -> VoucherNumber {
+        let descriptor = FetchDescriptor<JournalEntryEntity>(
+            predicate: #Predicate {
+                $0.businessId == businessId && $0.taxYear == taxYear
+            },
+            sortBy: [SortDescriptor(\.voucherNo, order: .reverse)]
+        )
+        let sequence = try modelContext.fetch(descriptor)
+            .compactMap { VoucherNumber(rawValue: $0.voucherNo) }
+            .filter { $0.taxYear == taxYear && $0.month == month }
+            .compactMap(\.sequence)
+            .max() ?? 0
+        return VoucherNumber(taxYear: taxYear, month: month, sequence: sequence + 1)
     }
 }

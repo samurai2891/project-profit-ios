@@ -117,6 +117,7 @@ enum AccountingConstants {
         // 経費カテゴリ
         "cat-hosting": "acct-communication",        // ホスティング → 通信費
         "cat-tools": "acct-supplies",               // ツール → 消耗品費
+        "cat-rent": "acct-rent",                    // 家賃 → 地代家賃
         "cat-ads": "acct-advertising",              // 広告 → 広告宣伝費
         "cat-contractor": "acct-outsourcing",       // 請負業者 → 外注工賃
         "cat-communication": "acct-communication",  // 通信費 → 通信費

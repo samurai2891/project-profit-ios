@@ -203,6 +203,7 @@ struct EtaxExportView: View {
                     .strokeBorder(Color.secondary.opacity(0.18), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("etax.support.matrix")
 
             Text(viewModel.unsupportedYearReasonDescription)
@@ -231,6 +232,7 @@ struct EtaxExportView: View {
             Text("\(row.fiscalYear)年")
                 .font(.caption.weight(.medium))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("etax.support.row.\(row.fiscalYear)")
 
             supportStatusBadge(isSupported: row.isSupported(for: .blueReturn))
                 .frame(maxWidth: .infinity)
@@ -246,6 +248,7 @@ struct EtaxExportView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
     }
 
     private func supportStatusBadge(isSupported: Bool) -> some View {

@@ -159,7 +159,14 @@ struct TaxRuleEvaluator: Sendable {
 
         let measures = (pack?.transitionalMeasures ?? TransitionalTaxCreditMeasure.defaultMeasures)
             .sorted { $0.periodStart < $1.periodStart }
-        for measure in measures where measure.periodStart <= transactionDate && transactionDate <= measure.periodEnd {
+        let calendar = Calendar.current
+        let transactionDay = calendar.startOfDay(for: transactionDate)
+        for measure in measures {
+            let periodStartDay = calendar.startOfDay(for: measure.periodStart)
+            let periodEndDay = calendar.startOfDay(for: measure.periodEnd)
+            guard periodStartDay <= transactionDay && transactionDay <= periodEndDay else {
+                continue
+            }
             switch measure.id {
             case "transitional_80":
                 return .transitional80

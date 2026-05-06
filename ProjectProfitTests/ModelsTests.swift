@@ -1076,8 +1076,8 @@ final class ModelsTests: XCTestCase {
         // 4B-1: prepaidExpenses, accruedExpenses, ownerCapital を追加 (23 + 3 = 26)
         // Batch 13: accumulatedDepreciation 追加 (26 + 1 = 27)
         // 消費税3 + 在庫/COGS4 = 7 追加 (27 + 7 = 34)
-        // 損害保険料を追加 (34 + 1 = 35)
-        XCTAssertEqual(allCases.count, 35)
+        // 損害保険料 + 源泉所得税預り金を追加 (34 + 2 = 36)
+        XCTAssertEqual(allCases.count, 36)
     }
 
     func testAccountSubtypeRawValues() {

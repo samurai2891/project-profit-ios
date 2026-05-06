@@ -78,12 +78,36 @@ struct DashboardView: View {
 
     // MARK: - Header
     private func headerSection(viewModel: DashboardViewModel) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        ZStack(alignment: .bottomLeading) {
+            Image("DashboardAccountingWorkspace")
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 112)
+                .clipped()
+                .overlay {
+                    LinearGradient(
+                        colors: [
+                            Color(.systemBackground).opacity(0.08),
+                            Color(.systemBackground).opacity(0.78)
+                        ],
+                        startPoint: .topTrailing,
+                        endPoint: .bottomLeading
+                    )
+                }
+
             Text(viewModel.periodLabel)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(12)
         }
         .padding(.horizontal, 20)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(viewModel.periodLabel)
     }
 
     // MARK: - Year Navigator

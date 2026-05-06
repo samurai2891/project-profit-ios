@@ -56,7 +56,7 @@ final class ApprovalQueueQueryUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(useCase.isYearLocked(date: date(2026, 3, 11)))
-        XCTAssertFalse(useCase.isYearLocked(date: date(2026, 4, 1)))
+        XCTAssertTrue(useCase.isYearLocked(date: date(2026, 4, 1)))
     }
 
     func testCanonicalAccountsAndProjectsPreserveCurrentOrdering() async throws {

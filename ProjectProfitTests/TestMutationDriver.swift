@@ -129,13 +129,14 @@ struct TestMutationDriver {
             }
 
             let transactionId = UUID()
+            let resolvedCategoryId = normalizedCategoryId(categoryId, type: type)
             let journal = try persistCanonicalTransaction(
                 transactionId: transactionId,
                 existingJournalId: nil,
                 type: type,
                 amount: amount,
                 date: date,
-                categoryId: categoryId,
+                categoryId: resolvedCategoryId,
                 memo: memo,
                 allocations: allocations,
                 recurringId: recurringId,
@@ -150,7 +151,8 @@ struct TestMutationDriver {
                 taxCategory: taxCategory,
                 counterpartyId: counterpartyId,
                 counterparty: counterparty,
-                candidateSource: candidateSource ?? .manual
+                candidateSource: candidateSource ?? .manual,
+                applyPartialPeriodProRata: recurringId != nil
             )
             let transaction = upsertShadowTransaction(
                 id: transactionId,
@@ -158,7 +160,7 @@ struct TestMutationDriver {
                 type: type,
                 amount: amount,
                 date: date,
-                categoryId: categoryId,
+                categoryId: resolvedCategoryId,
                 memo: memo,
                 allocations: allocations,
                 recurringId: recurringId,
@@ -172,7 +174,8 @@ struct TestMutationDriver {
                 isTaxIncluded: isTaxIncluded,
                 taxCategory: taxCategory,
                 counterpartyId: counterpartyId,
-                counterparty: counterparty
+                counterparty: counterparty,
+                applyPartialPeriodProRata: recurringId != nil
             )
             try modelContext.save()
             refreshStore(lastError: nil)
@@ -286,7 +289,7 @@ struct TestMutationDriver {
         do {
             let updatedType = type ?? transaction.type
             let updatedAmount = amount ?? transaction.amount
-            let updatedCategoryId = categoryId ?? transaction.categoryId
+            let updatedCategoryId = normalizedCategoryId(categoryId ?? transaction.categoryId, type: updatedType)
             let updatedMemo = memo ?? transaction.memo
             let updatedAllocations = allocations ?? transaction.allocations.map { ($0.projectId, $0.ratio) }
             let updatedReceiptImagePath = receiptImagePath ?? transaction.receiptImagePath
@@ -322,7 +325,27 @@ struct TestMutationDriver {
                 taxCategory: updatedTaxCategory,
                 counterpartyId: updatedCounterpartyId,
                 counterparty: updatedCounterparty,
-                candidateSource: candidateSource ?? .manual
+                candidateSource: candidateSource ?? .manual,
+                applyPartialPeriodProRata: true
+            )
+
+            logTransactionFieldChange(
+                transactionId: transaction.id,
+                fieldName: "type",
+                oldValue: transaction.type.rawValue,
+                newValue: updatedType.rawValue
+            )
+            logTransactionFieldChange(
+                transactionId: transaction.id,
+                fieldName: "amount",
+                oldValue: String(transaction.amount),
+                newValue: String(updatedAmount)
+            )
+            logTransactionFieldChange(
+                transactionId: transaction.id,
+                fieldName: "categoryId",
+                oldValue: transaction.categoryId,
+                newValue: updatedCategoryId
             )
 
             _ = upsertShadowTransaction(
@@ -346,7 +369,8 @@ struct TestMutationDriver {
                 taxCategory: updatedTaxCategory,
                 counterpartyId: updatedCounterpartyId,
                 counterparty: updatedCounterparty,
-                createdAt: transaction.createdAt
+                createdAt: transaction.createdAt,
+                applyPartialPeriodProRata: true
             )
             try modelContext.save()
             refreshStore(lastError: nil)
@@ -791,7 +815,8 @@ struct TestMutationDriver {
         taxCategory: TaxCategory?,
         counterpartyId: UUID?,
         counterparty: String?,
-        candidateSource: CandidateSource
+        candidateSource: CandidateSource,
+        applyPartialPeriodProRata: Bool
     ) throws -> CanonicalJournalEntry {
         let snapshot = try postingSupport.snapshot()
         let resolvedTaxCode = TaxCode.resolve(
@@ -824,7 +849,13 @@ struct TestMutationDriver {
             ),
             snapshot: snapshot
         )
-        let allocationAmounts = type == .transfer ? [] : calculateRatioAllocations(amount: amount, allocations: allocations)
+        let allocationAmounts = type == .transfer ? [] : calculatedTransactionAllocations(
+            amount: amount,
+            date: date,
+            allocations: allocations,
+            recurringId: recurringId,
+            applyPartialPeriodProRata: applyPartialPeriodProRata
+        )
         let actor = candidateSource == .importFile ? "user" : "system"
         return try postingSupport.persistApprovedPosting(
             posting: posting,
@@ -856,12 +887,19 @@ struct TestMutationDriver {
         taxCategory: TaxCategory?,
         counterpartyId: UUID?,
         counterparty: String?,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        applyPartialPeriodProRata: Bool
     ) -> PPTransaction {
         let resolvedCounterparty = counterpartyId.flatMap { id in
             store.canonicalCounterparty(id: id)?.displayName
         } ?? counterparty
-        let normalizedAllocations = type == .transfer ? [] : calculateRatioAllocations(amount: amount, allocations: allocations)
+        let normalizedAllocations = type == .transfer ? [] : calculatedTransactionAllocations(
+            amount: amount,
+            date: date,
+            allocations: allocations,
+            recurringId: recurringId,
+            applyPartialPeriodProRata: applyPartialPeriodProRata
+        )
         if let existing = store.allTransactions.first(where: { $0.id == id }) {
             existing.type = type
             existing.amount = amount
@@ -966,6 +1004,74 @@ struct TestMutationDriver {
             return appError
         }
         return .saveFailed(underlying: error)
+    }
+
+    private func normalizedCategoryId(_ categoryId: String, type: TransactionType) -> String {
+        guard categoryId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return categoryId
+        }
+        switch type {
+        case .expense:
+            return "cat-other-expense"
+        case .income:
+            return "cat-other-income"
+        case .transfer:
+            return categoryId
+        }
+    }
+
+    private func logTransactionFieldChange(
+        transactionId: UUID,
+        fieldName: String,
+        oldValue: String?,
+        newValue: String?
+    ) {
+        guard oldValue != newValue else { return }
+        modelContext.insert(
+            PPTransactionLog(
+                transactionId: transactionId,
+                fieldName: fieldName,
+                oldValue: oldValue,
+                newValue: newValue
+            )
+        )
+    }
+
+    private func calculatedTransactionAllocations(
+        amount: Int,
+        date: Date,
+        allocations: [(projectId: UUID, ratio: Int)],
+        recurringId: UUID?,
+        applyPartialPeriodProRata: Bool
+    ) -> [Allocation] {
+        let ratioAllocations = calculateRatioAllocations(amount: amount, allocations: allocations)
+        guard !ratioAllocations.isEmpty else { return [] }
+        guard applyPartialPeriodProRata else { return ratioAllocations }
+
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: date)
+        guard let year = components.year, let month = components.month else {
+            return ratioAllocations
+        }
+
+        let isYearly = recurringId.flatMap { recurringId in
+            store.recurringTransactions.first { $0.id == recurringId }
+        }.map { $0.frequency == .yearly } ?? false
+
+        let totalDays = isYearly ? daysInYear(year) : daysInMonth(year: year, month: month)
+        let inputs = ratioAllocations.map { allocation in
+            let project = store.projects.first { $0.id == allocation.projectId }
+            let activeDays = isYearly
+                ? calculateActiveDaysInYear(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: year)
+                : calculateActiveDaysInMonth(startDate: project?.startDate, completedAt: project?.effectiveEndDate, year: year, month: month)
+            return HolisticProRataInput(projectId: allocation.projectId, ratio: allocation.ratio, activeDays: activeDays)
+        }
+
+        guard inputs.contains(where: { $0.activeDays < totalDays }) else {
+            return ratioAllocations
+        }
+
+        return calculateHolisticProRata(totalAmount: amount, totalDays: totalDays, inputs: inputs)
     }
 
     private func refreshStore(lastError: AppError?) {

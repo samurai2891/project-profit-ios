@@ -5,6 +5,7 @@ enum UITestBootstrap {
     static let modeArgument = "--ui-testing"
     static let seedArgument = "--seed-withholding-flow"
     static let lockedYearSeedArgument = "--seed-withholding-flow-locked-year"
+    static let annualFourProjectsSeedArgument = "--seed-annual-four-projects"
     private static let projectName = "UI Test Project"
     private static let counterpartyName = "UIテスト税理士"
     private static let pendingMemo = "UI Test Pending Withholding"
@@ -22,8 +23,17 @@ enum UITestBootstrap {
         ProcessInfo.processInfo.arguments.contains(lockedYearSeedArgument)
     }
 
+    static var shouldSeedAnnualFourProjects: Bool {
+        ProcessInfo.processInfo.arguments.contains(annualFourProjectsSeedArgument)
+    }
+
     @MainActor
     static func seedIfNeeded(modelContext: ModelContext, store: DataStore) async {
+        if shouldSeedAnnualFourProjects {
+            await seedAnnualFourProjectScenario(modelContext: modelContext, store: store)
+            return
+        }
+
         if shouldSeedWithholdingFlowLockedYear {
             await seedWithholdingFlowLockedYear(modelContext: modelContext, store: store)
             return
@@ -108,6 +118,119 @@ enum UITestBootstrap {
             ) {
                 _ = try? await workflow.approveCandidate(candidateId: approvedCandidate.id)
             }
+        }
+
+        store.loadData()
+    }
+
+    @MainActor
+    static func seedAnnualFourProjectScenario(modelContext: ModelContext, store: DataStore) async {
+        store.loadData()
+        guard !store.projects.contains(where: { $0.name == "UI年次 Web制作 A" }) else {
+            return
+        }
+
+        let projects = [
+            store.addProject(
+                name: "UI年次 Web制作 A",
+                description: "国内向けWeb制作案件",
+                startDate: date(year: 2025, month: 1, day: 1),
+                plannedEndDate: date(year: 2025, month: 12, day: 31)
+            ),
+            store.addProject(
+                name: "UI年次 iOS開発 B",
+                description: "国内向けiOSアプリ開発案件",
+                startDate: date(year: 2025, month: 1, day: 1),
+                plannedEndDate: date(year: 2025, month: 12, day: 31)
+            ),
+            store.addProject(
+                name: "UI年次 顧問 C",
+                description: "国内事業者向け顧問案件",
+                startDate: date(year: 2025, month: 1, day: 1),
+                plannedEndDate: date(year: 2025, month: 12, day: 31)
+            ),
+            store.addProject(
+                name: "UI年次 保守運用 D",
+                description: "国内向け保守運用案件",
+                startDate: date(year: 2025, month: 1, day: 1),
+                plannedEndDate: date(year: 2025, month: 12, day: 31)
+            ),
+        ]
+
+        let monthlyIncome = [
+            240_000, 320_000, 180_000, 150_000,
+            260_000, 340_000, 190_000, 160_000,
+            280_000, 360_000, 200_000, 170_000,
+        ]
+        for month in 1...12 {
+            let project = projects[(month - 1) % projects.count]
+            await approveManualCandidate(
+                modelContext: modelContext,
+                type: .income,
+                amount: monthlyIncome[month - 1],
+                date: date(year: 2025, month: month, day: 15),
+                categoryId: "cat-sales",
+                memo: "UI年次 \(month)月 売上",
+                allocations: [(projectId: project.id, ratio: 100)],
+                paymentAccountId: AccountingConstants.bankAccountId,
+                counterparty: "国内取引先\(month)"
+            )
+        }
+
+        let equalAllocations = projects.map { (projectId: $0.id, ratio: 25) }
+        for month in 1...12 {
+            await approveManualCandidate(
+                modelContext: modelContext,
+                type: .expense,
+                amount: 80_000,
+                date: date(year: 2025, month: month, day: 25),
+                categoryId: "cat-other-expense",
+                memo: "UI年次 \(month)月 事務所費",
+                allocations: equalAllocations,
+                paymentAccountId: AccountingConstants.bankAccountId,
+                counterparty: "国内オフィス"
+            )
+            await approveManualCandidate(
+                modelContext: modelContext,
+                type: .expense,
+                amount: 22_000,
+                date: date(year: 2025, month: month, day: 28),
+                categoryId: "cat-tools",
+                memo: "UI年次 \(month)月 業務ツール",
+                allocations: equalAllocations,
+                paymentAccountId: AccountingConstants.bankAccountId,
+                counterparty: "国内SaaS"
+            )
+        }
+
+        for (index, month) in [1, 4, 7, 10].enumerated() {
+            await approveManualCandidate(
+                modelContext: modelContext,
+                type: .expense,
+                amount: 12_000,
+                date: date(year: 2025, month: month, day: 20),
+                categoryId: "cat-transport",
+                memo: "UI年次 \(month)月 交通費",
+                allocations: [(projectId: projects[index].id, ratio: 100)],
+                paymentAccountId: AccountingConstants.bankAccountId,
+                counterparty: "国内交通機関"
+            )
+        }
+
+        let fixedAssetWorkflow = FixedAssetWorkflowUseCase(modelContext: modelContext)
+        if let asset = try? fixedAssetWorkflow.createAsset(
+            input: FixedAssetUpsertInput(
+                name: "UI年次 MacBook Pro",
+                acquisitionDate: date(year: 2025, month: 1, day: 5),
+                acquisitionCost: 180_000,
+                usefulLifeYears: 4,
+                depreciationMethod: .straightLine,
+                salvageValue: 1,
+                businessUsePercent: 90,
+                memo: "UI年次E2E用固定資産"
+            )
+        ) {
+            _ = try? fixedAssetWorkflow.postDepreciation(assetId: asset.id, fiscalYear: 2025)
         }
 
         store.loadData()
@@ -203,5 +326,51 @@ enum UITestBootstrap {
             withholdingTaxAmount: nil,
             candidateSource: .manual
         )
+    }
+
+    @MainActor
+    private static func approveManualCandidate(
+        modelContext: ModelContext,
+        type: TransactionType,
+        amount: Int,
+        date: Date,
+        categoryId: String,
+        memo: String,
+        allocations: [(projectId: UUID, ratio: Int)],
+        paymentAccountId: String?,
+        counterparty: String
+    ) async {
+        let intake = PostingIntakeUseCase(modelContext: modelContext)
+        guard let candidate = try? await intake.saveManualCandidate(
+            input: ManualPostingCandidateInput(
+                type: type,
+                amount: amount,
+                date: date,
+                categoryId: categoryId,
+                memo: memo,
+                allocations: allocations,
+                paymentAccountId: paymentAccountId,
+                transferToAccountId: nil,
+                taxDeductibleRate: nil,
+                taxAmount: nil,
+                taxCodeId: nil,
+                isTaxIncluded: nil,
+                counterpartyId: nil,
+                counterparty: counterparty,
+                isWithholdingEnabled: false,
+                withholdingTaxCodeId: nil,
+                withholdingTaxAmount: nil,
+                candidateSource: .manual
+            )
+        ) else {
+            return
+        }
+
+        _ = try? await PostingWorkflowUseCase(modelContext: modelContext)
+            .approveCandidate(candidateId: candidate.id, actor: "ui-test")
+    }
+
+    private static func date(year: Int, month: Int, day: Int) -> Date {
+        Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: month, day: day))!
     }
 }

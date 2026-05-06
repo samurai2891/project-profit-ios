@@ -106,7 +106,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(bundle.balanceSheet.liabilitiesAndEquity, expectedBalanceSheet.liabilitiesAndEquity)
     }
 
-    func testJournalReadQueryUseCaseExcludesOrphanLegacySupplementalEntries() {
+    func testJournalReadQueryUseCaseIncludesCanonicalManualJournalEntries() {
         let project = mutations(dataStore).addProject(name: "Journal Project", description: "")
         let manualEntry = try! XCTUnwrap(
             mutations(dataStore).addManualJournalEntry(
@@ -123,16 +123,16 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         let snapshot = useCase.listSnapshot(fiscalYear: 2025)
         XCTAssertEqual(snapshot.businessId, businessId)
         XCTAssertTrue(snapshot.projects.contains(where: { $0.id == project.id }))
-        XCTAssertFalse(snapshot.entries.contains(where: { $0.id == manualEntry.id }))
+        XCTAssertTrue(snapshot.entries.contains(where: { $0.id == manualEntry.id }))
 
         let detail = useCase.detailSnapshot(entryId: manualEntry.id, fiscalYear: 2025)
-        XCTAssertTrue(detail.lines.isEmpty)
+        XCTAssertEqual(detail.lines.count, 2)
 
         let matchIds = useCase.supplementalMatchIds(
             criteria: JournalSearchCriteria(textQuery: "manual journal match"),
             snapshot: snapshot
         )
-        XCTAssertFalse(matchIds.contains(manualEntry.id))
+        XCTAssertTrue(matchIds.contains(manualEntry.id))
 
         let excluded = useCase.supplementalMatchIds(
             criteria: JournalSearchCriteria(counterpartyText: "相手先"),
@@ -273,7 +273,7 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         XCTAssertEqual(snapshot.summary.creditTotal, expectedEntries.reduce(0) { $0 + $1.credit })
     }
 
-    func testProjectedReadModelsExcludeLegacyOnlyDepreciationEntries() {
+    func testProjectedReadModelsIncludeCanonicalDepreciationEntries() {
         let asset = try! XCTUnwrap(
             dataStore.addFixedAsset(
                 name: "Camera",
@@ -287,12 +287,12 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
         )
 
         let journalSnapshot = JournalReadQueryUseCase(modelContext: context).listSnapshot(fiscalYear: 2025)
-        XCTAssertFalse(journalSnapshot.entries.contains { $0.id == depreciationEntry.id })
+        XCTAssertTrue(journalSnapshot.entries.contains { $0.id == depreciationEntry.id })
 
         let ledgerSnapshot = LedgerQueryUseCase(modelContext: context).snapshot(
             accountId: AccountingConstants.depreciationExpenseAccountId
         )
-        XCTAssertFalse(ledgerSnapshot.entries.contains { $0.id == depreciationEntry.id })
+        XCTAssertTrue(ledgerSnapshot.entries.contains { $0.debit > 0 })
 
         let startDate = makeDate(year: 2025, month: 1, day: 1)
         let endDate = makeDate(year: 2025, month: 12, day: 31)
@@ -307,8 +307,8 @@ final class AccountingReadQueryUseCaseTests: XCTestCase {
             endDate: endDate,
             accountFilter: AccountingConstants.depreciationExpenseAccountId
         )
-        XCTAssertTrue(expectedSubLedgerEntries.isEmpty)
-        XCTAssertTrue(subLedgerSnapshot.entries.isEmpty)
+        XCTAssertFalse(expectedSubLedgerEntries.isEmpty)
+        XCTAssertFalse(subLedgerSnapshot.entries.isEmpty)
     }
 
     func testClosingQueryUseCaseResolvesDisplayLinesAndYearState() throws {

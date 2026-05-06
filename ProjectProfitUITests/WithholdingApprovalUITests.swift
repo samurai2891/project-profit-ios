@@ -47,7 +47,7 @@ final class WithholdingApprovalUITests: XCTestCase {
         XCTAssertTrue(projectsTab.waitForExistence(timeout: 10))
         projectsTab.tap()
 
-        XCTAssertTrue(app.navigationBars["案件一覧"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["プロジェクト"].firstMatch.waitForExistence(timeout: 10))
     }
 
     func testFilingBooksWorkflowShowsTransportationExpenseRoute() {

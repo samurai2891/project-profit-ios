@@ -135,8 +135,14 @@ extension DataStore {
             accounts: accounts
         )
 
-        if entry != nil {
-            save()
+        if let entry {
+            do {
+                try DepreciationCanonicalJournalWriter(modelContext: modelContext)
+                    .sync(entry: entry, fiscalYear: fiscalYear)
+                save()
+            } catch {
+                lastError = error as? AppError ?? .saveFailed(underlying: error)
+            }
             refreshJournalEntries()
             refreshJournalLines()
         }
@@ -159,7 +165,15 @@ extension DataStore {
                 priorAccumulated: priorAccumulated,
                 accounts: accounts
             )
-            if entry != nil { count += 1 }
+            if let entry {
+                do {
+                try DepreciationCanonicalJournalWriter(modelContext: modelContext)
+                    .sync(entry: entry, fiscalYear: fiscalYear)
+                    count += 1
+                } catch {
+                    lastError = error as? AppError ?? .saveFailed(underlying: error)
+                }
+            }
         }
 
         if count > 0 {

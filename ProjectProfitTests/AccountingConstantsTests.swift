@@ -6,7 +6,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Default Accounts Tests
 
     func testDefaultAccountsCount() {
-        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 34)
+        XCTAssertEqual(AccountingConstants.defaultAccounts.count, 35)
     }
 
     func testAllAccountIdsAreUnique() {
@@ -32,9 +32,9 @@ final class AccountingConstantsTests: XCTestCase {
     }
 
     func testLiabilityAccountsCount() {
-        // 未払費用, 借入金 + 仮受消費税, 未払消費税 = 4
+        // 買掛金, 未払費用, 源泉所得税預り金, 仮受消費税, 未払消費税 = 5
         let liabilities = AccountingConstants.defaultAccounts.filter { $0.accountType == .liability }
-        XCTAssertEqual(liabilities.count, 4)
+        XCTAssertEqual(liabilities.count, 5)
     }
 
     func testRevenueAccountsCount() {
@@ -125,7 +125,7 @@ final class AccountingConstantsTests: XCTestCase {
     // MARK: - Category Mapping Tests
 
     func testCategoryMappingCount() {
-        XCTAssertEqual(AccountingConstants.categoryToAccountMapping.count, 14)
+        XCTAssertEqual(AccountingConstants.categoryToAccountMapping.count, 15)
     }
 
     func testAllMappedAccountIdsExistInDefaultAccounts() {
